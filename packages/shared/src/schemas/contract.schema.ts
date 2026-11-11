@@ -183,6 +183,14 @@ export const ContractResponseSchema = z
      */
     installationFee: z.number().finite().nonnegative().nullable().optional(),
     billingCycleDay: z.number().int().min(1).max(28).nullable(),
+    /**
+     * true si el contrato está en borrador sin ciclo de facturación (fase 2, bloque B; CA-2):
+     * la ficha muestra «Falta ciclo de facturación» y la firma responde 409
+     * `BILLING_CYCLE_REQUIRED` hasta asignarlo. Opcional en el tipo; la API lo envía en lecturas.
+     */
+    billingCycleMissing: z.boolean().optional(),
+    /** Expediente de origen del contrato automático (fase 2, bloque A). Null en los manuales. */
+    sourceExpedienteId: z.string().uuid().nullable().optional(),
     /** @deprecated Mantener para leer contratos heredados. */
     billingCycle: z.string().nullable(),
     fiscalName: z.string().nullable(),
@@ -216,3 +224,27 @@ export type ContractFromExpedienteCreateInput = z.infer<typeof ContractFromExped
 export type ContractUpdateInput = z.infer<typeof ContractUpdateSchema>;
 export type ContractServicePointUpdateInput = z.infer<typeof ContractServicePointUpdateSchema>;
 export type ContractResponse = z.infer<typeof ContractResponseSchema>;
+
+/** Datos obligatorios cuya falta impide crear el contrato automático (fase 2, bloque A; CA-3). */
+export const CONTRACT_AUTO_CREATION_MISSING_FIELDS = [
+  'PLAN',
+  'INSTALLATION_ADDRESS',
+  'CONTRACTUAL_AUTHORIZATION',
+  'VAT_RESPONSIBILITY',
+  'RUT_RESPONSIBILITIES',
+  'NIT_VERIFICATION_DIGIT',
+  'LEGAL_REPRESENTATIVE',
+] as const;
+export type ContractAutoCreationMissingField =
+  (typeof CONTRACT_AUTO_CREATION_MISSING_FIELDS)[number];
+
+/**
+ * Aviso persistido «No se pudo crear el contrato: falta X» (D-F2). Solo códigos, sin texto libre
+ * ni datos del titular; se limpia al crear un contrato (manual o automático).
+ */
+export interface ContractAutoCreationIssue {
+  reason: 'MISSING_DATA';
+  missing: ContractAutoCreationMissingField[];
+  /** Instante ISO en que se detectó. */
+  detectedAt: string;
+}

@@ -22,6 +22,8 @@ import { TenantModule } from '../../tenant/tenant.module';
 import { BillingCyclesController } from './billing-cycles.controller';
 import { ContractsTenantSettingsReadAdapter } from './ports/contracts-tenant-settings-read.adapter';
 import { ContractsTenantSettingsReadPort } from './ports/contracts-tenant-settings-read.port';
+import { ContractAutoCreationService } from './contract-auto-creation.service';
+import { ContractAutoCreationPort } from '../ports/contract-auto-creation.port';
 import { BillingAccountReadModule } from '../../billing/billing-account-read.module';
 
 @Module({
@@ -47,6 +49,8 @@ import { BillingAccountReadModule } from '../../billing/billing-account-read.mod
     ContractsBlockedTitularGuard,
     ContractsTenantSettingsReadAdapter,
     { provide: ContractsTenantSettingsReadPort, useExisting: ContractsTenantSettingsReadAdapter },
+    ContractAutoCreationService,
+    { provide: ContractAutoCreationPort, useExisting: ContractAutoCreationService },
   ],
   exports: [
     ContractsService,

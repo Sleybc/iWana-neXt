@@ -28,6 +28,8 @@ type BillingContractRow = {
   monthly_price: string | null;
   vat_snapshot: unknown;
   unbilled_additional_count: number;
+  installation_fee?: string | null;
+  permanence_discount?: string | null;
   display_name: string | null;
   document_type: string | null;
   address: string | null;
@@ -58,6 +60,11 @@ const BILLABLE_CONTRACT_SELECT = `
           + CASE WHEN jsonb_typeof(c.additional_service_ids) = 'array'
                  THEN jsonb_array_length(c.additional_service_ids) ELSE 0 END)::int
            AS unbilled_additional_count,
+         c.installation_fee::text AS installation_fee,
+         (SELECT cp.discounted_amount::text
+            FROM contract_permanence cp
+           WHERE cp.contract_id = c.id AND cp.tenant_id = c.tenant_id AND cp.accepted = true)
+           AS permanence_discount,
          COALESCE(NULLIF(c.fiscal_name, ''), NULLIF(s.business_name, ''),
                   NULLIF(concat_ws(' ', s.first_name, s.last_name), '')) AS display_name,
          s.document_type,
@@ -356,6 +363,8 @@ export class BillingContractReadAdapter extends BillingContractReadPort {
       monthlyPrice: row.monthly_price,
       vatSnapshot: mapVatSnapshot(row.vat_snapshot),
       unbilledAdditionalCount: row.unbilled_additional_count,
+      installationFee: row.installation_fee ?? null,
+      permanenceDiscount: row.permanence_discount ?? null,
       buyer: {
         displayName: row.display_name ?? 'Titular',
         documentType: row.document_type,

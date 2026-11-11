@@ -40,6 +40,8 @@ import {
   type LifecycleReactivateCommand,
   type LifecycleSuspendCommand,
   type LifecycleTerminateCommand,
+  type ContractAutoCreationIssue,
+  type ContractAutoCreationMissingField,
 } from '@iwana/shared';
 import { buildPageMeta, clampLimit } from '../../../common/pagination';
 import { clampPage } from '../../../common/pagination/clamp-page';
@@ -132,6 +134,16 @@ const AUDITABLE_CONTRACT_UPDATE_FIELDS = new Set([
 
 const CONTRACT_PLAN_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+export type ContractAutoCreationOutcome =
+  | { outcome: 'CREATED'; contract: Contract }
+  | { outcome: 'EXISTING'; contract: null }
+  | { outcome: 'MISSING_DATA'; contract: null; issue: ContractAutoCreationIssue };
+
+function isUniqueViolation(error: unknown): boolean {
+  const candidate = error as { code?: string; driverError?: { code?: string } };
+  return candidate?.code === '23505' || candidate?.driverError?.code === '23505';
+}
 
 function round2Money(value: number): number {
   return Math.round(value * 100) / 100;
@@ -257,6 +269,7 @@ export class ContractsService {
 
       this.advanceContractVersion(entity);
       const saved = await qr.manager.save(Contract, entity);
+      await this.clearAutoCreationIssue(qr, dto.subscriberId, tenantId);
       return this.projectContractForMutation(saved, qr.manager);
     });
     await this.auditService.log({
@@ -283,133 +296,220 @@ export class ContractsService {
     dto: CreateContractFromExpedienteDto,
     actorId?: string,
   ): Promise<Contract> {
+    const result = await this.createFromExpedienteInternal(subscriberId, dto, actorId, null);
+    if (result.outcome !== 'CREATED') {
+      // Sin modo automático la creación manual nunca se omite: o crea o lanza.
+      throw new ConflictException('No se pudo crear el contrato desde el expediente.');
+    }
+    return result.contract;
+  }
+
+  /**
+   * Contrato automático al pasar la oportunidad a «lista para instalación» (fase 2, bloque A;
+   * D3, CA-1 a CA-3). Reutiliza la creación desde el expediente con estas diferencias:
+   * - Idempotente por expediente: si el suscriptor ya tiene un contrato vivo (automático o creado
+   *   a mano) no crea otro; el índice único `uq_contracts_source_expediente` cubre la carrera.
+   * - El ciclo sale de la oportunidad (`billing_cycle` con un día activo); si no lo tiene, el
+   *   borrador se crea sin ciclo (`billingCycleMissing`) y la firma lo exige.
+   * - Si falta otro dato obligatorio, no crea: guarda el aviso en el suscriptor y lo devuelve.
+   */
+  async createAutomaticFromExpediente(
+    subscriberId: string,
+    expedienteId: string,
+    actorId: string,
+  ): Promise<ContractAutoCreationOutcome> {
+    try {
+      return await this.createFromExpedienteInternal(subscriberId, { expedienteId }, actorId, {
+        expedienteId,
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) return { outcome: 'EXISTING', contract: null };
+      throw error;
+    }
+  }
+
+  private async createFromExpedienteInternal(
+    subscriberId: string,
+    dto: CreateContractFromExpedienteDto,
+    actorId: string | undefined,
+    automatic: { expedienteId: string } | null,
+  ): Promise<ContractAutoCreationOutcome> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
 
-    const created = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      // Verificar que el subscriber existe en el tenant
-      const subscriber = await this.lockSubscriberForContractCreation(qr, subscriberId, tenantId, {
-        id: true,
-        tenantId: true,
-        status: true,
-        personType: true,
-        partyId: true,
-        anonymizedAt: true,
-        vatResponsibility: true,
-        rutResponsibilities: true,
-        nit: true,
-        nitVerificationDigit: true,
-        legalRepresentativePartyId: true,
-        expedienteId: true,
-        address: true,
-        city: true,
-        department: true,
-        postalCode: true,
-        customerSegment: true,
-      });
-      await this.assertSubscriberNotBlocked(
-        subscriber.partyId,
-        subscriber.anonymizedAt,
-        qr.manager,
-      );
-      if (dto.billingCycleDay !== undefined) {
-        await this.assertActiveBillingCycle(qr, dto.billingCycleDay);
-      }
-      if (subscriber.status === SubscriberStatus.CANCELLED) {
-        throw this.cancelledSubscriberConflict();
-      }
-      await this.requireContractualAuthorization(subscriber.partyId, qr.manager);
-      this.subscriberFiscalCompletenessService.assertComplete(subscriber);
-
-      // Resolver el expediente: usar el del DTO si viene, o el del subscriber
-      const expedienteId = dto.expedienteId ?? subscriber.expedienteId ?? null;
-      if (!expedienteId) {
-        throw new BadRequestException(
-          'El suscriptor no tiene expediente de origen y no se proporcionó un expedienteId.',
+    const result = await runInTenantSchema<ContractAutoCreationOutcome>(
+      this.dataSource,
+      schemaName,
+      async (qr) => {
+        // Verificar que el subscriber existe en el tenant
+        const subscriber = await this.lockSubscriberForContractCreation(
+          qr,
+          subscriberId,
+          tenantId,
+          {
+            id: true,
+            tenantId: true,
+            status: true,
+            personType: true,
+            partyId: true,
+            anonymizedAt: true,
+            vatResponsibility: true,
+            rutResponsibilities: true,
+            nit: true,
+            nitVerificationDigit: true,
+            legalRepresentativePartyId: true,
+            expedienteId: true,
+            address: true,
+            city: true,
+            department: true,
+            postalCode: true,
+            customerSegment: true,
+          },
         );
-      }
+        await this.assertSubscriberNotBlocked(
+          subscriber.partyId,
+          subscriber.anonymizedAt,
+          qr.manager,
+        );
+        if (dto.billingCycleDay !== undefined) {
+          await this.assertActiveBillingCycle(qr, dto.billingCycleDay);
+        }
+        if (subscriber.status === SubscriberStatus.CANCELLED) {
+          throw this.cancelledSubscriberConflict();
+        }
+        if (automatic) {
+          // Bajo el bloqueo del suscriptor: un contrato vivo (automático o manual) basta.
+          const [existing] = (await qr.query(
+            `SELECT id FROM contracts
+            WHERE subscriber_id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+            LIMIT 1`,
+            [subscriberId, tenantId],
+          )) as Array<{ id: string }>;
+          if (existing) return { outcome: 'EXISTING', contract: null };
+        } else {
+          await this.requireContractualAuthorization(subscriber.partyId, qr.manager);
+          this.subscriberFiscalCompletenessService.assertComplete(subscriber);
+        }
 
-      const expediente = await qr.manager.findOne(ExpedienteRecord, {
-        where: { id: expedienteId },
-      });
-      if (!expediente) {
-        throw new NotFoundException(`Expediente ${expedienteId} no encontrado.`);
-      }
-      await this.hydrateExpedienteFiscalDocument(qr.manager, expediente);
-      const planId = this._requirePlanId(
-        expediente.interestedPlanId,
-        'El expediente no tiene un plan de interés registrado. Crea el contrato de forma directa.',
-      );
+        // Resolver el expediente: usar el del DTO si viene, o el del subscriber
+        const expedienteId = dto.expedienteId ?? subscriber.expedienteId ?? null;
+        if (!expedienteId) {
+          throw new BadRequestException(
+            'El suscriptor no tiene expediente de origen y no se proporcionó un expedienteId.',
+          );
+        }
 
-      // Dirección de instalación: prioridad DTO → expediente → subscriber
-      const installationAddress =
-        dto.installationAddress ?? expediente.address ?? subscriber.address;
-      const installationCity =
-        dto.installationCity ?? expediente.municipality ?? subscriber.city ?? null;
-      const installationDepartment =
-        dto.installationDepartment ?? expediente.department ?? subscriber.department ?? null;
-      const installationPostalCode =
-        dto.installationPostalCode ?? expediente.postalCode ?? subscriber.postalCode ?? null;
+        const expediente = await qr.manager.findOne(ExpedienteRecord, {
+          where: { id: expedienteId },
+        });
+        if (!expediente) {
+          throw new NotFoundException(`Expediente ${expedienteId} no encontrado.`);
+        }
+        await this.hydrateExpedienteFiscalDocument(qr.manager, expediente);
+        let automaticCycleDay: number | null = null;
+        if (automatic) {
+          const missing = await this.collectAutomaticCreationMissing(
+            qr.manager,
+            subscriber,
+            expediente,
+          );
+          if (missing.length > 0) {
+            const issue: ContractAutoCreationIssue = {
+              reason: 'MISSING_DATA',
+              missing,
+              detectedAt: new Date().toISOString(),
+            };
+            await qr.query(
+              `UPDATE subscribers SET contract_auto_creation_issue = $3::jsonb
+              WHERE id = $1 AND tenant_id = $2`,
+              [subscriberId, tenantId, JSON.stringify(issue)],
+            );
+            return { outcome: 'MISSING_DATA', contract: null, issue };
+          }
+          automaticCycleDay = await this.resolveExpedienteCycleDay(qr, expediente.billingCycle);
+        }
+        const planId = this._requirePlanId(
+          expediente.interestedPlanId,
+          'El expediente no tiene un plan de interés registrado. Crea el contrato de forma directa.',
+        );
 
-      const expedienteAddress = expediente.address?.trim() ?? '';
-      const resolvedInstallationAddress = installationAddress?.trim() ?? '';
-      const sameInstallationPoint =
-        expedienteAddress.length > 0 && expedienteAddress === resolvedInstallationAddress;
-      const serviceUsage = dto.serviceUsage ?? null;
-      const installationStratum =
-        dto.installationStratum !== undefined
-          ? dto.installationStratum
-          : sameInstallationPoint
-            ? expediente.stratum
-            : null;
-      if (serviceUsage === ServiceUsage.RESIDENTIAL) {
-        this._validateServicePoint(serviceUsage, installationStratum, subscriber.personType);
-      }
+        // Dirección de instalación: prioridad DTO → expediente → subscriber
+        const installationAddress =
+          dto.installationAddress ?? expediente.address ?? subscriber.address;
+        const installationCity =
+          dto.installationCity ?? expediente.municipality ?? subscriber.city ?? null;
+        const installationDepartment =
+          dto.installationDepartment ?? expediente.department ?? subscriber.department ?? null;
+        const installationPostalCode =
+          dto.installationPostalCode ?? expediente.postalCode ?? subscriber.postalCode ?? null;
 
-      const alias = dto.alias?.trim() || this._buildAlias(installationCity, installationAddress);
+        const expedienteAddress = expediente.address?.trim() ?? '';
+        const resolvedInstallationAddress = installationAddress?.trim() ?? '';
+        const sameInstallationPoint =
+          expedienteAddress.length > 0 && expedienteAddress === resolvedInstallationAddress;
+        const serviceUsage = dto.serviceUsage ?? null;
+        const installationStratum =
+          dto.installationStratum !== undefined
+            ? dto.installationStratum
+            : sameInstallationPoint
+              ? expediente.stratum
+              : null;
+        if (serviceUsage === ServiceUsage.RESIDENTIAL) {
+          this._validateServicePoint(serviceUsage, installationStratum, subscriber.personType);
+        }
 
-      const customerSegment =
-        dto.customerSegment ?? expediente.customerSegment ?? subscriber.customerSegment ?? null;
-      const installationFee = await this.resolveInstallationFee(
-        qr.manager,
-        planId,
-        customerSegment,
-      );
-      const entity = qr.manager.create(Contract, {
-        tenantId,
-        quoteId: null,
-        subscriberId,
-        planId,
-        planSnapshotJson: { id: planId, source: 'expediente' },
-        status: ContractStatus.DRAFT,
-        alias,
-        installationAddress: installationAddress ?? null,
-        installationCity: installationCity ?? null,
-        installationDepartment: installationDepartment ?? null,
-        installationPostalCode: installationPostalCode ?? null,
-        installationNotes: dto.installationNotes ?? null,
-        customerSegment,
-        serviceUsage,
-        installationStratum,
-        stratumEvidenceMediaId: null,
-        vatSnapshot: null,
-        additionalProductIds: (expediente.additionalProductIds as string[]) ?? [],
-        additionalServiceIds: (expediente.additionalServiceIds as string[]) ?? [],
-        paymentMethod: dto.paymentMethod ?? expediente.paymentMethod ?? null,
-        billingCycle: dto.billingCycle ?? expediente.billingCycle ?? null,
-        billingCycleDay: dto.billingCycleDay ?? null,
-        installationFee,
-        fiscalName: expediente.fiscalName ?? null,
-        fiscalDocument: null,
-        fiscalAddress: null,
-        startDate: null,
-        endDate: null,
-      });
-      setFiscalDocumentStorage(entity, expediente.fiscalDocument, this.fiscalDocumentCrypto);
+        const alias = dto.alias?.trim() || this._buildAlias(installationCity, installationAddress);
 
-      this.advanceContractVersion(entity);
-      const saved = await qr.manager.save(Contract, entity);
-      return this.projectContractForMutation(saved, qr.manager);
-    });
+        const customerSegment =
+          dto.customerSegment ?? expediente.customerSegment ?? subscriber.customerSegment ?? null;
+        const installationFee = await this.resolveInstallationFee(
+          qr.manager,
+          planId,
+          customerSegment,
+        );
+        const entity = qr.manager.create(Contract, {
+          tenantId,
+          quoteId: null,
+          subscriberId,
+          planId,
+          planSnapshotJson: { id: planId, source: 'expediente' },
+          status: ContractStatus.DRAFT,
+          alias,
+          installationAddress: installationAddress ?? null,
+          installationCity: installationCity ?? null,
+          installationDepartment: installationDepartment ?? null,
+          installationPostalCode: installationPostalCode ?? null,
+          installationNotes: dto.installationNotes ?? null,
+          customerSegment,
+          serviceUsage,
+          installationStratum,
+          stratumEvidenceMediaId: null,
+          vatSnapshot: null,
+          additionalProductIds: (expediente.additionalProductIds as string[]) ?? [],
+          additionalServiceIds: (expediente.additionalServiceIds as string[]) ?? [],
+          paymentMethod: dto.paymentMethod ?? expediente.paymentMethod ?? null,
+          billingCycle: dto.billingCycle ?? expediente.billingCycle ?? null,
+          billingCycleDay: dto.billingCycleDay ?? automaticCycleDay,
+          sourceExpedienteId: automatic?.expedienteId ?? null,
+          installationFee,
+          fiscalName: expediente.fiscalName ?? null,
+          fiscalDocument: null,
+          fiscalAddress: null,
+          startDate: null,
+          endDate: null,
+        });
+        setFiscalDocumentStorage(entity, expediente.fiscalDocument, this.fiscalDocumentCrypto);
+
+        this.advanceContractVersion(entity);
+        const saved = await qr.manager.save(Contract, entity);
+        await this.clearAutoCreationIssue(qr, subscriberId, tenantId);
+        return {
+          outcome: 'CREATED',
+          contract: await this.projectContractForMutation(saved, qr.manager),
+        };
+      },
+    );
+    if (result.outcome !== 'CREATED') return result;
+    const created = result.contract;
     await this.auditService.log({
       action: AuditAction.CREATE,
       entityType: 'Contract',
@@ -420,9 +520,78 @@ export class ContractsService {
         planId: created.planId,
         status: created.status,
         billingCycleDay: created.billingCycleDay,
+        ...(automatic
+          ? { source: 'AUTOMATIC_FROM_EXPEDIENTE', expedienteId: automatic.expedienteId }
+          : {}),
       },
     });
-    return created;
+    return result;
+  }
+
+  /**
+   * Datos obligatorios del contrato automático (CA-3), todos a la vez para que el aviso diga
+   * qué falta: plan de la oportunidad, dirección del punto de servicio, autorización
+   * `TRATAMIENTO_CONTRACTUAL` vigente y datos fiscales del titular.
+   */
+  private async collectAutomaticCreationMissing(
+    manager: EntityManager,
+    subscriber: Subscriber,
+    expediente: ExpedienteRecord,
+  ): Promise<ContractAutoCreationMissingField[]> {
+    const missing: ContractAutoCreationMissingField[] = [];
+    if (!normalizeContractPlanId(expediente.interestedPlanId)) missing.push('PLAN');
+    const address = (expediente.address ?? subscriber.address ?? '').trim();
+    if (!address) missing.push('INSTALLATION_ADDRESS');
+    if (!(await this.hasContractualAuthorization(subscriber.partyId, manager))) {
+      missing.push('CONTRACTUAL_AUTHORIZATION');
+    }
+    missing.push(...this.subscriberFiscalCompletenessService.evaluate(subscriber).missing);
+    return missing;
+  }
+
+  private async hasContractualAuthorization(
+    partyId: string | null,
+    manager: EntityManager,
+  ): Promise<boolean> {
+    try {
+      await this.requireContractualAuthorization(partyId, manager);
+      return true;
+    } catch (error) {
+      if (error instanceof UnprocessableEntityException) return false;
+      throw error;
+    }
+  }
+
+  /**
+   * Ciclo de la oportunidad: `expediente_records.billing_cycle` es texto libre heredado; solo
+   * se toma si es un día (1-28) con ciclo activo. Si no, el borrador queda sin ciclo (D3).
+   */
+  private async resolveExpedienteCycleDay(
+    qr: QueryRunner,
+    billingCycle: string | null,
+  ): Promise<number | null> {
+    const match = /^\s*(\d{1,2})\s*$/u.exec(billingCycle ?? '');
+    if (!match) return null;
+    const day = Number(match[1]);
+    if (day < 1 || day > 28) return null;
+    const rows = (await qr.query(
+      `SELECT cycle_day FROM crm_billing_cycles WHERE cycle_day = $1 AND active = true`,
+      [day],
+    )) as Array<{ cycle_day: number }>;
+    return rows.length > 0 ? day : null;
+  }
+
+  /** El aviso del contrato automático se limpia al crear cualquier contrato del suscriptor. */
+  private async clearAutoCreationIssue(
+    qr: QueryRunner,
+    subscriberId: string,
+    tenantId: string,
+  ): Promise<void> {
+    await qr.query(
+      `UPDATE subscribers SET contract_auto_creation_issue = NULL
+        WHERE id = $1 AND tenant_id = $2 AND contract_auto_creation_issue IS NOT NULL`,
+      [subscriberId, tenantId],
+    );
   }
 
   // ── Consulta ────────────────────────────────────────────────────────────────

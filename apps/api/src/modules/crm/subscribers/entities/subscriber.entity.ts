@@ -16,6 +16,7 @@ import {
   DocumentType,
   VatResponsibility,
 } from '@iwana/shared';
+import type { ContractAutoCreationIssue } from '@iwana/shared';
 
 /**
  * Entidad Subscriber — registro central del suscriptor post-activación.
@@ -225,6 +226,13 @@ export class Subscriber {
 
   @Column({ type: 'varchar', length: 160, name: 'external_id', nullable: true })
   externalId: string | null;
+
+  /**
+   * Aviso «No se pudo crear el contrato: falta X» del contrato automático (fase 2, bloque A;
+   * migración 192). Solo códigos; se limpia al crear un contrato.
+   */
+  @Column({ type: 'jsonb', name: 'contract_auto_creation_issue', nullable: true })
+  contractAutoCreationIssue?: ContractAutoCreationIssue | null;
 
   // ── Auditoría ──
   @Column({ type: 'uuid', name: 'created_by' })

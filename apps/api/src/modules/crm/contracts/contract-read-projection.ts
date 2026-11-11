@@ -8,6 +8,7 @@ import {
 } from '../../../common/crypto/fiscal-document.util';
 import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
 import { Subscriber } from '../subscribers/entities/subscriber.entity';
+import { ContractStatus } from '../enums/contract-status.enum';
 import { Contract } from './entities/contract.entity';
 
 export interface ContractReadProjection {
@@ -68,6 +69,9 @@ export async function projectContractsForRead(
     if (blocked && canSeeBlocked) blockedServed += 1;
     const projected = Object.assign(contract, {
       titularAnonymizedAt: anonymizedAt?.toISOString() ?? null,
+      // Fase 2, bloque B (CA-2): borrador sin ciclo; la firma lo exige.
+      billingCycleMissing:
+        contract.status === ContractStatus.DRAFT && contract.billingCycleDay == null,
     });
     if (anonymizedAt != null) {
       Object.assign(projected, {

@@ -140,6 +140,13 @@ export class Contract {
   @Column({ type: 'smallint', name: 'billing_cycle_day', nullable: true })
   billingCycleDay: number | null;
 
+  /**
+   * Expediente que originó el contrato creado de forma automática al pasar la oportunidad a
+   * «lista para instalación» (fase 2, bloque A; migración 192). Null en contratos manuales.
+   */
+  @Column({ type: 'uuid', name: 'source_expediente_id', nullable: true })
+  sourceExpedienteId?: string | null;
+
   @Column({ type: 'varchar', length: 200, name: 'fiscal_name', nullable: true })
   fiscalName: string | null;
 

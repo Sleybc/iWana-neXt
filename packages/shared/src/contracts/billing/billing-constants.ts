@@ -29,7 +29,12 @@ export type BillingPaymentMethod = (typeof BILLING_PAYMENT_METHODS)[number];
 export const BILLING_DOCUMENT_STATUSES = ['BORRADOR', 'EMITIDO', 'ANULADO'] as const;
 export type BillingDocumentStatus = (typeof BILLING_DOCUMENT_STATUSES)[number];
 
-export const BILLING_DOCUMENT_LINE_KINDS = ['PLAN', 'ADICIONAL', 'PRORRATEO'] as const;
+export const BILLING_DOCUMENT_LINE_KINDS = [
+  'PLAN',
+  'ADICIONAL',
+  'PRORRATEO',
+  'INSTALACION',
+] as const;
 export type BillingDocumentLineKind = (typeof BILLING_DOCUMENT_LINE_KINDS)[number];
 
 export const BILLING_PAYMENT_STATUSES = ['REGISTRADO', 'ANULADO'] as const;

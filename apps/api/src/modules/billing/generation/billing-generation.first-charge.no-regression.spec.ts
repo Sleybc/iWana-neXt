@@ -4,8 +4,8 @@
 // `BillingGenerationService.generate({ firstChargeFrom })`):
 //   - Se mantiene tras el bloque D: un documento BORRADOR con la línea del plan, totales
 //     iguales a la suma de líneas e idempotencia por contrato.
-//   - Cambia a propósito en el bloque D (tripwire): hoy NO trae línea «Instalación». Cuando D
-//     la añada, el test marcado «[cambia en D]» se ajusta con `test-change-reviewer`.
+//   - Cambió a propósito en el bloque D (CA-4): con `installation_fee` congelado el primer
+//     cobro trae la línea «Instalación»; sin cargo (nulo o cero) sigue sin traerla.
 import { BillingGenerationService } from './billing-generation.service';
 import type { BillableContract } from '../ports/billing-contract-read.port';
 
@@ -193,14 +193,35 @@ describe('W0 F2 primer cobro por activación — línea base de MOD14', () => {
     expect(inserts).toHaveLength(0);
   });
 
-  it('[cambia en D] hoy el primer cobro no trae línea de instalación', async () => {
-    const { service } = build(contract());
+  it('[cambió en D] sin cargo de instalación el primer cobro no trae línea de instalación', async () => {
+    const cases: Array<Partial<BillableContract>> = [
+      {},
+      { installationFee: null },
+      { installationFee: '0.00' },
+    ];
+    for (const overrides of cases) {
+      inserts = [];
+      const { service } = build(contract(overrides));
+
+      await firstCharge(service);
+
+      const kinds = lineInserts().map(({ params }) => params[LINE.kind]);
+      const descriptions = lineInserts().map(({ params }) => String(params[LINE.description]));
+      expect(kinds).toEqual(['PLAN']);
+      expect(descriptions.some((text) => /instalaci[oó]n/iu.test(text))).toBe(false);
+    }
+  });
+
+  it('[cambió en D] con cargo congelado el primer cobro trae la línea «Instalación» y la suma', async () => {
+    const { service } = build(contract({ installationFee: '80000.00' }));
 
     await firstCharge(service);
 
-    const kinds = lineInserts().map(({ params }) => params[LINE.kind]);
-    const descriptions = lineInserts().map(({ params }) => String(params[LINE.description]));
-    expect(kinds).toEqual(['PLAN']);
-    expect(descriptions.some((text) => /instalaci[oó]n/iu.test(text))).toBe(false);
+    const lines = lineInserts();
+    expect(lines.map(({ params }) => params[LINE.kind])).toEqual(['PLAN', 'INSTALACION']);
+    expect(lines[1]!.params[LINE.description]).toBe('Instalación');
+    expect(lines[1]!.params[LINE.baseAmount]).toBe('80000.00');
+    expect(lines[1]!.params[LINE.taxAmount]).toBe('0.00');
+    expect(documentInsert()!.params[DOC.total]).toBe('180000.00');
   });
 });

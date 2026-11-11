@@ -1191,6 +1191,10 @@ export class SubscribersController {
     if ('email' in subscriber) result.email = subscriber.email;
     if ('phone' in subscriber) result.phone = subscriber.phone;
     if ('altContactPhone' in subscriber) result.altContactPhone = subscriber.altContactPhone;
+    // Fase 2, D-F2: aviso «No se pudo crear el contrato: falta X» (solo códigos).
+    if ('contractAutoCreationIssue' in subscriber) {
+      result.contractAutoCreationIssue = subscriber.contractAutoCreationIssue ?? null;
+    }
 
     if (privacyRestricted || anonymizedAt !== null) {
       const allowed = new Set([

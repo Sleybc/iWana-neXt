@@ -1,6 +1,7 @@
 import { DataSource } from 'typeorm';
 import { createBillingTenantFixture } from '../../../../../packages/database/src/migrations/tenant/billing-migration.integration-helpers';
 import { BillingCore1730000000173 } from '../../../../../packages/database/src/migrations/tenant/173_billing_core';
+import { BillingLineKindInstallation1930000000193 } from '../../../../../packages/database/src/migrations/tenant/193_billing_line_kind_installation';
 
 /** Billing siempre se crea con la 173 real; las tablas mínimas de CRM son del fixture del adaptador. */
 export async function createBillingSchema(dataSource: DataSource) {
@@ -49,10 +50,20 @@ export async function createBillingSchema(dataSource: DataSource) {
           fiscal_document_encrypted varchar(500) NULL,
           additional_product_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
           additional_service_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+          installation_fee numeric(14,2) NULL,
           deleted_at timestamptz NULL
+        );
+        CREATE TABLE contract_permanence (
+          contract_id uuid PRIMARY KEY REFERENCES contracts(id) ON DELETE CASCADE,
+          tenant_id uuid NOT NULL,
+          accepted boolean NOT NULL,
+          months smallint NULL,
+          connection_fee numeric(14,2) NULL,
+          discounted_amount numeric(14,2) NULL
         );
       `);
     await new BillingCore1730000000173().up(qr);
+    await new BillingLineKindInstallation1930000000193().up(qr);
     await qr.commitTransaction();
   } catch (error) {
     await qr.rollbackTransaction();

@@ -159,6 +159,14 @@ export class ContractSignatureService implements OnModuleDestroy {
         message: 'Solo se firma un contrato pendiente de firma.',
       });
     }
+    // Fase 2, bloque B (CA-2): el borrador automático puede no tener ciclo; la firma lo exige
+    // antes de cualquier trabajo (documento, almacenamiento o worker).
+    if (contract.billingCycleDay == null) {
+      throw new ConflictException({
+        code: 'BILLING_CYCLE_REQUIRED',
+        message: 'Asigna el ciclo de facturación del contrato antes de firmarlo.',
+      });
+    }
     await this.contractsService.assertContractNotBlocked(contractId);
     const generation = await this.loadReadyGeneration(contractId, command);
     // Servicio activo = aprovisionamiento ACTIVE o CERTIFIED (la firma ocurre en la visita,

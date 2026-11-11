@@ -25,6 +25,16 @@ export interface BillableContract {
   monthlyPrice: string | null;
   vatSnapshot: ContractVatSnapshot | null;
   unbilledAdditionalCount: number;
+  /**
+   * Cargo de instalación congelado en el contrato (`contracts.installation_fee`, migración 191).
+   * Nulo o cero: el primer cobro no lleva línea de instalación.
+   */
+  installationFee?: string | null;
+  /**
+   * Valor descontado o diferido por permanencia aceptada
+   * (`contract_permanence.discounted_amount` con `accepted = true`); nulo sin permanencia.
+   */
+  permanenceDiscount?: string | null;
   buyer: {
     displayName: string;
     documentType: string | null;

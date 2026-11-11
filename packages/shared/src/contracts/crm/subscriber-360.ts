@@ -1,5 +1,5 @@
 import type { ExpedienteStatus } from '../../enums/crm/expediente-status.enum';
-import type { ContractResponse } from '../../schemas/contract.schema';
+import type { ContractAutoCreationIssue, ContractResponse } from '../../schemas/contract.schema';
 import type { PrivacyMark } from '../../schemas/privacy/marks';
 import type { DataAuthorizationView } from '../../schemas/privacy/authorizations';
 import type { RequestSummary } from '../../schemas/privacy/requests';
@@ -52,6 +52,11 @@ export type SubscriberRecord = Omit<
   /** Fecha solo-día en `YYYY-MM-DD`; no es un instante ISO. */
   birthDate: string | null;
   coverageNodeId: string | null;
+  /**
+   * Aviso del contrato automático que no se pudo crear (fase 2, D-F2). Opcional: lo emiten el
+   * detalle, la ficha 360° y las respuestas de escritura cuando la API lo conoce.
+   */
+  contractAutoCreationIssue?: ContractAutoCreationIssue | null;
   createdBy: string | null;
   deletedAt: string | null;
   documentNumber?: string | null | undefined;

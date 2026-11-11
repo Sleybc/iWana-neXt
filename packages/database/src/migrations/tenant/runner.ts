@@ -148,6 +148,8 @@ import { ContractSignatures1880000000188 } from './188_contract_signatures';
 import { ContractSignatureCopyEmail1890000000189 } from './189_contract_signature_copy_email';
 import { ContractTemplateContentHash1900000000190 } from './190_contract_template_content_hash';
 import { InstallationFeeUnified1910000000191 } from './191_installation_fee_unified';
+import { ContractAutoCreationFromExpediente1920000000192 } from './192_contract_auto_creation_from_expediente';
+import { BillingLineKindInstallation1930000000193 } from './193_billing_line_kind_installation';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -377,6 +379,8 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   ContractSignatureCopyEmail1890000000189,
   ContractTemplateContentHash1900000000190,
   InstallationFeeUnified1910000000191,
+  ContractAutoCreationFromExpediente1920000000192,
+  BillingLineKindInstallation1930000000193,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

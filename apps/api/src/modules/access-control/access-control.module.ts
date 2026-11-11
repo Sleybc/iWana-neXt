@@ -15,6 +15,8 @@ import { AccessGovernanceService } from './services/access-governance.service';
 import { EffectivePermissionsService } from './services/effective-permissions.service';
 import { IPermissionHoldersReadPort } from './ports/permission-holders-read.port';
 import { PermissionHoldersReadAdapter } from './ports/permission-holders-read.adapter';
+import { IActiveUserEmailReadPort } from './ports/active-user-email-read.port';
+import { ActiveUserEmailReadAdapter } from './ports/active-user-email-read.adapter';
 import { EffectivePermissionScopeAdapter } from './ports/effective-permission-scope.adapter';
 import { EffectivePermissionScopePort } from './ports/effective-permission-scope.port';
 
@@ -39,6 +41,8 @@ import { EffectivePermissionScopePort } from './ports/effective-permission-scope
     PermissionsGuard,
     PermissionHoldersReadAdapter,
     { provide: IPermissionHoldersReadPort, useExisting: PermissionHoldersReadAdapter },
+    ActiveUserEmailReadAdapter,
+    { provide: IActiveUserEmailReadPort, useExisting: ActiveUserEmailReadAdapter },
   ],
   exports: [
     AccessControlService,
@@ -47,6 +51,7 @@ import { EffectivePermissionScopePort } from './ports/effective-permission-scope
     AccessGovernanceService,
     PermissionsGuard,
     IPermissionHoldersReadPort,
+    IActiveUserEmailReadPort,
   ],
 })
 export class AccessControlModule {}

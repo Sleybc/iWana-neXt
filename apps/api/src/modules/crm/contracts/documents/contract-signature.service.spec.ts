@@ -81,6 +81,7 @@ describe('ContractSignatureService (bloque D)', () => {
   let generation: Record<string, unknown> | null;
   let signatureRow: Record<string, unknown> | null;
   let contractStatus: ContractStatus;
+  let contractCycleDay: number | null;
   const queue = { add: jest.fn(), opts: { connection: {} } };
   const job = { waitUntilFinished: jest.fn() };
   const storage = { putObject: jest.fn(), getObject: jest.fn() };
@@ -105,6 +106,7 @@ describe('ContractSignatureService (bloque D)', () => {
     generation = generationRow();
     signatureRow = null;
     contractStatus = ContractStatus.DRAFT;
+    contractCycleDay = 5;
     handler = (sql) => {
       if (sql.includes('FROM contract_document_generations')) return generation ? [generation] : [];
       if (sql.includes('FROM contract_signatures')) return signatureRow ? [signatureRow] : [];
@@ -114,6 +116,7 @@ describe('ContractSignatureService (bloque D)', () => {
       id: ids.contract,
       subscriberId: ids.subscriber,
       status: contractStatus,
+      billingCycleDay: contractCycleDay,
     }));
     contracts.activateFromSignature.mockImplementation(
       async (_id: string, _actor: string, options: { within: (m: unknown) => Promise<void> }) => {
@@ -239,6 +242,18 @@ describe('ContractSignatureService (bloque D)', () => {
       expect(storage.putObject).not.toHaveBeenCalled();
     },
   );
+
+  it('borrador sin ciclo → 409 BILLING_CYCLE_REQUIRED antes de cualquier trabajo (fase 2, CA-2)', async () => {
+    contractCycleDay = null;
+    await expect(service.sign(ids.contract, command(), actor)).rejects.toMatchObject({
+      status: 409,
+      response: { code: 'BILLING_CYCLE_REQUIRED' },
+    });
+    expect(contracts.assertContractNotBlocked).not.toHaveBeenCalled();
+    expect(storage.putObject).not.toHaveBeenCalled();
+    expect(queue.add).not.toHaveBeenCalled();
+    expect(contracts.activateFromSignature).not.toHaveBeenCalled();
+  });
 
   it('titular bloqueado o anonimizado → 409 (CA-10)', async () => {
     contracts.assertContractNotBlocked.mockRejectedValueOnce(new ConflictException('bloqueado'));

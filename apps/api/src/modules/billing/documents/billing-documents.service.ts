@@ -14,6 +14,7 @@ import {
   BILLING_ERROR_CODES,
   BillingDocumentResponseSchema,
   redactedBillingBuyer,
+  type BillingDocumentLineKind,
   type BillingDocumentResponse,
   type BillingDocumentVoidReason,
   type BillingPeriodPaymentState,
@@ -70,7 +71,7 @@ interface DocumentRow {
 interface DocumentLineRow {
   id: string;
   document_id: string;
-  kind: 'PLAN' | 'ADICIONAL' | 'PRORRATEO';
+  kind: BillingDocumentLineKind;
   description: string;
   quantity: string;
   unit_price: string;

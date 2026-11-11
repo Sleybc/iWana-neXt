@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -19,6 +20,7 @@ import { AuditService } from '../../audit/audit.service';
 import { decryptAes256Gcm, loadPiiAesGcmKeyPair } from '../../../common/crypto/aes-gcm.util';
 import { ExpedienteReadyForInstallationEvent } from '../expedientes/events/expediente-pipeline.events';
 import { parseExpedienteNit } from '../../../common/crypto/nit-verification-digit.adapter';
+import { ContractAutoCreationPort } from '../ports/contract-auto-creation.port';
 
 /**
  * Listener que crea un Subscriber automáticamente cuando un expediente
@@ -46,6 +48,7 @@ export class SubscriberCreationService {
     private readonly subscribersService: SubscribersService,
     private readonly eventEmitter: EventEmitter2,
     private readonly auditService: AuditService,
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {
     const keys = loadPiiAesGcmKeyPair(this.configService);
     this.encryptionKey = keys.activeKey;
@@ -56,7 +59,27 @@ export class SubscriberCreationService {
   async handleExpedienteReadyForInstallation(
     event: ExpedienteReadyForInstallationEvent,
   ): Promise<void> {
-    await this.createFromExpediente(event.expedienteId, event.actorUserId);
+    const subscriberId = await this.createFromExpediente(event.expedienteId, event.actorUserId);
+    // Fase 2, bloque A (D3): después del suscriptor, el contrato DRAFT de la oportunidad.
+    // Idempotente: un evento repetido no crea un segundo contrato.
+    await this.resolveContractAutoCreation()?.createForExpediente({
+      subscriberId,
+      expedienteId: event.expedienteId,
+      actorId: event.actorUserId,
+    });
+  }
+
+  /**
+   * ContractsModule importa SubscribersModule; el puerto se resuelve en ejecución para no
+   * invertir la dependencia. Sin ContractsModule cargado (pruebas aisladas) se omite.
+   */
+  private resolveContractAutoCreation(): ContractAutoCreationPort | null {
+    if (!this.moduleRef) return null;
+    try {
+      return this.moduleRef.get(ContractAutoCreationPort, { strict: false });
+    } catch {
+      return null;
+    }
   }
 
   /**

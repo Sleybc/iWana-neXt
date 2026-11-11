@@ -22,7 +22,11 @@ import {
 } from '../ports/billing-contract-read.port';
 import { BillingDocumentsService } from '../documents/billing-documents.service';
 import type { PeriodEvent } from '../payments/billing-payments.service';
-import { buildPlanLine } from './billing-generation.math';
+import {
+  buildInstallationLine,
+  buildPlanLine,
+  type BillingLineValue,
+} from './billing-generation.math';
 
 interface BillingPolicyRow {
   period_timing: 'ANTICIPADO' | 'VENCIDO';
@@ -402,8 +406,22 @@ export class BillingGenerationService {
             description: contract.planName ?? 'Plan de servicio',
           })
         : null;
-    const subtotal = line ? Number(line.baseAmount) : 0;
-    const tax = line ? Number(line.taxAmount) : 0;
+    // Bloque D (CA-4/CA-5): la instalación va solo en el primer documento del contrato.
+    const installation =
+      hasTax && (await this.isFirstChargeWithoutInstallation(manager, tenantId, contract, target))
+        ? buildInstallationLine({
+            fee: contract.installationFee,
+            permanenceDiscount: contract.permanenceDiscount,
+            treatment: contract.vatSnapshot!.treatment,
+            ratePercent: contract.vatSnapshot!.ratePercent,
+            legalBasis: contract.vatSnapshot!.legalBasis,
+          })
+        : null;
+    const lines: BillingLineValue[] = [line, installation].filter(
+      (value): value is BillingLineValue => value !== null,
+    );
+    const subtotal = lines.reduce((acc, value) => acc + Number(value.baseAmount), 0);
+    const tax = lines.reduce((acc, value) => acc + Number(value.taxAmount), 0);
     const periodRows = existing.length
       ? existing
       : ((await manager.query(
@@ -456,7 +474,7 @@ export class BillingGenerationService {
     )) as Array<{ id: string }>;
     const documentId = documentRows[0]?.id;
     if (!documentId) throw new Error('No se pudo crear el borrador de facturación.');
-    if (line) {
+    for (const value of lines) {
       await manager.query(
         `INSERT INTO billing_document_lines
            (tenant_id, document_id, kind, description, quantity, unit_price, base_amount,
@@ -465,17 +483,17 @@ export class BillingGenerationService {
         [
           tenantId,
           documentId,
-          line.kind,
-          line.description,
-          line.quantity,
-          line.unitPrice,
-          line.baseAmount,
-          line.taxAmount,
-          line.total,
-          line.vatTreatment,
-          line.vatRate,
-          line.vatLegalBasis,
-          line.position,
+          value.kind,
+          value.description,
+          value.quantity,
+          value.unitPrice,
+          value.baseAmount,
+          value.taxAmount,
+          value.total,
+          value.vatTreatment,
+          value.vatRate,
+          value.vatLegalBasis,
+          value.position,
         ],
       );
     }
@@ -503,5 +521,32 @@ export class BillingGenerationService {
       this.logger.warn('Documento generado con adicionales sin cobrar.');
     }
     return blockingReason ? 'blocked' : 'generated';
+  }
+
+  /**
+   * Idempotencia de la instalación: el periodo objetivo es el primero del contrato (no hay
+   * periodos anteriores) y ningún documento vivo del contrato trae ya la línea.
+   */
+  private async isFirstChargeWithoutInstallation(
+    manager: EntityManager,
+    tenantId: string,
+    contract: BillableContract,
+    target: { periodStart: string },
+  ): Promise<boolean> {
+    if (!contract.installationFee || Number(contract.installationFee) === 0) return false;
+    const earlier = (await manager.query(
+      'SELECT id FROM billing_periods WHERE tenant_id=$1 AND contract_id=$2 AND period_start < $3::date LIMIT 1',
+      [tenantId, contract.contractId, target.periodStart],
+    )) as Array<{ id: string }>;
+    if (earlier.length) return false;
+    const charged = (await manager.query(
+      `SELECT l.id FROM billing_document_lines l
+         JOIN billing_documents d ON d.id = l.document_id AND d.tenant_id = l.tenant_id
+        WHERE d.tenant_id = $1 AND d.contract_id = $2 AND d.status <> 'ANULADO'
+          AND l.kind = 'INSTALACION'
+        LIMIT 1`,
+      [tenantId, contract.contractId],
+    )) as Array<{ id: string }>;
+    return charged.length === 0;
   }
 }
