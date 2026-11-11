@@ -426,7 +426,7 @@ test.describe('MOD05 Fase 06 · lista operativa de suscriptores', () => {
     await page.goto('/dashboard/crm/subscribers');
     await page.getByRole('heading', { name: 'Suscriptores' }).waitFor();
     const row = page.getByRole('row', { name: /Ana Sintética/ });
-    await expect(row.getByText('Activo')).toBeVisible();
+    await expect(row.getByText('Activo', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Activos, 3 suscriptores' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Suspendidos, 2 suscriptores' })).toBeVisible();
     await row.locator('td').nth(1).click();
@@ -441,7 +441,14 @@ test.describe('MOD05 Fase 06 · lista operativa de suscriptores', () => {
     await expect(page.getByRole('heading', { name: 'Revisa el cambio' })).toBeVisible();
     await page.getByRole('button', { name: 'Suspender 1 servicio' }).click();
 
-    await expect(row.getByText('Suspendido')).toBeVisible();
+    // Estado exacto de la fila: la insignia derivada «Servicio suspendido» (spec MOD05 UISP
+    // §3 G) también aparece en la fila y se verifica por separado.
+    await expect(row.getByText('Suspendido', { exact: true })).toBeVisible();
+    await expect(
+      row
+        .getByRole('list', { name: 'Insignias del suscriptor' })
+        .getByText('Servicio suspendido', { exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Activos, 2 suscriptores' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Suspendidos, 3 suscriptores' })).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`peek=${SUBSCRIBER_IDS[0]}`));

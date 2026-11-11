@@ -928,6 +928,8 @@ test.describe('MOD05 deuda fiscal contra API real de un tenant', () => {
     await page.goto(`/dashboard/crm/subscribers/${subscriberId}`);
     const notice = page.getByText('Faltan datos fiscales para activar o contratar');
     await expect(notice).toBeVisible();
+    // Encabezado compacto (spec MOD05 UISP §3): los faltantes se despliegan en «Ver qué falta».
+    await page.getByText('Ver qué falta (4)', { exact: true }).click();
     for (const label of [
       'Responsabilidad de IVA',
       'Responsabilidades del RUT',
@@ -1191,14 +1193,19 @@ test.describe('MOD05 deuda fiscal contra API real de un tenant', () => {
     // Pantalla: el detalle del contrato muestra el documento fiscal descifrado.
     await page.goto(`/dashboard/crm/subscribers/${subscriberId}`);
     await page.getByRole('tab', { name: 'Servicios' }).click();
+    // Spec MOD05 UISP §3 E: «Ver detalle» abre la página del contrato (antes, panel lateral).
     await page
       .getByRole('button', { name: /Ver detalle/u })
       .first()
       .click();
-    const drawer = page.getByRole('dialog');
-    await expect(drawer).toBeVisible();
-    await expect(drawer.getByText('Documento fiscal', { exact: true })).toBeVisible();
-    await expect(drawer.getByText(fiscalDocument, { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(
+      new RegExp(`/dashboard/crm/subscribers/${subscriberId}/services/[0-9a-f-]{36}$`, 'u'),
+    );
+    const detail = page.getByRole('main');
+    await expect(detail.getByRole('heading', { level: 1 })).toBeVisible();
+    const fiscal = detail.getByRole('region', { name: 'Datos fiscales' });
+    await expect(fiscal.getByText('Documento fiscal', { exact: true })).toBeVisible();
+    await expect(fiscal.getByText(fiscalDocument, { exact: true })).toBeVisible();
   });
 
   test('contrato: editar otro campo desde la pantalla conserva el documento fiscal cifrado (R5, R7)', async ({
@@ -1214,20 +1221,27 @@ test.describe('MOD05 deuda fiscal contra API real de un tenant', () => {
 
     await page.goto(`/dashboard/crm/subscribers/${fixture.subscriberId}`);
     await page.getByRole('tab', { name: 'Servicios' }).click();
+    // Spec MOD05 UISP §3 E: la edición del contrato vive en su página de detalle.
     await page
       .getByRole('button', { name: /Ver detalle/u })
       .first()
       .click();
-    const drawer = page.getByRole('dialog');
-    await expect(drawer).toBeVisible();
-    await drawer.getByRole('button', { name: 'Editar contrato' }).click();
-    await drawer.getByPlaceholder('Alias del servicio').fill(`Alias editado ${session.tag}`);
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/dashboard/crm/subscribers/${fixture.subscriberId}/services/${fixture.contractId}$`,
+        'u',
+      ),
+    );
+    const detail = page.getByRole('main');
+    await detail.getByRole('button', { name: 'Editar contrato' }).click();
+    await detail.getByPlaceholder('Alias del servicio').fill(`Alias editado ${session.tag}`);
     const saved = page.waitForResponse(
       (response) =>
         response.request().method() === 'PATCH' &&
         response.url().includes(`/crm/contracts/${fixture.contractId}`),
     );
-    await drawer.getByRole('button', { name: 'Guardar cambios' }).click();
+    // Guardar/Cancelar van arriba y abajo en la página (spec MOD05 UISP §2).
+    await detail.getByRole('button', { name: 'Guardar cambios' }).first().click();
     expect((await saved).status()).toBe(200);
 
     // El cambio de alias se aplicó y el documento fiscal sigue intacto.

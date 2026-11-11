@@ -172,11 +172,18 @@ async function installFixture(page: Page, status: 'DRAFT' | 'ACTIVE') {
   });
   await seedPortalSession(page, { token, tenantSlug: TENANT });
   await page.goto('/dashboard/crm/subscribers/qa-plan-subscriber?tab=servicios');
+  // Spec MOD05 UISP §3 E: «Ver detalle» navega a la página del contrato (antes, panel lateral).
   await page.getByRole('button', { name: 'Ver detalle' }).click();
-  const drawer = page.getByRole('dialog', { name: 'Servicio Sintético' });
-  await expect(drawer).toBeVisible();
-  await drawer.getByRole('button', { name: 'Editar contrato' }).click();
-  return { changes, otherMutations, drawer };
+  await expect(page).toHaveURL(
+    new RegExp(`/dashboard/crm/subscribers/qa-plan-subscriber/services/${CONTRACT_ID}$`),
+  );
+  const detail = page.getByRole('main');
+  await expect(detail.getByRole('heading', { level: 1, name: 'Servicio Sintético' })).toBeVisible();
+  await detail.getByRole('button', { name: 'Editar contrato' }).click();
+  // cacheComponents conserva la ficha previa oculta en el DOM (Activity): las aserciones de
+  // texto se acotan a la región visible del plan, no a todo `main`.
+  const planRegion = detail.getByRole('region', { name: 'Plan contratado' });
+  return { changes, otherMutations, detail, planRegion };
 }
 
 for (const status of ['DRAFT', 'ACTIVE'] as const) {
@@ -184,7 +191,7 @@ for (const status of ['DRAFT', 'ACTIVE'] as const) {
     page,
   }) => {
     const fixture = await installFixture(page, status);
-    await fixture.drawer.getByRole('button', { name: 'Cambiar plan', exact: true }).click();
+    await fixture.detail.getByRole('button', { name: 'Cambiar plan', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Cambiar plan', exact: true });
     // K3c punto 5: el selector precarga el plan vigente (spec E:22).
     await expect(dialog.getByRole('combobox', { name: 'Nuevo plan' })).toHaveValue(oldPlan.name);
@@ -206,14 +213,22 @@ for (const status of ['DRAFT', 'ACTIVE'] as const) {
       { planId: 'qa-plan-new', expectedUpdatedAt: VERSION, expectedMonthlyPrice: 80000 },
     ]);
     expect(fixture.otherMutations).toEqual([]);
-    await expect(fixture.drawer.getByText(newPlan.name, { exact: true })).toBeVisible();
+    await expect(fixture.planRegion.getByText(newPlan.name, { exact: true })).toBeVisible();
     await page.screenshot({
       path: test.info().outputPath(`plan-change-${status.toLowerCase()}.png`),
       fullPage: true,
     });
-    await fixture.drawer.getByRole('button', { name: 'Cancelar', exact: true }).click();
-    await fixture.drawer.getByRole('button', { name: 'Cerrar panel', exact: true }).click();
-    await expect(page.getByText(newPlan.name, { exact: true })).toBeVisible();
+    // En página, Cancelar/Guardar van arriba y abajo (spec MOD05 UISP §2): se usa el primero.
+    await fixture.detail.getByRole('button', { name: 'Cancelar', exact: true }).first().click();
+    await expect(fixture.detail.getByRole('button', { name: 'Editar contrato' })).toBeVisible();
+    await fixture.detail.getByRole('link', { name: 'Volver a servicios' }).click();
+    await expect(page).toHaveURL(
+      /\/dashboard\/crm\/subscribers\/qa-plan-subscriber\?tab=servicios/,
+    );
+    // La tarjeta del servicio refleja el plan nuevo.
+    const services = page.getByRole('region', { name: 'Servicios contratados' });
+    await expect(services.getByText(newPlan.name, { exact: true })).toBeVisible();
+    await expect(services.getByText(oldPlan.name, { exact: true })).toHaveCount(0);
   });
 }
 
@@ -221,20 +236,20 @@ test('cancelar conserva el plan y los campos pendientes bloquean cambio sin guar
   page,
 }) => {
   const fixture = await installFixture(page, 'ACTIVE');
-  await fixture.drawer.getByRole('button', { name: 'Cambiar plan', exact: true }).click();
+  await fixture.detail.getByRole('button', { name: 'Cambiar plan', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Cambiar plan', exact: true });
   await dialog.getByRole('combobox', { name: 'Nuevo plan' }).fill('Fibra');
   await dialog.getByRole('option', { name: newPlan.name }).click();
   await expect(dialog.getByText(newPlan.name, { exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
   await expect(dialog).toBeHidden();
-  await expect(fixture.drawer.getByText(oldPlan.name, { exact: true })).toBeVisible();
-  await fixture.drawer.getByLabel('Alias del servicio').fill('Alias pendiente sintético');
+  await expect(fixture.planRegion.getByText(oldPlan.name, { exact: true })).toBeVisible();
+  await fixture.detail.getByLabel('Alias del servicio').fill('Alias pendiente sintético');
   await expect(
-    fixture.drawer.getByRole('button', { name: 'Cambiar plan', exact: true }),
+    fixture.detail.getByRole('button', { name: 'Cambiar plan', exact: true }),
   ).toBeDisabled();
   await expect(
-    fixture.drawer.getByText('Guarda o cancela los cambios pendientes antes de cambiar el plan.'),
+    fixture.detail.getByText('Guarda o cancela los cambios pendientes antes de cambiar el plan.'),
   ).toBeVisible();
   expect(fixture.changes).toEqual([]);
   expect(fixture.otherMutations).toEqual([]);

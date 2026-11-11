@@ -509,7 +509,17 @@ test.describe('MOD05 E3 — contacto pendiente contra Portal y API reales', () =
 
     await page.goto(`/dashboard/crm/subscribers/${noContact.subscriberId}`);
     await expect(page.getByRole('heading', { name: noContact.fullName })).toBeVisible();
-    await expect(page.getByText('Contacto pendiente', { exact: true })).toBeVisible();
+    // Spec MOD05 UISP §3 G: el aviso vive en la fila del título y, además, como insignia
+    // derivada de la tarjeta de identidad. Ambos deben verse.
+    const contactPendingNotices = page.getByText('Contacto pendiente', { exact: true });
+    await expect(contactPendingNotices).toHaveCount(2);
+    await expect(contactPendingNotices.first()).toBeVisible();
+    await expect(
+      page
+        .getByRole('list', { name: 'Insignias del suscriptor' })
+        .getByRole('listitem')
+        .filter({ hasText: 'Contacto pendiente' }),
+    ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Agregar contacto' })).toBeVisible();
     await assertNoPlaceholderOrRawEnum(page);
 
