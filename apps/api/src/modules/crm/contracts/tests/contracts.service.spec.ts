@@ -1002,7 +1002,11 @@ describe('ContractsService', () => {
 
       await expect(
         service.create(
-          { subscriberId: 'sub-1', planId: 'plan-1', planSnapshotJson: {} },
+          {
+            subscriberId: 'sub-1',
+            planId: '00000000-0000-4000-8000-000000000001',
+            planSnapshotJson: {},
+          },
           'actor-1',
         ),
       ).rejects.toMatchObject({
@@ -1039,7 +1043,11 @@ describe('ContractsService', () => {
 
       await expect(
         service.create(
-          { subscriberId: 'sub-1', planId: 'plan-1', planSnapshotJson: {} },
+          {
+            subscriberId: 'sub-1',
+            planId: '00000000-0000-4000-8000-000000000001',
+            planSnapshotJson: {},
+          },
           'actor-1',
         ),
       ).rejects.toMatchObject({
@@ -1077,7 +1085,11 @@ describe('ContractsService', () => {
       );
 
       const result = await service.create(
-        { subscriberId: 'sub-natural-sin-rut', planId: 'plan-1', planSnapshotJson: {} },
+        {
+          subscriberId: 'sub-natural-sin-rut',
+          planId: '00000000-0000-4000-8000-000000000001',
+          planSnapshotJson: {},
+        },
         'actor-1',
       );
 
@@ -1110,7 +1122,11 @@ describe('ContractsService', () => {
 
       await expect(
         service.create(
-          { subscriberId: 'sub-juridica-sin-rut', planId: 'plan-1', planSnapshotJson: {} },
+          {
+            subscriberId: 'sub-juridica-sin-rut',
+            planId: '00000000-0000-4000-8000-000000000001',
+            planSnapshotJson: {},
+          },
           'actor-1',
         ),
       ).rejects.toMatchObject({
@@ -1217,7 +1233,7 @@ describe('ContractsService', () => {
 
       const result = await service.create({
         subscriberId: 'sub-1',
-        planId: 'plan-1',
+        planId: '00000000-0000-4000-8000-000000000001',
         planSnapshotJson: {},
         installationCity: 'EL_COLEGIO',
         installationAddress: 'CR 2 2 02',
@@ -1241,7 +1257,7 @@ describe('ContractsService', () => {
 
       const result = await service.create({
         subscriberId: 'sub-1',
-        planId: 'plan-1',
+        planId: '00000000-0000-4000-8000-000000000001',
         planSnapshotJson: {},
         alias: 'Mi alias personalizado',
       });
@@ -1347,7 +1363,11 @@ describe('ContractsService', () => {
     });
 
     await expect(
-      service.create({ subscriberId: 'sub-1', planId: 'plan-1', planSnapshotJson: {} }),
+      service.create({
+        subscriberId: 'sub-1',
+        planId: '00000000-0000-4000-8000-000000000001',
+        planSnapshotJson: {},
+      }),
     ).rejects.toMatchObject({ response: { code: 'PRIVACY_DATA_BLOCKED' } });
     expect(auditService.log).not.toHaveBeenCalled();
   });
@@ -1428,7 +1448,7 @@ describe('ContractsService', () => {
       };
       const expediente = {
         id: 'exp-1',
-        interestedPlanId: 'plan-fibra-100',
+        interestedPlanId: '00000000-0000-4000-8000-0000000f1100',
         additionalProductIds: ['prod-1'],
         additionalServiceIds: [],
         paymentMethod: 'PSE',
@@ -1457,7 +1477,7 @@ describe('ContractsService', () => {
       const result = await service.createFromExpediente('sub-1', {});
 
       expect(result.id).toBe('ctr-4');
-      expect(savedEntity.planId).toBe('plan-fibra-100');
+      expect(savedEntity.planId).toBe('00000000-0000-4000-8000-0000000f1100');
       expect(savedEntity.status).toBe(ContractStatus.DRAFT);
       expect(savedEntity.paymentMethod).toBe('PSE');
       expect(savedEntity.serviceUsage).toBeNull();
@@ -1480,7 +1500,7 @@ describe('ContractsService', () => {
       };
       const expediente = {
         id: 'exp-1',
-        interestedPlanId: 'plan-fibra-100',
+        interestedPlanId: '00000000-0000-4000-8000-0000000f1100',
         additionalProductIds: [],
         additionalServiceIds: [],
         paymentMethod: null,
@@ -1547,7 +1567,7 @@ describe('ContractsService', () => {
       };
       const expediente = {
         id: 'exp-1',
-        interestedPlanId: 'plan-fibra-100',
+        interestedPlanId: '00000000-0000-4000-8000-0000000f1100',
         additionalProductIds: [],
         additionalServiceIds: [],
         fiscalName: null,
@@ -1592,7 +1612,7 @@ describe('ContractsService', () => {
       };
       const expediente = {
         id: 'exp-1',
-        interestedPlanId: '  plan-fibra-100 ',
+        interestedPlanId: '  00000000-0000-4000-8000-0000000f1100 ',
         additionalProductIds: [],
         additionalServiceIds: [],
         paymentMethod: null,
@@ -1619,10 +1639,10 @@ describe('ContractsService', () => {
 
       await service.createFromExpediente('sub-1', {});
 
-      expect(savedEntity.planId).toBe('plan-fibra-100');
+      expect(savedEntity.planId).toBe('00000000-0000-4000-8000-0000000f1100');
       // D2: snapshot completo del catálogo (nombre, mensualidad, IVA), no solo el id.
       expect(savedEntity.planSnapshotJson).toEqual({
-        planId: 'plan-fibra-100',
+        planId: '00000000-0000-4000-8000-0000000f1100',
         name: 'Plan sintético',
         downloadSpeed: 100,
         uploadSpeed: 50,
@@ -1681,7 +1701,7 @@ describe('ContractsService', () => {
       };
       const expediente = {
         id: 'exp-explicit',
-        interestedPlanId: 'plan-expediente',
+        interestedPlanId: '00000000-0000-4000-8000-0000000e0001',
         address: 'Dirección original',
         municipality: 'Municipio original',
         department: 'Departamento original',
@@ -1722,7 +1742,7 @@ describe('ContractsService', () => {
       });
 
       expect(savedData).toMatchObject({
-        planId: 'plan-expediente',
+        planId: '00000000-0000-4000-8000-0000000e0001',
         installationAddress: 'Dirección del nuevo punto',
         installationCity: 'Nueva ciudad',
         installationDepartment: 'Nuevo departamento',
@@ -1782,7 +1802,7 @@ describe('ContractsService', () => {
         };
         const expediente = {
           id: 'exp-1',
-          interestedPlanId: 'plan-1',
+          interestedPlanId: '00000000-0000-4000-8000-000000000001',
           address: 'Calle 12 #4-20',
           stratum,
           customerSegment: null,
@@ -1808,7 +1828,7 @@ describe('ContractsService', () => {
 
         expect(savedData.serviceUsage).toBe(expected);
         expect(savedData.planSnapshotJson).toMatchObject({
-          planId: 'plan-1',
+          planId: '00000000-0000-4000-8000-000000000001',
           monthlyPrice: 80000,
         });
       },
@@ -1830,7 +1850,11 @@ describe('ContractsService', () => {
                 personType: PersonType.NATURAL,
                 customerSegment: CustomerSegment.PYME,
               })
-              .mockResolvedValueOnce({ id: 'exp-1', interestedPlanId: 'plan-1', address: 'X' }),
+              .mockResolvedValueOnce({
+                id: 'exp-1',
+                interestedPlanId: '00000000-0000-4000-8000-000000000001',
+                address: 'X',
+              }),
             create: jest.fn(),
             save: jest.fn(),
           },
@@ -1855,7 +1879,7 @@ describe('ContractsService', () => {
       };
       const expediente = {
         id: 'exp-1',
-        interestedPlanId: 'plan-1',
+        interestedPlanId: '00000000-0000-4000-8000-000000000001',
         address: 'Calle 12 #4-20',
         municipality: null,
         department: null,
@@ -3318,7 +3342,7 @@ describe('ContractsService', () => {
           method === 'create'
             ? service.create({
                 subscriberId: 'sub-1',
-                planId: 'plan-1',
+                planId: '00000000-0000-4000-8000-000000000001',
                 planSnapshotJson: {},
                 billingCycleDay: 15,
               })
@@ -3341,7 +3365,7 @@ describe('ContractsService', () => {
           method === 'create'
             ? service.create({
                 subscriberId: 'sub-1',
-                planId: 'plan-1',
+                planId: '00000000-0000-4000-8000-000000000001',
                 planSnapshotJson: {},
                 billingCycleDay: 15,
               })

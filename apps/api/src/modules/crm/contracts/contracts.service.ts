@@ -1470,6 +1470,9 @@ export class ContractsService {
     planId: string,
     segment: CustomerSegment | null,
   ): Promise<CommercialItemSnapshot | null> {
+    // Se descarta antes de consultar: un 22P02 aborta la transacción del llamante y la escritura
+    // siguiente (aviso del contrato automático) fallaría con 25P02, tumbando la conversión.
+    if (!CONTRACT_PLAN_UUID_PATTERN.test(planId)) return null;
     const { schemaName, tenantId } = TenantContext.getOrThrow();
     try {
       const snapshot = await this.commercialCatalogPort.createSnapshot(

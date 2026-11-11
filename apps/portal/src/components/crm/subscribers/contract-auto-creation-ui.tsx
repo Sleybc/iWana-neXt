@@ -36,7 +36,11 @@ interface ContractAutoCreationIssueNoticeProps {
   createContractHref: string | null;
 }
 
-/** Aviso «No se pudo crear el contrato automáticamente» con lo que falta (CA-3). */
+/**
+ * Aviso «No se pudo crear el contrato automáticamente» con lo que falta (CA-3). Vive en el
+ * encabezado compacto de la ficha (spec MOD05 UISP §3, CA-7): banner de una línea y la lista de
+ * faltantes en un detalle plegable, como el aviso fiscal, para no desplazar las tarjetas.
+ */
 export function ContractAutoCreationIssueNotice({
   issue,
   onCompleteData,
@@ -45,24 +49,38 @@ export function ContractAutoCreationIssueNotice({
   return (
     <PortalAlert
       variant="warning"
+      density="compact"
       title="No se pudo crear el contrato automáticamente"
       description={
-        <div className="space-y-1">
-          <p>Completa estos datos o crea el contrato a mano:</p>
-          <ul aria-label="Datos que faltan para el contrato" className="list-disc pl-5">
-            {issue.missing.map((field) => (
-              <li key={field}>{CONTRACT_AUTO_CREATION_FIELD_LABELS[field]}</li>
-            ))}
-          </ul>
-        </div>
+        <details className="group">
+          <summary className="inline-flex min-h-11 cursor-pointer items-center underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary md:min-h-6">
+            Ver qué falta para el contrato ({issue.missing.length})
+          </summary>
+          <span className="block pb-1">
+            Completa estos datos o crea el contrato a mano:
+            <ul
+              aria-label="Datos que faltan para el contrato"
+              className="mt-1 list-disc space-y-0.5 pl-5"
+            >
+              {issue.missing.map((field) => (
+                <li key={field}>{CONTRACT_AUTO_CREATION_FIELD_LABELS[field]}</li>
+              ))}
+            </ul>
+          </span>
+        </details>
       }
       action={
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="secondary" className="min-h-11" onClick={onCompleteData}>
+          <Button
+            type="button"
+            variant="secondary"
+            className="min-h-11 md:min-h-8"
+            onClick={onCompleteData}
+          >
             Completar datos
           </Button>
           {createContractHref ? (
-            <Button asChild className="min-h-11">
+            <Button asChild className="min-h-11 md:min-h-8">
               <Link href={createContractHref}>Crear contrato</Link>
             </Button>
           ) : null}

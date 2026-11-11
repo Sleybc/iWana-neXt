@@ -84,6 +84,13 @@ describe('aviso «No se pudo crear el contrato automáticamente» (CA-3, D-F2)',
     );
 
     expect(screen.getByText('No se pudo crear el contrato automáticamente')).toBeInTheDocument();
+    // Encabezado compacto de la ficha (CA-7): los faltantes quedan plegados hasta abrirlos.
+    const summary = screen.getByText('Ver qué falta para el contrato (2)', { exact: true });
+    const disclosure = summary.closest('details');
+    expect(disclosure).not.toBeNull();
+    expect(disclosure).not.toHaveAttribute('open');
+    await user.click(summary);
+    expect(disclosure).toHaveAttribute('open');
     const list = screen.getByRole('list', { name: 'Datos que faltan para el contrato' });
     expect(
       within(list)

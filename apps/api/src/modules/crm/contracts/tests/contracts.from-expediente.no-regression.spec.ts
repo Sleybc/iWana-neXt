@@ -133,8 +133,8 @@ function draft(overrides: Partial<Contract> = {}): Contract {
     id: 'ctr-w0f2',
     tenantId: TENANT.tenantId,
     subscriberId: 'sub-w0f2',
-    planId: 'plan-w0f2',
-    planSnapshotJson: { id: 'plan-w0f2' },
+    planId: '00000000-0000-4000-8000-00000000f002',
+    planSnapshotJson: { id: '00000000-0000-4000-8000-00000000f002' },
     status: ContractStatus.DRAFT,
     alias: 'Servicio ficticio',
     serviceUsage: ServiceUsage.NON_RESIDENTIAL,
@@ -236,7 +236,7 @@ describe('W0 F2 creación manual y activación manual — servicio', () => {
     lockedSubscriber = subscriber();
     expediente = {
       id: 'exp-w0f2',
-      interestedPlanId: 'plan-w0f2',
+      interestedPlanId: '00000000-0000-4000-8000-00000000f002',
       additionalProductIds: [],
       additionalServiceIds: [],
       paymentMethod: null,
@@ -273,7 +273,7 @@ describe('W0 F2 creación manual y activación manual — servicio', () => {
                 snapshotAt: new Date('2026-11-11T00:00:00Z'),
               })),
             getPlanById: jest.fn().mockResolvedValue({
-              id: 'plan-w0f2',
+              id: '00000000-0000-4000-8000-00000000f002',
               vatConcept: VatConcept.INTERNET_ACCESS,
               networkType: NetworkType.FIXED,
             }),
@@ -325,7 +325,7 @@ describe('W0 F2 creación manual y activación manual — servicio', () => {
       expect(saved).toHaveLength(1);
       expect(saved[0]).toMatchObject({
         subscriberId: 'sub-w0f2',
-        planId: 'plan-w0f2',
+        planId: '00000000-0000-4000-8000-00000000f002',
         status: ContractStatus.DRAFT,
         billingCycleDay: 15,
       });

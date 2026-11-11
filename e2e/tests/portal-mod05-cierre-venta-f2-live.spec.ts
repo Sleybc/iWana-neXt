@@ -233,6 +233,8 @@ test.describe('MOD05 · Cierre de venta fase 2: contrato automático e instalaci
       await expect(page.getByText('No se pudo crear el contrato automáticamente')).toBeVisible({
         timeout: 60_000,
       });
+      // Encabezado compacto de la ficha (CA-7): los faltantes se despliegan a demanda.
+      await page.getByText(/^Ver qué falta para el contrato \(\d+\)$/u).click();
       await expect(
         page
           .getByRole('list', { name: 'Datos que faltan para el contrato' })

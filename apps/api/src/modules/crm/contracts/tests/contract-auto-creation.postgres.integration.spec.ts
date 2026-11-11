@@ -77,21 +77,32 @@ describeWithDb('Contrato automático desde la oportunidad (fase 2, A+B) con Post
   const userEmails = { emailOf: jest.fn().mockResolvedValue('responsable@example.test') };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const catalog = {
-    createSnapshot: jest.fn(async (_tenant: string, _schema: string, planId: string) => {
-      if (planId !== PLAN_ID) throw new NotFoundException('plan no encontrado');
-      return {
-        planId,
-        name: 'Fibra sintética 300',
-        downloadSpeed: 300,
-        uploadSpeed: 150,
-        technology: 'FTTH',
-        monthlyPrice: 95000,
-        installationFee: 60000,
-        vatConcept: VatConcept.INTERNET_ACCESS,
-        networkType: NetworkType.FIXED,
-        snapshotAt: new Date('2026-11-11T00:00:00Z'),
-      };
-    }),
+    createSnapshot: jest.fn(
+      async (
+        _tenant: string,
+        _schema: string,
+        planId: string,
+        _segment?: unknown,
+        context?: { manager: { query: (sql: string, params: unknown[]) => Promise<unknown> } },
+      ) => {
+        // Como el adaptador real (catalog_items.id es uuid): la lectura corre en la transacción
+        // del llamante, así que un identificador que no es UUID la aborta con 22P02.
+        await context?.manager.query('SELECT $1::uuid', [planId]);
+        if (planId !== PLAN_ID) throw new NotFoundException('plan no encontrado');
+        return {
+          planId,
+          name: 'Fibra sintética 300',
+          downloadSpeed: 300,
+          uploadSpeed: 150,
+          technology: 'FTTH',
+          monthlyPrice: 95000,
+          installationFee: 60000,
+          vatConcept: VatConcept.INTERNET_ACCESS,
+          networkType: NetworkType.FIXED,
+          snapshotAt: new Date('2026-11-11T00:00:00Z'),
+        };
+      },
+    ),
   };
 
   async function insertSale(input: {
@@ -456,6 +467,15 @@ describeWithDb('Contrato automático desde la oportunidad (fase 2, A+B) con Post
     const { subscriberId, expedienteId } = await insertSale({
       planId: '00000000-0000-4000-8000-0000000000aa',
     });
+    await TenantContext.run(ctx(), () =>
+      autoCreation.createForExpediente({ subscriberId, expedienteId, actorId }),
+    );
+    expect(await liveContracts(subscriberId)).toHaveLength(0);
+    expect(await issueOf(subscriberId)).toMatchObject({ missing: ['PLAN'] });
+  });
+
+  it('D2: plan heredado que no es UUID → no aborta la transacción, no crea y avisa PLAN', async () => {
+    const { subscriberId, expedienteId } = await insertSale({ planId: 'plan-heredado-texto' });
     await TenantContext.run(ctx(), () =>
       autoCreation.createForExpediente({ subscriberId, expedienteId, actorId }),
     );
