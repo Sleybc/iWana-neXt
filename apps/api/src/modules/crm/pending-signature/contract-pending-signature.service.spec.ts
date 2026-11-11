@@ -22,7 +22,7 @@ const hoursAgo = (hours: number) => new Date(NOW.getTime() - hours * 3_600_000);
 describe('ContractPendingSignatureService', () => {
   const runInTenant = runInTenantSchema as jest.MockedFunction<typeof runInTenantSchema>;
   let query: jest.Mock;
-  let port: { listProvisioningActivatedAt: jest.Mock; getProvisioningActivatedAt: jest.Mock };
+  let port: { listServiceStart: jest.Mock; getServiceStart: jest.Mock };
   let service: ContractPendingSignatureService;
 
   beforeEach(() => {
@@ -31,8 +31,8 @@ describe('ContractPendingSignatureService', () => {
     query = jest.fn();
     runInTenant.mockImplementation(async (_ds, _schema, fn) => fn({ query } as never));
     port = {
-      listProvisioningActivatedAt: jest.fn().mockResolvedValue(new Map()),
-      getProvisioningActivatedAt: jest.fn(),
+      listServiceStart: jest.fn().mockResolvedValue(new Map()),
+      getServiceStart: jest.fn(),
     };
     service = new ContractPendingSignatureService({} as never, port);
   });
@@ -64,30 +64,32 @@ describe('ContractPendingSignatureService', () => {
         { contract_id: C1, subscriber_id: S1 },
         { contract_id: C2, subscriber_id: S2 },
       ]);
-      port.listProvisioningActivatedAt.mockResolvedValue(new Map([[C1, hoursAgo(1)]]));
+      port.listServiceStart.mockResolvedValue(
+        new Map([[C1, { at: hoursAgo(1), source: 'ACTIVATED' }]]),
+      );
 
       const result = await service.subscribersPendingSignature([S1, S2, S1, 'malo']);
 
       expect([...result]).toEqual([S1]);
       expect(query.mock.calls[0]?.[1]).toEqual([context.tenantId, [S1, S2]]);
-      expect(port.listProvisioningActivatedAt).toHaveBeenCalledWith([C1, C2]);
+      expect(port.listServiceStart).toHaveBeenCalledWith([C1, C2]);
     });
 
     it('sin ids o sin borradores no consulta el puerto', async () => {
       expect((await service.subscribersPendingSignature([])).size).toBe(0);
       query.mockResolvedValue([]);
       expect((await service.subscribersPendingSignature([S1])).size).toBe(0);
-      expect(port.listProvisioningActivatedAt).not.toHaveBeenCalled();
+      expect(port.listServiceStart).not.toHaveBeenCalled();
     });
   });
 
   describe('listDueForAlert', () => {
     it('filtra por umbral: 48 h exactas entran, menos no, sin activación no', async () => {
       query.mockResolvedValue([{ contract_id: C1 }, { contract_id: C2 }, { contract_id: C3 }]);
-      port.listProvisioningActivatedAt.mockResolvedValue(
+      port.listServiceStart.mockResolvedValue(
         new Map([
-          [C1, hoursAgo(48)],
-          [C2, hoursAgo(47)],
+          [C1, { at: hoursAgo(48), source: 'CERTIFIED' }],
+          [C2, { at: hoursAgo(47), source: 'ACTIVATED' }],
         ]),
       );
 
@@ -101,7 +103,7 @@ describe('ContractPendingSignatureService', () => {
     it('sin candidatos no consulta el puerto', async () => {
       query.mockResolvedValue([]);
       expect(await service.listDueForAlert(48, NOW)).toEqual([]);
-      expect(port.listProvisioningActivatedAt).not.toHaveBeenCalled();
+      expect(port.listServiceStart).not.toHaveBeenCalled();
     });
   });
 

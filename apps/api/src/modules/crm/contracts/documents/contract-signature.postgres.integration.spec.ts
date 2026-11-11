@@ -43,6 +43,8 @@ import { ContractsService } from '../contracts.service';
 import { ContractStatus } from '../../enums/contract-status.enum';
 import { ContractDocumentGenerationService } from './contract-document-generation.service';
 import { ContractSignatureService } from './contract-signature.service';
+import { ContractProvisioningActivationReadAdapter } from '../../../network/adapters/contract-provisioning-activation-read.adapter';
+import { ContractPendingSignatureService } from '../../pending-signature/contract-pending-signature.service';
 import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
@@ -92,6 +94,8 @@ describeWithServices('Firma del contrato: PostgreSQL + Redis reales', () => {
   let eventsQueue: Queue;
   let pdfWorker: Worker;
   let billingWorker: Worker;
+  let realActivation: ContractProvisioningActivationReadAdapter;
+  let generationService: ContractDocumentGenerationService;
   const billingOutcomes: unknown[] = [];
   const tenantId = randomUUID();
   const technician = randomUUID();
@@ -100,7 +104,7 @@ describeWithServices('Firma del contrato: PostgreSQL + Redis reales', () => {
   const quote = (identifier: string) => '"' + identifier.replace(/"/g, '""') + '"';
   const context = { tenantId, schemaName, tenantSlug: 'contract-sign-it' };
   const inContext = <T>(callback: () => Promise<T>) => TenantContext.run(context, callback);
-  const orders = new Map<string, { subscriberId: string }>();
+  const orders = new Map<string, { subscriberId: string; assignedTechnicianId?: string }>();
   const activations = new Map<string, Date>();
   const released: string[] = [];
   // Medios en memoria: LocalFsStorageAdapter arma rutas con '/' y no sirve en Windows.
@@ -117,7 +121,7 @@ describeWithServices('Firma del contrato: PostgreSQL + Redis reales', () => {
   const rows = <T>(sql: string, params: unknown[] = []) =>
     runInTenantSchema(dataSource, schemaName, (qr) => qr.query(sql, params) as Promise<T[]>);
 
-  async function fixture(activatedAt = new Date('2026-11-10T15:00:00.000Z')) {
+  async function fixture(activatedAt: Date | null = new Date('2026-11-10T15:00:00.000Z')) {
     const subscriberId = randomUUID();
     const contractId = randomUUID();
     const orderId = randomUUID();
@@ -168,7 +172,7 @@ describeWithServices('Firma del contrato: PostgreSQL + Redis reales', () => {
       ],
     );
     orders.set(orderId, { subscriberId });
-    activations.set(contractId, activatedAt);
+    if (activatedAt) activations.set(contractId, activatedAt);
     return { subscriberId, contractId, orderId, generationId, unsignedSha };
   }
 
@@ -269,7 +273,14 @@ describeWithServices('Firma del contrato: PostgreSQL + Redis reales', () => {
       dataSource,
       { add: jest.fn() } as never,
       contracts,
-      {} as never,
+      {
+        // Titular ya descifrado por SubscribersService (fuera del alcance de esta prueba).
+        findById: jest.fn(async () => ({
+          businessName: 'Adquirente de prueba',
+          documentType: 'NIT',
+          documentNumber: '900000001',
+        })),
+      } as never,
       permanence,
       {} as never,
       {} as never,
@@ -282,7 +293,7 @@ describeWithServices('Firma del contrato: PostgreSQL + Redis reales', () => {
             ? {
                 isAnnulled: false,
                 subscriberId: order.subscriberId,
-                assignedTechnicianId: technician,
+                assignedTechnicianId: order.assignedTechnicianId ?? technician,
               }
             : null;
         }),
@@ -291,6 +302,7 @@ describeWithServices('Firma del contrato: PostgreSQL + Redis reales', () => {
       audit,
       config,
     );
+    generationService = generation;
 
     pdfQueue = new Queue(CRM_CONTRACT_PDF_QUEUE, { connection: redisConnection(), prefix });
     eventsQueue = new Queue(CRM_CONTRACT_EVENTS_QUEUE, { connection: redisConnection(), prefix });
@@ -387,6 +399,7 @@ describeWithServices('Firma del contrato: PostgreSQL + Redis reales', () => {
     );
     billingWorker.on('completed', (_job, result) => billingOutcomes.push(result));
 
+    realActivation = new ContractProvisioningActivationReadAdapter(dataSource);
     signature = new ContractSignatureService(
       dataSource,
       pdfQueue,
@@ -396,7 +409,11 @@ describeWithServices('Firma del contrato: PostgreSQL + Redis reales', () => {
       permanence,
       new ContractActivationEventsPublisher(dataSource, eventsQueue),
       {
-        getProvisioningActivatedAt: jest.fn(async (id: string) => activations.get(id) ?? null),
+        // Sin activación simulada, lee el aprovisionamiento real (MOD13) del schema efímero.
+        getServiceStart: jest.fn(async (id: string) => {
+          const at = activations.get(id);
+          return at ? { at, source: 'ACTIVATED' } : realActivation.getServiceStart(id);
+        }),
         listUnsignedBlockedProvisioningIds: jest.fn(async (id: string) => [`sp-${id}`]),
       } as never,
       { record: jest.fn(async (id: string) => void released.push(id)) } as never,
@@ -493,6 +510,109 @@ describeWithServices('Firma del contrato: PostgreSQL + Redis reales', () => {
     await expect(
       inContext(() => signature.sign(f.contractId, command(f), { sub: technician } as never)),
     ).rejects.toThrow(ConflictException);
+  }, 90_000);
+
+  it('firma en la visita con aprovisionamiento CERTIFIED: billing_start_date = certificación y el cierre de la OT no la altera', async () => {
+    const f = await fixture(null);
+    const router = randomUUID();
+    const network = randomUUID();
+    const provisioningId = randomUUID();
+    await rows(
+      `INSERT INTO network_routers
+         (id, tenant_id, name, management_host, supported_control_methods, created_by)
+       VALUES ($1, $2, 'Router sintético', '192.0.2.1', ARRAY['PCQ_ADDRESS_LIST'], $3)`,
+      [router, tenantId, technician],
+    );
+    await rows(
+      `INSERT INTO ipv4_networks
+         (id, tenant_id, router_id, name, cidr, gateway, assignable_from, assignable_to,
+          default_control_method, created_by)
+       VALUES ($1, $2, $3, 'Red sintética', '192.0.2.0/24', '192.0.2.1', '192.0.2.2',
+               '192.0.2.254', 'PCQ_ADDRESS_LIST', $4)`,
+      [network, tenantId, router, technician],
+    );
+    // 21:30 del 9-nov en Bogotá (02:30 UTC del 10-nov): cuenta la fecha civil del tenant.
+    await rows(
+      `INSERT INTO service_provisionings
+         (id, tenant_id, subscriber_id, contract_id, execution_order_id, execution_order_number,
+          router_id, ipv4_network_id, control_method, control_params, status, certified_by,
+          certified_at, certification_evidence_id)
+       VALUES ($1, $2, $3, $4, $5, 'OT-SINT-001', $6, $7, 'PCQ_ADDRESS_LIST', '{}', 'CERTIFIED',
+               $8, '2026-11-10T02:30:00Z', $9)`,
+      [
+        provisioningId,
+        tenantId,
+        f.subscriberId,
+        f.contractId,
+        f.orderId,
+        router,
+        network,
+        technician,
+        randomUUID(),
+      ],
+    );
+
+    const signed = await inContext(() =>
+      signature.sign(f.contractId, command(f), { sub: technician } as never),
+    );
+    expect(signed).toMatchObject({ status: 'ACTIVE', billingStartDate: '2026-11-09' });
+
+    // MOD13 cierra la OT: activa el aprovisionamiento con su propia fecha (ADR-098 D8).
+    await rows(
+      `UPDATE service_provisionings SET status = 'ACTIVE', activated_at = '2026-11-12T15:00:00Z'
+        WHERE id = $1`,
+      [provisioningId],
+    );
+    const afterClose = await inContext(() => realActivation.getServiceStart(f.contractId));
+    expect(afterClose?.source).toBe('ACTIVATED');
+    const [contract] = await rows<{ status: string; start_date: string }>(
+      'SELECT status, start_date::text FROM contracts WHERE id = $1',
+      [f.contractId],
+    );
+    expect(contract).toEqual({ status: ContractStatus.ACTIVE, start_date: '2026-11-09' });
+    const [stored] = await rows<{ billing_start_date: string }>(
+      'SELECT billing_start_date::text FROM contract_signatures WHERE contract_id = $1',
+      [f.contractId],
+    );
+    expect(stored?.billing_start_date).toBe('2026-11-09');
+    // El listener de activación ya no lo bloquea por CONTRACT_UNSIGNED: el contrato está firmado.
+    const pending = new ContractPendingSignatureService(dataSource, realActivation);
+    expect(await inContext(() => pending.isContractUnsigned(f.contractId))).toBe(false);
+  }, 90_000);
+
+  it('G7: el técnico asignado lee contrato y titular de la OT; sin asignación recibe 403; firmado oculta el documento', async () => {
+    const f = await fixture();
+    const read = (sub: string) =>
+      inContext(() => generationService.executionOrderContract(f.orderId, { sub } as never));
+
+    await expect(read(technician)).resolves.toEqual({
+      contractId: f.contractId,
+      status: 'DRAFT',
+      holder: {
+        fullName: 'Adquirente de prueba',
+        documentType: 'NIT',
+        documentNumber: '900000001',
+      },
+    });
+    const audits = await dataSource.query(
+      `SELECT new_value FROM ${quote(schemaName)}.audit_logs
+        WHERE entity_type = 'Contract' AND entity_id = $1`,
+      [f.contractId],
+    );
+    expect(audits.length).toBeGreaterThanOrEqual(1);
+    expect(JSON.stringify(audits)).not.toContain('900000001');
+
+    await expect(read(randomUUID())).rejects.toThrow(ForbiddenException);
+
+    orders.set(f.orderId, { subscriberId: f.subscriberId, assignedTechnicianId: randomUUID() });
+    await expect(read(technician)).rejects.toThrow(ForbiddenException);
+    orders.set(f.orderId, { subscriberId: f.subscriberId });
+
+    await inContext(() => signature.sign(f.contractId, command(f), { sub: technician } as never));
+    await expect(read(technician)).resolves.toMatchObject({
+      status: 'ACTIVE',
+      holder: { documentType: null, documentNumber: null },
+    });
   }, 90_000);
 
   it('CA-4: huella distinta a la generada se rechaza y un PDF firmado alterado falla la verificación', async () => {

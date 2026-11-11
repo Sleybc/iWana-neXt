@@ -232,6 +232,27 @@ export const ContractSignerSchema = z
 export type ContractSigner = z.infer<typeof ContractSignerSchema>;
 
 /**
+ * Contrato de una OT para el paso «Contrato» de la consola (`GET
+ * crm/execution-orders/:executionOrderId/contract`). Solo el técnico asignado o el supervisor.
+ * El documento del titular solo viaja mientras el contrato esté en `DRAFT` sin firma (G7);
+ * después llega en `null`. `data` es `null` si la OT no resuelve un único contrato.
+ */
+export const ExecutionOrderContractSchema = z
+  .object({
+    contractId: z.string().uuid(),
+    status: z.string().min(1),
+    holder: z
+      .object({
+        fullName: z.string(),
+        documentType: z.string().nullable(),
+        documentNumber: z.string().nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+export type ExecutionOrderContract = z.infer<typeof ExecutionOrderContractSchema>;
+
+/**
  * Cuerpo de `POST crm/contracts/:id/signature`. Fecha, técnico y tenant los fija el servidor.
  * `documentSha256` ata la firma al PDF que se mostró (CA-4).
  */
@@ -383,3 +404,34 @@ export const ContractPermanenceSchema = z
     });
   });
 export type ContractPermanence = z.infer<typeof ContractPermanenceSchema>;
+
+/* -------------------------------------------------------------------------- */
+/* Contrato firmado en la pestaña Documentos (bloque G; CA-9)                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Motivo por el que el lector no puede descargar el PDF firmado. El PDF incluye el número de
+ * documento de quien firma: sin `crm.subscribers.document.read` no se descarga.
+ */
+export const SIGNED_CONTRACT_DOWNLOAD_RESTRICTIONS = [
+  'DOCUMENT_NUMBER_RESTRICTED',
+  'TITULAR_RESTRICTED',
+] as const;
+export type SignedContractDownloadRestriction =
+  (typeof SIGNED_CONTRACT_DOWNLOAD_RESTRICTIONS)[number];
+
+/** Código del 403 de la descarga sin `crm.subscribers.document.read`. */
+export const SIGNED_CONTRACT_DOCUMENT_RESTRICTED_CODE = 'SIGNED_CONTRACT_DOCUMENT_RESTRICTED';
+
+/** Fila «Contrato firmado» de la pestaña Documentos. Sin URL: la descarga es por contrato. */
+export const SignedContractDocumentSchema = z
+  .object({
+    contractId: z.string().uuid(),
+    signedAt: instantSchema,
+    templateVersion: z.string().min(1).max(32),
+    downloadable: z.boolean(),
+    /** null si `downloadable`. */
+    restriction: z.enum(SIGNED_CONTRACT_DOWNLOAD_RESTRICTIONS).nullable(),
+  })
+  .strict();
+export type SignedContractDocument = z.infer<typeof SignedContractDocumentSchema>;

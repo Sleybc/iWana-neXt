@@ -41,6 +41,8 @@ describeWithDatabase('Contrato pendiente de firma — integración PostgreSQL', 
     subscriberRecent: randomUUID(),
     subscriberSigned: randomUUID(),
     subscriberReleased: randomUUID(),
+    subscriberCertified: randomUUID(),
+    certified: randomUUID(),
     due: randomUUID(),
     recent: randomUUID(),
     signed: randomUUID(),
@@ -61,6 +63,8 @@ describeWithDatabase('Contrato pendiente de firma — integración PostgreSQL', 
     activatedHoursAgo: number,
     provisioningStatus = 'ACTIVE',
   ): Promise<void> {
+    // CERTIFIED: sin activated_at (la OT no ha cerrado); la fecha efectiva es certified_at.
+    const certifiedOnly = provisioningStatus === 'CERTIFIED';
     await dataSource.query(
       `INSERT INTO ${q}.subscribers
         (id, tenant_id, person_type, customer_segment, document_type, first_name, last_name,
@@ -79,8 +83,9 @@ describeWithDatabase('Contrato pendiente de firma — integración PostgreSQL', 
       `INSERT INTO ${q}.service_provisionings
         (tenant_id, subscriber_id, contract_id, execution_order_id, execution_order_number,
          router_id, ipv4_network_id, control_method, control_params, status, activated_at,
-         released_at, release_reason)
-       VALUES ($1, $2, $3, $4, 'EO-F-001', $5, $6, 'PCQ_ADDRESS_LIST', '{}', $7, $8, $9, $10)`,
+         released_at, release_reason, certified_by, certified_at, certification_evidence_id)
+       VALUES ($1, $2, $3, $4, 'EO-F-001', $5, $6, 'PCQ_ADDRESS_LIST', '{}', $7, $8, $9, $10,
+         $11, $12, $13)`,
       [
         tenantId,
         subscriberId,
@@ -89,9 +94,12 @@ describeWithDatabase('Contrato pendiente de firma — integración PostgreSQL', 
         router,
         network,
         provisioningStatus,
-        new Date(NOW.getTime() - activatedHoursAgo * HOURS),
+        certifiedOnly ? null : new Date(NOW.getTime() - activatedHoursAgo * HOURS),
         provisioningStatus === 'RELEASED' ? NOW : null,
         provisioningStatus === 'RELEASED' ? 'MANUAL' : null,
+        certifiedOnly ? actorId : null,
+        certifiedOnly ? new Date(NOW.getTime() - activatedHoursAgo * HOURS) : null,
+        certifiedOnly ? randomUUID() : null,
       ],
     );
   }
@@ -144,6 +152,7 @@ describeWithDatabase('Contrato pendiente de firma — integración PostgreSQL', 
     await seedContract(ids.subscriberRecent, ids.recent, 'DRAFT', 10);
     await seedContract(ids.subscriberSigned, ids.signed, 'ACTIVE', 72);
     await seedContract(ids.subscriberReleased, ids.released, 'DRAFT', 72, 'RELEASED');
+    await seedContract(ids.subscriberCertified, ids.certified, 'DRAFT', 10, 'CERTIFIED');
 
     adapter = new ContractProvisioningActivationReadAdapter(dataSource);
     service = new ContractPendingSignatureService(dataSource, adapter);
@@ -177,10 +186,21 @@ describeWithDatabase('Contrato pendiente de firma — integración PostgreSQL', 
 
   it('el puerto de MOD13 lee la activación por contrato e ignora los liberados', async () => {
     await run(async () => {
-      const activatedAt = await adapter.getProvisioningActivatedAt(ids.due);
-      expect(activatedAt?.toISOString()).toBe(new Date(NOW.getTime() - 72 * HOURS).toISOString());
-      expect(await adapter.getProvisioningActivatedAt(ids.released)).toBeNull();
-      expect(await adapter.getProvisioningActivatedAt(randomUUID())).toBeNull();
+      const start = await adapter.getServiceStart(ids.due);
+      expect(start?.at.toISOString()).toBe(new Date(NOW.getTime() - 72 * HOURS).toISOString());
+      expect(start?.source).toBe('ACTIVATED');
+      expect(await adapter.getServiceStart(ids.released)).toBeNull();
+      expect(await adapter.getServiceStart(randomUUID())).toBeNull();
+    });
+  });
+
+  it('sin activated_at, la fecha efectiva es la certificación y cuenta para las 48 h', async () => {
+    await run(async () => {
+      const start = await adapter.getServiceStart(ids.certified);
+      expect(start).toEqual({ at: new Date(NOW.getTime() - 10 * HOURS), source: 'CERTIFIED' });
+      expect(await service.listDueForAlert(48, NOW)).not.toContain(ids.certified);
+      const later = new Date(NOW.getTime() + 38 * HOURS);
+      expect(await service.listDueForAlert(48, later)).toContain(ids.certified);
     });
   });
 
@@ -189,7 +209,9 @@ describeWithDatabase('Contrato pendiente de firma — integración PostgreSQL', 
       expect(await service.isContractUnsigned(ids.due)).toBe(true);
       expect(await service.isContractUnsigned(ids.signed)).toBe(false);
       const pending = await service.subscribersPendingSignature(Object.values(ids));
-      expect([...pending].sort()).toEqual([ids.subscriberDue, ids.subscriberRecent].sort());
+      expect([...pending].sort()).toEqual(
+        [ids.subscriberDue, ids.subscriberRecent, ids.subscriberCertified].sort(),
+      );
     });
   });
 

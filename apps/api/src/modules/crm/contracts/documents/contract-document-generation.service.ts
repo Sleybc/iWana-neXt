@@ -23,6 +23,8 @@ import {
   ContractDocumentGenerationSchema,
   ContractDocumentSnapshotSchema,
   ContractPdfJobPayloadSchema,
+  ExecutionOrderContractSchema,
+  type ExecutionOrderContract,
   type ContractDocumentFailureReason,
   type ContractDocumentGeneration,
   type ContractDocumentSnapshot,
@@ -217,16 +219,104 @@ export class ContractDocumentGenerationService {
     executionOrderId: string,
     actor: JwtPayload,
   ): Promise<void> {
-    const order = await this.executionOrderReadPort.getExecutionSnapshot(executionOrderId);
-    if (!order || order.isAnnulled) {
-      throw new NotFoundException('Orden de trabajo no encontrada.');
-    }
+    const order = await this.loadAccessibleOrder(executionOrderId);
     if (order.subscriberId !== contract.subscriberId) {
       throw new UnprocessableEntityException({
         code: 'EXECUTION_ORDER_SUBSCRIBER_MISMATCH',
         message: 'La orden de trabajo no corresponde al titular del contrato.',
       });
     }
+    await this.assertAssignedOrSupervisor(order, actor);
+  }
+
+  /**
+   * Contrato de la OT para el paso «Contrato» (cierre de venta, G7). Resuelve el contrato con
+   * la última generación de esta OT o, si no hay, el único contrato en DRAFT del titular de la
+   * OT. Solo el técnico asignado o el supervisor. El documento del titular solo se expone
+   * mientras el contrato esté en DRAFT sin firma, y cada exposición queda auditada.
+   */
+  async executionOrderContract(
+    executionOrderId: string,
+    actor: JwtPayload,
+  ): Promise<ExecutionOrderContract | null> {
+    const order = await this.loadAccessibleOrder(executionOrderId);
+    await this.assertAssignedOrSupervisor(order, actor);
+    if (!order.subscriberId) return null;
+
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const rows = (await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      qr.query(
+        `SELECT c.id::text AS id, c.status
+           FROM contracts c
+          WHERE c.tenant_id = $1 AND c.subscriber_id = $2
+            AND c.id = (SELECT g.contract_id FROM contract_document_generations g
+                         WHERE g.tenant_id = $1 AND g.execution_order_id = $3
+                         ORDER BY g.requested_at DESC, g.id DESC LIMIT 1)
+         UNION ALL
+         SELECT c.id::text AS id, c.status
+           FROM contracts c
+          WHERE c.tenant_id = $1 AND c.subscriber_id = $2 AND c.status = 'DRAFT'
+            AND NOT EXISTS (SELECT 1 FROM contract_document_generations g
+                             WHERE g.tenant_id = $1 AND g.execution_order_id = $3)`,
+        [tenantId, order.subscriberId, executionOrderId],
+      ),
+    )) as Array<{ id: string; status: string }>;
+    if (rows.length !== 1) return null;
+    const contract = rows[0]!;
+
+    const subscriber = (await this.subscribersService.findById(
+      order.subscriberId,
+    )) as SubscriberWithPii;
+    const fullName =
+      subscriber.businessName?.trim() ||
+      [subscriber.firstName, subscriber.lastName].filter(Boolean).join(' ').trim();
+    const signable =
+      contract.status === ContractStatus.DRAFT && !(await this.hasSignature(contract.id));
+    const result = ExecutionOrderContractSchema.parse({
+      contractId: contract.id,
+      status: contract.status,
+      holder: {
+        fullName,
+        documentType: signable ? (subscriber.documentType ?? null) : null,
+        documentNumber: signable ? (subscriber.documentNumber ?? null) : null,
+      },
+    });
+    if (signable && result.holder.documentNumber) {
+      await this.auditService.log({
+        action: AuditAction.RECORD_ACCESS,
+        entityType: 'Contract',
+        entityId: contract.id,
+        userId: actor.sub,
+        newValue: { executionOrderId, purpose: 'SIGNING_HOLDER_DOCUMENT' },
+      });
+    }
+    return result;
+  }
+
+  private async hasSignature(contractId: string): Promise<boolean> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const rows = (await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      qr.query(
+        'SELECT 1 FROM contract_signatures WHERE tenant_id = $1 AND contract_id = $2 LIMIT 1',
+        [tenantId, contractId],
+      ),
+    )) as unknown[];
+    return rows.length > 0;
+  }
+
+  private async loadAccessibleOrder(executionOrderId: string) {
+    const order = await this.executionOrderReadPort.getExecutionSnapshot(executionOrderId);
+    if (!order || order.isAnnulled) {
+      throw new NotFoundException('Orden de trabajo no encontrada.');
+    }
+    return order;
+  }
+
+  /** El técnico solo opera la OT que tiene asignada; el supervisor cualquiera del tenant. */
+  private async assertAssignedOrSupervisor(
+    order: { assignedTechnicianId: string | null },
+    actor: JwtPayload,
+  ): Promise<void> {
     if (order.assignedTechnicianId === actor.sub) return;
     const permissions = await this.effectivePermissionsService.getEffectivePermissionsForUser(
       actor.sub,

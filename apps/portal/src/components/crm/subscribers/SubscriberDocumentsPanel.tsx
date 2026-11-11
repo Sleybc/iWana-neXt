@@ -14,6 +14,8 @@ import {
   AccessPermissionKey,
   type BillingAccountStatement,
   type BillingDocumentResponse,
+  type SignedContractDocument,
+  type SignedContractDownloadRestriction,
 } from '@iwana/shared';
 import { ApiError, crmApi, type Contract, type ExpedienteDocumentItem } from '@/lib/api-client';
 import { usePermissions } from '@/components/access-control/permissions-context';
@@ -37,7 +39,8 @@ import { STRATUM_EVIDENCE_FORMATS_LABEL, stratumEvidenceFileError } from './stra
  */
 export type SubscriberDocumentAction =
   | { kind: 'link'; href: string }
-  | { kind: 'pdf'; document: Pick<BillingDocumentResponse, 'id' | 'number'> };
+  | { kind: 'pdf'; document: Pick<BillingDocumentResponse, 'id' | 'number'> }
+  | { kind: 'signed-contract'; contractId: string };
 
 export interface SubscriberDocumentRow {
   key: string;
@@ -48,6 +51,8 @@ export interface SubscriberDocumentRow {
   /** No existe portal del titular: hoy ningún documento le es visible. */
   visibleToTitular: boolean;
   action?: SubscriberDocumentAction;
+  /** Por qué la fila no se puede descargar (p. ej. contrato firmado sin permiso). */
+  note?: string;
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -119,6 +124,65 @@ export function billingRows(statement: BillingAccountStatement): SubscriberDocum
     }));
 }
 
+const SIGNED_CONTRACT_RESTRICTION_NOTES: Record<SignedContractDownloadRestriction, string> = {
+  DOCUMENT_NUMBER_RESTRICTED:
+    'Sin descarga: incluye el número de documento y no tienes permiso para verlo.',
+  TITULAR_RESTRICTED: 'Sin descarga: los datos de este suscriptor están restringidos.',
+};
+
+/** Filas «Contrato firmado» (bloque G; CA-9): una por contrato, con la fecha de la firma. */
+export function signedContractRows(
+  items: SignedContractDocument[],
+  contracts: Contract[],
+  anonymized: boolean,
+): SubscriberDocumentRow[] {
+  return items.map((item) => {
+    const contract = contracts.find((candidate) => candidate.id === item.contractId);
+    return {
+      key: `contrato-firmado:${item.contractId}`,
+      type:
+        contract && !anonymized
+          ? `Contrato firmado · ${contractServiceName(contract)}`
+          : 'Contrato firmado',
+      date: item.signedAt,
+      author: null,
+      version: `Plantilla ${item.templateVersion}`,
+      visibleToTitular: false,
+      ...(item.downloadable
+        ? { action: { kind: 'signed-contract', contractId: item.contractId } as const }
+        : {
+            note: item.restriction
+              ? SIGNED_CONTRACT_RESTRICTION_NOTES[item.restriction]
+              : 'Sin descarga disponible.',
+          }),
+    };
+  });
+}
+
+/** Descarga el PDF del contrato firmado; la API verifica la huella antes de servirlo. */
+async function downloadSignedContractPdf(contractId: string): Promise<void> {
+  const blob = await crmApi.signedContractPdf(contractId);
+  const url = URL.createObjectURL(blob);
+  try {
+    const link = window.document.createElement('a');
+    link.href = url;
+    link.download = 'contrato-firmado.pdf';
+    link.click();
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+}
+
+function signedContractErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.status === 403) {
+    return 'No tienes permiso para descargar el contrato firmado.';
+  }
+  if (error instanceof ApiError && error.status === 409) {
+    return 'El contrato firmado no pasó la verificación de integridad o no está disponible. Contacta a soporte.';
+  }
+  return 'No pudimos descargar el contrato firmado. Intenta de nuevo.';
+}
+
 const EMPTY_VALUE = <span className="text-gray-500 dark:text-gray-400">Sin dato</span>;
 
 interface SupportsSnapshot {
@@ -127,6 +191,8 @@ interface SupportsSnapshot {
 }
 
 interface SubscriberDocumentsPanelProps {
+  /** Sin él no se consultan los contratos firmados (bloque G). */
+  subscriberId?: string | null;
   expedienteId: string | null;
   contracts: Contract[];
   anonymized: boolean;
@@ -138,6 +204,7 @@ interface SubscriberDocumentsPanelProps {
 }
 
 export function SubscriberDocumentsPanel({
+  subscriberId = null,
   expedienteId,
   contracts,
   anonymized,
@@ -153,6 +220,27 @@ export function SubscriberDocumentsPanel({
   const [uploadOpen, setUploadOpen] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [signed, setSigned] = useState<{
+    items: SignedContractDocument[];
+    error: boolean;
+  }>({ items: [], error: false });
+
+  // Carga aparte de los soportes: si falla, el resto de documentos se sigue mostrando.
+  useEffect(() => {
+    if (!subscriberId) return;
+    let active = true;
+    crmApi.getSignedContracts(subscriberId).then(
+      (response) => {
+        if (active) setSigned({ items: response.data.items, error: false });
+      },
+      () => {
+        if (active) setSigned({ items: [], error: true });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [subscriberId]);
 
   const loadSupports = useCallback(async (): Promise<SupportsSnapshot> => {
     if (!expedienteId || !canReadSupports) return { items: [], forbidden: false };
@@ -175,6 +263,19 @@ export function SubscriberDocumentsPanel({
 
   const supportItems = load.data?.items ?? [];
   const uploadAvailable = canUpload && Boolean(expedienteId) && supportItems.length > 0;
+
+  async function downloadSigned(contractId: string) {
+    if (downloading) return;
+    setPdfError(null);
+    setDownloading(contractId);
+    try {
+      await downloadSignedContractPdf(contractId);
+    } catch (error) {
+      setPdfError(signedContractErrorMessage(error));
+    } finally {
+      setDownloading(null);
+    }
+  }
 
   async function download(document: Pick<BillingDocumentResponse, 'id' | 'number'>) {
     if (downloading) return;
@@ -213,6 +314,7 @@ export function SubscriberDocumentsPanel({
         {(snapshot) => {
           const rows = [
             ...supportRows(snapshot.items),
+            ...signedContractRows(signed.items, contracts, anonymized),
             ...stratumRows(contracts, anonymized),
             ...(statement && !anonymized ? billingRows(statement) : []),
           ];
@@ -223,6 +325,13 @@ export function SubscriberDocumentsPanel({
                   variant="warning"
                   title="No tienes acceso a los soportes de la oportunidad de origen"
                   description="Se muestran solo los demás documentos del suscriptor."
+                />
+              ) : null}
+              {signed.error ? (
+                <PortalAlert
+                  variant="warning"
+                  title="No pudimos cargar los contratos firmados"
+                  description="Se muestran los demás documentos del suscriptor."
                 />
               ) : null}
               {pdfError ? <PortalAlert variant="error" title={pdfError} /> : null}
@@ -271,6 +380,11 @@ export function SubscriberDocumentsPanel({
                             </dd>
                           </div>
                         </dl>
+                        {row.note ? (
+                          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                            {row.note}
+                          </p>
+                        ) : null}
                       </div>
                       {row.action?.kind === 'link' ? (
                         <a
@@ -292,6 +406,22 @@ export function SubscriberDocumentsPanel({
                           loading={downloading === row.action.document.id}
                           onClick={() => {
                             if (row.action?.kind === 'pdf') void download(row.action.document);
+                          }}
+                        >
+                          Descargar PDF
+                        </Button>
+                      ) : row.action?.kind === 'signed-contract' ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="min-h-11"
+                          aria-label={`Descargar PDF de ${row.type}`}
+                          disabled={downloading !== null}
+                          loading={downloading === row.action.contractId}
+                          onClick={() => {
+                            if (row.action?.kind === 'signed-contract') {
+                              void downloadSigned(row.action.contractId);
+                            }
                           }}
                         >
                           Descargar PDF

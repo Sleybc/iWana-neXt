@@ -86,7 +86,7 @@ export class ContractPendingSignatureService {
     )) as Array<{ contract_id: string; subscriber_id: string }>;
     if (drafts.length === 0) return pending;
 
-    const activated = await this.activationReadPort.listProvisioningActivatedAt(
+    const activated = await this.activationReadPort.listServiceStart(
       drafts.map((row) => row.contract_id),
     );
     for (const row of drafts) {
@@ -106,15 +106,15 @@ export class ContractPendingSignatureService {
     )) as Array<{ contract_id: string }>;
     if (candidates.length === 0) return [];
 
-    const activated = await this.activationReadPort.listProvisioningActivatedAt(
+    const activated = await this.activationReadPort.listServiceStart(
       candidates.map((row) => row.contract_id),
     );
     const cutoff = now.getTime() - thresholdHours * 60 * 60 * 1_000;
     return candidates
       .map((row) => row.contract_id)
       .filter((contractId) => {
-        const activatedAt = activated.get(contractId);
-        return activatedAt !== undefined && activatedAt.getTime() <= cutoff;
+        const start = activated.get(contractId);
+        return start !== undefined && start.at.getTime() <= cutoff;
       });
   }
 

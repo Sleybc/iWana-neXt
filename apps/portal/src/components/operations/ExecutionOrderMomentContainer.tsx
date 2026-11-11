@@ -8,10 +8,15 @@ import { PortalAlert, PortalEmptyState } from '@/components/shared/portal-ui';
 import { ExecutionOrderProvisioningPanel } from './ExecutionOrderProvisioningPanel';
 import { ExecutionOrderCloseSection } from './ExecutionOrderCloseSection';
 import { ExecutionOrderCommitmentSection } from './ExecutionOrderCommitmentSection';
+import { ExecutionOrderContractStep } from './ExecutionOrderContractStep';
 import { ExecutionOrderRequirementIndex } from './ExecutionOrderRequirementIndex';
 import { ExecutionOrderSummary } from './ExecutionOrderSummary';
 import type { RequirementActionDescriptor } from './execution-order-actions';
 import type { ExecutionOrderDrawerProps } from './execution-order-console-types';
+import {
+  contractStepDisabledReason,
+  type ExecutionOrderContractContext,
+} from './execution-order-contract-signing';
 import { getExecutionOrderMoment, isTerminalStatus } from './execution-order-moment';
 import { requirementKindLabel } from './execution-order-requirements';
 import { syncCopy, toSummarySyncState } from './execution-order-sync-copy';
@@ -58,6 +63,10 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
     enabled: boolean | null;
     certified: boolean | null;
   }>({ enabled: null, certified: null });
+  const [contractContext, setContractContext] = useState<ExecutionOrderContractContext | null>(
+    null,
+  );
+  const [signedContractId, setSignedContractId] = useState<string | null>(null);
   const selectedActionRef = useRef<RequirementActionDescriptor | null>(null);
   const previousOrderState = useRef({ id: order?.id, status: order?.status });
   useEffect(() => {
@@ -72,6 +81,8 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
   }, [order?.id, order?.status, onOpenRequirementAction]);
   useEffect(() => {
     setProvisioningSnapshot({ enabled: null, certified: null });
+    setContractContext(null);
+    setSignedContractId(null);
   }, [order?.id]);
   const closeForm = useExecutionOrderCloseForm({
     orderId: order?.id,
@@ -189,6 +200,7 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
               key={order.id}
               executionOrderId={order.id}
               onRequirementSnapshotChange={updateProvisioningSnapshot}
+              onContractContextChange={setContractContext}
             />
           ) : null}
 
@@ -217,6 +229,25 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
                 }
               : {})}
           />
+          {order.workType === WfmWorkType.INSTALLATION &&
+          contractContext &&
+          (contractContext.status === 'DRAFT' ||
+            signedContractId === contractContext.contractId) ? (
+            <ExecutionOrderContractStep
+              key={`${order.id}:${contractContext.contractId}`}
+              executionOrderId={order.id}
+              contract={contractContext}
+              signed={signedContractId === contractContext.contractId}
+              onSigned={setSignedContractId}
+              disabledReason={contractStepDisabledReason({
+                inProgress: getExecutionOrderMoment(order.status) === 'in-progress',
+                canRegister: order.allowedActions?.includes('REGISTER_EVIDENCE') ?? false,
+                offline,
+                inSync: order.syncState === 'IN_SYNC',
+                provisioningStatus: contractContext.provisioningStatus,
+              })}
+            />
+          ) : null}
           {getExecutionOrderMoment(order.status) !== 'pre-start' &&
             missingRequirements.length > 0 && (
               <div role="alert" aria-label="Requisitos pendientes">

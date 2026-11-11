@@ -14,9 +14,17 @@ import { ExecutionOrderSchedulingModule } from '../../../tasks/execution-order-s
 import { SubscribersModule } from '../../subscribers/subscribers.module';
 import { ContractsModule } from '../contracts.module';
 import { ContractDocumentGenerationService } from './contract-document-generation.service';
-import { ContractDocumentsController } from './contract-documents.controller';
+import {
+  ContractDocumentsController,
+  ExecutionOrderContractController,
+} from './contract-documents.controller';
 import { ContractSignatureController } from './contract-signature.controller';
 import { ContractSignatureService } from './contract-signature.service';
+import { CONTRACT_SIGNED_COPY_QUEUE } from './contract-signed-copy.constants';
+import { ContractSignedCopyProcessor } from './contract-signed-copy.processor';
+import { ContractSignedCopyProducer } from './contract-signed-copy.producer';
+import { SignedContractDocumentsController } from './signed-contract-documents.controller';
+import { SignedContractDocumentsService } from './signed-contract-documents.service';
 
 /**
  * Generación del PDF del contrato (cierre de venta, bloque B; ADR-109 D5). Encola en
@@ -25,6 +33,7 @@ import { ContractSignatureService } from './contract-signature.service';
 @Module({
   imports: [
     BullModule.registerQueue({ name: CRM_CONTRACT_PDF_QUEUE }),
+    BullModule.registerQueue({ name: CONTRACT_SIGNED_COPY_QUEUE }),
     AccessControlModule,
     AuditModule,
     CommercialModule,
@@ -38,8 +47,19 @@ import { ContractSignatureService } from './contract-signature.service';
     PrivacyModule,
     SubscribersModule,
   ],
-  controllers: [ContractDocumentsController, ContractSignatureController],
-  providers: [ContractDocumentGenerationService, ContractSignatureService],
+  controllers: [
+    ContractDocumentsController,
+    ExecutionOrderContractController,
+    ContractSignatureController,
+    SignedContractDocumentsController,
+  ],
+  providers: [
+    ContractDocumentGenerationService,
+    ContractSignatureService,
+    ContractSignedCopyProducer,
+    ContractSignedCopyProcessor,
+    SignedContractDocumentsService,
+  ],
   exports: [ContractDocumentGenerationService, ContractSignatureService],
 })
 export class ContractDocumentsModule {}

@@ -9,4 +9,12 @@ export interface MailOptions {
   subject: string;
   html: string;
   text?: string; // Version plain text opcional
+  /** Adjuntos en memoria (p. ej. el PDF del contrato firmado). Nunca se loguean. */
+  attachments?: MailAttachment[];
+}
+
+export interface MailAttachment {
+  filename: string;
+  content: Buffer;
+  contentType: string;
 }

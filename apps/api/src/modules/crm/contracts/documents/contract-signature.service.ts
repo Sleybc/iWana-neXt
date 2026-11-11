@@ -7,6 +7,7 @@ import {
   Logger,
   NotFoundException,
   OnModuleDestroy,
+  Optional,
   ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -53,6 +54,7 @@ import { ContractPermanenceService } from '../contract-permanence.service';
 import { ContractsService } from '../contracts.service';
 import { ContractsTenantSettingsReadPort } from '../ports/contracts-tenant-settings-read.port';
 import { ContractDocumentGenerationService } from './contract-document-generation.service';
+import { ContractSignedCopyProducer } from './contract-signed-copy.producer';
 
 /** Columnas cifradas que escribe este servicio: contract_signatures.signer_encrypted. */
 
@@ -126,6 +128,7 @@ export class ContractSignatureService implements OnModuleDestroy {
     private readonly tenantSettings: ContractsTenantSettingsReadPort,
     private readonly auditService: AuditService,
     configService: ConfigService,
+    @Optional() private readonly signedCopy?: ContractSignedCopyProducer,
   ) {
     const keys = loadPiiAesGcmKeyPair(configService);
     this.activeKey = keys.activeKey;
@@ -158,8 +161,10 @@ export class ContractSignatureService implements OnModuleDestroy {
     }
     await this.contractsService.assertContractNotBlocked(contractId);
     const generation = await this.loadReadyGeneration(contractId, command);
-    const activatedAt = await this.provisioningActivation.getProvisioningActivatedAt(contractId);
-    if (!activatedAt) {
+    // Servicio activo = aprovisionamiento ACTIVE o CERTIFIED (la firma ocurre en la visita,
+    // antes de que MOD13 fije activated_at al cerrar la OT).
+    const serviceStart = await this.provisioningActivation.getServiceStart(contractId);
+    if (!serviceStart) {
       throw new ConflictException({
         code: 'PROVISIONING_NOT_ACTIVE',
         message: 'El servicio de este contrato aún no está activado.',
@@ -167,7 +172,7 @@ export class ContractSignatureService implements OnModuleDestroy {
     }
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const timezone = await this.tenantSettings.getTimezone(tenantId);
-    const billingStartDate = getTenantLocalDate(activatedAt, timezone);
+    const billingStartDate = getTenantLocalDate(serviceStart.at, timezone);
 
     const png = this.decodeSignature(command.signatureImage);
     const keys = contractSignatureObjectKeys(
@@ -188,11 +193,12 @@ export class ContractSignatureService implements OnModuleDestroy {
     });
 
     const signedAt = new Date();
+    let signatureId = '';
     try {
       await this.contractsService.activateFromSignature(contractId, actor.sub, {
         startDate: billingStartDate,
         within: async (manager) => {
-          await this.insertSignature(manager, {
+          signatureId = await this.insertSignature(manager, {
             tenantId,
             contractId,
             generation,
@@ -219,6 +225,7 @@ export class ContractSignatureService implements OnModuleDestroy {
     }
     await this.activationEvents.publishForContract(contractId);
     await this.releaseUnsignedBlock(contractId);
+    await this.signedCopy?.enqueue(signatureId);
     this.logger.log(`crm.contract.signed contractId=${contractId} generationId=${generation.id}`);
     return ContractSignatureResponseSchema.parse({
       contractId,
@@ -331,6 +338,7 @@ export class ContractSignatureService implements OnModuleDestroy {
     }
     await this.activationEvents.publishForContract(contractId);
     await this.releaseUnsignedBlock(contractId);
+    await this.signedCopy?.enqueue(row.id);
     return ContractSignatureResponseSchema.parse({
       contractId,
       status: 'ACTIVE',
@@ -474,7 +482,7 @@ export class ContractSignatureService implements OnModuleDestroy {
       signedDocumentSha256: string;
       keys: { signatureImage: string; signedDocument: string };
     },
-  ): Promise<void> {
+  ): Promise<string> {
     const { command, generation } = input;
     const signatureId = randomUUID();
     const signatureAssetId = randomUUID();
@@ -533,5 +541,6 @@ export class ContractSignatureService implements OnModuleDestroy {
       },
       manager,
     );
+    return signatureId;
   }
 }

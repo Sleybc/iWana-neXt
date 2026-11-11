@@ -118,6 +118,7 @@ export class MailerService {
       subject: options.subject,
       html: options.html,
       text: options.text,
+      ...(options.attachments?.length ? { attachments: options.attachments } : {}),
     });
   }
 }

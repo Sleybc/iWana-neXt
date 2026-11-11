@@ -90,7 +90,7 @@ describe('ContractDocumentGenerationService', () => {
   const legalTexts = { current: jest.fn() };
   const orders = { getExecutionSnapshot: jest.fn() };
   const permissions = { getEffectivePermissionsForUser: jest.fn() };
-  const audit = { logWithin: jest.fn() };
+  const audit = { logWithin: jest.fn(), log: jest.fn() };
   const actor = { sub: TECH_ID } as never;
   let service: ContractDocumentGenerationService;
 
@@ -419,5 +419,87 @@ describe('ContractDocumentGenerationService', () => {
     expect(snapshotDigest({ ...base, service: { ...base.service, monthlyPrice: 2 } })).not.toBe(
       snapshotDigest(base),
     );
+  });
+  describe('executionOrderContract (G7: contrato de la OT para el técnico)', () => {
+    const answer = (contracts: unknown[], signed = false) =>
+      query.mockImplementation(async (sql: string) => {
+        if (sql.includes('FROM contracts c')) return contracts;
+        if (sql.includes('FROM contract_signatures')) return signed ? [{ '?column?': 1 }] : [];
+        return [];
+      });
+
+    it('técnico asignado: contrato DRAFT con documento del titular, auditado', async () => {
+      answer([{ id: CONTRACT_ID, status: 'DRAFT' }]);
+      const result = await run(() => service.executionOrderContract(ORDER_ID, actor));
+      expect(result).toEqual({
+        contractId: CONTRACT_ID,
+        status: 'DRAFT',
+        holder: { fullName: 'Ana Prueba', documentType: 'CC', documentNumber: '1000000001' },
+      });
+      const params = query.mock.calls.find(([sql]) => String(sql).includes('FROM contracts c'))![1];
+      expect(params).toEqual([TENANT.tenantId, SUBSCRIBER_ID, ORDER_ID]);
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: 'Contract',
+          entityId: CONTRACT_ID,
+          newValue: { executionOrderId: ORDER_ID, purpose: 'SIGNING_HOLDER_DOCUMENT' },
+        }),
+      );
+      expect(JSON.stringify(audit.log.mock.calls)).not.toContain('1000000001');
+    });
+
+    it('contrato firmado (ACTIVE): sin documento del titular y sin auditoría de acceso', async () => {
+      answer([{ id: CONTRACT_ID, status: 'ACTIVE' }], true);
+      const result = await run(() => service.executionOrderContract(ORDER_ID, actor));
+      expect(result?.holder).toEqual({
+        fullName: 'Ana Prueba',
+        documentType: null,
+        documentNumber: null,
+      });
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    it('DRAFT con firma registrada no expone el documento', async () => {
+      answer([{ id: CONTRACT_ID, status: 'DRAFT' }], true);
+      const result = await run(() => service.executionOrderContract(ORDER_ID, actor));
+      expect(result?.holder.documentNumber).toBeNull();
+    });
+
+    it('sin contrato único devuelve null', async () => {
+      answer([]);
+      await expect(run(() => service.executionOrderContract(ORDER_ID, actor))).resolves.toBeNull();
+      answer([
+        { id: CONTRACT_ID, status: 'DRAFT' },
+        { id: GENERATION_ID, status: 'DRAFT' },
+      ]);
+      await expect(run(() => service.executionOrderContract(ORDER_ID, actor))).resolves.toBeNull();
+    });
+
+    it('técnico no asignado sin permiso de supervisión → 403; supervisor sí lee', async () => {
+      answer([{ id: CONTRACT_ID, status: 'DRAFT' }]);
+      orders.getExecutionSnapshot.mockResolvedValue({
+        id: ORDER_ID,
+        isAnnulled: false,
+        subscriberId: SUBSCRIBER_ID,
+        assignedTechnicianId: 'otro-tecnico',
+      });
+      await expect(
+        run(() => service.executionOrderContract(ORDER_ID, actor)),
+      ).rejects.toMatchObject({ response: { code: 'EXECUTION_ORDER_NOT_ASSIGNED' } });
+      expect(subscribers.findById).not.toHaveBeenCalled();
+
+      permissions.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE,
+      ]);
+      const result = await run(() => service.executionOrderContract(ORDER_ID, actor));
+      expect(result?.contractId).toBe(CONTRACT_ID);
+    });
+
+    it('OT anulada o inexistente → 404', async () => {
+      orders.getExecutionSnapshot.mockResolvedValue(null);
+      await expect(run(() => service.executionOrderContract(ORDER_ID, actor))).rejects.toThrow(
+        'Orden de trabajo no encontrada.',
+      );
+    });
   });
 });

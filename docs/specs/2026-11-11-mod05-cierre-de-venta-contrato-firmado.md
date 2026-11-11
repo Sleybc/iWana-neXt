@@ -45,6 +45,7 @@ Complementar sin retroceso: ningún flujo actual desaparece. La activación manu
 | D4 | Sin firma: plazo y alerta a ventas y soporte; suspensión manual. Sin suspensión automática |
 | D5 | Texto: el modelo CRC vigente (HTML aportado) como plantilla versionada |
 | D6 | PDF: plantilla HTML convertida a PDF en el servidor con Chromium sin interfaz |
+| D7 | (Ejecución, 2026-11-11) «Servicio activo» = aprovisionamiento **certificado**: MOD13 fija `activated_at` solo al cerrar la OT, y la firma ocurre antes del cierre. La firma se habilita con aprovisionamiento CERTIFIED o ACTIVE y `billing_start_date` = `activated_at` o, si aún no existe, la fecha de certificación. MOD13 no cambia |
 
 ## 4. Flujo
 

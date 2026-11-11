@@ -39,7 +39,16 @@ export interface ExecutionOrderSignatureCaptureProps {
   onCancel?: () => void;
   /** Bloquea el trazo y los botones (envío en curso o sin conexión). */
   disabled?: boolean;
+  /** Instrucciones del documento que se firma; por defecto, el acta de conformidad. */
+  instructions?: string;
+  /** Texto del botón que guarda; por defecto «Guardar firma». */
+  saveLabel?: string;
+  /** Nombre accesible del grupo; por defecto «Captura de firma del cliente». */
+  label?: string;
 }
+
+const DEFAULT_INSTRUCTIONS =
+  'Pide al cliente que firme el acta de conformidad. Dibuja la firma dentro del recuadro con el dedo, un lápiz o el ratón.';
 
 function exportPng(canvas: HTMLCanvasElement): Promise<File | null> {
   const context = canvas.getContext('2d');
@@ -62,6 +71,9 @@ export function ExecutionOrderSignatureCapture({
   onSave,
   onCancel,
   disabled = false,
+  instructions = DEFAULT_INSTRUCTIONS,
+  saveLabel = 'Guardar firma',
+  label = 'Captura de firma del cliente',
 }: ExecutionOrderSignatureCaptureProps) {
   const baseId = useId();
   const instructionsId = `${baseId}-instrucciones`;
@@ -183,11 +195,10 @@ export function ExecutionOrderSignatureCapture({
   }
 
   return (
-    <div role="group" aria-label="Captura de firma del cliente" aria-describedby={instructionsId}>
+    <div role="group" aria-label={label} aria-describedby={instructionsId}>
       <div className="space-y-3">
         <p id={instructionsId} className="text-sm text-gray-600 dark:text-gray-300">
-          Pide al cliente que firme el acta de conformidad. Dibuja la firma dentro del recuadro con
-          el dedo, un lápiz o el ratón.
+          {instructions}
         </p>
         <canvas
           ref={canvasRef}
@@ -229,7 +240,7 @@ export function ExecutionOrderSignatureCapture({
             loading={saving}
             onClick={() => void handleSave()}
           >
-            Guardar firma
+            {saveLabel}
           </Button>
           {onCancel ? (
             <Button

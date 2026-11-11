@@ -77,6 +77,7 @@ function generationRow(overrides: Record<string, unknown> = {}) {
 
 describe('ContractSignatureService (bloque D)', () => {
   let service: ContractSignatureService;
+  const signedCopy = { enqueue: jest.fn(async (_signatureId: string) => undefined) };
   let generation: Record<string, unknown> | null;
   let signatureRow: Record<string, unknown> | null;
   let contractStatus: ContractStatus;
@@ -92,7 +93,7 @@ describe('ContractSignatureService (bloque D)', () => {
   const permanence = { applyActivationDate: jest.fn() };
   const publisher = { publishForContract: jest.fn() };
   const provisioning = {
-    getProvisioningActivatedAt: jest.fn(),
+    getServiceStart: jest.fn(),
     listUnsignedBlockedProvisioningIds: jest.fn(),
   };
   const commercialStatus = { record: jest.fn() };
@@ -121,11 +122,15 @@ describe('ContractSignatureService (bloque D)', () => {
       },
     );
     // 22:00 del 11-nov en Bogotá: la fecha civil del tenant, no la UTC.
-    provisioning.getProvisioningActivatedAt.mockResolvedValue(new Date('2026-11-12T03:00:00.000Z'));
+    provisioning.getServiceStart.mockResolvedValue({
+      at: new Date('2026-11-12T03:00:00.000Z'),
+      source: 'CERTIFIED',
+    });
     provisioning.listUnsignedBlockedProvisioningIds.mockResolvedValue(['sp-1']);
     queue.add.mockResolvedValue(job);
     job.waitUntilFinished.mockResolvedValue({ signedDocumentSha256: SIGNED_SHA, bytes: 2048 });
     storage.getObject.mockResolvedValue(encryptObjectBuffer(UNSIGNED_PDF, KEY));
+    signedCopy.enqueue.mockReset();
     service = new ContractSignatureService(
       {} as never,
       queue as never,
@@ -139,6 +144,7 @@ describe('ContractSignatureService (bloque D)', () => {
       tenantSettings as never,
       audit as never,
       new ConfigService({ PII_ENCRYPTION_KEY: KEY_HEX, MFA_ENCRYPTION_KEY: KEY_HEX }),
+      signedCopy as never,
     );
     jest
       .spyOn(service as unknown as { getQueueEvents: () => Promise<unknown> }, 'getQueueEvents')
@@ -190,6 +196,9 @@ describe('ContractSignatureService (bloque D)', () => {
     );
     expect(publisher.publishForContract).toHaveBeenCalledWith(ids.contract);
     expect(commercialStatus.record).toHaveBeenCalledWith('sp-1', 'DONE', null);
+    // Bloque G (CA-9): la copia al titular se encola con el id de la firma insertada.
+    const signatureId = insert[1][0];
+    expect(signedCopy.enqueue).toHaveBeenCalledWith(signatureId);
   });
 
   it('repetir la idempotencyKey devuelve replayed=true sin renderizar ni activar', async () => {
@@ -210,6 +219,7 @@ describe('ContractSignatureService (bloque D)', () => {
     expect(queue.add).not.toHaveBeenCalled();
     expect(contracts.activateFromSignature).not.toHaveBeenCalled();
     expect(publisher.publishForContract).toHaveBeenCalledWith(ids.contract);
+    expect(signedCopy.enqueue).toHaveBeenCalledWith(signatureRow.id);
   });
 
   it('una clave de otra firma responde 409 IDEMPOTENCY_KEY_REUSED', async () => {
@@ -253,8 +263,8 @@ describe('ContractSignatureService (bloque D)', () => {
     );
   });
 
-  it('sin aprovisionamiento activo de la OT → 409 PROVISIONING_NOT_ACTIVE', async () => {
-    provisioning.getProvisioningActivatedAt.mockResolvedValueOnce(null);
+  it('sin aprovisionamiento certificado ni activo → 409 PROVISIONING_NOT_ACTIVE', async () => {
+    provisioning.getServiceStart.mockResolvedValueOnce(null);
     await expect(service.sign(ids.contract, command(), actor)).rejects.toMatchObject({
       response: { code: 'PROVISIONING_NOT_ACTIVE' },
     });

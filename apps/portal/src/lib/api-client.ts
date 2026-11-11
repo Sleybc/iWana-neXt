@@ -2,8 +2,13 @@
 
 import {
   UpdateOperatorContractProfileSchema,
+  type ContractDocumentGeneration,
+  type ExecutionOrderContract,
+  type ContractSignatureRequest,
+  type ContractSignatureResponse,
   type OperatorContractProfile,
   type OperatorContractRequiredField,
+  type SignedContractDocument,
   type UpdateOperatorContractProfileInput,
 } from '@iwana/shared';
 
@@ -6724,6 +6729,19 @@ export const crmApi = {
     );
   },
 
+  /** Contratos firmados del suscriptor para la pestaña Documentos (bloque G; CA-9). */
+  getSignedContracts: (subscriberId: string) =>
+    request<{ data: { items: SignedContractDocument[] } }>(
+      `/crm/subscribers/${encodeURIComponent(subscriberId)}/signed-contracts`,
+      { returnFullResponse: true },
+    ),
+
+  /** PDF del contrato firmado; la API verifica la huella y exige el permiso del documento. */
+  signedContractPdf: (contractId: string) =>
+    request<Blob>(`/crm/contracts/${encodeURIComponent(contractId)}/signed-document`, {
+      responseType: 'blob',
+    }),
+
   uploadDocumentSupport: (
     id: string,
     documentKey: string,
@@ -7217,6 +7235,65 @@ export const contractsApi = {
   /** Transiciona TERMINATED|SUSPENDED ? ARCHIVED. */
   archive: (id: string, tenantSlug?: string) =>
     request<Contract>(`/crm/contracts/${id}/archive`, { method: 'POST' }, tenantSlug),
+};
+
+/** La firma espera al worker que incrusta la firma en el PDF; el resto usa el timeout general. */
+const CONTRACT_SIGNATURE_TIMEOUT_MS = 60_000;
+
+/**
+ * Firma del contrato en la consola de OT (cierre de venta, bloque C; ADR-109).
+ * Contrato congelado en `@iwana/shared` (contract-signature.ts). El PDF solo se lee
+ * antes de firmar: después el API responde 403 CONTRACT_DOCUMENT_SIGNED (CA-12).
+ */
+export const contractSigningApi = {
+  /** Contrato y titular de la OT (técnico asignado o supervisor); null si no hay uno único. */
+  getExecutionOrderContract: (executionOrderId: string, tenantSlug?: string) =>
+    request<ExecutionOrderContract | null>(
+      `/crm/execution-orders/${encodeURIComponent(executionOrderId)}/contract`,
+      { cache: 'no-store' },
+      tenantSlug,
+    ),
+
+  /** Pide la generación (202): PENDING encolado, READY existente o FAILED con motivo. */
+  requestGeneration: (contractId: string, executionOrderId: string, tenantSlug?: string) =>
+    request<ContractDocumentGeneration>(
+      `/crm/contracts/${encodeURIComponent(contractId)}/document-generations`,
+      { method: 'POST', body: JSON.stringify({ executionOrderId }) },
+      tenantSlug,
+    ),
+
+  /** Última generación para la OT; null si aún no se pidió. */
+  getLatestGeneration: (contractId: string, executionOrderId: string, tenantSlug?: string) =>
+    request<ContractDocumentGeneration | null>(
+      `/crm/contracts/${encodeURIComponent(contractId)}/document-generations/latest?executionOrderId=${encodeURIComponent(executionOrderId)}`,
+      undefined,
+      tenantSlug,
+    ),
+
+  /** PDF sin firmar para leerlo con el cliente; nunca se ofrece como descarga. */
+  getDocument: (
+    contractId: string,
+    generationId: string,
+    executionOrderId: string,
+    tenantSlug?: string,
+  ) =>
+    request<Blob>(
+      `/crm/contracts/${encodeURIComponent(contractId)}/document-generations/${encodeURIComponent(generationId)}/document?executionOrderId=${encodeURIComponent(executionOrderId)}`,
+      { responseType: 'blob', cache: 'no-store' },
+      tenantSlug,
+    ),
+
+  /** Firma idempotente: un reintento con la misma clave devuelve `replayed: true`. */
+  sign: (contractId: string, payload: ContractSignatureRequest, tenantSlug?: string) =>
+    request<ContractSignatureResponse>(
+      `/crm/contracts/${encodeURIComponent(contractId)}/signature`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(CONTRACT_SIGNATURE_TIMEOUT_MS),
+      },
+      tenantSlug,
+    ),
 };
 
 /** Lecturas de catálogo y agenda de corte por servicio. */

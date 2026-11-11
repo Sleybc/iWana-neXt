@@ -8,6 +8,7 @@ export type SubscriberBadgeId =
   | 'vat'
   | 'fiscal-incomplete'
   | 'contact-pending'
+  | 'pending-signature'
   | 'overdue-debt'
   | 'service-suspended';
 
@@ -23,6 +24,8 @@ export interface SubscriberBadgeInput {
   status: SubscriberStatus | string;
   vatTreatment?: VatTreatment | null | undefined;
   contactPending?: boolean | null | undefined;
+  /** Contrato sin firma con servicio ya activado (ADR-109 D3, CA-5). Solo lectura. */
+  pendingSignature?: boolean | null | undefined;
   anonymizedAt?: string | null | undefined;
   /** Solo el detalle lo trae; en la lista se omite y la insignia no se calcula. */
   fiscalCompleteness?: { complete: boolean } | null | undefined;
@@ -57,6 +60,10 @@ export function deriveSubscriberBadges(input: SubscriberBadgeInput): SubscriberD
     badges.push({ id: 'contact-pending', label: 'Contacto pendiente', variant: 'warning' });
   }
 
+  if (input.pendingSignature) {
+    badges.push({ id: 'pending-signature', label: 'Pendiente de firma', variant: 'warning' });
+  }
+
   if (input.documentPaymentStates?.some((state) => state === 'VENCIDO')) {
     badges.push({ id: 'overdue-debt', label: 'Deuda vencida', variant: 'error' });
   }
@@ -75,13 +82,19 @@ export function deriveSubscriberBadges(input: SubscriberBadgeInput): SubscriberD
 export function deriveSubscriberListBadges(
   item: Pick<
     SubscriberListItem,
-    'status' | 'vatTreatment' | 'contactPending' | 'anonymizedAt' | 'primaryService'
+    | 'status'
+    | 'vatTreatment'
+    | 'contactPending'
+    | 'anonymizedAt'
+    | 'primaryService'
+    | 'pendingSignature'
   >,
 ): SubscriberDerivedBadge[] {
   return deriveSubscriberBadges({
     status: item.status,
     vatTreatment: item.vatTreatment,
     contactPending: item.contactPending,
+    pendingSignature: item.pendingSignature,
     anonymizedAt: item.anonymizedAt,
     serviceStatuses: item.primaryService ? [item.primaryService.status] : [],
   });

@@ -31,12 +31,16 @@ describe('ContractProvisioningActivationReadAdapter', () => {
 
   it('lee con el tenant del contexto y devuelve la fecha como Date', async () => {
     query.mockResolvedValue([
-      { contract_id: CONTRACT_A, activated_at: '2026-11-08T10:00:00.000Z' },
+      {
+        contract_id: CONTRACT_A,
+        service_start_at: '2026-11-08T10:00:00.000Z',
+        source: 'CERTIFIED',
+      },
     ]);
 
-    const result = await adapter.getProvisioningActivatedAt(CONTRACT_A.toUpperCase());
+    const result = await adapter.getServiceStart(CONTRACT_A.toUpperCase());
 
-    expect(result).toEqual(new Date('2026-11-08T10:00:00.000Z'));
+    expect(result).toEqual({ at: new Date('2026-11-08T10:00:00.000Z'), source: 'CERTIFIED' });
     expect(runInTenant).toHaveBeenCalledWith(
       expect.anything(),
       context.schemaName,
@@ -50,25 +54,32 @@ describe('ContractProvisioningActivationReadAdapter', () => {
 
   it('devuelve null sin activación y no consulta con ids inválidos', async () => {
     query.mockResolvedValue([]);
-    expect(await adapter.getProvisioningActivatedAt(CONTRACT_B)).toBeNull();
+    expect(await adapter.getServiceStart(CONTRACT_B)).toBeNull();
 
     query.mockClear();
-    expect(await adapter.getProvisioningActivatedAt('no-es-uuid')).toBeNull();
-    expect((await adapter.listProvisioningActivatedAt([])).size).toBe(0);
+    expect(await adapter.getServiceStart('no-es-uuid')).toBeNull();
+    expect((await adapter.listServiceStart([])).size).toBe(0);
     expect(query).not.toHaveBeenCalled();
   });
 
   it('agrupa varios contratos y conserva los Date recibidos', async () => {
     const date = new Date('2026-11-01T00:00:00.000Z');
     query.mockResolvedValue([
-      { contract_id: CONTRACT_A, activated_at: date },
-      { contract_id: CONTRACT_B, activated_at: '2026-11-02T00:00:00.000Z' },
+      { contract_id: CONTRACT_A, service_start_at: date, source: 'ACTIVATED' },
+      {
+        contract_id: CONTRACT_B,
+        service_start_at: '2026-11-02T00:00:00.000Z',
+        source: 'CERTIFIED',
+      },
     ]);
 
-    const result = await adapter.listProvisioningActivatedAt([CONTRACT_A, CONTRACT_B, CONTRACT_A]);
+    const result = await adapter.listServiceStart([CONTRACT_A, CONTRACT_B, CONTRACT_A]);
 
-    expect(result.get(CONTRACT_A)).toBe(date);
-    expect(result.get(CONTRACT_B)).toEqual(new Date('2026-11-02T00:00:00.000Z'));
+    expect(result.get(CONTRACT_A)?.at).toBe(date);
+    expect(result.get(CONTRACT_B)).toEqual({
+      at: new Date('2026-11-02T00:00:00.000Z'),
+      source: 'CERTIFIED',
+    });
     expect(query.mock.calls[0]?.[1]).toEqual([context.tenantId, [CONTRACT_A, CONTRACT_B]]);
   });
 });

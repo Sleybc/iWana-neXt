@@ -29,6 +29,7 @@ import {
   UserRole,
   type ContractDocumentGeneration,
   type ContractDocumentGenerationRequest,
+  type ExecutionOrderContract,
 } from '@iwana/shared';
 import { CurrentUser } from '../../../auth/decorators/current-user.decorator';
 import { Roles } from '../../../auth/decorators/roles.decorator';
@@ -139,5 +140,60 @@ export class ContractDocumentsController {
     @CurrentUser() actor: JwtPayload,
   ): Promise<{ data: ContractDocumentGeneration | null }> {
     return { data: await this.generationService.latest(id, executionOrderId, actor) };
+  }
+}
+
+const EXECUTION_ORDER_CONTRACT_SCHEMA: SchemaObject = {
+  type: 'object',
+  additionalProperties: false,
+  nullable: true,
+  required: ['contractId', 'status', 'holder'],
+  properties: {
+    contractId: { type: 'string', format: 'uuid' },
+    status: { type: 'string' },
+    holder: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['fullName', 'documentType', 'documentNumber'],
+      properties: {
+        fullName: { type: 'string' },
+        documentType: { type: 'string', nullable: true },
+        documentNumber: {
+          type: 'string',
+          nullable: true,
+          description: 'Solo mientras el contrato esté en DRAFT sin firma; si no, null.',
+        },
+      },
+    },
+  },
+};
+
+/**
+ * Contrato de la OT para el paso «Contrato» de la consola (cierre de venta, G7). CRM es dueño
+ * del contrato; la OT solo aporta el titular y la asignación por el puerto de tasks.
+ */
+@ApiTags('contracts')
+@ApiBearerAuth('access-token')
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+@Controller('crm/execution-orders/:executionOrderId/contract')
+export class ExecutionOrderContractController {
+  constructor(private readonly generationService: ContractDocumentGenerationService) {}
+
+  @Get()
+  @Roles(UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
+  @ApiOperation({ summary: 'Contrato y titular de la OT para firmarlo en la visita' })
+  @ApiResponse({
+    status: 200,
+    description: 'data en null si la OT no resuelve un único contrato.',
+    schema: { type: 'object', properties: { data: EXECUTION_ORDER_CONTRACT_SCHEMA } },
+  })
+  @ApiResponse({ status: 403, description: 'OT no asignada al usuario' })
+  @ApiResponse({ status: 404, description: 'OT inexistente o anulada' })
+  async get(
+    @Param('executionOrderId', ParseUUIDPipe) executionOrderId: string,
+    @CurrentUser() actor: JwtPayload,
+  ): Promise<{ data: ExecutionOrderContract | null }> {
+    return { data: await this.generationService.executionOrderContract(executionOrderId, actor) };
   }
 }

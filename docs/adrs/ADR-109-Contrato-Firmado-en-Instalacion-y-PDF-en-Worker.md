@@ -23,7 +23,7 @@
 
 **D1 · Modelo de firma.** El contrato se firma en la consola de OT con firma manuscrita en canvas. Se guarda como evidencia: imagen de la firma, nombre y documento de quien firma, fecha y hora del servidor, técnico, ubicación aproximada, dispositivo, versión de plantilla y huella SHA-256 del PDF final con la firma incrustada. Esta firma es distinta del acta de conformidad de la OT (ADR-088 D3), aunque ocurran en la misma visita.
 
-**D2 · Activación.** La firma, y no el aprovisionamiento, pasa el contrato de `DRAFT` a `ACTIVE`. `billing_start_date` toma la fecha de activación del aprovisionamiento. Se emite `crm.contract.activated` por outbox, con solo identificadores. Se conserva la activación manual para ADMIN, con motivo obligatorio y auditoría.
+**D2 · Activación.** La firma, y no el aprovisionamiento, pasa el contrato de `DRAFT` a `ACTIVE`. `billing_start_date` toma la fecha de activación del aprovisionamiento o, si aún no existe, la de su certificación (spec D7: MOD13 fija la activación solo al cerrar la OT y la firma ocurre antes); la firma exige aprovisionamiento CERTIFIED o ACTIVE. Se emite `crm.contract.activated` por outbox, con solo identificadores. Se conserva la activación manual para ADMIN, con motivo obligatorio y auditoría.
 
 **D3 · Pendiente de firma.** Con servicio aprovisionado y contrato sin firmar, la activación comercial queda `BLOCKED` con el motivo nuevo `CONTRACT_UNSIGNED`. Un trabajo diario avisa a las 48 h a quien tenga `crm.contracts.pending_signature.notify` (por defecto ACCOUNTANT y NOC). No hay suspensión automática.
 

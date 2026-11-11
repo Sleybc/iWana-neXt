@@ -195,6 +195,7 @@ export function SubscriberOverviewTab({
         status: subscriber.status,
         vatTreatment: subscriber.vatTreatment,
         contactPending: subscriber.contactPending,
+        pendingSignature: subscriber.pendingSignature,
         anonymizedAt,
         fiscalCompleteness: subscriber.fiscalCompleteness,
         serviceStatuses: contracts.map((contract) => contract.status),

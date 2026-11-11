@@ -313,6 +313,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
         label: 'Documentos',
         content: (
           <SubscriberDocumentsPanel
+            subscriberId={subscriber.id}
             expedienteId={subscriber360?.expedienteSummary?.id ?? null}
             contracts={subscriber360?.contracts ?? []}
             anonymized={anonymized}
