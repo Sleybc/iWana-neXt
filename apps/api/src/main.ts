@@ -3,7 +3,8 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
-import { json, type NextFunction, type Request, type Response } from 'express';
+import { createRequire } from 'node:module';
+import type { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { createGlobalValidationPipe } from './common/pipes/global-validation.pipe';
@@ -27,7 +28,12 @@ async function bootstrap(): Promise<void> {
 
   // La firma del contrato llega como PNG en base64 (hasta 700.000 caracteres, ADR-109):
   // solo esa ruta admite 1 MB; el resto conserva el límite por defecto de Nest (100 KB).
-  app.use('/api/v1/crm/contracts/:id/signature', json({ limit: '1mb' }));
+  // `express` no es dependencia directa de @iwana/api: se toma la instancia que trae
+  // @nestjs/platform-express para no depender de un paquete que pnpm no enlaza aquí.
+  const express = createRequire(require.resolve('@nestjs/platform-express'))(
+    'express',
+  ) as typeof import('express');
+  app.use('/api/v1/crm/contracts/:id/signature', express.json({ limit: '1mb' }));
   app.useBodyParser('json');
   app.useBodyParser('urlencoded', { extended: true });
 

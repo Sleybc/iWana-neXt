@@ -15,8 +15,16 @@ describe('checkContractTemplateHtml (lista blanca, SEC-2/SEC-4)', () => {
     expect(checkContractTemplateHtml(seed)).toEqual({ ok: true });
   });
 
-  it('rechaza la semilla mientras conserve los meta', () => {
-    expect(ok(readFileSync(SEED, 'utf8'))).toBe(false);
+  it('acepta la semilla tal como está versionada (sin meta)', () => {
+    expect(ok(readFileSync(SEED, 'utf8'))).toBe(true);
+  });
+
+  it('rechaza un meta añadido a la semilla', () => {
+    const withMeta = readFileSync(SEED, 'utf8').replace(
+      /<head>/iu,
+      '<head><meta http-equiv="refresh" content="0">',
+    );
+    expect(ok(withMeta)).toBe(false);
   });
 
   it('acepta marcado de texto, tablas, estilos en línea, secciones y placeholders', () => {
