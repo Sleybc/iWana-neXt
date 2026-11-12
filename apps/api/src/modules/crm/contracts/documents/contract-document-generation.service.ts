@@ -431,6 +431,21 @@ export class ContractDocumentGenerationService {
         serviceUsage: contract.serviceUsage ?? null,
         // Mismo valor que la vista previa del alta y el cobro (CA-6): el congelado en el contrato.
         installationFee: contract.installationFee ?? null,
+        // IVA y adicionales congelados en el contrato (spec MOD14 2026-11-12): nunca el vigente.
+        installationVat: contract.installationVatSnapshot
+          ? {
+              vatTreatment: contract.installationVatSnapshot.treatment,
+              vatRatePercent: contract.installationVatSnapshot.ratePercent,
+              vatLegalBasis: contract.installationVatSnapshot.legalBasis,
+            }
+          : null,
+        additionals: (contract.additionalVatSnapshot ?? []).map((item) => ({
+          name: item.name ?? null,
+          unitPrice: item.unitPrice == null ? null : Number(item.unitPrice),
+          vatTreatment: item.treatment,
+          vatRatePercent: item.ratePercent,
+          vatLegalBasis: item.legalBasis,
+        })),
       },
       installation: {
         address: contract.installationAddress ?? subscriber.address ?? null,

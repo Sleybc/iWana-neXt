@@ -138,6 +138,96 @@ describe('Plantilla base del contrato único (servicios fijos)', () => {
     }
   });
 
+  describe('IVA congelado de instalación y adicionales (spec MOD14 2026-11-12)', () => {
+    const section = (html: string) =>
+      html.slice(
+        html.indexOf('Condiciones comerciales plan servicios fijos'),
+        html.indexOf('<!-- PÁGINA 2 -->'),
+      );
+    const base = snapshot();
+    const render = (service: Partial<ContractDocumentSnapshot['service']>) =>
+      section(
+        fillContractTemplate(TEMPLATE, snapshot({ service: { ...base.service, ...service } })),
+      );
+
+    it('instalación gravada: base, IVA 19 % y total', () => {
+      const html = render({
+        installationFee: 100000,
+        installationVat: {
+          vatTreatment: 'STANDARD' as never,
+          vatRatePercent: 19,
+          vatLegalBasis: 'ET_468',
+        },
+      });
+      expect(html).toContain(formatMoney(100000));
+      expect(html).toContain('IVA INSTALACIÓN (19 %)');
+      expect(html).toContain(formatMoney(19000));
+      expect(html).toContain('TOTAL INSTALACIÓN');
+      expect(html).toContain(formatMoney(119000));
+    });
+
+    it.each([
+      ['EXEMPT', 'Exento (0 %) · ET 476 7'],
+      ['EXCLUDED', 'Excluido · ET 476 7'],
+    ])(
+      'instalación %s: muestra el tratamiento y su base legal; total = base',
+      (treatment, label) => {
+        const html = render({
+          installationFee: 100000,
+          installationVat: {
+            vatTreatment: treatment as never,
+            vatRatePercent: 0,
+            vatLegalBasis: 'ET_476_7',
+          },
+        });
+        expect(html).toContain(label);
+        expect(html).toMatch(/TOTAL INSTALACIÓN<\/td><td class="val">\$\s?100\.000/u);
+      },
+    );
+
+    it('instantánea previa sin IVA congelado: solo el valor de instalación', () => {
+      const html = render({ installationFee: 150000 });
+      expect(html).toContain(formatMoney(150000));
+      expect(html).not.toContain('IVA INSTALACIÓN');
+    });
+
+    it('adicionales: precio, IVA y total; legado sin precio «Sin cobro»; sin adicionales «No contratado»', () => {
+      const html = render({
+        additionals: [
+          {
+            name: 'Router <mesh>',
+            unitPrice: 50000,
+            vatTreatment: 'STANDARD' as never,
+            vatRatePercent: 19,
+            vatLegalBasis: 'ET_468',
+          },
+          {
+            name: 'Soporte',
+            unitPrice: 20000,
+            vatTreatment: 'EXCLUDED' as never,
+            vatRatePercent: 0,
+            vatLegalBasis: 'ET_476_7',
+          },
+          {
+            name: null,
+            unitPrice: null,
+            vatTreatment: 'STANDARD' as never,
+            vatRatePercent: 19,
+            vatLegalBasis: 'ET_468',
+          },
+        ],
+      });
+      expect(html).toContain('Router &lt;mesh&gt;');
+      expect(html).toContain(`IVA 19 % ${formatMoney(9500)}`);
+      expect(html).toContain(`Total ${formatMoney(59500)}`);
+      expect(html).toContain('IVA Excluido · ET 476 7');
+      expect(html).toContain(`Total ${formatMoney(20000)}`);
+      expect(html).toContain('Adicional · Sin cobro');
+      expect(render({ additionals: [] })).toContain('No contratado');
+      expect(render({})).not.toContain('Descripción');
+    });
+  });
+
   it('muestra la permanencia con su tabla mes a mes cuando se pactó', () => {
     const schedule = Array.from({ length: 12 }, (_, index) => ({
       month: index + 1,

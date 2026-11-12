@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { OperatorCustomerServiceChannelSchema } from '../organization/operator-contract-profile';
+import { VatTreatment } from '../../enums/vat-treatment.enum';
 
 /**
  * Snapshot inmutable del contrato para el PDF (cierre de venta, bloque B; ADR-109 D5).
@@ -10,6 +11,13 @@ export const CONTRACT_DOCUMENT_SNAPSHOT_VERSION = 1 as const;
 
 const money = z.number().finite().nonnegative();
 const text = (max: number) => z.string().max(max);
+
+/** IVA congelado de un concepto (instalación o adicional) tal como se imprime en el PDF. */
+const itemVat = {
+  vatTreatment: z.nativeEnum(VatTreatment),
+  vatRatePercent: z.union([z.literal(0), z.literal(19)]),
+  vatLegalBasis: text(40),
+};
 
 export const ContractDocumentSnapshotSchema = z
   .object({
@@ -56,6 +64,23 @@ export const ContractDocumentSnapshotSchema = z
          * instantáneas anteriores a la fase 2; null si el contrato no lo tiene.
          */
         installationFee: money.nullable().optional(),
+        /**
+         * IVA de la instalación congelado en el contrato (`installation_vat_snapshot`, spec MOD14
+         * 2026-11-12). Opcional para leer instantáneas anteriores; null si el contrato no lo tiene.
+         */
+        installationVat: z.object(itemVat).strict().nullable().optional(),
+        /**
+         * Adicionales congelados en el contrato (`additional_vat_snapshot`) con su precio e IVA.
+         * `unitPrice` null: adicional legado sin precio vigente (no se cobra).
+         */
+        additionals: z
+          .array(
+            z
+              .object({ name: text(200).nullable(), unitPrice: money.nullable(), ...itemVat })
+              .strict(),
+          )
+          .max(50)
+          .optional(),
       })
       .strict(),
     installation: z

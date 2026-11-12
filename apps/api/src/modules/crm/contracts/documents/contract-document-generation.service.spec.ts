@@ -184,6 +184,78 @@ describe('ContractDocumentGenerationService', () => {
 
   const insertCall = () => query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO'))!;
 
+  it('lleva al snapshot el IVA congelado de la instalación y de los adicionales (MOD14)', async () => {
+    contracts.findOne.mockResolvedValueOnce({
+      ...(await contracts.findOne()),
+      installationVatSnapshot: {
+        treatment: 'EXEMPT',
+        legalBasis: 'ET_476_7',
+        ratePercent: 0,
+        source: 'CATALOG',
+        frozenAt: '2026-11-12T00:00:00.000Z',
+      },
+      additionalVatSnapshot: [
+        {
+          treatment: 'STANDARD',
+          legalBasis: 'ET_468',
+          ratePercent: 19,
+          source: 'CATALOG',
+          frozenAt: '2026-11-12T00:00:00.000Z',
+          itemId: 'p-1',
+          itemType: 'PRODUCT',
+          name: 'Router mesh',
+          unitPrice: '50000.00',
+        },
+        {
+          treatment: 'EXCLUDED',
+          legalBasis: 'ET_476_7',
+          ratePercent: 0,
+          source: 'DEFAULT',
+          frozenAt: '2026-11-12T00:00:00.000Z',
+          itemId: 's-1',
+          itemType: 'SERVICE',
+        },
+      ],
+    });
+    await run(() => service.request(CONTRACT_ID, ORDER_ID, actor));
+    const [, params] = insertCall();
+    const snapshot = JSON.parse(
+      decryptAes256Gcm(params[6] as string, Buffer.from(KEY_HEX, 'hex')),
+    ) as ContractDocumentSnapshot;
+    expect(ContractDocumentSnapshotSchema.parse(snapshot)).toBeTruthy();
+    expect(snapshot.service.installationVat).toEqual({
+      vatTreatment: 'EXEMPT',
+      vatRatePercent: 0,
+      vatLegalBasis: 'ET_476_7',
+    });
+    expect(snapshot.service.additionals).toEqual([
+      {
+        name: 'Router mesh',
+        unitPrice: 50000,
+        vatTreatment: 'STANDARD',
+        vatRatePercent: 19,
+        vatLegalBasis: 'ET_468',
+      },
+      {
+        name: null,
+        unitPrice: null,
+        vatTreatment: 'EXCLUDED',
+        vatRatePercent: 0,
+        vatLegalBasis: 'ET_476_7',
+      },
+    ]);
+  });
+
+  it('sin IVA congelado (contrato previo) el snapshot lleva null y sin adicionales', async () => {
+    await run(() => service.request(CONTRACT_ID, ORDER_ID, actor));
+    const [, params] = insertCall();
+    const snapshot = JSON.parse(
+      decryptAes256Gcm(params[6] as string, Buffer.from(KEY_HEX, 'hex')),
+    ) as ContractDocumentSnapshot;
+    expect(snapshot.service.installationVat).toBeNull();
+    expect(snapshot.service.additionals).toEqual([]);
+  });
+
   it('toma el snapshot cifrado, persiste PENDING y encola solo identificadores', async () => {
     const result = await run(() => service.request(CONTRACT_ID, ORDER_ID, actor));
 

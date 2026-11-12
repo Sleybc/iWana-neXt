@@ -4,7 +4,8 @@ import type { ContractDocumentSnapshot } from '@iwana/shared';
  * Relleno de la plantilla HTML del contrato (ADR-109 D5). Contrato con el bloque A:
  * - `{{ clave }}`: texto escapado (HTML). Claves en {@link buildContractTemplateValues}.
  * - `{{{ bloque }}}`: fragmento HTML construido aquí con valores ya escapados
- *   (`equipmentRows`, `customerServiceChannels`, `permanenceRows`).
+ *   (`equipmentRows`, `customerServiceChannels`, `permanenceRows`, `installationChargeRows`,
+ *   `additionalServiceRows`).
  * - `<!--IF:permanence-->…<!--ENDIF:permanence-->`: se conserva solo si el cliente aceptó
  *   la permanencia. Igual con `otherConditions`.
  * Una clave desconocida o una sección sin cerrar hace fallar el render (cerrado por defecto).
@@ -57,6 +58,84 @@ const CHANNEL_LABELS: Record<string, string> = {
   OFFICE: 'Oficina',
   OTHER: 'Otro',
 };
+
+type ItemVat = { vatTreatment: string; vatRatePercent: number; vatLegalBasis: string };
+
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+/** «ET_476_7» → «ET 476 7»: el código de base legal congelado, legible. */
+function legalBasisLabel(code: string): string {
+  return code.replace(/_/gu, ' ');
+}
+
+/** Etiqueta del IVA de un concepto según el tratamiento congelado (spec MOD14 2026-11-12). */
+function itemVatLabel(vat: ItemVat): string {
+  const basis = legalBasisLabel(vat.vatLegalBasis);
+  if (vat.vatTreatment === 'EXEMPT') return `Exento (0 %) · ${basis}`;
+  if (vat.vatTreatment === 'EXCLUDED') return `Excluido · ${basis}`;
+  return formatPercent(vat.vatRatePercent);
+}
+
+function vatAmountOf(base: number, vat: ItemVat): number {
+  return vat.vatTreatment === 'STANDARD' ? round2((base * vat.vatRatePercent) / 100) : 0;
+}
+
+const VALUE_CELL = '<td class="val">';
+const LABEL_CELL = '<td style="text-align:right">';
+
+/**
+ * Filas del cargo de instalación en «Valor de los servicios contratados»: base, IVA y total
+ * según el tratamiento congelado. Sin cargo, una fila «Sin cargo»; sin IVA congelado (contrato
+ * previo a MOD14), solo el valor congelado, como antes.
+ */
+function installationChargeRows(snapshot: ContractDocumentSnapshot): string {
+  const { installationFee, installationVat } = snapshot.service;
+  const title = 'CARGO DE INSTALACIÓN<br>(ÚNICO, PRIMER COBRO)';
+  if (installationFee == null || installationFee === 0) {
+    return `<tr>${LABEL_CELL}${title}</td>${VALUE_CELL}Sin cargo</td></tr>`;
+  }
+  if (!installationVat) {
+    return `<tr>${LABEL_CELL}${title}</td>${VALUE_CELL}${escapeHtml(formatMoney(installationFee))}</td></tr>`;
+  }
+  const vatAmount = vatAmountOf(installationFee, installationVat);
+  const vatCell =
+    installationVat.vatTreatment === 'STANDARD'
+      ? formatMoney(vatAmount)
+      : itemVatLabel(installationVat);
+  const vatTitle =
+    installationVat.vatTreatment === 'STANDARD'
+      ? `IVA INSTALACIÓN (${itemVatLabel(installationVat)})`
+      : 'IVA INSTALACIÓN';
+  return (
+    `<tr>${LABEL_CELL}${title}</td>${VALUE_CELL}${escapeHtml(formatMoney(installationFee))}</td></tr>` +
+    `<tr>${LABEL_CELL}${escapeHtml(vatTitle)}</td>${VALUE_CELL}${escapeHtml(vatCell)}</td></tr>` +
+    `<tr>${LABEL_CELL}TOTAL INSTALACIÓN</td>${VALUE_CELL}` +
+    `${escapeHtml(formatMoney(round2(installationFee + vatAmount)))}</td></tr>`
+  );
+}
+
+/** Filas de «Servicios adicionales»: nombre, precio, IVA y total congelados de cada uno. */
+function additionalServiceRows(snapshot: ContractDocumentSnapshot): string {
+  const additionals = snapshot.service.additionals ?? [];
+  if (additionals.length === 0) return '<tr><td class="light">No contratado</td></tr>';
+  return additionals
+    .map((item) => {
+      const name = escapeHtml(text(item.name, 'Adicional'));
+      if (item.unitPrice === null) return `<tr><td>${name} · Sin cobro</td></tr>`;
+      const vatAmount = vatAmountOf(item.unitPrice, item);
+      const vat =
+        item.vatTreatment === 'STANDARD'
+          ? `IVA ${itemVatLabel(item)} ${formatMoney(vatAmount)}`
+          : `IVA ${itemVatLabel(item)}`;
+      return (
+        `<tr><td>${name} · Precio ${escapeHtml(formatMoney(item.unitPrice))} · ` +
+        `${escapeHtml(vat)} · Total ${escapeHtml(formatMoney(round2(item.unitPrice + vatAmount)))}</td></tr>`
+      );
+    })
+    .join('');
+}
 
 /** Valores de texto (aún sin escapar) disponibles como `{{ clave }}`. */
 export function buildContractTemplateValues(
@@ -140,7 +219,13 @@ export function buildContractTemplateBlocks(
         `<td>${escapeHtml(formatMoney(row.amount))}</td></tr>`,
     )
     .join('');
-  return { equipmentRows, customerServiceChannels, permanenceRows };
+  return {
+    equipmentRows,
+    customerServiceChannels,
+    permanenceRows,
+    installationChargeRows: installationChargeRows(snapshot),
+    additionalServiceRows: additionalServiceRows(snapshot),
+  };
 }
 
 const SECTION_PATTERN = /<!--IF:([A-Za-z]+)-->([\s\S]*?)<!--ENDIF:\1-->/gu;
