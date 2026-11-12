@@ -118,6 +118,20 @@ import {
   type Subscriber360Quote,
   type Subscriber360Response,
   type SubscriberRecord,
+  type MigrationBatchReport,
+  type MigrationBatchSummary,
+  type MigrationMapping,
+  type MigrationMappingCreate,
+  type MigrationMappingKind,
+  type MigrationMappingUpdate,
+  type MigrationPendingValue,
+  type MigrationReconciliationReport,
+  type MigrationRevertResult,
+  type SubscriberDocument,
+  type CreateSubscriberTag,
+  type SubscriberTag,
+  type SubscriberTagChip,
+  type UpdateSubscriberTag,
   type SubscriberListItem,
   type SubscriberQueueCounts,
   type StockIssuePickableItem,
@@ -6068,6 +6082,8 @@ export interface ListSubscribersParams {
   contactPending?: boolean;
   fiscalIncomplete?: boolean;
   withoutLiveServices?: boolean;
+  /** ADR-110 D8 — etiqueta manual del catálogo (uuid). */
+  tagId?: string;
   search?: string;
   page?: number;
   limit?: number;
@@ -6805,6 +6821,151 @@ function pageQuery(params?: { page?: number; limit?: number }): string {
   return query ? `?${query}` : '';
 }
 
+/** Tiempo de espera de la subida de un lote: hasta 20 ZIP de 25 MB (ADR-110 D1). */
+const MIGRATION_UPLOAD_TIMEOUT_MS = 5 * 60_000;
+
+/** Importación por lotes desde UISP (ADR-110; ADMIN con migration.import.manage). */
+export const migrationApi = {
+  createBatch: (files: File[], tenantSlug?: string) => {
+    const body = new FormData();
+    for (const file of files) body.append('files', file);
+    return request<MigrationBatchSummary>(
+      '/migration/batches',
+      { method: 'POST', body, signal: AbortSignal.timeout(MIGRATION_UPLOAD_TIMEOUT_MS) },
+      tenantSlug,
+    );
+  },
+
+  listBatches: (params?: { page?: number; limit?: number }, tenantSlug?: string) =>
+    request<ListResponse<MigrationBatchSummary>>(
+      `/migration/batches${pageQuery(params)}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  getBatch: (batchId: string, tenantSlug?: string) =>
+    request<MigrationBatchReport>(
+      `/migration/batches/${encodeURIComponent(batchId)}`,
+      undefined,
+      tenantSlug,
+    ),
+
+  pendingMappings: (batchId: string, tenantSlug?: string) =>
+    request<MigrationPendingValue[]>(
+      `/migration/batches/${encodeURIComponent(batchId)}/pending-mappings`,
+      undefined,
+      tenantSlug,
+    ),
+
+  promote: (batchId: string, tenantSlug?: string) =>
+    request<{ id: string; status: 'CARGADO' }>(
+      `/migration/batches/${encodeURIComponent(batchId)}/promote`,
+      { method: 'POST' },
+      tenantSlug,
+    ),
+
+  reconcile: (batchId: string, tenantSlug?: string) =>
+    request<MigrationReconciliationReport>(
+      `/migration/batches/${encodeURIComponent(batchId)}/reconcile`,
+      { method: 'POST' },
+      tenantSlug,
+    ),
+
+  revert: (batchId: string, tenantSlug?: string) =>
+    request<MigrationRevertResult>(
+      `/migration/batches/${encodeURIComponent(batchId)}/revert`,
+      { method: 'POST' },
+      tenantSlug,
+    ),
+
+  listMappings: (kind?: MigrationMappingKind, tenantSlug?: string) =>
+    request<MigrationMapping[]>(
+      `/migration/mappings${kind ? `?kind=${encodeURIComponent(kind)}` : ''}`,
+      undefined,
+      tenantSlug,
+    ),
+
+  createMapping: (payload: MigrationMappingCreate, tenantSlug?: string) =>
+    request<MigrationMapping>(
+      '/migration/mappings',
+      { method: 'POST', body: JSON.stringify(payload) },
+      tenantSlug,
+    ),
+
+  updateMapping: (mappingId: string, payload: MigrationMappingUpdate, tenantSlug?: string) =>
+    request<MigrationMapping>(
+      `/migration/mappings/${encodeURIComponent(mappingId)}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      tenantSlug,
+    ),
+
+  removeMapping: (mappingId: string, tenantSlug?: string) =>
+    request<void>(
+      `/migration/mappings/${encodeURIComponent(mappingId)}`,
+      { method: 'DELETE' },
+      tenantSlug,
+    ),
+};
+
+/** Soportes documentales del suscriptor traídos por la importación (ADR-110 D13). */
+export const subscriberDocumentsApi = {
+  list: (subscriberId: string, tenantSlug?: string) =>
+    request<{ items: SubscriberDocument[] }>(
+      `/crm/subscribers/${encodeURIComponent(subscriberId)}/documents`,
+      undefined,
+      tenantSlug,
+    ),
+
+  /** Archivo del soporte; la API exige crm.subscribers.document.read y audita la descarga. */
+  download: (subscriberId: string, documentId: string, tenantSlug?: string) =>
+    request<Blob>(
+      `/crm/subscribers/${encodeURIComponent(subscriberId)}/documents/${encodeURIComponent(documentId)}/download`,
+      { responseType: 'blob' },
+      tenantSlug,
+    ),
+};
+
+/** Catálogo y asignación de etiquetas manuales del suscriptor (ADR-110 D8). */
+export const subscriberTagsApi = {
+  list: (tenantSlug?: string) =>
+    request<SubscriberTag[]>('/crm/subscriber-tags', undefined, tenantSlug),
+
+  create: (payload: CreateSubscriberTag, tenantSlug?: string) =>
+    request<SubscriberTag>(
+      '/crm/subscriber-tags',
+      { method: 'POST', body: JSON.stringify(payload) },
+      tenantSlug,
+    ),
+
+  update: (tagId: string, payload: UpdateSubscriberTag, tenantSlug?: string) =>
+    request<SubscriberTag>(
+      `/crm/subscriber-tags/${encodeURIComponent(tagId)}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      tenantSlug,
+    ),
+
+  remove: (tagId: string, tenantSlug?: string) =>
+    request<void>(
+      `/crm/subscriber-tags/${encodeURIComponent(tagId)}`,
+      { method: 'DELETE' },
+      tenantSlug,
+    ),
+
+  assign: (subscriberId: string, tagId: string, tenantSlug?: string) =>
+    request<SubscriberTagChip[]>(
+      `/crm/subscribers/${encodeURIComponent(subscriberId)}/tags/${encodeURIComponent(tagId)}`,
+      { method: 'PUT' },
+      tenantSlug,
+    ),
+
+  unassign: (subscriberId: string, tagId: string, tenantSlug?: string) =>
+    request<SubscriberTagChip[]>(
+      `/crm/subscribers/${encodeURIComponent(subscriberId)}/tags/${encodeURIComponent(tagId)}`,
+      { method: 'DELETE' },
+      tenantSlug,
+    ),
+};
+
 export const subscribersApi = {
   create: (payload: CreateSubscriberPayload, tenantSlug?: string) =>
     request<SubscriberRecord>(
@@ -6839,6 +7000,7 @@ export const subscribersApi = {
     if (params?.withoutLiveServices !== undefined) {
       searchParams.set('withoutLiveServices', String(params.withoutLiveServices));
     }
+    if (params?.tagId) searchParams.set('tagId', params.tagId);
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.limit) searchParams.set('limit', String(params.limit));
     if (params?.sortBy) searchParams.set('sortBy', params.sortBy);

@@ -225,13 +225,18 @@ export class BillingGenerationService {
     return rows.length > 0;
   }
 
-  /** Todos los documentos del contrato siguen en BORRADOR (sin emitidos ni anulados). */
+  /**
+   * Todos los documentos del contrato siguen en BORRADOR (sin emitidos ni anulados). Los
+   * IMPORTADO de UISP (ADR-110 D5) no cuentan: no impiden congelar instalación ni datos
+   * fiscales en el primer cobro propio.
+   */
   async onlyDraftDocuments(contractId: string): Promise<boolean> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const rows = (await runInTenantSchema(this.dataSource, schemaName, (qr) =>
       qr.query(
         `SELECT 1 FROM billing_documents
-          WHERE tenant_id = $1 AND contract_id = $2 AND status <> 'BORRADOR' LIMIT 1`,
+          WHERE tenant_id = $1 AND contract_id = $2 AND status NOT IN ('BORRADOR', 'IMPORTADO')
+          LIMIT 1`,
         [tenantId, contractId],
       ),
     )) as unknown[];

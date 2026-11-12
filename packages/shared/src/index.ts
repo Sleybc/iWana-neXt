@@ -69,6 +69,7 @@ export * from './contracts/network';
 export * from './contracts/crm';
 export * from './contracts/organization';
 export * from './contracts/billing';
+export * from './contracts/migration';
 
 // Operations
 export * from './operations/task-type-to-wfm-work-type';
@@ -83,6 +84,7 @@ export * from './schemas/subscriber.schema';
 export * from './schemas/lifecycle.schema';
 export * from './schemas/list-meta.schema';
 export * from './schemas/subscriber-note.schema';
+export * from './schemas/subscriber-tag.schema';
 export * from './schemas/contract.schema';
 export * from './schemas/billing-cycle.schema';
 export * from './schemas/tax-profile-snapshot';

@@ -4,10 +4,15 @@ import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Badge, Button, Input, cn } from '@iwana/ui';
-import type { ListMeta, SubscriberListItem } from '@iwana/shared';
+import type { ListMeta, SubscriberListItem, SubscriberTag } from '@iwana/shared';
 import { COUNTRY_PHONE_PREFIX, CustomerSegment, PersonType, SubscriberStatus } from '@iwana/shared';
 import { CircleDashed, Plus } from 'lucide-react';
-import { type ListSubscribersParams, subscribersApi, tenantSelfApi } from '@/lib/api-client';
+import {
+  type ListSubscribersParams,
+  subscriberTagsApi,
+  subscribersApi,
+  tenantSelfApi,
+} from '@/lib/api-client';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
 import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
@@ -47,6 +52,7 @@ import { SubscriberDerivedBadges } from './SubscriberDerivedBadges';
 import { deriveSubscriberListBadges } from './subscriber-badges';
 import { SubscriberMoreFilters, type SubscriberActiveFilter } from './SubscriberMoreFilters';
 import { SubscriberPeek } from './SubscriberPeek';
+import { SubscriberTagChips } from './tags/SubscriberTagChips';
 import {
   SubscriberQueueChips,
   SUBSCRIBER_QUEUE_OPTIONS,
@@ -61,6 +67,7 @@ const FILTER_KEYS = [
   'personType',
   'customerSegment',
   'stratum',
+  'tagId',
   'mode',
   'queue',
   'peek',
@@ -166,6 +173,26 @@ function SubscribersListClientInner() {
   }, [setQuery]);
 
   const [records, setRecords] = useState<SubscriberListItem[]>([]);
+  // Catálogo de etiquetas para el filtro; si falla, el filtro simplemente no se muestra.
+  const [tagCatalog, setTagCatalog] = useState<SubscriberTag[]>([]);
+  useEffect(() => {
+    let active = true;
+    Promise.resolve()
+      .then(() => subscriberTagsApi.list())
+      .then((data) => {
+        if (active) setTagCatalog(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (active) setTagCatalog([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  const tagOptions = useMemo(
+    () => tagCatalog.map((item) => ({ value: item.id, label: item.name })),
+    [tagCatalog],
+  );
   const [meta, setMeta] = useState<ListMeta>(EMPTY_LIST_META);
   const [initialLoading, setInitialLoading] = useState(true);
   const [showInitialSkeleton, setShowInitialSkeleton] = useState(false);
@@ -222,6 +249,7 @@ function SubscribersListClientInner() {
   const personTypeFilter = filters.personType ?? '';
   const segmentFilter = filters.customerSegment ?? '';
   const stratumFilter = filters.stratum ?? '';
+  const tagFilter = filters.tagId ?? '';
   const queueFilter = filters.queue ?? '';
   const queueSlug = SUBSCRIBER_QUEUE_OPTIONS.some((item) => item.value === queueFilter)
     ? (queueFilter as SubscriberQueueKey)
@@ -288,6 +316,7 @@ function SubscribersListClientInner() {
     if (personTypeFilter) params.personType = personTypeFilter as PersonType;
     if (segmentFilter) params.customerSegment = segmentFilter as CustomerSegment;
     if (stratumFilter) params.stratum = Number(stratumFilter);
+    if (tagFilter) params.tagId = tagFilter;
     if (queueSlug === 'contactPending') params.contactPending = true;
     if (queueSlug === 'fiscalIncomplete') params.fiscalIncomplete = true;
     if (queueSlug === 'withoutLiveServices') params.withoutLiveServices = true;
@@ -306,6 +335,7 @@ function SubscribersListClientInner() {
     sortDir,
     statusFilter,
     stratumFilter,
+    tagFilter,
     textSearch,
     queueSlug,
     queueStatus,
@@ -520,7 +550,13 @@ function SubscribersListClientInner() {
   }, [page]);
 
   const hasActiveFilters = Boolean(
-    textSearch || queueSlug || statusFilter || personTypeFilter || segmentFilter || stratumFilter,
+    textSearch ||
+    queueSlug ||
+    statusFilter ||
+    personTypeFilter ||
+    segmentFilter ||
+    stratumFilter ||
+    tagFilter,
   );
 
   const pageCount = meta.totalPages ?? (meta.total > 0 ? 1 : 0);
@@ -544,6 +580,7 @@ function SubscribersListClientInner() {
       personType: null,
       customerSegment: null,
       stratum: null,
+      tagId: null,
     });
   }
 
@@ -585,6 +622,14 @@ function SubscribersListClientInner() {
       key: 'stratum',
       label: 'Estrato',
       value: STRATUM_OPTIONS.find((item) => item.value === stratumFilter)?.label ?? '',
+    });
+  }
+
+  if (tagFilter) {
+    activeFilterItems.push({
+      key: 'tagId',
+      label: 'Etiqueta',
+      value: tagCatalog.find((item) => item.id === tagFilter)?.name ?? 'Etiqueta eliminada',
     });
   }
 
@@ -865,6 +910,9 @@ function SubscribersListClientInner() {
                 onPersonTypeChange={(value) => setFilters({ personType: value || null })}
                 onSegmentChange={(value) => setFilters({ customerSegment: value || null })}
                 onStratumChange={(value) => setFilters({ stratum: value || null })}
+                tag={tagFilter}
+                tagOptions={tagOptions}
+                onTagChange={(value) => setFilters({ tagId: value || null })}
                 activeFilters={activeFilterItems}
                 onRemoveFilter={removeFilter}
                 onClearFilters={clearFilters}
@@ -894,6 +942,7 @@ function SubscribersListClientInner() {
                         personType: draft.personType || null,
                         customerSegment: draft.segment || null,
                         stratum: draft.stratum || null,
+                        tagId: draft.tag || null,
                       },
                     },
                     { history: 'replace' },
@@ -1079,6 +1128,7 @@ function SubscribersListClientInner() {
                                   badges={deriveSubscriberListBadges(subscriber)}
                                   className="mt-1"
                                 />
+                                <SubscriberTagChips tags={subscriber.tags} className="mt-1" />
                               </td>
                               <td className={portalDataTableCellClassName}>
                                 <p className="font-medium">{service.title}</p>

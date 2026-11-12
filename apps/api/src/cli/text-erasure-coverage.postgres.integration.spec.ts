@@ -23,8 +23,8 @@ if (integrationEnabled && !supportedDatabaseName) {
 
 jest.setTimeout(900_000);
 
-const EXPECTED_MANIFEST_SIZE = 743;
-const EXPECTED_CLASSIFIED_MOD14 = 37;
+const EXPECTED_MANIFEST_SIZE = 777;
+const EXPECTED_CLASSIFIED_MOD14 = 41; // +billing_documents.external_pdf_key (199)
 
 /**
  * Predicado textual D-BT-10: el mismo que produjo el manifiesto desde
@@ -61,7 +61,7 @@ export function assertTextErasureManifestCovers(
 }
 
 describe('D-BT-10 — manifiesto de columnas textuales (puro)', () => {
-  it('el manifiesto declara 743 entradas únicas con motivo no vacío', () => {
+  it('el manifiesto declara 766 entradas únicas con motivo no vacío', () => {
     expect(TEXT_ERASURE_MANIFEST).toHaveLength(EXPECTED_MANIFEST_SIZE);
     const keys = TEXT_ERASURE_MANIFEST.map((entry) => `${entry.t}.${entry.c}`);
     expect(new Set(keys).size).toBe(EXPECTED_MANIFEST_SIZE);
@@ -70,7 +70,7 @@ describe('D-BT-10 — manifiesto de columnas textuales (puro)', () => {
     }
   });
 
-  it('MOD14 clasifica sus 37 columnas con siete reglas de supresión y cero pendientes', () => {
+  it('MOD14 clasifica sus 41 columnas con siete reglas de supresión y cero pendientes', () => {
     const pending = TEXT_ERASURE_MANIFEST.filter((entry) => entry.k === 'PENDIENTE-MOD14');
     expect(pending).toHaveLength(0);
     const classified = TEXT_ERASURE_MANIFEST.filter(

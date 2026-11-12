@@ -2,8 +2,9 @@ import { DataSource } from 'typeorm';
 import { createBillingTenantFixture } from '../../../../../packages/database/src/migrations/tenant/billing-migration.integration-helpers';
 import { BillingCore1730000000173 } from '../../../../../packages/database/src/migrations/tenant/173_billing_core';
 import { BillingLineKindInstallation1930000000193 } from '../../../../../packages/database/src/migrations/tenant/193_billing_line_kind_installation';
+import { BillingImportedDocuments1970000000197 } from '../../../../../packages/database/src/migrations/tenant/197_billing_imported_documents';
 
-/** Billing siempre se crea con la 173 real; las tablas mínimas de CRM son del fixture del adaptador. */
+/** Billing siempre se crea con la 173 real (más 193 y 197); las tablas mínimas de CRM son del fixture del adaptador. */
 export async function createBillingSchema(dataSource: DataSource) {
   const fixture = await createBillingTenantFixture(dataSource, 'tenant_billing173');
   const qr = fixture.queryRunner;
@@ -64,6 +65,7 @@ export async function createBillingSchema(dataSource: DataSource) {
       `);
     await new BillingCore1730000000173().up(qr);
     await new BillingLineKindInstallation1930000000193().up(qr);
+    await new BillingImportedDocuments1970000000197().up(qr);
     await qr.commitTransaction();
   } catch (error) {
     await qr.rollbackTransaction();

@@ -30,6 +30,8 @@ export function billingError(error: unknown): string {
       return 'No se encontró el estado de cuenta de este titular.';
     if (error.code === 'BILLING_POLICY_CHANGED')
       return 'La política fue modificada recientemente. Vuelve a abrirla para consultar los valores vigentes.';
+    if (error.code === 'BILLING_IMPORTED_PDF_NOT_AVAILABLE')
+      return 'El PDF de este documento histórico no se trajo en la importación.';
     // Primer cobro (spec 2026-11-11 R3).
     if (error.code === 'CONTRACT_NOT_FOUND')
       return 'No encontramos este contrato. Actualiza la página e inténtalo de nuevo.';

@@ -103,16 +103,28 @@ export const BillingDocumentResponseSchema = z
   .object({
     id: z.string().uuid(),
     tenantId: z.string().uuid(),
-    periodId: z.string().uuid(),
+    /** `null` solo en un documento `IMPORTADO` (ADR-110 D5): no pertenece a un periodo de iWana. */
+    periodId: z.string().uuid().nullable(),
     contractId: z.string().uuid(),
     subscriberId: z.string().uuid(),
     status: z.enum(BILLING_DOCUMENT_STATUSES),
     number: z.string().nullable().optional(),
+    /** Número del sistema de origen; solo en un documento `IMPORTADO`. */
+    externalNumber: z.string().nullable().optional(),
     issueDate: z.string().nullable().optional(),
     dueDate: z.string(),
-    periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
-    periodEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
-    coveredStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+    periodStart: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/u)
+      .nullable(),
+    periodEnd: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/u)
+      .nullable(),
+    coveredStart: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/u)
+      .nullable(),
     paymentState: z.enum(BILLING_PERIOD_PAYMENT_STATES).nullable(),
     buyerProtected: z.boolean(),
     subtotal: billingMoneyStringSchema,

@@ -16,8 +16,16 @@ import {
   type BillingDocumentResponse,
   type SignedContractDocument,
   type SignedContractDownloadRestriction,
+  type SubscriberDocument,
+  type SubscriberDocumentKind,
 } from '@iwana/shared';
-import { ApiError, crmApi, type Contract, type ExpedienteDocumentItem } from '@/lib/api-client';
+import {
+  ApiError,
+  crmApi,
+  subscriberDocumentsApi,
+  type Contract,
+  type ExpedienteDocumentItem,
+} from '@/lib/api-client';
 import { usePermissions } from '@/components/access-control/permissions-context';
 import { downloadBillingDocumentPdf } from '@/components/billing/billing-document-pdf';
 import { getSafeCrmErrorMessage } from '@/components/crm/expedientes/crm-error-message';
@@ -40,7 +48,8 @@ import { STRATUM_EVIDENCE_FORMATS_LABEL, stratumEvidenceFileError } from './stra
 export type SubscriberDocumentAction =
   | { kind: 'link'; href: string }
   | { kind: 'pdf'; document: Pick<BillingDocumentResponse, 'id' | 'number'> }
-  | { kind: 'signed-contract'; contractId: string };
+  | { kind: 'signed-contract'; contractId: string }
+  | { kind: 'imported-support'; document: Pick<SubscriberDocument, 'id' | 'contentType'> };
 
 export interface SubscriberDocumentRow {
   key: string;
@@ -50,6 +59,8 @@ export interface SubscriberDocumentRow {
   version: string;
   /** No existe portal del titular: hoy ningún documento le es visible. */
   visibleToTitular: boolean;
+  /** Origen visible cuando el documento no nació en iWana (ADR-110 D13). */
+  origin?: string;
   action?: SubscriberDocumentAction;
   /** Por qué la fila no se puede descargar (p. ej. contrato firmado sin permiso). */
   note?: string;
@@ -110,18 +121,111 @@ export function stratumRows(contracts: Contract[], anonymized: boolean): Subscri
     }));
 }
 
+export const IMPORTED_ORIGIN_LABEL = 'Importado';
+
 export function billingRows(statement: BillingAccountStatement): SubscriberDocumentRow[] {
-  return statement.documents
-    .filter((document) => document.status === 'EMITIDO')
-    .map((document) => ({
-      key: `cobro:${document.id}`,
-      type: `Documento de cobro ${document.number ?? ''}`.trim(),
-      date: document.issueDate ?? document.createdAt,
-      author: null,
-      version: 'Emitido',
-      visibleToTitular: false,
-      action: { kind: 'pdf', document },
-    }));
+  return statement.documents.flatMap((document): SubscriberDocumentRow[] => {
+    if (document.status === 'EMITIDO') {
+      return [
+        {
+          key: `cobro:${document.id}`,
+          type: `Documento de cobro ${document.number ?? ''}`.trim(),
+          date: document.issueDate ?? document.createdAt,
+          author: null,
+          version: 'Emitido',
+          visibleToTitular: false,
+          action: { kind: 'pdf', document },
+        },
+      ];
+    }
+    // ADR-110 D5: historial traído de UISP; se identifica por su número del sistema de origen.
+    if (document.status === 'IMPORTADO') {
+      const externalNumber = document.externalNumber ?? null;
+      return [
+        {
+          key: `cobro:${document.id}`,
+          type: `Histórico importado ${externalNumber ?? ''}`.trim(),
+          date: document.issueDate ?? document.createdAt,
+          author: null,
+          version: 'Histórico importado',
+          visibleToTitular: false,
+          origin: IMPORTED_ORIGIN_LABEL,
+          action: { kind: 'pdf', document: { id: document.id, number: externalNumber } },
+        },
+      ];
+    }
+    return [];
+  });
+}
+
+const IMPORTED_SUPPORT_TYPES: Record<SubscriberDocumentKind, string> = {
+  PDF: 'Soporte importado (PDF)',
+  IMAGEN: 'Soporte importado (imagen)',
+  OTRO: 'Soporte importado',
+};
+
+/** Soportes que trajo la importación (ADR-110 D13); sin nombre de archivo ni autor. */
+export function importedSupportRows(
+  items: SubscriberDocument[],
+  canDownload: boolean,
+): SubscriberDocumentRow[] {
+  return items.map((item) => ({
+    key: `importado:${item.id}`,
+    type: IMPORTED_SUPPORT_TYPES[item.kind],
+    date: item.documentDate ?? item.createdAt,
+    author: null,
+    version: 'Vigente',
+    visibleToTitular: false,
+    origin: IMPORTED_ORIGIN_LABEL,
+    ...(canDownload
+      ? { action: { kind: 'imported-support', document: item } as const }
+      : { note: 'Sin descarga: no tienes permiso para ver los soportes del suscriptor.' }),
+  }));
+}
+
+const IMPORTED_SUPPORT_EXTENSIONS: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+};
+
+async function downloadImportedSupport(
+  subscriberId: string,
+  document: Pick<SubscriberDocument, 'id' | 'contentType'>,
+): Promise<void> {
+  const blob = await subscriberDocumentsApi.download(subscriberId, document.id);
+  const url = URL.createObjectURL(blob);
+  try {
+    const link = window.document.createElement('a');
+    link.href = url;
+    const extension = IMPORTED_SUPPORT_EXTENSIONS[document.contentType];
+    link.download = extension ? `soporte.${extension}` : 'soporte';
+    link.click();
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+}
+
+/** Descarga del PDF de un documento de cobro; el histórico importado puede no traer su PDF. */
+function billingPdfErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.code === 'BILLING_IMPORTED_PDF_NOT_AVAILABLE') {
+    return 'El PDF de este documento histórico no se trajo en la importación.';
+  }
+  return 'No pudimos descargar el PDF. Intenta de nuevo.';
+}
+
+function importedSupportErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.code === 'SUBSCRIBER_DOCUMENT_NOT_FOUND') {
+    return 'Este soporte importado ya no está disponible.';
+  }
+  if (error instanceof ApiError && error.status === 403) {
+    return 'No tienes permiso para descargar este soporte.';
+  }
+  if (error instanceof ApiError && error.status === 409) {
+    return 'Los datos de este suscriptor están restringidos; el soporte no se puede descargar.';
+  }
+  return 'No pudimos descargar el soporte. Intenta de nuevo.';
 }
 
 const SIGNED_CONTRACT_RESTRICTION_NOTES: Record<SignedContractDownloadRestriction, string> = {
@@ -214,6 +318,8 @@ export function SubscriberDocumentsPanel({
 }: SubscriberDocumentsPanelProps) {
   const { hasPermission } = usePermissions();
   const canReadSupports = hasPermission(AccessPermissionKey.CRM_EXPEDIENTES_READ);
+  const canDownloadImported =
+    hasPermission(AccessPermissionKey.CRM_SUBSCRIBERS_DOCUMENT_READ) && !anonymized && !restricted;
   const canUpload =
     hasPermission(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE) && !anonymized && !restricted;
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -224,6 +330,27 @@ export function SubscriberDocumentsPanel({
     items: SignedContractDocument[];
     error: boolean;
   }>({ items: [], error: false });
+  const [imported, setImported] = useState<{ items: SubscriberDocument[]; error: boolean }>({
+    items: [],
+    error: false,
+  });
+
+  // Soportes importados (ADR-110 D13): carga aparte; si falla, el resto se sigue mostrando.
+  useEffect(() => {
+    if (!subscriberId) return;
+    let active = true;
+    subscriberDocumentsApi.list(subscriberId).then(
+      (response) => {
+        if (active) setImported({ items: response.items, error: false });
+      },
+      () => {
+        if (active) setImported({ items: [], error: true });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [subscriberId]);
 
   // Carga aparte de los soportes: si falla, el resto de documentos se sigue mostrando.
   useEffect(() => {
@@ -277,14 +404,27 @@ export function SubscriberDocumentsPanel({
     }
   }
 
+  async function downloadImported(document: Pick<SubscriberDocument, 'id' | 'contentType'>) {
+    if (downloading || !subscriberId) return;
+    setPdfError(null);
+    setDownloading(document.id);
+    try {
+      await downloadImportedSupport(subscriberId, document);
+    } catch (error) {
+      setPdfError(importedSupportErrorMessage(error));
+    } finally {
+      setDownloading(null);
+    }
+  }
+
   async function download(document: Pick<BillingDocumentResponse, 'id' | 'number'>) {
     if (downloading) return;
     setPdfError(null);
     setDownloading(document.id);
     try {
       await downloadBillingDocumentPdf(document);
-    } catch {
-      setPdfError('No pudimos descargar el PDF. Intenta de nuevo.');
+    } catch (error) {
+      setPdfError(billingPdfErrorMessage(error));
     } finally {
       setDownloading(null);
     }
@@ -316,6 +456,7 @@ export function SubscriberDocumentsPanel({
             ...supportRows(snapshot.items),
             ...signedContractRows(signed.items, contracts, anonymized),
             ...stratumRows(contracts, anonymized),
+            ...importedSupportRows(imported.items, canDownloadImported),
             ...(statement && !anonymized ? billingRows(statement) : []),
           ];
           return (
@@ -334,13 +475,20 @@ export function SubscriberDocumentsPanel({
                   description="Se muestran los demás documentos del suscriptor."
                 />
               ) : null}
+              {imported.error ? (
+                <PortalAlert
+                  variant="warning"
+                  title="No pudimos cargar los soportes importados"
+                  description="Se muestran los demás documentos del suscriptor."
+                />
+              ) : null}
               {pdfError ? <PortalAlert variant="error" title={pdfError} /> : null}
               {rows.length === 0 ? (
                 <PortalEmptyState
                   embedded
                   icon={FileText}
                   title="Aún no hay documentos"
-                  description="Aquí aparecen los soportes de la venta, el soporte de estrato y los documentos de cobro emitidos."
+                  description="Aquí aparecen los soportes de la venta, el soporte de estrato, los soportes importados y los documentos de cobro."
                 />
               ) : (
                 <ul
@@ -373,6 +521,12 @@ export function SubscriberDocumentsPanel({
                             <dt>Versión:</dt>
                             <dd className="text-gray-900 dark:text-white">{row.version}</dd>
                           </div>
+                          {row.origin ? (
+                            <div className="flex gap-1">
+                              <dt>Origen:</dt>
+                              <dd className="text-gray-900 dark:text-white">{row.origin}</dd>
+                            </div>
+                          ) : null}
                           <div className="flex gap-1">
                             <dt>Visible para el titular:</dt>
                             <dd className="text-gray-900 dark:text-white">
@@ -409,6 +563,22 @@ export function SubscriberDocumentsPanel({
                           }}
                         >
                           Descargar PDF
+                        </Button>
+                      ) : row.action?.kind === 'imported-support' ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="min-h-11"
+                          aria-label={`Descargar ${row.type}`}
+                          disabled={downloading !== null}
+                          loading={downloading === row.action.document.id}
+                          onClick={() => {
+                            if (row.action?.kind === 'imported-support') {
+                              void downloadImported(row.action.document);
+                            }
+                          }}
+                        >
+                          Descargar
                         </Button>
                       ) : row.action?.kind === 'signed-contract' ? (
                         <Button

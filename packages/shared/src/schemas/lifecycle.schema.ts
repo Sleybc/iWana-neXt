@@ -141,16 +141,23 @@ export type LifecycleTerminateCommand = z.infer<typeof LifecycleTerminateCommand
 export type LifecyclePreviewRequest = z.infer<typeof LifecyclePreviewRequestSchema>;
 export type LifecyclePreviewResponse = z.infer<typeof LifecyclePreviewResponseSchema>;
 
+/** Origen del cambio; `IMPORTADO` lo escribe solo la importación UISP (migración 199). */
+export const LIFECYCLE_CHANGE_SOURCES = ['MANUAL', 'SYSTEM', 'BILLING', 'IMPORTADO'] as const;
+export type LifecycleChangeSource = (typeof LIFECYCLE_CHANGE_SOURCES)[number];
+/** Motivo reservado del historial importado (CHECK de la 199). */
+export const LIFECYCLE_IMPORTED_REASON_CODE = 'HISTORICO_IMPORTADO';
+
 export interface LifecycleChangeRecord {
   id: string;
   entityType: 'SUBSCRIBER' | 'CONTRACT';
   entityId: string;
   fromStatus: string;
   toStatus: string;
+  /** `HISTORICO_IMPORTADO` acompaña siempre a `source = 'IMPORTADO'` (DDL 199, ADR-110 D3). */
   reasonCode: string;
   /** Solo se incluye cuando el actor dispone de CRM_SUBSCRIBERS_MANAGE. */
   note?: string | null;
-  source: 'MANUAL' | 'SYSTEM' | 'BILLING';
+  source: LifecycleChangeSource;
   batchId: string;
   actorId: string | null;
   changedAt: string;

@@ -158,4 +158,33 @@ describe('SubscriberStatementSummary (spec 2026-11-09 §3)', () => {
     await user.click(within(region).getByRole('button', { name: 'Reintentar' }));
     expect(reload).toHaveBeenCalledTimes(1);
   });
+
+  it('D14: cuenta la deuda IMPORTADO como pendiente, con número de origen y sin periodo', () => {
+    const imported = buildDocument({
+      id: 'b1111111-1111-4111-8111-111111111111',
+      status: 'IMPORTADO',
+      number: null,
+      externalNumber: 'UISP-778',
+      periodId: null,
+      periodStart: null,
+      periodEnd: null,
+      coveredStart: null,
+      dueDate: '2026-08-01',
+      pendingAmount: '50.00',
+    } as Partial<BillingDocumentResponse>);
+    const settled = buildDocument({
+      id: 'b2222222-2222-4222-8222-222222222222',
+      status: 'IMPORTADO',
+      number: null,
+      externalNumber: 'UISP-779',
+      pendingAmount: '0.00',
+    } as Partial<BillingDocumentResponse>);
+    const { region } = renderSummary(loaded({ ...STATEMENT, documents: [imported, settled] }));
+    const items = within(region).getAllByRole('listitem');
+    expect(items).toHaveLength(1);
+    expect(items[0]).toHaveTextContent('UISP-778');
+    expect(items[0]).toHaveTextContent('Sin periodo');
+    expect(items[0]).toHaveTextContent(money('50.00'));
+    expect(within(region).queryByText('UISP-779')).not.toBeInTheDocument();
+  });
 });

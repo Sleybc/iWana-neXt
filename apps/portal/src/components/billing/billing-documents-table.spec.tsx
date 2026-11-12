@@ -22,7 +22,10 @@ jest.mock('@/lib/api-client', () => {
 });
 
 jest.mock('@/components/access-control/permissions-context', () => ({
-  usePermissions: () => ({ hasPermission: () => true }),
+  usePermissions: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () => (ctx ??= { hasPermission: () => true });
+  })(),
 }));
 
 const BASE: BillingDocumentResponse = {
@@ -161,5 +164,23 @@ describe('BillingDocumentTable — línea de instalación (fase 2, CA-4/CA-5)', 
     expect(await screen.findByText('Instalación')).toBeInTheDocument();
     expect(screen.getByText(/descuento por permanencia/)).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Tipo' })).toBeInTheDocument();
+  });
+
+  it('ofrece «Descargar PDF» para un histórico importado, sin anular', () => {
+    renderTable([
+      {
+        ...BASE,
+        status: 'IMPORTADO',
+        number: null,
+        externalNumber: 'UISP-778',
+        periodId: null,
+        periodStart: null,
+        periodEnd: null,
+        coveredStart: null,
+      } as BillingDocumentResponse,
+    ]);
+    expect(screen.getByText('UISP-778')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Descargar PDF' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Anular documento' })).not.toBeInTheDocument();
   });
 });

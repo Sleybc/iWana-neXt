@@ -66,4 +66,6 @@ export enum AccessPermissionKey {
   NETWORK_PROVISIONING_EXECUTE = 'network.provisioning.execute',
   NETWORK_PROVISIONING_CERTIFY = 'network.provisioning.certify',
   NETWORK_PROVISIONING_REGULARIZE = 'network.provisioning.regularize',
+  /** Importar clientes desde otro sistema por lotes (ADR-110 D9): simular, promover, conciliar, revertir. */
+  MIGRATION_IMPORT_MANAGE = 'migration.import.manage',
 }

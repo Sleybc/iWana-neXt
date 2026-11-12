@@ -6,6 +6,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Optional,
   Param,
   ParseUUIDPipe,
   Post,
@@ -57,6 +58,7 @@ import { BillingGenerationService } from '../generation/billing-generation.servi
 import { BillingFirstChargeService } from '../generation/billing-first-charge.service';
 import { BillingDocumentsService } from './billing-documents.service';
 import { renderBillingDocumentPdf } from './billing-documents.pdf';
+import { BillingImportedPdfService } from './billing-imported-pdf.service';
 
 const generationSummaryFields = BillingGenerationSummarySchema.keyof().options;
 
@@ -178,6 +180,7 @@ export class BillingDocumentsController {
     private readonly documents: BillingDocumentsService,
     private readonly generation: BillingGenerationService,
     private readonly firstCharge: BillingFirstChargeService,
+    @Optional() private readonly importedPdf?: BillingImportedPdfService,
   ) {}
 
   @Post('generate')
@@ -367,16 +370,38 @@ export class BillingDocumentsController {
   @Get(':id/pdf')
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SUPPORT, UserRole.SALES, UserRole.AUDITOR)
   @Permissions(AccessPermissionKey.BILLING_INVOICES_READ)
-  @ApiOperation({ summary: 'Descargar el PDF de un documento emitido' })
+  @ApiOperation({
+    summary: 'Descargar el PDF de un documento emitido o el histórico de un importado',
+    description:
+      'EMITIDO: se renderiza. IMPORTADO (ADR-110 D5): se entrega el PDF de UISP cifrado en reposo, sin caché y auditado (RECORD_ACCESS).',
+  })
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiProduces('application/pdf')
   @ApiOkResponse({ description: 'Documento de cobro PDF.' })
+  @ApiResponse({ status: 404, description: 'BILLING_IMPORTED_PDF_NOT_AVAILABLE' })
+  @ApiResponse({
+    status: 409,
+    description: 'BILLING_DOCUMENT_NOT_ISSUED o BILLING_IMPORTED_PDF_RESTRICTED (DATOS_BLOQUEADOS)',
+  })
   async pdf(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Req() request: AuthenticatedRequest,
     @Res() response: Response,
   ): Promise<void> {
     const document = await this.documents.pdfDocument(id, actorId(request));
+    if (document.status === 'IMPORTADO' && this.importedPdf) {
+      // ADR-110 D5: el PDF histórico de UISP, sin renderizar como documento de iWana.
+      const imported = await this.importedPdf.read(document.id, {
+        actorId: actorId(request),
+        buyerProtected: document.buyerProtected === true,
+      });
+      response.setHeader('Content-Type', 'application/pdf');
+      response.setHeader('Cache-Control', 'no-store');
+      response.setHeader('X-Content-Type-Options', 'nosniff');
+      response.setHeader('Content-Disposition', 'attachment; filename="historico-importado.pdf"');
+      response.send(imported);
+      return;
+    }
     if (document.status !== 'EMITIDO') {
       throw new ConflictException({
         code: 'BILLING_DOCUMENT_NOT_ISSUED',

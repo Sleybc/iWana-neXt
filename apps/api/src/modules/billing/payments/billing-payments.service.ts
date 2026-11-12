@@ -92,16 +92,18 @@ type BlockedDataReadAccess = {
 type StatementDocumentRow = {
   id: string;
   tenant_id: string;
-  period_id: string;
+  /** `null` solo en un documento `IMPORTADO` (ADR-110 D5). */
+  period_id: string | null;
   contract_id: string;
   subscriber_id: string;
-  status: 'BORRADOR' | 'EMITIDO' | 'ANULADO';
+  status: 'BORRADOR' | 'EMITIDO' | 'ANULADO' | 'IMPORTADO';
   number: string | null;
+  external_number: string | null;
   issue_date: string | null;
   due_date: string;
-  period_start: string;
-  period_end: string;
-  covered_start: string;
+  period_start: string | null;
+  period_end: string | null;
+  covered_start: string | null;
   subtotal: string;
   tax_total: string;
   total: string;
@@ -414,7 +416,8 @@ export class BillingPaymentsService extends BillingAccountReadPort {
         `SELECT DISTINCT d.period_id::text AS period_id
            FROM billing_payment_allocations a
            JOIN billing_documents d ON d.id = a.document_id AND d.tenant_id = a.tenant_id
-          WHERE a.payment_id = $1::uuid AND a.tenant_id = $2 AND a.reversed_at IS NULL`,
+          WHERE a.payment_id = $1::uuid AND a.tenant_id = $2 AND a.reversed_at IS NULL
+            AND d.status <> 'IMPORTADO' AND d.period_id IS NOT NULL`,
         [paymentId, tenantId],
       )) as Array<{ period_id: string }>;
       await qr.manager.query(
@@ -687,7 +690,8 @@ export class BillingPaymentsService extends BillingAccountReadPort {
         suspendedByImpersonation;
       const documentRows = (await qr.manager.query(
         `SELECT d.id::text, d.tenant_id::text, d.period_id::text, d.contract_id::text,
-                d.subscriber_id::text, d.status, d.number, d.issue_date::text, d.due_date::text,
+                d.subscriber_id::text, d.status, d.number, d.external_number,
+                d.issue_date::text, d.due_date::text,
                 p.period_start::text AS period_start, p.period_end::text AS period_end,
                 p.covered_start::text AS covered_start,
                 d.subtotal::text, d.tax_total::text, d.total::text,
@@ -698,7 +702,8 @@ export class BillingPaymentsService extends BillingAccountReadPort {
                            WHERE a.document_id = d.id AND a.tenant_id = d.tenant_id
                              AND a.reversed_at IS NULL), 0)::numeric(14,2)::text AS paid_amount
            FROM billing_documents d
-            JOIN billing_periods p ON p.id = d.period_id AND p.tenant_id = d.tenant_id
+            -- ADR-110 D5: un IMPORTADO no tiene periodo y sí cuenta en el estado de cuenta.
+            LEFT JOIN billing_periods p ON p.id = d.period_id AND p.tenant_id = d.tenant_id
           WHERE d.tenant_id = $1 AND d.subscriber_id = $2::uuid
           ORDER BY d.issue_date DESC NULLS LAST, d.created_at DESC, d.id DESC`,
         [tenantId, subscriberId],
@@ -736,7 +741,8 @@ export class BillingPaymentsService extends BillingAccountReadPort {
         { totalInvoiced: number; totalPaid: number; totalPending: number }
       >();
       const documents = documentRows.map((row) => {
-        const isIssued = row.status === 'EMITIDO';
+        // Cartera: emitidos de iWana e históricos importados (ADR-110 D5).
+        const isIssued = row.status === 'EMITIDO' || row.status === 'IMPORTADO';
         const totalCents = moneyCents(row.total);
         const paidCents = isIssued ? Math.min(totalCents, moneyCents(row.paid_amount)) : 0;
         const pendingCents = isIssued ? Math.max(0, totalCents - paidCents) : 0;
@@ -762,13 +768,13 @@ export class BillingPaymentsService extends BillingAccountReadPort {
           subscriberId: row.subscriber_id,
           status: row.status,
           number: row.number,
+          externalNumber: row.external_number,
           issueDate: row.issue_date,
           dueDate: row.due_date,
           periodStart: row.period_start,
           periodEnd: row.period_end,
           coveredStart: row.covered_start,
-          paymentState:
-            row.status !== 'EMITIDO' ? null : this.statementDocumentState(row, localDate),
+          paymentState: isIssued ? this.statementDocumentState(row, localDate) : null,
           buyerProtected,
           subtotal: row.subtotal,
           taxTotal: row.tax_total,
@@ -796,6 +802,10 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       );
       // R1 (ampliada 2026-11-11): un contrato ACTIVE sigue «sin cobros» mientras no tenga
       // ningún documento emitido; los borradores no cuentan en cartera.
+      // ADR-110 D5 (bloque C): un IMPORTADO tampoco es un cobro emitido de iWana. El contrato
+      // importado no tiene periodos propios y la facturación solo arranca con «Generar primer
+      // cobro» (ancla del ciclo, ADR-109); si el historial apagara la bandera, el contrato no
+      // se facturaría nunca. Su historial sí suma en totales y en el resumen del contrato.
       const withIssued = activeContractIds.length
         ? new Set(
             (
@@ -803,7 +813,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
                 `SELECT DISTINCT contract_id::text AS contract_id
                    FROM billing_documents
                   WHERE tenant_id = $1 AND contract_id = ANY($2::uuid[])
-                    AND status <> 'BORRADOR'`,
+                    AND status IN ('EMITIDO', 'ANULADO')`,
                 [tenantId, activeContractIds],
               )) as Array<{ contract_id: string }>
             ).map(({ contract_id }) => contract_id),
@@ -887,7 +897,8 @@ export class BillingPaymentsService extends BillingAccountReadPort {
   ) {
     // Primero bloqueamos; la segunda sentencia obtiene una foto posterior al bloqueo.
     const locked = (await manager.query(
-      `SELECT id FROM billing_documents WHERE tenant_id=$1 AND subscriber_id=$2 AND status='EMITIDO' ORDER BY due_date,id FOR UPDATE`,
+      // ADR-110 D14: la deuda importada también es cobrable.
+      `SELECT id FROM billing_documents WHERE tenant_id=$1 AND subscriber_id=$2 AND status IN ('EMITIDO','IMPORTADO') ORDER BY due_date,id FOR UPDATE`,
       [tenantId, subscriberId],
     )) as Array<{ id: string }>;
     const rows = (await manager.query(
@@ -952,7 +963,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       )) as Array<{
         id: string;
         subscriber_id: string;
-        period_id: string;
+        period_id: string | null;
         status: string;
         total: string;
       }>;
@@ -962,7 +973,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
           errorResponse('BILLING_DOCUMENT_NOT_FOUND', 'No se encontró el documento.'),
         );
       }
-      if (document.status !== 'EMITIDO') {
+      if (document.status !== 'EMITIDO' && document.status !== 'IMPORTADO') {
         throw new ConflictException(
           errorResponse('BILLING_DOCUMENT_NOT_ISSUED', 'El documento no está emitido.'),
         );
@@ -983,7 +994,8 @@ export class BillingPaymentsService extends BillingAccountReadPort {
         [tenantId, paymentId, document.id, item.amount, actorId],
       );
       paymentRemaining -= item.cents;
-      periods.add(document.period_id);
+      // Un IMPORTADO no tiene periodo (D5): no hay señal de periodo que recalcular.
+      if (document.period_id) periods.add(document.period_id);
     }
     return [...periods];
   }

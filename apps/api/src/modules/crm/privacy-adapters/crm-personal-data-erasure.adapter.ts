@@ -27,6 +27,7 @@ import { WfmTitularErasureParticipant } from '../../wfm/privacy/wfm-titular-eras
 import { ExecutionOrderTitularErasureParticipant } from '../../tasks/privacy/execution-order-titular-erasure.participant';
 import { OperationalTaskTitularErasureParticipant } from '../../tasks/privacy/operational-task-titular-erasure.participant';
 import { BillingTitularErasureParticipant } from '../../billing/privacy/billing-titular-erasure.participant';
+import { MigrationTitularErasureParticipant } from '../../migration/privacy/migration-titular-erasure.participant';
 import {
   columnOf,
   readTenantColumns,
@@ -102,6 +103,9 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     @Optional()
     @Inject(SupplierProfileReadAdapter)
     suppliers?: SupplierProfileReadAdapter,
+    @Optional()
+    @Inject(MigrationTitularErasureParticipant)
+    migration?: MigrationTitularErasureParticipant,
   ) {
     super();
     // Sin valores por defecto: un cableado olvidado fallaba en silencio con
@@ -125,6 +129,7 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
       { name: 'network', participant: network },
       { name: 'media', participant: media },
       ...(billing ? [{ name: 'billing', participant: billing }] : []),
+      ...(migration ? [{ name: 'migration', participant: migration }] : []),
     ];
   }
 

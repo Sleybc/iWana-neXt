@@ -2,6 +2,7 @@ import { AssurancePrivacyModule } from '../../assurance/privacy/assurance-privac
 import { NetworkPrivacyModule } from '../../network/privacy/network-privacy.module';
 import { InventoryPrivacyModule } from '../../inventory/privacy/inventory-privacy.module';
 import { BillingPrivacyModule } from '../../billing/privacy/billing-privacy.module';
+import { MigrationPrivacyModule } from '../../migration/privacy/migration-privacy.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Contract } from '../contracts/entities/contract.entity';
@@ -14,6 +15,7 @@ import { AuditModule } from '../../audit/audit.module';
 import { PartiesPrivacyModule } from '../../parties/privacy/parties-privacy.module';
 import { UsersPrivacyModule } from '../../users/privacy/users-privacy.module';
 import { MediaPrivacyModule } from '../../media/privacy/media-privacy.module';
+import { MediaModule } from '../../media/media.module';
 import { IPersonalDataErasurePort } from '../../privacy/ports/personal-data-erasure.port';
 import { CrmTitularErasureParticipant } from './titular-erasure/crm-titular-erasure.participant';
 import { CrmPersonalDataErasureAdapter } from './crm-personal-data-erasure.adapter';
@@ -31,8 +33,11 @@ import { TasksPrivacyModule } from '../../tasks/privacy/tasks-privacy.module';
     TasksPrivacyModule,
     NetworkPrivacyModule,
     MediaPrivacyModule,
+    // STORAGE_PORT: la supresión retira los archivos de `subscriber_documents` (ADR-110 D13).
+    MediaModule,
     InventoryPrivacyModule,
     BillingPrivacyModule,
+    MigrationPrivacyModule,
   ],
   providers: [
     CrmContractImpersonationAdapter,

@@ -13,6 +13,7 @@ import { AuditAction, SubscriberStatus } from '@iwana/shared';
 import type {
   LifecycleAction,
   LifecycleChangeRecord,
+  LifecycleChangeSource,
   LifecycleHistoryResponse,
   LifecyclePreviewRequest,
   LifecyclePreviewResponse,
@@ -60,7 +61,7 @@ interface HistoryRow {
   reason_code: string;
   note_encrypted: string | null;
   contract_scope_explicit: boolean;
-  source: 'MANUAL' | 'SYSTEM' | 'BILLING';
+  source: LifecycleChangeSource;
   batch_id: string;
   actor_id: string | null;
   changed_at: Date | string;
@@ -715,7 +716,7 @@ export class SubscriberLifecycleService {
       reasonCode: string;
       note: string | null;
       contractScopeExplicit?: boolean;
-      source: 'MANUAL' | 'SYSTEM' | 'BILLING';
+      source: LifecycleChangeSource;
       batchId: string;
       actorId: string | null;
     },

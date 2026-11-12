@@ -23,6 +23,8 @@ import {
   PAYMENT_STATES,
   PROTECTED_LABEL,
   PROTECTED_NOTICE,
+  documentCoveredRange,
+  documentReference,
 } from './billing-copy';
 import { BillingLoadState, BillingTable, billingError, useBillingLoad } from './billing-ui';
 
@@ -90,7 +92,7 @@ export function BillingDocumentTable({
                 ? [
                     <label className="inline-flex min-h-11 min-w-11 items-center justify-center">
                       <input
-                        aria-label={`Seleccionar documento ${document.number ?? formatBillingDate(document.periodStart)}`}
+                        aria-label={`Seleccionar documento ${documentReference(document)}`}
                         type="checkbox"
                         className="h-5 w-5 accent-iwana-primary"
                         checked={selection.has(document.id)}
@@ -102,11 +104,11 @@ export function BillingDocumentTable({
                     </label>,
                   ]
                 : []),
-              document.number ?? 'Sin número',
+              document.number ?? document.externalNumber ?? 'Sin número',
               document.buyerProtected
                 ? PROTECTED_LABEL
                 : (document.buyerSnapshot?.displayName ?? 'No disponible'),
-              `${formatBillingDate(document.coveredStart)} al ${formatBillingDate(document.periodEnd)}`,
+              documentCoveredRange(document),
               formatBillingDate(document.dueDate),
               formatBillingMoney(document.total),
               document.pendingAmount == null ? '—' : formatBillingMoney(document.pendingAmount),
@@ -140,18 +142,20 @@ export function BillingDocumentTable({
                     Emitir
                   </Button>
                 ) : null}
+                {document.status === 'EMITIDO' || document.status === 'IMPORTADO' ? (
+                  <Button
+                    className="min-h-11"
+                    type="button"
+                    variant="ghost"
+                    disabled={downloading !== null}
+                    loading={downloading === document.id}
+                    onClick={() => void download(document)}
+                  >
+                    Descargar PDF
+                  </Button>
+                ) : null}
                 {document.status === 'EMITIDO' ? (
                   <>
-                    <Button
-                      className="min-h-11"
-                      type="button"
-                      variant="ghost"
-                      disabled={downloading !== null}
-                      loading={downloading === document.id}
-                      onClick={() => void download(document)}
-                    >
-                      Descargar PDF
-                    </Button>
                     {canManage ? (
                       <Button
                         className="min-h-11"
@@ -239,9 +243,7 @@ function BillingDocumentDetail({ id, onClose }: { id: string; onClose: () => voi
             ) : null}
             <div>
               <dt className="font-medium">Periodo cubierto</dt>
-              <dd>
-                {formatBillingDate(data.coveredStart)} al {formatBillingDate(data.periodEnd)}
-              </dd>
+              <dd>{documentCoveredRange(data)}</dd>
             </div>
             <div>
               <dt className="font-medium">Total</dt>

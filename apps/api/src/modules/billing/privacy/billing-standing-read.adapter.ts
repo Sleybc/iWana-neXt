@@ -3,6 +3,12 @@ import { TenantContext } from '@iwana/db';
 import type { EntityManager } from 'typeorm';
 import { IBillingStandingReadPort } from '../../privacy/requests/ports/billing-standing-read.port';
 
+/**
+ * Reloj fiscal de la supresión: `EMITIDO`, `ANULADO` e `IMPORTADO`. La deuda histórica de UISP
+ * (ADR-110 D5, D14) es soporte contable que se conserva igual que lo emitido por iWana
+ * (decisión del usuario 2026-11-12); su `issue_date` es la de UISP y, si falta, el reloj queda
+ * sin conciliar y la supresión falla cerrada.
+ */
 @Injectable()
 export class BillingStandingReadAdapter implements IBillingStandingReadPort {
   async lastFiscalDocumentAt(
@@ -18,7 +24,7 @@ export class BillingStandingReadAdapter implements IBillingStandingReadPort {
          FROM billing_documents
         WHERE tenant_id = $1::uuid
           AND subscriber_id = ANY($2::uuid[])
-          AND status IN ('EMITIDO', 'ANULADO')
+          AND status IN ('EMITIDO', 'ANULADO', 'IMPORTADO')
           AND issue_date IS NOT NULL`,
       [tenantId, ids],
     )) as Array<{ last_fiscal_document_at: string | null }>;
@@ -44,7 +50,7 @@ export class BillingStandingReadAdapter implements IBillingStandingReadPort {
          FROM billing_documents
         WHERE tenant_id = $1::uuid
           AND subscriber_id = ANY($2::uuid[])
-          AND status IN ('EMITIDO', 'ANULADO')`,
+          AND status IN ('EMITIDO', 'ANULADO', 'IMPORTADO')`,
       [tenantId, ids],
     )) as Array<{ total: number; with_date: number }>;
     const total = Number(rows[0]?.total ?? 0);

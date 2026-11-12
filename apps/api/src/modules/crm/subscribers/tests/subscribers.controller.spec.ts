@@ -25,6 +25,7 @@ import { SubscribersService } from '../subscribers.service';
 import { AuditService } from '../../../audit/audit.service';
 import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
 import { JwtPayload } from '../../../auth/interfaces/jwt-payload.interface';
+import { SubscriberTagsService } from '../tags/subscriber-tags.service';
 import { Subscriber } from '../entities/subscriber.entity';
 import { IPrivacyMarksReadPort } from '../../../privacy/ports/privacy-marks-read.port';
 import type { Request } from 'express';
@@ -364,6 +365,8 @@ describe('SubscribersController', () => {
       expect(Object.keys(listItem?.properties ?? {}).sort()).toEqual(
         [
           'privacyMarks',
+          // ADR-110 D8: etiquetas manuales (campo opcional nuevo).
+          'tags',
           'documentNumber',
           'documentNumberRestricted',
           'nit',
@@ -1792,4 +1795,83 @@ describe('SubscribersController', () => {
       canReadDocument,
     );
   }
+
+  describe('etiquetas manuales (ADR-110 D8)', () => {
+    const chip = { id: '70000000-0000-4000-8000-000000000001', name: 'VIP', color: '#123456' };
+    const tagsServiceMock = { tagsFor: jest.fn() };
+    let tagged: SubscribersController;
+
+    beforeEach(async () => {
+      tagsServiceMock.tagsFor.mockImplementation(
+        async (ids: string[]) => new Map(ids.map((id) => [id, [chip]])),
+      );
+      const module: TestingModule = await Test.createTestingModule({
+        controllers: [SubscribersController],
+        providers: [
+          { provide: SubscribersService, useValue: subscribersServiceMock },
+          { provide: AuditService, useValue: auditServiceMock },
+          { provide: EffectivePermissionsService, useValue: effectivePermissionsServiceMock },
+          { provide: SubscriberLifecycleService, useValue: subscriberLifecycleServiceMock },
+          { provide: IPrivacyMarksReadPort, useValue: privacyMarksReadPortMock },
+          { provide: getDataSourceToken(), useValue: dataSourceMock },
+          { provide: SubscriberTagsService, useValue: tagsServiceMock },
+        ],
+      }).compile();
+      tagged = module.get<SubscribersController>(SubscribersController);
+    });
+
+    it('findAll agrega las etiquetas de cada fila', async () => {
+      subscribersServiceMock.findAll.mockResolvedValue({
+        data: [mockSubscriber],
+        total: 1,
+        meta: {
+          page: 1,
+          limit: 20,
+          total: 1,
+          totalPages: 1,
+          hasMore: false,
+          mode: 'page',
+          nextCursor: null,
+          totalIsEstimate: false,
+          capabilities: { randomAccess: true, sortableFields: [] },
+          sort: null,
+        },
+      });
+      const result = await withTenantContext(() => tagged.findAll(mockUser));
+      expect(tagsServiceMock.tagsFor).toHaveBeenCalledWith(['sub-001']);
+      expect(result.data[0]).toHaveProperty('tags', [chip]);
+    });
+
+    it('search agrega las etiquetas', async () => {
+      subscribersServiceMock.search.mockResolvedValue([mockSubscriber]);
+      const result = await withTenantContext(() =>
+        tagged.search({ nit: '900123456-7' }, { ...mockUser, role: UserRole.ADMIN } as JwtPayload),
+      );
+      expect(result.data[0]).toHaveProperty('tags', [chip]);
+    });
+
+    it('findById agrega las etiquetas', async () => {
+      subscribersServiceMock.findById.mockResolvedValue(mockSubscriber);
+      const result = await withTenantContext(() => tagged.findById('sub-001', mockUser));
+      expect(result.data).toHaveProperty('tags', [chip]);
+    });
+
+    it('la vista 360 consulta las etiquetas del titular', async () => {
+      subscribersServiceMock.get360View.mockResolvedValue({
+        subscriber: mockSubscriber,
+        contacts: [],
+        contracts: [],
+        quotes: [],
+        habeasData: [],
+        arcoRequests: [],
+        privacyMarks: [],
+        expedienteSummary: null,
+        timelineSeed: [],
+        provisioningReadiness: mockProvisioningReadiness,
+      });
+      const { data } = await withTenantContext(() => tagged.get360View('sub-001', mockUser));
+      expect(tagsServiceMock.tagsFor).toHaveBeenCalledWith(['sub-001']);
+      expect(JSON.stringify(data)).toContain(chip.id);
+    });
+  });
 });

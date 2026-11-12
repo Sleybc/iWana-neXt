@@ -28,6 +28,12 @@ import { CommercialModule } from '../../commercial/commercial.module';
 import { QuotesModule } from '../quotes/quotes.module';
 import { SubscriberNotesController } from './notes/subscriber-notes.controller';
 import { SubscriberNotesService } from './notes/subscriber-notes.service';
+import {
+  SubscriberTagAssignmentController,
+  SubscriberTagCatalogController,
+} from './tags/subscriber-tags.controller';
+import { SubscriberTagsService } from './tags/subscriber-tags.service';
+import { SubscriberTagAssignmentPort } from '../ports/subscriber-tag-assignment.port';
 import { ContractPendingSignatureReadModule } from '../pending-signature/contract-pending-signature-read.module';
 
 @Module({
@@ -49,7 +55,13 @@ import { ContractPendingSignatureReadModule } from '../pending-signature/contrac
     QuotesModule,
     ContractPendingSignatureReadModule,
   ],
-  controllers: [SubscribersController, SubscriberTaxController, SubscriberNotesController],
+  controllers: [
+    SubscribersController,
+    SubscriberTaxController,
+    SubscriberNotesController,
+    SubscriberTagCatalogController,
+    SubscriberTagAssignmentController,
+  ],
   providers: [
     VatTreatmentService,
     SubscriberFiscalCompletenessService,
@@ -62,11 +74,14 @@ import { ContractPendingSignatureReadModule } from '../pending-signature/contrac
     SubscriberTaxProfileService,
     SubscribersBlockedTitularGuard,
     SubscriberNotesService,
+    SubscriberTagsService,
+    { provide: SubscriberTagAssignmentPort, useExisting: SubscriberTagsService },
     { provide: CrmSubscriberReadPort, useExisting: SubscribersService },
   ],
   exports: [
     SubscribersService,
     CrmSubscriberReadPort,
+    SubscriberTagAssignmentPort,
     SubscriberCreationService,
     VatTreatmentService,
     SubscriberFiscalCompletenessService,

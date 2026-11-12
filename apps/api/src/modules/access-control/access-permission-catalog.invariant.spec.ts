@@ -316,8 +316,8 @@ describe('invariante catálogo MOD00_ACCESS_V2', () => {
     expect(roles).not.toContain(UserRole.INVESTOR);
   });
 
-  it('ADMIN V2 contiene 50 claves ASSIGNABLE y descripciones promovidas sin "en fase futura"', () => {
-    expect(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.ADMIN]).toHaveLength(50);
+  it('ADMIN V2 contiene 51 claves ASSIGNABLE y descripciones promovidas sin "en fase futura"', () => {
+    expect(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.ADMIN]).toHaveLength(51);
     const promoted = [
       AccessPermissionKey.COMMERCIAL_CATALOG_READ,
       AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE,
@@ -588,5 +588,46 @@ describe('permiso del número de documento del suscriptor (decisión 2026-11-10)
       .map((template) => template.baseRoleConstraint)
       .sort();
     expect(templates).toEqual([...granted].sort());
+  });
+});
+
+describe('permiso de importación por lotes (ADR-110 D9)', () => {
+  const key = AccessPermissionKey.MIGRATION_IMPORT_MANAGE;
+
+  it('es ASSIGNABLE en el catálogo V2 del módulo migration', () => {
+    expect(MOD00_ACCESS_V2_CATALOG.find((entry) => entry.permissionKey === key)).toMatchObject({
+      moduleKey: 'migration',
+      action: 'import.manage',
+      availability: AccessPermissionAvailability.ASSIGNABLE,
+      catalogVersion: AccessPermissionCatalogVersion.MOD00_ACCESS_V2,
+    });
+  });
+
+  it('solo Administración lo puede recibir y solo su plantilla lo trae por defecto', () => {
+    const holders = Object.values(UserRole).filter((role) =>
+      ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[role].includes(key),
+    );
+    expect(holders).toEqual([UserRole.ADMIN]);
+    const templates = MOD00_ACCESS_V2_SYSTEM_ROLE_TEMPLATES.filter((template) =>
+      template.permissionKeys.includes(key),
+    ).map((template) => template.baseRoleConstraint);
+    expect(templates).toEqual([UserRole.ADMIN]);
+  });
+
+  it('la migración 198 siembra la misma clave, módulo, acción y descripción', () => {
+    const source = readFileSync(
+      join(
+        __dirname,
+        '../../../../../packages/database/src/migrations/tenant/198_seed_migration_import_permission.ts',
+      ),
+      'utf8',
+    );
+    const entry = MOD00_ACCESS_V2_CATALOG.find((item) => item.permissionKey === key);
+    expect(entry).toBeDefined();
+    expect(source.replace(/\s+/gu, ' ')).toContain(
+      `'${key}', '${entry?.moduleKey}', '${entry?.action}', '${entry?.description}'`,
+    );
+    expect(source).toContain("profile.name = 'Administrador general'");
+    expect(source).toContain("profile.base_role_constraint = 'ADMIN'");
   });
 });

@@ -20,6 +20,7 @@ import {
   PAYMENT_STATES,
   PROTECTED_LABEL,
   PROTECTED_NOTICE,
+  formatOptionalBillingDate,
 } from './billing-copy';
 import { BillingNotStartedNotice } from './BillingNotStartedNotice';
 import { BillingLoadState } from './billing-ui';
@@ -116,11 +117,14 @@ function StatementBody({
               className="flex flex-wrap items-center justify-between gap-3 py-3"
             >
               <div>
-                <p className="text-sm font-semibold">{document.number ?? 'Documento sin número'}</p>
+                <p className="text-sm font-semibold">
+                  {document.number ?? document.externalNumber ?? 'Documento sin número'}
+                </p>
                 <p className="text-sm text-gray-600 dark:text-gray-300">
-                  Periodo {formatBillingDate(document.periodStart)} –{' '}
-                  {formatBillingDate(document.periodEnd)} · Vence{' '}
-                  {formatBillingDate(document.dueDate)}
+                  {document.periodStart && document.periodEnd
+                    ? `Periodo ${formatOptionalBillingDate(document.periodStart)} – ${formatOptionalBillingDate(document.periodEnd)}`
+                    : 'Sin periodo'}{' '}
+                  · Vence {formatBillingDate(document.dueDate)}
                 </p>
               </div>
               <div className="flex items-center gap-2">

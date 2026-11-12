@@ -23,6 +23,17 @@ export type {
 export type { PrivacyRetentionExpiryTenantJob } from './retention-expiry.contract';
 export { PrivacyRetentionExpiryTenantJobSchema } from './retention-expiry.contract';
 
+export type {
+  MigrationPromoteJob,
+  MigrationPurgeTenantJob,
+  MigrationSimulateJob,
+} from './migration/migration-import.contract';
+export {
+  MigrationPromoteJobSchema,
+  MigrationPurgeTenantJobSchema,
+  MigrationSimulateJobSchema,
+} from './migration/migration-import.contract';
+
 /** Payload del job de provisioning de un tenant nuevo. */
 export interface ProvisioningJobPayload {
   tenantId: string;

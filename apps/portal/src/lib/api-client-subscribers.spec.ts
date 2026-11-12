@@ -1,5 +1,5 @@
 import { SubscriberStatus } from '@iwana/shared';
-import { subscribersApi } from './api-client';
+import { subscriberTagsApi, subscribersApi } from './api-client';
 
 type MockResponse = {
   ok: boolean;
@@ -139,5 +139,55 @@ describe('subscribersApi.search', () => {
     const url = new URL(String(input), 'http://portal.example.test');
     expect(url.pathname).toBe('/api/v1/crm/subscribers/queue-counts');
     expect(url.search).toBe('');
+  });
+});
+
+describe('etiquetas del suscriptor (ADR-110 D8)', () => {
+  const TAG_ID = '00000000-0000-4000-8000-000000000001';
+  const SUBSCRIBER_ID = '00000000-0000-4000-8000-0000000000aa';
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    if (typeof originalFetch === 'function') {
+      Reflect.set(globalThis, 'fetch', originalFetch);
+    } else {
+      Reflect.deleteProperty(globalThis, 'fetch');
+    }
+  });
+
+  function mockFetch(body: unknown) {
+    const fetchMock = jest.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit): Promise<MockResponse> =>
+        createJsonResponse(200, body),
+    );
+    Reflect.set(globalThis, 'fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('envía tagId en la URL de la lista y de la búsqueda', async () => {
+    const fetchMock = mockFetch({ data: [] });
+    await subscribersApi.list({ tagId: TAG_ID, page: 1, limit: 20 }, 'tenant-demo');
+    await subscribersApi.list({ tagId: TAG_ID, search: 'Ana' }, 'tenant-demo');
+
+    const [listUrl, searchUrl] = fetchMock.mock.calls.map(
+      ([input]) => new URL(String(input), 'http://portal.example.test'),
+    );
+    expect(listUrl?.pathname).toBe('/api/v1/crm/subscribers');
+    expect(listUrl?.searchParams.get('tagId')).toBe(TAG_ID);
+    expect(searchUrl?.pathname).toBe('/api/v1/crm/subscribers/search');
+    expect(searchUrl?.searchParams.get('tagId')).toBe(TAG_ID);
+  });
+
+  it('asigna con PUT y devuelve las etiquetas vigentes', async () => {
+    const chips = [{ id: TAG_ID, name: 'VIP', color: '#2563EB' }];
+    const fetchMock = mockFetch({ data: chips });
+    await expect(subscriberTagsApi.assign(SUBSCRIBER_ID, TAG_ID, 'tenant-demo')).resolves.toEqual(
+      chips,
+    );
+    const [input, init] = fetchMock.mock.calls[0] ?? [];
+    expect(new URL(String(input), 'http://portal.example.test').pathname).toBe(
+      `/api/v1/crm/subscribers/${SUBSCRIBER_ID}/tags/${TAG_ID}`,
+    );
+    expect(init?.method).toBe('PUT');
   });
 });

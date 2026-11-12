@@ -93,6 +93,10 @@ const classifications: Readonly<Record<string, TargetClassification>> = {
   'privacyRequest.requesterContactEncrypted': {
     excluded: 'R6 conserva la solicitud de privacidad para trazabilidad.',
   },
+  'migrationStagingRecord.payloadEncrypted': {
+    excluded:
+      'ADR-110 D10: la intermedia de importación se purga con su lote a los 30 días; revisión sec-eng pendiente.',
+  },
 };
 
 function assertCoverageInvariant(

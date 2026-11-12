@@ -32,3 +32,8 @@ export {
 export { ExpansionRequestPort, type ExpansionRequestReference } from './expansion-request.port';
 export { BillingActivationPort } from './billing-activation.port';
 export { ProvisioningActivationPort } from './provisioning-activation.port';
+export {
+  SubscriberTagAssignmentPort,
+  type ImportTagAssignmentInput,
+  type ImportTagAssignmentResult,
+} from './subscriber-tag-assignment.port';

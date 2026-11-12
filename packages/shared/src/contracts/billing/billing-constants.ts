@@ -26,7 +26,11 @@ export const BILLING_PAYMENT_METHODS = [
 ] as const;
 export type BillingPaymentMethod = (typeof BILLING_PAYMENT_METHODS)[number];
 
-export const BILLING_DOCUMENT_STATUSES = ['BORRADOR', 'EMITIDO', 'ANULADO'] as const;
+/**
+ * `IMPORTADO` (ADR-110 D5): documento histórico traído de otro sistema (UISP). No es fiscal,
+ * no consume numeración, no emite eventos ni se anula; sí cuenta en cartera y estado de cuenta.
+ */
+export const BILLING_DOCUMENT_STATUSES = ['BORRADOR', 'EMITIDO', 'ANULADO', 'IMPORTADO'] as const;
 export type BillingDocumentStatus = (typeof BILLING_DOCUMENT_STATUSES)[number];
 
 export const BILLING_DOCUMENT_LINE_KINDS = [
@@ -92,5 +96,9 @@ export const BILLING_ERROR_CODES = {
   BILLING_PAYMENT_VOIDED: 'BILLING_PAYMENT_VOIDED',
   IDEMPOTENCY_KEY_REUSED: 'IDEMPOTENCY_KEY_REUSED',
   PRIVACY_TITULAR_ANONYMIZED: 'PRIVACY_TITULAR_ANONYMIZED',
+  /** PDF histórico de un IMPORTADO (ADR-110 D5). */
+  BILLING_IMPORTED_PDF_NOT_AVAILABLE: 'BILLING_IMPORTED_PDF_NOT_AVAILABLE',
+  BILLING_IMPORTED_PDF_RESTRICTED: 'BILLING_IMPORTED_PDF_RESTRICTED',
+  BILLING_IMPORTED_PDF_UNREADABLE: 'BILLING_IMPORTED_PDF_UNREADABLE',
 } as const;
 export type BillingErrorCode = (typeof BILLING_ERROR_CODES)[keyof typeof BILLING_ERROR_CODES];

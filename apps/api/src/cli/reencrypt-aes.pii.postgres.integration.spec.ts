@@ -189,6 +189,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
     subscriberNote: 'synthetic-subscriber-note',
     contractSnapshot: 'synthetic-contract-snapshot',
     contractSigner: 'synthetic-contract-signer',
+    stagingPayload: 'synthetic-staging-payload',
   } as const;
 
   async function seedFixture(): Promise<void> {
@@ -352,6 +353,19 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
         encryptLegacy(synthetic.requesterDocument),
         encryptLegacy(synthetic.requesterContact),
       ],
+    );
+    // Importación UISP (194, ADR-110 D2): la carga útil de la intermedia va cifrada con PII.
+    const importBatchId = randomUUID();
+    await dataSource.query(
+      `INSERT INTO ${q}.migration_batches (id, tenant_id, source, created_by)
+       VALUES ($1, $2, 'UISP_ZIP', $3)`,
+      [importBatchId, tenantId, actorId],
+    );
+    await dataSource.query(
+      `INSERT INTO ${q}.migration_staging_records
+        (tenant_id, batch_id, entity, external_id, payload_encrypted)
+       VALUES ($1, $2, 'SUSCRIPTOR', 'uisp:client:1', $3)`,
+      [tenantId, importBatchId, encryptLegacy(synthetic.stagingPayload)],
     );
     await dataSource.query(
       `INSERT INTO ${q}.users (id, email, password_hash, role, tenant_id, email_hmac, mfa_secret)
@@ -925,7 +939,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
       keys,
     });
     expect(dryRun.hasBlockingIssues).toBe(false);
-    expect(dryRun.totals.reencrypted).toBe(24);
+    expect(dryRun.totals.reencrypted).toBe(25);
     expect(dryRun.totals.nonCiphertext).toBe(0);
     expect(
       dryRun.targets.filter((metric) => metric.candidates === 0).map((m) => m.entityType),
@@ -957,7 +971,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
       keys,
     });
     expect(apply.hasBlockingIssues).toBe(false);
-    expect(apply.totals.reencrypted).toBe(24);
+    expect(apply.totals.reencrypted).toBe(25);
 
     const repeated = await runMfaToPii(db, {
       mode: 'apply',
@@ -1048,6 +1062,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
       UNION ALL SELECT 'contract_snapshot', id, snapshot_encrypted FROM ${quoteIdentifier(schemaName)}.contract_document_generations
       UNION ALL SELECT 'contract_signer', id, signer_encrypted FROM ${quoteIdentifier(schemaName)}.contract_signatures
       UNION ALL SELECT 'request', id, requester_name_encrypted FROM ${quoteIdentifier(schemaName)}.data_subject_requests
+      UNION ALL SELECT 'staging', id, payload_encrypted FROM ${quoteIdentifier(schemaName)}.migration_staging_records
     `);
     expect(allPiiRows.length).toBeGreaterThan(0);
     expect(JSON.stringify(allPiiRows)).not.toContain('synthetic-');

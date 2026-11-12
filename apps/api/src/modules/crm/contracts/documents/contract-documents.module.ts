@@ -26,6 +26,8 @@ import { ContractSignedCopyProcessor } from './contract-signed-copy.processor';
 import { ContractSignedCopyProducer } from './contract-signed-copy.producer';
 import { SignedContractDocumentsController } from './signed-contract-documents.controller';
 import { SignedContractDocumentsService } from './signed-contract-documents.service';
+import { SubscriberDocumentsController } from './subscriber-documents.controller';
+import { SubscriberDocumentsService } from './subscriber-documents.service';
 
 /**
  * Generación del PDF del contrato (cierre de venta, bloque B; ADR-109 D5). Encola en
@@ -55,6 +57,7 @@ import { SignedContractDocumentsService } from './signed-contract-documents.serv
     ExecutionOrderContractController,
     ContractSignatureController,
     SignedContractDocumentsController,
+    SubscriberDocumentsController,
   ],
   providers: [
     ContractDocumentGenerationService,
@@ -62,6 +65,7 @@ import { SignedContractDocumentsService } from './signed-contract-documents.serv
     ContractSignedCopyProducer,
     ContractSignedCopyProcessor,
     SignedContractDocumentsService,
+    SubscriberDocumentsService,
   ],
   exports: [ContractDocumentGenerationService, ContractSignatureService],
 })

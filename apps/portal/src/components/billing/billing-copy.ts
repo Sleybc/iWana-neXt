@@ -1,6 +1,7 @@
 import { BILLING_BLOCKED_BUYER_DISPLAY_NAME } from '@iwana/shared';
 import type { BillingDocumentLineKind, BillingPeriodPaymentState } from '@iwana/shared';
 import type { BadgeProps } from '@iwana/ui';
+import { formatBillingDate } from '../crm/subscribers/billing-cycle-ui';
 
 export const PAYMENT_STATES = {
   PAGADO: { label: 'Pagado', variant: 'success' },
@@ -14,6 +15,8 @@ export const DOCUMENT_STATES = {
   BORRADOR: { label: 'Borrador', variant: 'neutral' },
   EMITIDO: { label: 'Emitido', variant: 'info' },
   ANULADO: { label: 'Anulado', variant: 'error' },
+  /** ADR-110 D5: historial traído de UISP; no es documento fiscal ni se emite o anula. */
+  IMPORTADO: { label: 'Histórico importado', variant: 'neutral' },
 } as const;
 
 export const PAYMENT_METHODS = {
@@ -78,3 +81,28 @@ export const IMPERSONATION_HOLD_NOTICE = 'No se generarán nuevos cobros hasta r
 export const ANONYMIZED_STATEMENT_TITLE = 'Titular anonimizado';
 export const ANONYMIZED_STATEMENT_NOTICE =
   'El estado de cuenta ya no se consulta porque los datos del titular fueron anonimizados.';
+
+/** Fecha o «Sin periodo»: un documento IMPORTADO no pertenece a un periodo de iWana (ADR-110 D5). */
+export function formatOptionalBillingDate(value: string | null): string {
+  return value ? formatBillingDate(value) : 'Sin periodo';
+}
+
+/** Rango del periodo cubierto, o «Sin periodo» para un documento importado. */
+export function documentCoveredRange(document: {
+  coveredStart: string | null;
+  periodEnd: string | null;
+}): string {
+  if (!document.coveredStart || !document.periodEnd) return 'Sin periodo';
+  return `${formatBillingDate(document.coveredStart)} al ${formatBillingDate(document.periodEnd)}`;
+}
+
+/** Identificación visible: número propio, número de origen (importado) o inicio del periodo. */
+export function documentReference(document: {
+  number?: string | null | undefined;
+  externalNumber?: string | null | undefined;
+  periodStart: string | null;
+}): string {
+  return (
+    document.number ?? document.externalNumber ?? formatOptionalBillingDate(document.periodStart)
+  );
+}

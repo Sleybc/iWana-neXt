@@ -26,7 +26,7 @@ describe('BillingStandingReadAdapter', () => {
     ).resolves.toBe('2016-05-31');
 
     expect(query).toHaveBeenCalledWith(
-      expect.stringContaining("status IN ('EMITIDO', 'ANULADO')"),
+      expect.stringContaining("status IN ('EMITIDO', 'ANULADO', 'IMPORTADO')"),
       [tenantId, ['20000000-0000-4000-8000-000000000001']],
     );
     expect(query.mock.calls[0]?.[0]).toContain('tenant_id = $1::uuid');

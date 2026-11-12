@@ -1,7 +1,7 @@
 # Spec — Transversal · Exportación del suscriptor e importación desde UISP
 
-**Versión:** 1.0
-**Estado:** Propuesta, sin G0. Insumo para enmendar el PRD maestro (S13, `RF-MIG-*`) y para un ADR de migración y portabilidad
+**Versión:** 1.1 (2026-11-12, decisiones D1–D5 del usuario)
+**Estado:** G0 aprobado por el usuario el 2026-11-12 («Apruebo el G0»); arquitectura en [ADR-110](../adrs/ADR-110-Importacion-por-Lotes-desde-UISP-y-Portabilidad.md). Insumo para enmendar el PRD maestro (S13, `RF-MIG-*`) y para un ADR de migración y portabilidad
 **Fecha:** 2026-11-10
 **Emisor:** Claude Code, con criterio de AI-DATA-ENG
 **Módulos:** MOD05 CRM · MOD14 Facturación · MOD09 Soporte · privacy · plataforma (worker)
@@ -105,12 +105,13 @@ catalogs.json     planes, métodos de pago, motivos y tipos usados en el paquete
 | CA-5 | Un titular anonimizado no se exporta; un estrato importado no fija IVA sin evidencia |
 | CA-6 | Integración contra Postgres real para la promoción y la reversión por lote |
 
-## 5. Decisiones abiertas
+## 5. Decisiones (usuario, 2026-11-12)
 
-| # | Decisión | Dueño |
-|---|---|---|
-| D1 | ¿Enmendar `RF-MIG-03` del PRD maestro para incluir el CRM de UISP y WispHub, o PRD propio de migración? | Producto + CTO |
-| D2 | ADR de migración (tablas intermedias, idempotencia, reversión) y de portabilidad (formato, cifrado, vencimiento) | Arquitectura |
-| D3 | ¿El paquete de `CONSULTA` sale en formato legible (PDF) además de JSON? | privacy + legal |
-| D4 | Retención del ZIP generado y de las tablas intermedias | privacy |
-| D5 | Facturas históricas: ¿se importan todas o desde una fecha de corte? | Producto + contador |
+| # | Decisión |
+|---|---|
+| D1 | Enmendar `RF-MIG-03` del PRD maestro para incluir el CRM de UISP y WispHub |
+| D2 | Un ADR de migración (tablas intermedias con `batch_id`, idempotencia por `external_id`, reversión) y portabilidad |
+| D3 | El paquete de `CONSULTA` sale en JSON y PDF legible |
+| D4 | El ZIP generado y las tablas intermedias se retienen 30 días |
+| D5 | Se importan todas las facturas históricas, de solo lectura |
+| D6 | Orden: primero la importación desde UISP (incluye etiquetas manuales por tenant, §3.2 `tags`); la exportación (§2) va en una fase posterior |

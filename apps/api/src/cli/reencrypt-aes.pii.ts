@@ -143,6 +143,11 @@ export const PII_ENCRYPTED_TARGETS: readonly EncryptedColumnTarget[] = [
     'data_subject_requests',
     'requester_contact_encrypted',
   ),
+  piiTarget(
+    'migrationStagingRecord.payloadEncrypted',
+    'migration_staging_records',
+    'payload_encrypted',
+  ),
 ];
 
 export type PiiTenantRegistryQuery = (sql: string, parameters: string[]) => Promise<unknown>;

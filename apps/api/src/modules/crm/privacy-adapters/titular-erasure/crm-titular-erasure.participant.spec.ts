@@ -381,3 +381,125 @@ describe('CrmTitularErasureParticipant', () => {
     expect(result.find((entry) => entry.table === 'subscriber_tax_assignments')?.selected).toBe(1);
   });
 });
+
+describe('CrmTitularErasureParticipant — soportes documentales (ADR-110 D13)', () => {
+  const DOC_COLUMNS = new Map<string, TenantColumn>(
+    ['id', 'subscriber_id', 'storage_key'].map((column_name) => [
+      `subscriber_documents.${column_name}`,
+      {
+        table_name: 'subscriber_documents',
+        column_name,
+        is_nullable: 'NO',
+        data_type: 'text',
+        udt_name: 'text',
+      },
+    ]),
+  );
+  type Erase = (
+    qr: QueryRunner,
+    columns: Map<string, TenantColumn>,
+    subscriberIds: string[],
+    mode: 'dry-run' | 'apply',
+  ) => Promise<{ selected: number; changed: number; residual: number }>;
+  const erase = (participant: CrmTitularErasureParticipant): Erase =>
+    (participant as unknown as { eraseSubscriberDocuments: Erase }).eraseSubscriberDocuments.bind(
+      participant,
+    );
+
+  function documentsRunner(keys: string[]) {
+    let remaining = [...keys];
+    const queries: string[] = [];
+    const query = jest.fn(async (sql: string): Promise<unknown> => {
+      queries.push(sql);
+      if (/current_schema\(\)/u.test(sql)) return [{ schema: 't' }];
+      if (/^\s*SELECT storage_key FROM subscriber_documents/iu.test(sql)) {
+        return remaining.map((storage_key) => ({ storage_key }));
+      }
+      if (/^\s*DELETE FROM subscriber_documents/iu.test(sql)) {
+        const deleted = remaining.map((storage_key) => ({ storage_key }));
+        remaining = [];
+        return [deleted, deleted.length];
+      }
+      return [];
+    });
+    return { qr: { query } as unknown as QueryRunner, queries };
+  }
+
+  it('apply borra las filas y luego los archivos del storage, sin residuo', async () => {
+    const storage = { deleteObject: jest.fn().mockResolvedValue(undefined) };
+    const participant = new CrmTitularErasureParticipant(new ConfigService({}), storage as never);
+    const { qr, queries } = documentsRunner(['t/sub/a.enc', 't/sub/b.enc', 't/sub/a.enc']);
+    await expect(erase(participant)(qr, DOC_COLUMNS, [SUBSCRIBER_ID], 'apply')).resolves.toEqual({
+      selected: 3,
+      changed: 3,
+      residual: 0,
+    });
+    expect(storage.deleteObject.mock.calls.map(([key]) => key).sort()).toEqual([
+      't/sub/a.enc',
+      't/sub/b.enc',
+    ]);
+    expect(queries[0]).toMatch(/FOR UPDATE/u);
+  });
+
+  it('dry-run cuenta sin borrar filas ni archivos', async () => {
+    const storage = { deleteObject: jest.fn() };
+    const participant = new CrmTitularErasureParticipant(new ConfigService({}), storage as never);
+    const { qr, queries } = documentsRunner(['k1']);
+    await expect(erase(participant)(qr, DOC_COLUMNS, [SUBSCRIBER_ID], 'dry-run')).resolves.toEqual({
+      selected: 1,
+      changed: 0,
+      residual: 1,
+    });
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+    expect(queries.some((sql) => /DELETE/u.test(sql))).toBe(false);
+  });
+
+  it('sin storage falla cerrado si hay soportes; sin soportes o sin tabla no lo exige', async () => {
+    const participant = new CrmTitularErasureParticipant(new ConfigService({}));
+    await expect(
+      erase(participant)(documentsRunner(['k1']).qr, DOC_COLUMNS, [SUBSCRIBER_ID], 'apply'),
+    ).rejects.toThrow(/requiere storage/u);
+    await expect(
+      erase(participant)(documentsRunner([]).qr, DOC_COLUMNS, [SUBSCRIBER_ID], 'apply'),
+    ).resolves.toEqual({ selected: 0, changed: 0, residual: 0 });
+    await expect(
+      erase(participant)(documentsRunner(['k1']).qr, new Map(), [SUBSCRIBER_ID], 'apply'),
+    ).resolves.toEqual({ selected: 0, changed: 0, residual: 0 });
+  });
+
+  it('un fallo de storage propaga el error para que la transacción revierta', async () => {
+    const storage = { deleteObject: jest.fn().mockRejectedValue(new Error('storage caído')) };
+    const participant = new CrmTitularErasureParticipant(new ConfigService({}), storage as never);
+    await expect(
+      erase(participant)(documentsRunner(['t/k1']).qr, DOC_COLUMNS, [SUBSCRIBER_ID], 'apply'),
+    ).rejects.toThrow('storage caído');
+  });
+
+  it('H6: una clave fuera del schema del tenant aborta sin tocar el storage', async () => {
+    const storage = { deleteObject: jest.fn() };
+    const participant = new CrmTitularErasureParticipant(new ConfigService({}), storage as never);
+    await expect(
+      erase(participant)(documentsRunner(['otro/k1']).qr, DOC_COLUMNS, [SUBSCRIBER_ID], 'apply'),
+    ).rejects.toThrow(/fuera del schema/u);
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+  });
+
+  it('plan del participante reporta subscriber_documents como evidencia documental', async () => {
+    const { queryRunner } = createQueryRunner();
+    const results = await new CrmTitularErasureParticipant(new ConfigService({})).plan(
+      {
+        partyId: null,
+        subscriberIds: [SUBSCRIBER_ID],
+        expedienteIds: [],
+        userIds: [],
+        relatedIds: {},
+        cryptoKeys: KEYS,
+      },
+      queryRunner,
+    );
+    expect(results.find((result) => result.table === 'subscriber_documents')).toMatchObject({
+      category: 'EVIDENCIA_DOCUMENTAL',
+      selected: 0,
+    });
+  });
+});

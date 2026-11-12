@@ -22,7 +22,13 @@ import { usePermissions } from '@/components/access-control/permissions-context'
 import { billingApi, tenantSelfApi } from '@/lib/api-client';
 import { formatBillingDate } from '@/components/crm/subscribers/billing-cycle-ui';
 import { BillingSubscriberPicker } from './BillingSubscriberPicker';
-import { formatBillingMoney, fromMoneyCents, moneyCents, PAYMENT_METHODS } from './billing-copy';
+import {
+  documentReference,
+  formatBillingMoney,
+  fromMoneyCents,
+  moneyCents,
+  PAYMENT_METHODS,
+} from './billing-copy';
 import {
   BillingLoadState,
   billingInputClass,
@@ -33,7 +39,10 @@ import {
 export function pendingDocuments(documents: BillingDocumentResponse[]) {
   return documents
     .filter(
-      (document) => document.status === 'EMITIDO' && moneyCents(document.pendingAmount ?? '0') > 0,
+      (document) =>
+        // D14 (ADR-110): la deuda IMPORTADO se cobra con pagos normales, igual que lo suma el estado de cuenta.
+        (document.status === 'EMITIDO' || document.status === 'IMPORTADO') &&
+        moneyCents(document.pendingAmount ?? '0') > 0,
     )
     .sort(
       (left, right) => left.dueDate.localeCompare(right.dueDate) || left.id.localeCompare(right.id),
@@ -298,13 +307,13 @@ function PaymentForm({
                 <li key={document.id}>
                   <label className="grid items-center gap-2 text-sm sm:grid-cols-2">
                     <span>
-                      {document.number ?? 'Documento'} · {formatBillingDate(document.dueDate)} ·{' '}
+                      {documentReference(document)} · {formatBillingDate(document.dueDate)} ·{' '}
                       {formatBillingMoney(document.pendingAmount ?? 0)} pendientes
                     </span>
                     <input
                       className={billingInputClass}
                       value={appliedAmounts[document.id] ?? ''}
-                      aria-label={`Monto aplicado a ${document.number ?? 'documento de cobro'}`}
+                      aria-label={`Monto aplicado a ${documentReference(document)}`}
                       inputMode="decimal"
                       readOnly={automatic}
                       onChange={(event) =>

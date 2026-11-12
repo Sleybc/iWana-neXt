@@ -39,6 +39,7 @@ import {
   PAYMENT_STATES,
   PROTECTED_LABEL,
   PROTECTED_NOTICE,
+  documentReference,
 } from './billing-copy';
 import { BillingLoadState, billingInputClass, useBillingMutation } from './billing-ui';
 import type { SubscriberStatementLoad } from './use-subscriber-statement';
@@ -149,7 +150,7 @@ export function SubscriberBillingTab({
             key={document.id}
             variant="info"
             title={additionalNotice(document.unbilledAdditionalCount)}
-            description={document.number ?? formatBillingDate(document.periodStart)}
+            description={documentReference(document)}
           />
         ))}
       <BillingDocumentList

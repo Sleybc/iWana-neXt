@@ -667,6 +667,7 @@ export function getAccessModuleLabel(moduleKey: string): string {
     assurance: 'Mesa de ayuda',
     inventory: 'Inventario',
     billing: 'Facturación',
+    migration: 'Importación de datos',
   };
 
   return labels[moduleKey] ?? 'Sección';

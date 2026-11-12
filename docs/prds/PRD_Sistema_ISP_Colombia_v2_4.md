@@ -708,7 +708,7 @@ Se establece un módulo de primer nivel dedicado a la configuración centralizad
 | --------- | ------------------------------------------------------------------------------- | --------- |
 | RF-MIG-01 | ETL: importación desde WispHub (clientes, planes, facturación, config MikroTik) | MVP       |
 | RF-MIG-02 | ETL: importación desde AdminOLT (OLTs, ONUs, configuración GPON)                | MVP       |
-| RF-MIG-03 | ETL: importación desde UISP/Ubiquiti (dispositivos, inventario)                 | MVP       |
+| RF-MIG-03 | ETL: importación desde UISP/Ubiquiti (dispositivos, inventario) y su CRM: clientes, servicios, facturas históricas, pagos, tickets y documentos, por lotes conciliables y reversibles (ADR-110, enmienda 2026-11-12) | MVP       |
 | RF-MIG-04 | ETL: importación desde Siigo (contabilidad, nómina, terceros)                   | Fase 2    |
 | RF-MIG-05 | ETL: importación desde Excel (datos varios, inventarios manuales)               | MVP       |
 | RF-MIG-06 | Reportes de diferencias y validación post-migración para verificar integridad   | MVP       |

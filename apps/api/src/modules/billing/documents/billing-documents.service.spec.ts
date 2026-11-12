@@ -636,7 +636,7 @@ describe('BillingDocumentsService — emisión, anulación y descarte', () => {
       expect(countSql).toContain('d.issue_date >= $4::date');
       expect(countSql).toContain('d.issue_date <= $5::date');
       expect(countSql).toContain('EXTRACT(DAY FROM p.period_start)::int = $6');
-      expect(countSql).toContain('CASE WHEN d.status <>');
+      expect(countSql).toContain("CASE WHEN d.status NOT IN ('EMITIDO', 'IMPORTADO')");
       expect(result.meta).toMatchObject({ total: 1, page: 2, limit: 10, totalPages: 1 });
       expect(result.data).toHaveLength(1);
     });

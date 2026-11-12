@@ -27,6 +27,8 @@ import { BILLING_GENERATION_QUEUE } from './generation/billing-generation.consta
 import { ContractActivatedProcessor } from './generation/contract-activated.processor';
 import { BillingDocumentsController } from './documents/billing-documents.controller';
 import { BillingDocumentsService } from './documents/billing-documents.service';
+import { BillingImportedPdfService } from './documents/billing-imported-pdf.service';
+import { MediaModule } from '../media/media.module';
 import { BillingIssuerReadPort } from './ports/billing-issuer-read.port';
 import { TenantBillingIssuerReadAdapter } from './ports/tenant-billing-issuer-read.adapter';
 
@@ -45,6 +47,8 @@ import { TenantBillingIssuerReadAdapter } from './ports/tenant-billing-issuer-re
     BillingContractReadModule,
     TenantModule,
     PrivacyModule,
+    // STORAGE_PORT: PDF histórico de los documentos IMPORTADO (ADR-110 D5).
+    MediaModule,
     BullModule.registerQueue({ name: BILLING_GENERATION_QUEUE }),
     BullModule.registerQueue({ name: CRM_CONTRACT_EVENTS_QUEUE }),
   ],
@@ -53,6 +57,7 @@ import { TenantBillingIssuerReadAdapter } from './ports/tenant-billing-issuer-re
     BillingPolicyService,
     BillingPaymentsService,
     BillingDocumentsService,
+    BillingImportedPdfService,
     BillingGenerationService,
     BillingFirstChargeService,
     BillingGenerationProcessor,

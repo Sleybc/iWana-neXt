@@ -192,6 +192,14 @@ const PII_KEY_CONSUMERS: Readonly<Record<string, readonly string[]>> = {
     'subscribers.whatsapp_encrypted',
   ],
   'apps/api/src/cli/reencrypt-aes.pii.ts': [],
+  // Solo leen objetos IWE1 (H1, ADR-110) o descifran intermedias para suprimirlas (H2).
+  'apps/api/src/modules/billing/documents/billing-imported-pdf.service.ts': [],
+  'apps/api/src/modules/crm/contracts/documents/subscriber-documents.service.ts': [],
+  'apps/api/src/modules/migration/privacy/migration-titular-erasure.participant.ts': [],
+  // Importación UISP (ADR-110 D2): ZIP en storage (no es columna) y carga útil de intermedias.
+  'apps/api/src/modules/migration/migration-crypto.ts': [
+    'migration_staging_records.payload_encrypted',
+  ],
   'apps/api/src/common/crypto/fiscal-document.util.ts': [
     'contracts.fiscal_document_encrypted',
     'expediente_records.fiscal_document_encrypted',
@@ -205,6 +213,12 @@ const PII_KEY_CONSUMERS: Readonly<Record<string, readonly string[]>> = {
   ],
   'apps/api/src/modules/crm/contracts/documents/contract-signature.service.ts': [
     'contract_signatures.signer_encrypted',
+  ],
+  // ADR-110 bloque C: alta importada con las mismas columnas cifradas que el alta manual.
+  'apps/api/src/modules/crm/migration-adapters/crm-migration-import.adapter.ts': [
+    'subscribers.document_number_encrypted',
+    'subscribers.email_encrypted',
+    'subscribers.phone_encrypted',
   ],
   'apps/api/src/modules/crm/expedientes/expediente.service.ts': [
     'expediente_records.document_number_encrypted',

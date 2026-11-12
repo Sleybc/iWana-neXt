@@ -188,6 +188,81 @@ describeWithDb('B1c — supresión CRM sobre migraciones tenant reales', () => {
     ]);
   });
 
+  it('ADR-110 D13: retira los soportes documentales del titular y sus archivos', async () => {
+    if (!queryRunner) throw new Error('QueryRunner no inicializado.');
+    const otherSubscriber = randomUUID();
+    await queryRunner.query(
+      `INSERT INTO subscribers (
+         id, tenant_id, person_type, customer_segment, document_type,
+         document_number_encrypted, first_name, last_name, stratum,
+         email_encrypted, phone_encrypted, vat_treatment, tax_regime, address, created_by
+       ) VALUES (
+         $1, $2, 'NATURAL', 'RESIDENTIAL', 'CC', 'synthetic-encrypted',
+         'Otro', 'Sintético', 2, 'synthetic-email', 'synthetic-phone',
+         'STANDARD', 'SIMPLIFIED', 'Dirección sintética', $3
+       )`,
+      [otherSubscriber, tenantId, actorId],
+    );
+    const insertSupport = (subscriber: string, key: string) =>
+      queryRunner!.query(
+        `INSERT INTO subscriber_documents
+           (tenant_id, subscriber_id, kind, content_type, size_bytes, sha256, storage_key, origin,
+            external_id, import_batch_id)
+         VALUES ($1, $2, 'PDF', 'application/pdf', 10, $3, $4, 'IMPORTADO', $5, $6)`,
+        [tenantId, subscriber, 'a'.repeat(64), key, `uisp:document:${randomUUID()}`, randomUUID()],
+      );
+    await insertSupport(subscriberId, `${schemaName}/subscribers/own-1.enc`);
+    await insertSupport(subscriberId, `${schemaName}/subscribers/own-2.enc`);
+    await insertSupport(otherSubscriber, `${schemaName}/subscribers/other.enc`);
+    const storage = { deleteObject: jest.fn().mockResolvedValue(undefined) };
+    const participant = new CrmTitularErasureParticipant(
+      new ConfigService({ PII_HASH_KEY: keys.hashKey.toString('hex') }),
+      storage as never,
+    );
+    const scope = {
+      partyId: null,
+      subscriberIds: [subscriberId],
+      expedienteIds: [],
+      userIds: [],
+      requestId: randomUUID(),
+      cryptoKeys: keys,
+    };
+    const preview = await participant.apply(scope, queryRunner, 'dry-run');
+    expect(preview.find((r) => r.table === 'subscriber_documents')).toMatchObject({
+      category: 'EVIDENCIA_DOCUMENTAL',
+      selected: 2,
+      changed: 0,
+      residual: 2,
+    });
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+
+    await queryRunner.startTransaction();
+    let applied: TitularErasureTableResult[];
+    try {
+      await queryRunner.query(`SELECT set_config('iwana.titular_erasure', 'on', true)`);
+      applied = await participant.apply(scope, queryRunner, 'apply');
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    }
+    expect(applied.find((r) => r.table === 'subscriber_documents')).toMatchObject({
+      selected: 2,
+      changed: 2,
+      residual: 0,
+    });
+    expect(storage.deleteObject.mock.calls.map(([key]) => key).sort()).toEqual([
+      `${schemaName}/subscribers/own-1.enc`,
+      `${schemaName}/subscribers/own-2.enc`,
+    ]);
+    const remaining = (await queryRunner.query(
+      `SELECT subscriber_id::text AS subscriber_id, storage_key FROM subscriber_documents`,
+    )) as Array<{ subscriber_id: string; storage_key: string }>;
+    expect(remaining).toEqual([
+      { subscriber_id: otherSubscriber, storage_key: `${schemaName}/subscribers/other.enc` },
+    ]);
+  });
+
   it('elimina el respaldo 175 del alcance sin tocar otro contrato y verifica la reejecución', async () => {
     if (!queryRunner) throw new Error('QueryRunner no inicializado.');
     const own = randomUUID();

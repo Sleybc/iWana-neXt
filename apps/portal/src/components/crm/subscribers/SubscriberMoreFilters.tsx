@@ -21,6 +21,8 @@ export interface SubscriberMoreFiltersDraft {
   personType: string;
   segment: string;
   stratum: string;
+  /** Solo cuando el filtro por etiqueta está disponible. */
+  tag?: string;
   sortValue: string;
 }
 
@@ -39,6 +41,10 @@ interface SubscriberFilterFieldsProps {
   onPersonTypeChange: (value: string) => void;
   onSegmentChange: (value: string) => void;
   onStratumChange: (value: string) => void;
+  /** Catálogo de etiquetas (ADR-110 D8); sin opciones, el filtro no se muestra. */
+  tag?: string;
+  tagOptions?: ReadonlyArray<{ value: string; label: string }>;
+  onTagChange?: (value: string) => void;
 }
 
 interface SubscriberMoreFiltersProps extends SubscriberFilterFieldsProps {
@@ -64,9 +70,13 @@ function SubscriberFilterFields({
   onPersonTypeChange,
   onSegmentChange,
   onStratumChange,
+  tag = '',
+  tagOptions = [],
+  onTagChange,
 }: SubscriberFilterFieldsProps) {
+  const showTag = tagOptions.length > 0 && Boolean(onTagChange);
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className={`grid gap-3 sm:grid-cols-2 ${showTag ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`}>
       <Select
         id="subscriber-status-filter"
         {...(visibleLabels ? { label: 'Estado' } : {})}
@@ -103,6 +113,17 @@ function SubscriberFilterFields({
         onChange={(event) => onStratumChange(event.target.value)}
         options={[{ value: '', label: 'Todos los estratos' }, ...STRATUM_OPTIONS]}
       />
+      {showTag ? (
+        <Select
+          id="subscriber-tag-filter"
+          {...(visibleLabels ? { label: 'Etiqueta' } : {})}
+          aria-label="Etiqueta"
+          className="h-12 min-w-0"
+          value={tag}
+          onChange={(event) => onTagChange?.(event.target.value)}
+          options={[{ value: '', label: 'Todas las etiquetas' }, ...tagOptions]}
+        />
+      ) : null}
     </div>
   );
 }
@@ -118,6 +139,9 @@ export function SubscriberMoreFilters({
   onPersonTypeChange,
   onSegmentChange,
   onStratumChange,
+  tag = '',
+  tagOptions = [],
+  onTagChange,
   activeFilters,
   onRemoveFilter,
   onClearFilters,
@@ -133,12 +157,20 @@ export function SubscriberMoreFilters({
     personType,
     segment,
     stratum,
+    ...(onTagChange ? { tag } : {}),
     sortValue,
   });
   const panelId = useId();
 
   function getCurrentDraft(): SubscriberMoreFiltersDraft {
-    return { status, personType, segment, stratum, sortValue };
+    return {
+      status,
+      personType,
+      segment,
+      stratum,
+      ...(onTagChange ? { tag } : {}),
+      sortValue,
+    };
   }
 
   function changeOpen(next: boolean) {
@@ -165,7 +197,14 @@ export function SubscriberMoreFilters({
   }
 
   function clearDraft() {
-    setDraft({ status: '', personType: '', segment: '', stratum: '', sortValue: '' });
+    setDraft({
+      status: '',
+      personType: '',
+      segment: '',
+      stratum: '',
+      ...(onTagChange ? { tag: '' } : {}),
+      sortValue: '',
+    });
   }
 
   function applyDraft() {
@@ -178,6 +217,7 @@ export function SubscriberMoreFilters({
     onPersonTypeChange,
     onSegmentChange,
     onStratumChange,
+    ...(onTagChange ? { onTagChange } : {}),
   };
 
   return (
@@ -207,6 +247,8 @@ export function SubscriberMoreFilters({
             personType={personType}
             segment={segment}
             stratum={stratum}
+            tag={tag}
+            tagOptions={tagOptions}
             {...fieldCallbacks}
           />
         </div>
@@ -241,6 +283,11 @@ export function SubscriberMoreFilters({
               onPersonTypeChange={(value) => updateDraft({ personType: value })}
               onSegmentChange={(value) => updateDraft({ segment: value })}
               onStratumChange={(value) => updateDraft({ stratum: value })}
+              tag={draft.tag ?? ''}
+              tagOptions={tagOptions}
+              {...(onTagChange
+                ? { onTagChange: (value: string) => updateDraft({ tag: value }) }
+                : {})}
             />
             {showSort ? (
               <Select

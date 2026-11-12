@@ -142,6 +142,8 @@ export const SubscriberListFiltersSchema = z
     contactPending: z.boolean().optional(),
     fiscalIncomplete: z.boolean().optional(),
     withoutLiveServices: z.boolean().optional(),
+    /** Etiqueta manual (ADR-110 D8): solo suscriptores que la tienen asignada. */
+    tagId: z.string().uuid().optional(),
   })
   .strict();
 
@@ -204,6 +206,11 @@ export interface SubscriberListItem {
    * lista, la búsqueda y el detalle; otras respuestas pueden omitirlo.
    */
   pendingSignature?: boolean;
+  /**
+   * Etiquetas manuales vigentes (ADR-110 D8), ordenadas por nombre. Opcional: lo emiten
+   * la lista, la búsqueda, el detalle y la ficha 360°; otras respuestas pueden omitirlo.
+   */
+  tags?: import('./subscriber-tag.schema').SubscriberTagChip[];
   privacyMarks?: import('./privacy/marks').PrivacyMark[];
   /**
    * Sin el permiso `crm.subscribers.document.read` llega enmascarado: solo los

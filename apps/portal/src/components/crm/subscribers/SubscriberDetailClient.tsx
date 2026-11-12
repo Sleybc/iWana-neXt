@@ -18,6 +18,7 @@ import { useSubscriberStatement } from '@/components/billing/use-subscriber-stat
 import { CompliancePanel } from '@/components/privacy/CompliancePanel';
 import { SubscriberForm } from './SubscriberForm';
 import { SubscriberHeader, type SubscriberRegisterAction } from './SubscriberHeader';
+import { SubscriberTagEditor } from './tags/SubscriberTagEditor';
 import { SubscriberSections } from './SubscriberSections';
 import { SubscriberFiscalSection } from './SubscriberFiscalSection';
 import { SubscriberStatusTransitionDialog } from './SubscriberStatusTransitionDialog';
@@ -492,6 +493,21 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
               onAddContact={() => selectSubscriberTab('datos')}
               onCompleteFiscalData={openFiscalCompletion}
               registerActions={registerActions}
+              tagEditor={
+                canManageSubscribers && !anonymized ? (
+                  <SubscriberTagEditor
+                    subscriberId={subscriber.id}
+                    tags={subscriber.tags ?? []}
+                    onTagsChange={(tags) =>
+                      setSubscriber360((current) =>
+                        current
+                          ? { ...current, subscriber: { ...current.subscriber, tags } }
+                          : current,
+                      )
+                    }
+                  />
+                ) : undefined
+              }
             />
             {subscriber.contractAutoCreationIssue ? (
               <ContractAutoCreationIssueNotice

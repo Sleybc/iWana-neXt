@@ -84,6 +84,8 @@ import { GuardBlockedTitular } from './guards/guard-blocked-titular.decorator';
 import { SubscriberLifecycleService } from './subscriber-lifecycle.service';
 import { ContractStatus } from '../enums/contract-status.enum';
 import { ContractPendingSignatureService } from '../pending-signature/contract-pending-signature.service';
+import { SubscriberTagsService } from './tags/subscriber-tags.service';
+import type { SubscriberTagChip } from '@iwana/shared';
 
 /**
  * Roles administrativos habilitados para el alta manual fuera de flujo.
@@ -202,6 +204,19 @@ const SUBSCRIBER_LIST_ITEM_OPENAPI_SCHEMA: SchemaObject = {
       },
     },
     otherLiveServicesCount: { type: 'integer', minimum: 0 },
+    tags: {
+      type: 'array',
+      description: 'Etiquetas manuales vigentes (ADR-110 D8), por nombre.',
+      items: {
+        type: 'object',
+        required: ['id', 'name', 'color'],
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          name: { type: 'string' },
+          color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
+        },
+      },
+    },
     privacyMarks: {
       type: 'array',
       items: {
@@ -249,7 +264,37 @@ export class SubscribersController {
     // Opcional: los armados de prueba existentes no lo proveen; en la app lo da
     // ContractPendingSignatureReadModule (ADR-109 D3).
     @Optional() private readonly pendingSignatureService?: ContractPendingSignatureService,
+    // Opcional por la misma razón; en la app lo provee este módulo (ADR-110 D8).
+    @Optional() private readonly subscriberTagsService?: SubscriberTagsService,
   ) {}
+
+  private withTagsAndSignature<T extends { id: string; privacyRestricted?: boolean }>(
+    tags: ReadonlyMap<string, SubscriberTagChip[]> | null,
+    item: T,
+    pending: ReadonlySet<string> | null,
+  ): T & { pendingSignature?: boolean; tags?: SubscriberTagChip[] } {
+    return this.withTags(this.withPendingSignature(item, pending), tags);
+  }
+
+  /** Etiquetas manuales por suscriptor; null si no hay lector. */
+  private async tagsFor(
+    subscribers: ReadonlyArray<{ id: string }>,
+  ): Promise<ReadonlyMap<string, SubscriberTagChip[]> | null> {
+    if (!this.subscriberTagsService) return null;
+    return this.subscriberTagsService.tagsFor(subscribers.map((subscriber) => subscriber.id));
+  }
+
+  /**
+   * Agrega `tags` (opcional en el contrato). Al titular con datos restringidos para el
+   * lector no se le muestran: la ficha y la lista lo presentan sin detalle.
+   */
+  private withTags<T extends { id: string; privacyRestricted?: boolean }>(
+    item: T,
+    tags: ReadonlyMap<string, SubscriberTagChip[]> | null,
+  ): T & { tags?: SubscriberTagChip[] } {
+    if (tags === null) return item;
+    return { ...item, tags: item.privacyRestricted ? [] : (tags.get(item.id) ?? []) };
+  }
 
   /** Suscriptores con contrato sin firma y servicio activado; null si no hay lector. */
   private async pendingSignatureFor(
@@ -342,6 +387,7 @@ export class SubscribersController {
   @ApiQuery({ name: 'contactPending', required: false, type: Boolean })
   @ApiQuery({ name: 'fiscalIncomplete', required: false, type: Boolean })
   @ApiQuery({ name: 'withoutLiveServices', required: false, type: Boolean })
+  @ApiQuery({ name: 'tagId', required: false, type: String, format: 'uuid' })
   async findAll(
     @CurrentUser() user: JwtPayload,
     @Query('status') status?: SubscriberStatus,
@@ -356,6 +402,7 @@ export class SubscribersController {
     @Query('fiscalIncomplete', new ParseBoolPipe({ optional: true })) fiscalIncomplete?: boolean,
     @Query('withoutLiveServices', new ParseBoolPipe({ optional: true }))
     withoutLiveServices?: boolean,
+    @Query('tagId', new ParseUUIDPipe({ optional: true })) tagId?: string,
   ) {
     const filters = {
       status: status ?? undefined,
@@ -369,6 +416,7 @@ export class SubscribersController {
       contactPending,
       fiscalIncomplete,
       withoutLiveServices,
+      tagId: tagId ?? undefined,
     };
 
     const readAccess = await this.resolveBlockedReadAccess(user.sub);
@@ -392,9 +440,11 @@ export class SubscribersController {
     );
 
     const pendingSignature = await this.pendingSignatureFor(result.data);
+    const tags = await this.tagsFor(result.data);
     return {
       data: result.data.map((subscriber) =>
-        this.withPendingSignature(
+        this.withTagsAndSignature(
+          tags,
           projectSubscriberForList(
             subscriber,
             user.role,
@@ -508,6 +558,7 @@ export class SubscribersController {
   @ApiQuery({ name: 'contactPending', required: false, type: Boolean })
   @ApiQuery({ name: 'fiscalIncomplete', required: false, type: Boolean })
   @ApiQuery({ name: 'withoutLiveServices', required: false, type: Boolean })
+  @ApiQuery({ name: 'tagId', required: false, type: String, format: 'uuid' })
   async search(
     @Body(new ZodBodyValidationPipe(SearchSubscribersSchema)) body: SearchSubscribersInput,
     @CurrentUser() user: JwtPayload,
@@ -523,6 +574,7 @@ export class SubscribersController {
     @Query('fiscalIncomplete', new ParseBoolPipe({ optional: true })) fiscalIncomplete?: boolean,
     @Query('withoutLiveServices', new ParseBoolPipe({ optional: true }))
     withoutLiveServices?: boolean,
+    @Query('tagId', new ParseUUIDPipe({ optional: true })) tagId?: string,
   ) {
     const readAccess = await this.resolveBlockedReadAccess(user.sub);
     const filters = {
@@ -537,6 +589,7 @@ export class SubscribersController {
       contactPending,
       fiscalIncomplete,
       withoutLiveServices,
+      tagId: tagId ?? undefined,
     };
 
     if (body.search !== undefined) {
@@ -557,9 +610,11 @@ export class SubscribersController {
         this.documentAccess(readAccess.canReadDocument),
       );
       const pendingSignature = await this.pendingSignatureFor(result.data);
+      const tags = await this.tagsFor(result.data);
       return {
         data: result.data.map((subscriber) =>
-          this.withPendingSignature(
+          this.withTagsAndSignature(
+            tags,
             projectSubscriberForList(
               subscriber,
               user.role,
@@ -597,9 +652,11 @@ export class SubscribersController {
     );
 
     const pendingSignature = await this.pendingSignatureFor(results);
+    const tags = await this.tagsFor(results);
     return {
       data: results.map((subscriber) =>
-        this.withPendingSignature(
+        this.withTagsAndSignature(
+          tags,
           projectSubscriberForList(
             subscriber,
             user.role,
@@ -644,8 +701,10 @@ export class SubscribersController {
       this.documentAccess(readAccess.canReadDocument),
     );
     const pendingSignature = await this.pendingSignatureFor([subscriber]);
+    const tags = await this.tagsFor([subscriber]);
     return {
-      data: this.withPendingSignature(
+      data: this.withTagsAndSignature(
+        tags,
         this.sanitizeResponse(
           enrichedSubscriber,
           privacyMarks,
@@ -927,7 +986,8 @@ export class SubscribersController {
         ? view360.arcoRequests
         : [],
       // La ficha lee esta vista: sin el campo, la insignia «Pendiente de firma» no aparece (CA-5).
-      subscriber: this.withPendingSignature(
+      subscriber: this.withTagsAndSignature(
+        await this.tagsFor([view360.subscriber]),
         subscriberResponse,
         await this.pendingSignatureFor([view360.subscriber]),
       ),

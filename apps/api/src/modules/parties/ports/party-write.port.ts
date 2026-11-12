@@ -75,4 +75,15 @@ export abstract class IPartyWritePort {
     role: PartyRoleType,
     ctx: PartyWriteContext,
   ): Promise<EnsurePartyResult>;
+
+  /**
+   * Retira los party que creó una importación (ADR-110 D7) si quedaron huérfanos: sin rol
+   * distinto de `onlyRole` y sin ninguna FK que los referencie (cada borrado va en su propio
+   * savepoint; un 23503 deja ese party intacto). Devuelve los ids retirados.
+   */
+  abstract removeOrphanImportedParties(
+    partyIds: string[],
+    onlyRole: PartyRoleType,
+    ctx: PartyWriteContext,
+  ): Promise<string[]>;
 }

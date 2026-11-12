@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { QueryRunner } from 'typeorm';
+import { STORAGE_PORT, type StoragePort } from '@iwana/storage';
 import type { ErasureCategory } from '@iwana/shared';
 import {
   ANONYMIZED,
@@ -375,7 +376,14 @@ async function anonymizeNonNullTextRows(
 
 @Injectable()
 export class CrmTitularErasureParticipant implements TitularErasureParticipant {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    /**
+     * Storage privado de los soportes documentales (ADR-110 D13). Opcional para el CLI: sin
+     * él, `apply` falla cerrado si el titular tiene soportes en lugar de dejar los archivos.
+     */
+    @Optional() @Inject(STORAGE_PORT) private readonly storage?: StoragePort,
+  ) {}
 
   async resolveScope(scope: TitularErasureScope, qr: QueryRunner): Promise<void> {
     const related = (scope.relatedIds ??= {});
@@ -587,6 +595,26 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
       ),
     );
 
+    // ADR-110 D8: la asignación de etiquetas manuales liga al titular con el catálogo del
+    // ISP; no tiene texto propio, se borra (el catálogo queda).
+    results.push(
+      fieldResult(
+        'subscriber_tag_assignments',
+        'COMERCIAL',
+        await this.eraseTagAssignments(qr, columns, scope.subscriberIds, mode),
+      ),
+    );
+
+    // ADR-110 D13: los soportes documentales del titular (archivos importados) se retiran
+    // del storage y su fila se borra; no guardan texto propio.
+    results.push(
+      fieldResult(
+        'subscriber_documents',
+        'EVIDENCIA_DOCUMENTAL',
+        await this.eraseSubscriberDocuments(qr, columns, scope.subscriberIds, mode),
+      ),
+    );
+
     for (const [table, category] of [
       ['operational_responsibility_history', 'OPERACION_CAMPO'],
       ['status_changes', 'OPERACION_CAMPO'],
@@ -773,6 +801,111 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
       ),
     );
     return results;
+  }
+
+  private async eraseTagAssignments(
+    qr: QueryRunner,
+    columns: Map<string, TenantColumn>,
+    subscriberIds: string[],
+    mode: 'dry-run' | 'apply',
+  ): Promise<{ selected: number; changed: number; residual: number }> {
+    if (
+      subscriberIds.length === 0 ||
+      !tableExists(columns, 'subscriber_tag_assignments') ||
+      !columnOf(columns, 'subscriber_tag_assignments', 'subscriber_id')
+    ) {
+      return { selected: 0, changed: 0, residual: 0 };
+    }
+    const selected = normalizeErasureRows<{ tag_id: string }>(
+      await qr.query(
+        `SELECT tag_id::text AS tag_id
+           FROM subscriber_tag_assignments
+          WHERE subscriber_id = ANY($1::uuid[])
+          FOR UPDATE`,
+        [subscriberIds],
+      ),
+    );
+    if (mode === 'dry-run') {
+      return { selected: selected.length, changed: 0, residual: selected.length };
+    }
+    const deleted = normalizeErasureRows<{ tag_id: string }>(
+      await qr.query(
+        `DELETE FROM subscriber_tag_assignments
+          WHERE subscriber_id = ANY($1::uuid[])
+          RETURNING tag_id::text AS tag_id`,
+        [subscriberIds],
+      ),
+    );
+    const residual = normalizeErasureRows<{ tag_id: string }>(
+      await qr.query(
+        `SELECT tag_id::text AS tag_id
+           FROM subscriber_tag_assignments
+          WHERE subscriber_id = ANY($1::uuid[])`,
+        [subscriberIds],
+      ),
+    );
+    return { selected: selected.length, changed: deleted.length, residual: residual.length };
+  }
+
+  /**
+   * Borra las filas de `subscriber_documents` del titular y sus objetos en storage. Los
+   * objetos se borran tras el DELETE y dentro de la transacción: un fallo de storage aborta
+   * la supresión (las filas vuelven) y el reintento es idempotente; un rollback posterior
+   * deja filas sin archivo, nunca archivos sin control.
+   */
+  private async eraseSubscriberDocuments(
+    qr: QueryRunner,
+    columns: Map<string, TenantColumn>,
+    subscriberIds: string[],
+    mode: 'dry-run' | 'apply',
+  ): Promise<{ selected: number; changed: number; residual: number }> {
+    if (
+      subscriberIds.length === 0 ||
+      !tableExists(columns, 'subscriber_documents') ||
+      !columnOf(columns, 'subscriber_documents', 'storage_key')
+    ) {
+      return { selected: 0, changed: 0, residual: 0 };
+    }
+    const selected = normalizeErasureRows<{ storage_key: string }>(
+      await qr.query(
+        `SELECT storage_key FROM subscriber_documents
+          WHERE subscriber_id = ANY($1::uuid[])
+          FOR UPDATE`,
+        [subscriberIds],
+      ),
+    );
+    if (mode === 'dry-run' || selected.length === 0) {
+      return { selected: selected.length, changed: 0, residual: selected.length };
+    }
+    if (!this.storage) {
+      throw new Error('La supresión requiere storage para retirar los soportes del titular.');
+    }
+    const deleted = normalizeErasureRows<{ storage_key: string }>(
+      await qr.query(
+        `DELETE FROM subscriber_documents
+          WHERE subscriber_id = ANY($1::uuid[])
+          RETURNING storage_key`,
+        [subscriberIds],
+      ),
+    );
+    // H6: solo se borran objetos del schema en curso; una clave ajena aborta la supresión.
+    const schemaRows = (await qr.query(`SELECT current_schema() AS schema`)) as Array<{
+      schema: string;
+    }>;
+    const schema = schemaRows[0]?.schema ?? '';
+    for (const key of new Set(deleted.map((row) => row.storage_key))) {
+      if (!schema || !key.startsWith(`${schema}/`)) {
+        throw new Error('Clave de soporte fuera del schema del tenant.');
+      }
+      await this.storage.deleteObject(key);
+    }
+    const residual = normalizeErasureRows<{ storage_key: string }>(
+      await qr.query(
+        `SELECT storage_key FROM subscriber_documents WHERE subscriber_id = ANY($1::uuid[])`,
+        [subscriberIds],
+      ),
+    );
+    return { selected: selected.length, changed: deleted.length, residual: residual.length };
   }
 
   private async eraseContractBackup(

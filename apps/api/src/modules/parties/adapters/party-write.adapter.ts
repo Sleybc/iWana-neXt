@@ -188,4 +188,35 @@ export class PartyWriteAdapter extends IPartyWritePort {
       await manager.save(PartyContact, contact);
     }
   }
+
+  async removeOrphanImportedParties(
+    partyIds: string[],
+    onlyRole: PartyRoleType,
+    ctx: PartyWriteContext,
+  ): Promise<string[]> {
+    const { manager } = ctx;
+    if (partyIds.length === 0) return [];
+    const candidates = (await manager.query(
+      `SELECT p.id::text AS id FROM party p
+        WHERE p.id = ANY($1::uuid[])
+          AND NOT EXISTS (SELECT 1 FROM party_role r WHERE r.party_id = p.id AND r.role <> $2)
+        ORDER BY p.id`,
+      [[...new Set(partyIds)], onlyRole],
+    )) as Array<{ id: string }>;
+    const removed: string[] = [];
+    for (const { id } of candidates) {
+      await manager.query('SAVEPOINT party_orphan_removal');
+      try {
+        await manager.query(`DELETE FROM party_contact WHERE party_id = $1`, [id]);
+        await manager.query(`DELETE FROM party_role WHERE party_id = $1`, [id]);
+        await manager.query(`DELETE FROM party WHERE id = $1`, [id]);
+        await manager.query('RELEASE SAVEPOINT party_orphan_removal');
+        removed.push(id);
+      } catch (error) {
+        await manager.query('ROLLBACK TO SAVEPOINT party_orphan_removal');
+        if ((error as { code?: string }).code !== '23503') throw error;
+      }
+    }
+    return removed;
+  }
 }

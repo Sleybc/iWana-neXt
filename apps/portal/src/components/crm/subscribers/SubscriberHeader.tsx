@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import {
   Badge,
@@ -34,6 +35,7 @@ import {
 import { FiscalDataIncompleteAlert } from './FiscalDataIncompleteAlert';
 import { VatTreatmentBanner } from './VatTreatmentBanner';
 import { isEligibleLifecycleContract } from './subscriber-lifecycle-ui';
+import { SubscriberTagChips } from './tags/SubscriberTagChips';
 
 /** Opción de «Registrar ▾»: ya filtrada por el permiso del módulo dueño (CA-3). */
 export interface SubscriberRegisterAction {
@@ -54,6 +56,8 @@ interface SubscriberHeaderProps {
   onCompleteFiscalData?: () => void;
   /** Sin opciones permitidas, el botón «Registrar» no se muestra. */
   registerActions?: SubscriberRegisterAction[];
+  /** Editor «Asignar etiqueta» (ADR-110 D8); solo lo pasa quien puede gestionar. */
+  tagEditor?: ReactNode;
 }
 
 export function SubscriberHeader({
@@ -67,6 +71,7 @@ export function SubscriberHeader({
   onAddContact,
   onCompleteFiscalData,
   registerActions = [],
+  tagEditor,
 }: SubscriberHeaderProps) {
   const name = privacyDisplayValue(
     subscriber.anonymizedAt ? null : formatSubscriberName(subscriber),
@@ -256,6 +261,13 @@ export function SubscriberHeader({
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        {/* Etiquetas en la fila de avisos existente: no agregan una línea al encabezado. */}
+        {(subscriber.tags?.length ?? 0) > 0 || tagEditor ? (
+          <div className="flex min-w-0 max-w-full items-center gap-1">
+            <SubscriberTagChips tags={subscriber.tags} />
+            {tagEditor}
+          </div>
+        ) : null}
         <VatTreatmentBanner
           variant="inline"
           personType={subscriber.personType}

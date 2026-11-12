@@ -240,4 +240,54 @@ describe('SubscriberMoreFilters', () => {
     const dialog = screen.getByRole('dialog', { name: 'Más filtros' });
     expect(within(dialog).queryByRole('combobox', { name: 'Ordenar por' })).not.toBeInTheDocument();
   });
+
+  describe('filtro por etiqueta (ADR-110 D8)', () => {
+    const tagOptions = [
+      { value: '00000000-0000-4000-8000-000000000001', label: 'VIP' },
+      { value: '00000000-0000-4000-8000-000000000002', label: 'Moroso' },
+    ];
+
+    it('sin catálogo no muestra el filtro', () => {
+      render(<SubscriberMoreFilters {...baseProps} expanded onTagChange={jest.fn()} />);
+      expect(screen.queryByRole('combobox', { name: 'Etiqueta' })).not.toBeInTheDocument();
+    });
+
+    it('lista el catálogo y avisa la etiqueta elegida', async () => {
+      const onTagChange = jest.fn();
+      render(
+        <SubscriberMoreFilters
+          {...baseProps}
+          expanded
+          tag=""
+          tagOptions={tagOptions}
+          onTagChange={onTagChange}
+        />,
+      );
+      const select = screen.getByRole('combobox', { name: 'Etiqueta' });
+      expect(select).toHaveTextContent('Todas las etiquetas');
+      await userEvent.click(select);
+      await userEvent.click(screen.getByRole('option', { name: 'Moroso' }));
+      expect(onTagChange).toHaveBeenCalledWith(tagOptions[1]?.value);
+    });
+
+    it('en móvil aplica la etiqueta junto con el resto del borrador', async () => {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 375 });
+      const onApply = jest.fn();
+      render(
+        <SubscriberMoreFilters
+          {...baseProps}
+          tag=""
+          tagOptions={tagOptions}
+          onTagChange={jest.fn()}
+          onApply={onApply}
+        />,
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Más filtros' }));
+      const dialog = await screen.findByRole('dialog');
+      await userEvent.click(within(dialog).getByRole('combobox', { name: 'Etiqueta' }));
+      await userEvent.click(screen.getByRole('option', { name: 'VIP' }));
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Aplicar' }));
+      expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ tag: tagOptions[0]?.value }));
+    });
+  });
 });

@@ -846,6 +846,15 @@ export const MOD00_ACCESS_V2_CATALOG: PermissionSeedDefinition[] = [
     catalogVersion: versionV2,
     availability: AccessPermissionAvailability.ASSIGNABLE,
   },
+  // ── Importación desde UISP (ADR-110 D9; migración 198) ──
+  {
+    permissionKey: AccessPermissionKey.MIGRATION_IMPORT_MANAGE,
+    moduleKey: 'migration',
+    action: 'import.manage',
+    description: 'Importar clientes desde otro sistema: simular, promover, conciliar y revertir',
+    catalogVersion: versionV2,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
 ];
 
 export const ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2: Record<UserRole, AccessPermissionKey[]> = {

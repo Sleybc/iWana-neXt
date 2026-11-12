@@ -10,8 +10,8 @@
  * no se toca), PENDIENTE-MOD14 (spec 2026-11-03 §12 H-5: solo listadas, B4 no
  * decide por ellas; el invariante las reconoce pero no las justifica).
  * R-1 a R-14 pasan a CUBIERTA por B3; R-15 queda EXCLUIDA-condicional con el
- * bloqueante D-BT-8. Total: 743 entradas
- * (CUBIERTA=187, EXCLUIDA=556, PENDIENTE-MOD14=0).
+ * bloqueante D-BT-8. Total: 766 entradas
+ * (CUBIERTA=187, EXCLUIDA=579, PENDIENTE-MOD14=0).
  * La entrada 715 es privacy_retention_expiry_runs.reason_code (migracion 179,
  * B2-R2): CODIGO, sin texto libre. La 716 es subscriber_note.body_encrypted (migracion
  * 180, MOD05 D3): texto libre CUBIERTO por CrmTitularErasureParticipant.
@@ -20,6 +20,10 @@
  * resto son códigos, huellas, enums, outbox o configuración del ISP.
  * La 743 es subscribers.contract_auto_creation_issue (migracion 192, cierre de venta
  * fase 2): CODIGO, solo motivo y códigos de datos faltantes, sin texto libre.
+ * Las 744 a 766 son de la importación desde UISP (migraciones 194 a 197, ADR-110):
+ * lotes, intermedias, equivalencias, etiquetas manuales y external_id/external_number de
+ * contratos, tickets y cobro. migration_staging_records.payload_encrypted pasa a CUBIERTA
+ * (H2 sec-eng, 2026-11-12) por MigrationTitularErasureParticipant.
  * MOD14 clasificada en INFORME-MOD14-PRIVACY-CLASIFICACION-v1.0.md (2026-11-07).
  */
 export type TextErasureManifestKind = 'CUBIERTA' | 'EXCLUIDA' | 'PENDIENTE-MOD14';
@@ -3914,4 +3918,210 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
   { t: 'work_orders', c: 'status', k: 'EXCLUIDA', d: 'ENUM: dominio cerrado' },
   { t: 'work_orders', c: 'summary', k: 'CUBIERTA', d: 'WfmTitularErasureParticipant (marker)' },
   { t: 'work_orders', c: 'type', k: 'EXCLUIDA', d: 'ENUM: dominio cerrado' },
+  // ── Importación desde UISP (migraciones 194 a 197, ADR-110) ──
+  {
+    t: 'migration_batches',
+    c: 'source',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado (UISP_ZIP)',
+  },
+  {
+    t: 'migration_batches',
+    c: 'status',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado del lote (ADR-110 D1)',
+  },
+  {
+    t: 'migration_batches',
+    c: 'counts',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: conteos por entidad, jsonb objeto sin PII (ADR-110 D1)',
+  },
+  {
+    t: 'migration_batches',
+    c: 'rejections',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: rechazos por motivo, jsonb objeto sin PII (ADR-110 D1)',
+  },
+  {
+    t: 'migration_batches',
+    c: 'source_object_key',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: clave del ZIP cifrado en storage; se purga a los 30 días (ADR-110 D10)',
+  },
+  {
+    t: 'migration_staging_records',
+    c: 'entity',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado',
+  },
+  {
+    t: 'migration_staging_records',
+    c: 'external_id',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: referencia de origen uisp:<entidad>:<id> (ADR-110 D3); el CHECK de intermedias exige solo [A-Za-z0-9._-], sin nombres; la referencia del cliente (subscribers.external_id) sí se suprime',
+  },
+  {
+    t: 'migration_staging_records',
+    c: 'payload_encrypted',
+    k: 'CUBIERTA',
+    d: 'apps/api/src/modules/migration/privacy/migration-titular-erasure.participant.ts (borra las intermedias del titular promovido y adelanta la purga del lote; las no promovidas siguen la purga a 30 días, ADR-110 D10)',
+  },
+  {
+    t: 'migration_staging_records',
+    c: 'status',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado',
+  },
+  {
+    t: 'migration_staging_records',
+    c: 'rejection_reason',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: motivo de rechazo en mayúsculas validado por CHECK, sin texto del titular',
+  },
+  {
+    t: 'migration_mappings',
+    c: 'source_system',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado',
+  },
+  {
+    t: 'migration_mappings',
+    c: 'kind',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado',
+  },
+  {
+    t: 'migration_mappings',
+    c: 'external_value',
+    k: 'EXCLUIDA',
+    d: 'CATALOGO: valor de catálogo del sistema de origen (plan, método, ciclo, etiqueta), sin vínculo con un titular',
+  },
+  {
+    t: 'migration_mappings',
+    c: 'external_label',
+    k: 'EXCLUIDA',
+    d: 'CATALOGO: nombre del catálogo del sistema de origen, sin vínculo con un titular',
+  },
+  {
+    t: 'migration_mappings',
+    c: 'action',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado',
+  },
+  {
+    t: 'migration_mappings',
+    c: 'target_ref',
+    k: 'EXCLUIDA',
+    d: 'CATALOGO: referencia al catálogo de iWana',
+  },
+  {
+    t: 'subscriber_tags',
+    c: 'name',
+    k: 'EXCLUIDA',
+    d: 'CATALOGO: etiqueta manual del ISP (ADR-110 D8); la asignación al titular no tiene texto',
+  },
+  {
+    t: 'subscriber_tags',
+    c: 'color',
+    k: 'EXCLUIDA',
+    d: 'CATALOGO: color #RRGGBB validado por CHECK',
+  },
+  {
+    t: 'contracts',
+    c: 'external_id',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: referencia de origen uisp:<entidad>:<id> (ADR-110 D3); el CHECK de intermedias exige solo [A-Za-z0-9._-], sin nombres; la referencia del cliente (subscribers.external_id) sí se suprime',
+  },
+  {
+    t: 'support_tickets',
+    c: 'external_id',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: referencia de origen uisp:<entidad>:<id> (ADR-110 D3); el CHECK de intermedias exige solo [A-Za-z0-9._-], sin nombres; la referencia del cliente (subscribers.external_id) sí se suprime',
+  },
+  {
+    t: 'billing_documents',
+    c: 'external_id',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: referencia de origen uisp:<entidad>:<id> (ADR-110 D3); el CHECK de intermedias exige solo [A-Za-z0-9._-], sin nombres; la referencia del cliente (subscribers.external_id) sí se suprime',
+  },
+  {
+    t: 'billing_documents',
+    c: 'external_number',
+    k: 'EXCLUIDA',
+    d: 'FISCAL: número del documento histórico importado (ADR-110 D5); se conserva como el número propio',
+  },
+  {
+    t: 'billing_payments',
+    c: 'external_id',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: referencia de origen uisp:<entidad>:<id> (ADR-110 D3); el CHECK de intermedias exige solo [A-Za-z0-9._-], sin nombres; la referencia del cliente (subscribers.external_id) sí se suprime',
+  },
+  // ── Importación desde UISP, bloque C (migración 199, ADR-110 D5–D7, D13) ──
+  {
+    t: 'subscriber_documents',
+    c: 'kind',
+    k: 'EXCLUIDA',
+    d: 'ENUM: PDF, IMAGEN u OTRO (ADR-110 D13)',
+  },
+  {
+    t: 'subscriber_documents',
+    c: 'content_type',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: tipo MIME decidido por la firma del archivo, nunca por su nombre',
+  },
+  {
+    t: 'subscriber_documents',
+    c: 'sha256',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: huella hexadecimal del archivo',
+  },
+  {
+    t: 'subscriber_documents',
+    c: 'storage_key',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: clave aleatoria en storage privado, sin nombre original (ADR-110 D13)',
+  },
+  {
+    t: 'subscriber_documents',
+    c: 'origin',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado (IMPORTADO)',
+  },
+  {
+    t: 'subscriber_documents',
+    c: 'visibility',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado (INTERNA)',
+  },
+  {
+    t: 'subscriber_documents',
+    c: 'external_id',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: referencia uisp:document:<cliente>-<huella> (ADR-110 D3), sin nombres',
+  },
+  {
+    t: 'billing_documents',
+    c: 'external_pdf_key',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: clave en storage del PDF histórico importado (ADR-110 D5)',
+  },
+  {
+    t: 'migration_batches',
+    c: 'promotion',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: informe de promoción por entidad y motivo, jsonb sin PII',
+  },
+  {
+    t: 'migration_batches',
+    c: 'reconciliation',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: conciliación con ids de suscriptor y montos, sin nombres ni documentos (ADR-110 D6)',
+  },
+  {
+    t: 'migration_staging_records',
+    c: 'promotion_meta',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: ids y contadores de lo promovido, sin PII; se purga con el lote (ADR-110 D10)',
+  },
 ];

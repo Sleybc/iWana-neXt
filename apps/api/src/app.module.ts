@@ -37,6 +37,7 @@ import { BillingModule } from './modules/billing/billing.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { PrivacyModule } from './modules/privacy/privacy.module';
 import { NetworkModule } from './modules/network/network.module';
+import { MigrationModule } from './modules/migration/migration.module';
 import { createApiTypeOrmOptions, createAppConfigurationSchema } from './app.config';
 import { getGlobalRateLimitTracker } from './common/rate-limit-tracker';
 
@@ -250,6 +251,9 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
 
     // Privacidad (ADR-094 Fase 1): autorizaciones, textos legales y gobierno de datos
     PrivacyModule,
+
+    // Importación por lotes desde UISP (ADR-110, bloque B): subida, simulación y equivalencias
+    MigrationModule,
   ],
   controllers: [],
   providers: [

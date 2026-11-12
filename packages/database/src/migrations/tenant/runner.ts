@@ -150,6 +150,13 @@ import { ContractTemplateContentHash1900000000190 } from './190_contract_templat
 import { InstallationFeeUnified1910000000191 } from './191_installation_fee_unified';
 import { ContractAutoCreationFromExpediente1920000000192 } from './192_contract_auto_creation_from_expediente';
 import { BillingLineKindInstallation1930000000193 } from './193_billing_line_kind_installation';
+import { MigrationImportTables1940000000194 } from './194_migration_import_tables';
+import { SubscriberTags1950000000195 } from './195_subscriber_tags';
+import { ImportExternalIdsCrmSupport1960000000196 } from './196_import_external_ids_crm_support';
+import { BillingImportedDocuments1970000000197 } from './197_billing_imported_documents';
+import { SeedMigrationImportPermission1980000000198 } from './198_seed_migration_import_permission';
+import { ImportPromotionAndSubscriberDocuments1990000000199 } from './199_import_promotion_and_subscriber_documents';
+import { ImportedDebtCollectible2000000000200 } from './200_imported_debt_collectible';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -381,6 +388,13 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   InstallationFeeUnified1910000000191,
   ContractAutoCreationFromExpediente1920000000192,
   BillingLineKindInstallation1930000000193,
+  MigrationImportTables1940000000194,
+  SubscriberTags1950000000195,
+  ImportExternalIdsCrmSupport1960000000196,
+  BillingImportedDocuments1970000000197,
+  SeedMigrationImportPermission1980000000198,
+  ImportPromotionAndSubscriberDocuments1990000000199,
+  ImportedDebtCollectible2000000000200,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

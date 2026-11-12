@@ -773,6 +773,7 @@ export class SubscribersService implements CrmSubscriberReadPort {
     contactPending?: boolean | undefined;
     fiscalIncomplete?: boolean | undefined;
     withoutLiveServices?: boolean | undefined;
+    tagId?: string | undefined;
     excludeBlocked?: boolean | undefined;
     canSeeBlocked?: boolean | undefined;
     page?: number | undefined;
@@ -829,6 +830,15 @@ export class SubscribersService implements CrmSubscriberReadPort {
         if (filters.withoutLiveServices !== undefined) {
           query.andWhere(
             `(s.anonymized_at IS NULL AND ${filters.withoutLiveServices ? `NOT ${HAS_LIVE_SERVICES_SQL}` : HAS_LIVE_SERVICES_SQL})`,
+          );
+        }
+
+        if (filters.tagId) {
+          query.andWhere(
+            `EXISTS (SELECT 1 FROM subscriber_tag_assignments sta
+                      JOIN subscriber_tags st ON st.id = sta.tag_id AND st.deleted_at IS NULL
+                     WHERE sta.subscriber_id = s.id AND sta.tag_id = :tagId)`,
+            { tagId: filters.tagId },
           );
         }
 

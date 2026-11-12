@@ -16,6 +16,16 @@ function createScope(overrides: Partial<TitularErasureScope> = {}): TitularErasu
   };
 }
 
+/** La sonda de columna (`external_pdf_key`, 199) responde aparte; el resto va al mock de la prueba. */
+function qrOf(query: jest.Mock, hasPdf = true): QueryRunner {
+  return {
+    query: (sql: string, parameters?: unknown[]) =>
+      /information_schema/u.test(sql)
+        ? Promise.resolve([{ present: hasPdf }])
+        : query(sql, parameters),
+  } as unknown as QueryRunner;
+}
+
 describe('BillingTitularErasureParticipant', () => {
   let participant: BillingTitularErasureParticipant;
   let query: jest.Mock;
@@ -37,7 +47,7 @@ describe('BillingTitularErasureParticipant', () => {
       .mockResolvedValueOnce([{ count: 2 }])
       .mockResolvedValueOnce([{ count: 4 }]);
 
-    const result = await participant.plan(createScope(), { query } as unknown as QueryRunner);
+    const result = await participant.plan(createScope(), qrOf(query));
 
     expect(result).toEqual([
       { table: 'billing_documents', category: 'FISCAL', selected: 3, changed: 0, residual: 3 },
@@ -58,6 +68,7 @@ describe('BillingTitularErasureParticipant', () => {
       .mockResolvedValueOnce([{ count: 3 }])
       .mockResolvedValueOnce([{ count: 2 }])
       .mockResolvedValueOnce([{ count: 4 }])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ id: 'doc-emitido' }])
       .mockResolvedValueOnce([{ id: 'doc-borrador' }])
       .mockResolvedValueOnce([{ id: 'pago' }])
@@ -65,26 +76,70 @@ describe('BillingTitularErasureParticipant', () => {
       .mockResolvedValueOnce([{ count: 0 }])
       .mockResolvedValueOnce([{ count: 0 }]);
 
-    const result = await participant.apply(
-      createScope(),
-      { query } as unknown as QueryRunner,
-      'apply',
-    );
+    const result = await participant.apply(createScope(), qrOf(query), 'apply');
 
     expect(result).toEqual([
       { table: 'billing_documents', category: 'FISCAL', selected: 3, changed: 2, residual: 0 },
       { table: 'billing_document_lines', category: 'FISCAL', selected: 2, changed: 2, residual: 0 },
       { table: 'billing_payments', category: 'COMERCIAL', selected: 4, changed: 1, residual: 0 },
     ]);
-    const updateDocumentSql = String(query.mock.calls[3]?.[0]);
+    const updateDocumentSql = String(query.mock.calls[4]?.[0]);
     expect(updateDocumentSql).toContain('buyer_document_encrypted = NULL');
     expect(updateDocumentSql).toContain("jsonb_set(buyer_snapshot, '{displayName}'");
     expect(updateDocumentSql).toContain("jsonb_build_object('documentType', $3::text)");
-    expect(query.mock.calls[3]?.[1]).toEqual([tenantId, [subscriberId], 'ANONIMIZADO']);
-    expect(String(query.mock.calls[4]?.[0])).toContain("status = 'BORRADOR'");
-    expect(String(query.mock.calls[5]?.[0])).toContain('SET reference = NULL, note = NULL');
-    expect(query.mock.calls[4]?.[1]).toEqual([tenantId, [subscriberId]]);
+    expect(query.mock.calls[4]?.[1]).toEqual([tenantId, [subscriberId], 'ANONIMIZADO']);
+    expect(String(query.mock.calls[5]?.[0])).toContain("status = 'BORRADOR'");
+    expect(String(query.mock.calls[6]?.[0])).toContain('SET reference = NULL, note = NULL');
     expect(query.mock.calls[5]?.[1]).toEqual([tenantId, [subscriberId]]);
+    expect(query.mock.calls[6]?.[1]).toEqual([tenantId, [subscriberId]]);
+  });
+
+  it('IMPORTADO: retira el PDF histórico del storage y deja external_pdf_key en NULL', async () => {
+    const storage = { deleteObject: jest.fn().mockResolvedValue(undefined) };
+    participant = new BillingTitularErasureParticipant(storage as never);
+    query
+      .mockResolvedValueOnce([{ count: 1 }])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([
+        { key: 'tenant_x/billing-imported/uisp_invoice_1.pdf', schema: 'tenant_x' },
+      ])
+      .mockResolvedValueOnce([{ id: 'doc-importado' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ count: 0 }]);
+    const result = await participant.apply(createScope(), qrOf(query), 'apply');
+    expect(result[0]).toMatchObject({ table: 'billing_documents', changed: 1, residual: 0 });
+    expect(storage.deleteObject).toHaveBeenCalledWith(
+      'tenant_x/billing-imported/uisp_invoice_1.pdf',
+    );
+    const update = String(query.mock.calls[4]?.[0]);
+    expect(update).toContain('external_pdf_key = NULL');
+    expect(update).toContain("'IMPORTADO'");
+  });
+
+  it('IMPORTADO: sin storage o con clave ajena falla cerrado', async () => {
+    query
+      .mockResolvedValueOnce([{ count: 1 }])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ key: 'tenant_x/billing-imported/a.pdf', schema: 'tenant_x' }]);
+    await expect(participant.apply(createScope(), qrOf(query), 'apply')).rejects.toThrow(
+      /requiere storage/u,
+    );
+    const storage = { deleteObject: jest.fn() };
+    participant = new BillingTitularErasureParticipant(storage as never);
+    query
+      .mockResolvedValueOnce([{ count: 1 }])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ key: 'otro/billing-imported/a.pdf', schema: 'tenant_x' }]);
+    await expect(participant.apply(createScope(), qrOf(query), 'apply')).rejects.toThrow(
+      /fuera del schema/u,
+    );
+    expect(storage.deleteObject).not.toHaveBeenCalled();
   });
 
   it('no accede a la base cuando el alcance no incluye suscriptores', async () => {

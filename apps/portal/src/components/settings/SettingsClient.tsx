@@ -3,13 +3,14 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { type AccessPermissionKey, type SettingsPriorityResponse } from '@iwana/shared';
+import { AccessPermissionKey, UserRole, type SettingsPriorityResponse } from '@iwana/shared';
 import { Button } from '@iwana/ui';
 import type { SettingsSection } from '@/lib/api-client';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { accessControlApi, ApiError, configurationApi } from '@/lib/api-client';
-import { SETTINGS_HUB_COPY } from './mod00-settings-labels';
+import { SETTINGS_HUB_COPY, getAccessModuleLabel } from './mod00-settings-labels';
+import { MIGRATION_SETTINGS_HREF } from './migration/migration-labels';
 import { SettingsSectionGrid } from './SettingsSectionGrid';
 import { PortalAlert, PortalPanel, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { getSettingsPriorityPresentation, isSettingsPriorityOperable } from './settings-priority';
@@ -161,6 +162,34 @@ export function SettingsClient() {
       ) : null}
 
       <SettingsSectionGrid sections={sections} effectivePermissions={effectivePermissions} />
+
+      {effectivePermissions.includes(AccessPermissionKey.CRM_SUBSCRIBERS_READ) ? (
+        <PortalPanel
+          title="Etiquetas de suscriptor"
+          description="Crea etiquetas propias para marcar y filtrar a tus suscriptores."
+          actions={
+            <Button asChild={true} variant="secondary">
+              <Link href="/dashboard/settings/subscriber-tags">Abrir etiquetas</Link>
+            </Button>
+          }
+          children={null}
+        />
+      ) : null}
+
+      {user?.role === UserRole.ADMIN &&
+      effectivePermissions.includes(AccessPermissionKey.MIGRATION_IMPORT_MANAGE) ? (
+        <PortalPanel
+          eyebrow={getAccessModuleLabel('migration')}
+          title="Importaciones"
+          description="Trae tus clientes desde UISP por lotes: simula, revisa el informe y promueve."
+          actions={
+            <Button asChild={true} variant="secondary">
+              <Link href={MIGRATION_SETTINGS_HREF}>Abrir importaciones</Link>
+            </Button>
+          }
+          children={null}
+        />
+      ) : null}
     </div>
   );
 }

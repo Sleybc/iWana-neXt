@@ -39,6 +39,7 @@ const LIFECYCLE_SOURCE_LABELS: Record<LifecycleChangeRecord['source'], string> =
   MANUAL: 'Registrado por el equipo',
   SYSTEM: 'Automático',
   BILLING: 'Por facturación',
+  IMPORTADO: 'Importado de UISP',
 };
 
 function statusLabel(record: LifecycleChangeRecord): string {
@@ -120,7 +121,9 @@ export function statementToActivity(statement: BillingAccountStatement): Activit
     at: document.issueDate ?? document.createdAt,
     title: document.number
       ? `Documento de cobro ${document.number}`
-      : 'Documento de cobro en borrador',
+      : document.status === 'IMPORTADO'
+        ? `Histórico importado${document.externalNumber ? ` ${document.externalNumber}` : ''}`
+        : 'Documento de cobro en borrador',
     detail: joinDetail(DOCUMENT_STATES[document.status]?.label, document.total),
   }));
   const payments = statement.payments.map<ActivityItem>((payment) => ({

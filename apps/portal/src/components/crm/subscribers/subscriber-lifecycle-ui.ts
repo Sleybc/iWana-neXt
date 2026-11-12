@@ -19,6 +19,7 @@ export const LIFECYCLE_REASON_LABELS: Record<string, string> = {
   MORA_PROLONGADA: 'Mora prolongada',
   TRASLADO_SIN_COBERTURA: 'Traslado sin cobertura',
   DUPLICADO: 'Servicio duplicado',
+  HISTORICO_IMPORTADO: 'Histórico importado',
 };
 
 export function lifecycleReasonOptions(action: LifecycleAction) {

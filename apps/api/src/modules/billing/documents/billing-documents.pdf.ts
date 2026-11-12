@@ -10,9 +10,9 @@ import {
 /** Renderiza el documento interno sin enviar ni incluir datos que la vista haya ocultado. */
 export async function renderBillingDocumentPdf(
   document: BillingDocumentResponse & {
-    periodStart?: string;
-    periodEnd?: string;
-    coveredStart?: string;
+    periodStart?: string | null;
+    periodEnd?: string | null;
+    coveredStart?: string | null;
   },
 ): Promise<Buffer> {
   const pdf = new PDFDocument({

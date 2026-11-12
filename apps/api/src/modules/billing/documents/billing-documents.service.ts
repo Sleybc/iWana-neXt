@@ -39,16 +39,18 @@ import {
 interface DocumentRow {
   id: string;
   tenant_id: string;
-  period_id: string;
+  /** `null` solo en un documento `IMPORTADO` (ADR-110 D5). */
+  period_id: string | null;
   contract_id: string;
   subscriber_id: string;
-  status: 'BORRADOR' | 'EMITIDO' | 'ANULADO';
+  status: 'BORRADOR' | 'EMITIDO' | 'ANULADO' | 'IMPORTADO';
   number: string | null;
+  external_number: string | null;
   issue_date: string | null;
   due_date: string;
-  period_start: string;
-  period_end: string;
-  covered_start: string;
+  period_start: string | null;
+  period_end: string | null;
+  covered_start: string | null;
   subtotal: string;
   tax_total: string;
   total: string;
@@ -85,7 +87,8 @@ interface DocumentLineRow {
 }
 
 const SELECT_DOCUMENTS = `SELECT d.id::text, d.tenant_id::text, d.period_id::text,
-       d.contract_id::text, d.subscriber_id::text, d.status, d.number, d.issue_date::text,
+       d.contract_id::text, d.subscriber_id::text, d.status, d.number, d.external_number,
+       d.issue_date::text,
        d.due_date::text, p.period_start::text AS period_start, p.period_end::text AS period_end,
        p.covered_start::text AS covered_start,
        d.subtotal::text, d.tax_total::text, d.total::text,
@@ -99,7 +102,7 @@ const SELECT_DOCUMENTS = `SELECT d.id::text, d.tenant_id::text, d.period_id::tex
                   JOIN billing_payments p2 ON p2.id = a.payment_id
                  WHERE a.document_id = d.id AND a.reversed_at IS NULL AND p2.status = 'REGISTRADO'), 0), 0)::text AS pending_amount
   FROM billing_documents d
-  JOIN billing_periods p ON p.id = d.period_id`;
+  LEFT JOIN billing_periods p ON p.id = d.period_id`;
 
 function iso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
@@ -197,14 +200,14 @@ export class BillingDocumentsService {
       params.push(localDate);
       const dateParam = `$${params.length}`;
       const paidExpr = `COALESCE((SELECT SUM(a.amount) FROM billing_payment_allocations a JOIN billing_payments p2 ON p2.id = a.payment_id WHERE a.document_id = d.id AND a.reversed_at IS NULL AND p2.status = 'REGISTRADO'), 0)`;
-      const stateCase = `CASE WHEN d.status <> 'EMITIDO' THEN 'NO_EMITIDO' WHEN ${paidExpr} >= d.total THEN 'PAGADO' WHEN ${dateParam} > d.due_date::text THEN 'VENCIDO' WHEN ${paidExpr} > 0 THEN 'PARCIAL' ELSE 'PENDIENTE' END`;
+      const stateCase = `CASE WHEN d.status NOT IN ('EMITIDO', 'IMPORTADO') THEN 'NO_EMITIDO' WHEN ${paidExpr} >= d.total THEN 'PAGADO' WHEN ${dateParam} > d.due_date::text THEN 'VENCIDO' WHEN ${paidExpr} > 0 THEN 'PARCIAL' ELSE 'PENDIENTE' END`;
       params.push(input.paymentState);
       conditions.push(`${stateCase} = $${params.length}`);
     }
     const where = conditions.join(' AND ');
     const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const counts = (await qr.query(
-        `SELECT count(*)::int AS total FROM billing_documents d JOIN billing_periods p ON p.id = d.period_id WHERE ${where}`,
+        `SELECT count(*)::int AS total FROM billing_documents d LEFT JOIN billing_periods p ON p.id = d.period_id WHERE ${where}`,
         params,
       )) as Array<{ total: number }>;
       const total = counts[0]?.total ?? 0;
@@ -606,6 +609,11 @@ export class BillingDocumentsService {
     });
   }
 
+  /**
+   * Siguiente consecutivo de la numeración propia. Solo cuentan emitidos y anulados: un
+   * documento `IMPORTADO` (ADR-110 D5) trae el número de UISP en `external_number` y no
+   * consume ni desplaza la numeración, aunque el CHECK de la 197 ya le impide tener `number`.
+   */
   private async nextNumber(
     manager: EntityManager,
     tenantId: string,
@@ -613,7 +621,8 @@ export class BillingDocumentsService {
   ): Promise<number> {
     const rows = (await manager.query(
       `SELECT COALESCE(MAX(regexp_replace(number, '^.*-', '')::bigint), 0)::bigint + 1 AS next
-         FROM billing_documents WHERE tenant_id = $1 AND number LIKE $2 AND status <> 'BORRADOR'`,
+         FROM billing_documents
+        WHERE tenant_id = $1 AND number LIKE $2 AND status IN ('EMITIDO', 'ANULADO')`,
       [tenantId, `${prefix}-%`],
     )) as Array<{ next: string | number }>;
     return Number(rows[0]?.next ?? 1);
@@ -755,6 +764,7 @@ export class BillingDocumentsService {
         subscriberId: row.subscriber_id,
         status: row.status,
         number: row.number,
+        externalNumber: row.external_number,
         issueDate: row.issue_date,
         dueDate: row.due_date,
         periodStart: row.period_start,
@@ -788,7 +798,8 @@ export class BillingDocumentsService {
     localDate: string,
   ): BillingPeriodPaymentState | null {
     // RS-22: nulo si no está EMITIDO, con el orden de ADR-103 D3 y la fecha civil del tenant.
-    if (row.status !== 'EMITIDO') return null;
+    // Un IMPORTADO (ADR-110 D5) cuenta en cartera: su estado de pago se calcula igual.
+    if (row.status !== 'EMITIDO' && row.status !== 'IMPORTADO') return null;
     const paid = moneyToCents(row.paid_amount);
     const total = moneyToCents(row.total);
     if (paid >= total) return 'PAGADO';

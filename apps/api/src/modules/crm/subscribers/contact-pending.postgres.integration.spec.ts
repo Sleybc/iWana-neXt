@@ -695,4 +695,44 @@ describeWithDb('Contacto pendiente de subscriber — PostgreSQL real', () => {
       queryRunnerFactorySpy.mockRestore();
     }
   }, 60_000);
+
+  it('filtra la lista por etiqueta manual y omite las etiquetas dadas de baja (ADR-110 D8)', async () => {
+    const subscribersService = makeSubscribersService(makeAuditService());
+    const ids = (await runInTenantSchema(dataSource, schemaName, (qr) =>
+      qr.query(`SELECT id FROM subscribers WHERE tenant_id = $1 ORDER BY id LIMIT 2`, [tenantId]),
+    )) as Array<{ id: string }>;
+    expect(ids).toHaveLength(2);
+    const tagged = ids[0]!.id;
+    const tagId = randomUUID();
+    await runInTenantSchema(dataSource, schemaName, async (qr) => {
+      await qr.query(
+        `INSERT INTO subscriber_tags (id, tenant_id, name, color, created_by)
+         VALUES ($1, $2, 'Filtro sintético', '#112233', $3)`,
+        [tagId, tenantId, randomUUID()],
+      );
+      await qr.query(
+        `INSERT INTO subscriber_tag_assignments (tenant_id, subscriber_id, tag_id) VALUES ($1, $2, $3)`,
+        [tenantId, tagged, tagId],
+      );
+    });
+
+    const filtered = await TenantContext.run(context(), () =>
+      subscribersService.findAll({ tagId, page: 1, limit: 100 }),
+    );
+    expect(filtered.total).toBe(1);
+    expect(filtered.data.map((row) => row.id)).toEqual([tagged]);
+
+    const unknown = await TenantContext.run(context(), () =>
+      subscribersService.findAll({ tagId: randomUUID() }),
+    );
+    expect(unknown.total).toBe(0);
+
+    await runInTenantSchema(dataSource, schemaName, (qr) =>
+      qr.query(`UPDATE subscriber_tags SET deleted_at = now() WHERE id = $1`, [tagId]),
+    );
+    const afterDelete = await TenantContext.run(context(), () =>
+      subscribersService.findAll({ tagId }),
+    );
+    expect(afterDelete.total).toBe(0);
+  });
 });

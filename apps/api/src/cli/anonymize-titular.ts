@@ -21,6 +21,7 @@ import {
 } from '../common/crypto/aes-gcm.util';
 import { hmacPii, resolvePiiHashKey } from '../common/crypto/pii-hash-key.util';
 import { CrmPersonalDataErasureAdapter } from '../modules/crm/privacy-adapters/crm-personal-data-erasure.adapter';
+import { MigrationTitularErasureParticipant } from '../modules/migration/privacy/migration-titular-erasure.participant';
 import { CrmTitularErasureParticipant } from '../modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant';
 import { MediaTitularErasureParticipant } from '../modules/media/privacy/media-titular-erasure.participant';
 import { PartyTitularErasureParticipant } from '../modules/parties/privacy/party-titular-erasure.participant';
@@ -1146,6 +1147,7 @@ async function anonymizeTitularInTransaction(
     new AssuranceTitularErasureParticipant(config),
     new NetworkTitularErasureParticipant(config),
     new SupplierProfileReadAdapter(),
+    new MigrationTitularErasureParticipant(config),
   );
   const scope = await adapter.resolveCliScope(
     {
@@ -1361,6 +1363,7 @@ export function createErasureAdapter(config: ConfigService): CrmPersonalDataEras
     new AssuranceTitularErasureParticipant(config),
     new NetworkTitularErasureParticipant(config),
     new SupplierProfileReadAdapter(),
+    new MigrationTitularErasureParticipant(config),
   );
 }
 
