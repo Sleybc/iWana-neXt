@@ -21,8 +21,12 @@
 | Shared · Database | 620 · 429 tests |
 | API integración completa | 697 passed; 4 fallos preexistentes en `execution-orders.close-by-result` (plantilla INSTALACION_ESTANDAR v3 ausente en `test`) |
 
+## 2.1 Cierre de pendientes
+
+`79b7da76`: PDF del contrato con IVA de instalación y adicionales, y E2E `portal-billing-iva-cortesias-live` (CA-1 a CA-4). CI verde, run 43276911136 (R4.1: 345 passed, 0 failed).
+
 ## 3. No verificado y pendientes
 
-- E2E de cortesías y adicionales en navegador.
+- Las plantillas de contrato ya publicadas en cada tenant imprimen la instalación como antes hasta publicar una versión nueva desde la semilla.
+
 - Contador: IVA de la instalación con internet excluido; tratamiento contable de la cortesía sobre lo emitido (R6).
-- PDF del contrato muestra la instalación sin IVA.
