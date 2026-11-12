@@ -11,6 +11,10 @@ import {
 import { AssuranceMigrationImportAdapter } from '../assurance/migration-adapters/assurance-migration-import.adapter';
 import { BillingMigrationImportAdapter } from '../billing/migration-adapters/billing-migration-import.adapter';
 import { CrmMigrationImportAdapter } from '../crm/migration-adapters/crm-migration-import.adapter';
+import { CatalogItem } from '../commercial/entities/catalog-item.entity';
+import { CatalogPriceHistory } from '../commercial/entities/catalog-price-history.entity';
+import { PlanDetail } from '../commercial/entities/plan-detail.entity';
+import { CommercialCatalogReadAdapter } from '../commercial/ports/commercial-catalog-read.adapter';
 import { CrmMigrationTitularLookupAdapter } from '../crm/migration-adapters/crm-migration-titular-lookup.adapter';
 import { SubscriberTagsService } from '../crm/subscribers/tags/subscriber-tags.service';
 import { PartyWriteAdapter } from '../parties/adapters/party-write.adapter';
@@ -170,7 +174,7 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
   beforeAll(async () => {
     ds = new DataSource({
       ...dataSourceOptions,
-      entities: [Party, PartyRole, PartyContact],
+      entities: [Party, PartyRole, PartyContact, CatalogItem, PlanDetail, CatalogPriceHistory],
       migrations: [],
       logging: false,
       extra: { max: 4, connectionTimeoutMillis: 5000 },
@@ -737,54 +741,88 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
   });
 
   it('E2E R4.1: un lote de 3 ZIP del fixture por defecto promueve los 3 titulares', async () => {
-    // Mismo escenario que e2e/tests/portal-importacion-uisp-live.spec.ts: CLIENT_IDS 9101–9103,
-    // valores por defecto del fixture (planes 501/502, etiqueta 11, ciclo 5, método sintético).
-    const clientIds = [9101, 9102, 9103];
-    const existing = await sql(
-      `SELECT 1 FROM subscribers WHERE external_id LIKE 'uisp:910_' LIMIT 1`,
+    // Catálogo comercial REAL, como en el worker: sin TenantContext heredado del request, y un
+    // plan creado como lo hace POST /commercial/catalog/plans más su precio RESIDENTIAL vigente.
+    const realCatalog = new CommercialCatalogReadAdapter(ds);
+    const doubleSnapshot = catalog.createSnapshot.getMockImplementation()!;
+    let promotedBatch: string | undefined;
+    catalog.createSnapshot.mockImplementation((...args: unknown[]) =>
+      (realCatalog.createSnapshot as (...a: unknown[]) => Promise<never>)(...args),
     );
-    expect(existing).toHaveLength(0);
-    const mapping = (kind: string, value: string, target: string) =>
-      sql(
-        `INSERT INTO migration_mappings
+    const realPlanId = randomUUID();
+    await sql(
+      `INSERT INTO catalog_items (id, tenant_id, type, name, vat_concept, is_active)
+       VALUES ($1, $2, 'PLAN', $3, 'INTERNET_ACCESS', true)`,
+      [realPlanId, tenantId, `Plan QA importación ${run}`],
+    );
+    await sql(
+      `INSERT INTO plan_details (item_id, download_speed_mbps, upload_speed_mbps, technology)
+       VALUES ($1, 100, 50, 'FIBER')`,
+      [realPlanId],
+    );
+    await sql(
+      `INSERT INTO catalog_price_history
+         (item_id, tenant_id, customer_segment, base_price, installation_fee, created_by)
+       VALUES ($1, $2, 'RESIDENTIAL', 80000, 0, $3)`,
+      [realPlanId, tenantId, actorId],
+    );
+    try {
+      // Mismo escenario que e2e/tests/portal-importacion-uisp-live.spec.ts: CLIENT_IDS 9101–9103,
+      // valores por defecto del fixture (planes 501/502, etiqueta 11, ciclo 5, método sintético).
+      const clientIds = [9101, 9102, 9103];
+      const existing = await sql(
+        `SELECT 1 FROM subscribers WHERE external_id LIKE 'uisp:910_' LIMIT 1`,
+      );
+      expect(existing).toHaveLength(0);
+      const mapping = (kind: string, value: string, target: string) =>
+        sql(
+          `INSERT INTO migration_mappings
            (tenant_id, source_system, kind, external_value, action, target_ref, created_by)
          VALUES ($1, 'UISP', $2, $3, 'EQUIVALE', $4, $5)`,
-        [tenantId, kind, value, target, actorId],
+          [tenantId, kind, value, target, actorId],
+        );
+      const files = [];
+      for (const [index, clientId] of clientIds.entries()) {
+        files.push(
+          zipFile(
+            await buildSyntheticUispZip({
+              clientId,
+              document: `100000${clientId}`,
+              lastName: `Sintético ${index + 1}`,
+              stratum: '3',
+            }),
+            `cliente-${clientId}.zip`,
+          ),
+        );
+      }
+      const summary = await batches.createBatch(scope(), files, actorId);
+      createdBatches.push(summary.id);
+      promotedBatch = summary.id;
+      await expect(simulation.simulate(tenantId, summary.id)).resolves.toBe('SIMULADO');
+      // Como en el Portal: las equivalencias se resuelven DESPUÉS de simular (D4).
+      const simulated = MigrationBatchReportSchema.parse(
+        await batches.getReport(scope(), summary.id),
       );
-    const files = [];
-    for (const [index, clientId] of clientIds.entries()) {
-      files.push(
-        zipFile(
-          await buildSyntheticUispZip({
-            clientId,
-            document: `100000${clientId}`,
-            lastName: `Sintético ${index + 1}`,
-            stratum: '3',
-          }),
-          `cliente-${clientId}.zip`,
-        ),
-      );
+      expect(simulated.counts.entidades.SUSCRIPTOR?.leidos).toBe(3);
+      await mapping('PLAN', '501', realPlanId);
+      await mapping('PLAN', '502', realPlanId);
+      await mapping('ETIQUETA', '11', tagId);
+      await mapping('METODO_PAGO', SYNTHETIC_METHOD_ID, 'EFECTIVO');
+      await mapping('CICLO', '5', '1');
+      await expect(promoteNow(summary.id)).resolves.toBe('CONCILIADO');
+      const report = MigrationBatchReportSchema.parse(await batches.getReport(scope(), summary.id));
+      expect(report.promotion).toMatchObject({
+        promovidos: { SUSCRIPTOR: 3, CONTRATO: 6, DOCUMENTO_COBRO: 9, PAGO: 6 },
+        rechazados: {},
+      });
+      expect(report.reconciliation).toMatchObject({ resultado: 'CONCILIADO', titulares: 3 });
+    } finally {
+      catalog.createSnapshot.mockImplementation(doubleSnapshot);
+      if (promotedBatch) {
+        await reversion.revert(scope(), promotedBatch, actorId).catch(() => undefined);
+      }
+      await sql(`DELETE FROM catalog_items WHERE id = $1`, [realPlanId]);
     }
-    const summary = await batches.createBatch(scope(), files, actorId);
-    createdBatches.push(summary.id);
-    await expect(simulation.simulate(tenantId, summary.id)).resolves.toBe('SIMULADO');
-    // Como en el Portal: las equivalencias se resuelven DESPUÉS de simular (D4).
-    const simulated = MigrationBatchReportSchema.parse(
-      await batches.getReport(scope(), summary.id),
-    );
-    expect(simulated.counts.entidades.SUSCRIPTOR?.leidos).toBe(3);
-    await mapping('PLAN', '501', planId);
-    await mapping('PLAN', '502', planId);
-    await mapping('ETIQUETA', '11', tagId);
-    await mapping('METODO_PAGO', SYNTHETIC_METHOD_ID, 'EFECTIVO');
-    await mapping('CICLO', '5', '1');
-    await expect(promoteNow(summary.id)).resolves.toBe('CONCILIADO');
-    const report = MigrationBatchReportSchema.parse(await batches.getReport(scope(), summary.id));
-    expect(report.promotion).toMatchObject({
-      promovidos: { SUSCRIPTOR: 3, CONTRATO: 6, DOCUMENTO_COBRO: 9, PAGO: 6 },
-      rechazados: {},
-    });
-    expect(report.reconciliation).toMatchObject({ resultado: 'CONCILIADO', titulares: 3 });
   });
 
   it('guardas: no se promueve sin simulación completa ni se revierte un lote solo simulado', async () => {

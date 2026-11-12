@@ -387,7 +387,8 @@ describeDb('BR-2 contratos sobre migración 173 real y pool 10', () => {
         [next],
       );
       expect(again?.subtotal).toBe(first?.subtotal);
-      expect(again?.subtotal).toBe('51.61');
+      // DIAS_REALES 100 × 16/31 = 51,61 → 52 en pesos enteros; MES_30 daría 53.
+      expect(again?.subtotal).toBe('52.00');
     },
   );
   it('BR-3.2 la reemisión conserva la aprobación congelada: no emite con AUTOMATICA nueva', async () => {

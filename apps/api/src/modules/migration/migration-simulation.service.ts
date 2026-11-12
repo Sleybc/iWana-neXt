@@ -28,6 +28,8 @@ import { SafeZipError, readZipEntries } from './zip/safe-zip-reader';
 export interface ResolvedTenant {
   tenantId: string;
   schemaName: string;
+  /** Para abrir el `TenantContext` de los puertos que lo exigen dentro de un job (D3). */
+  tenantSlug?: string;
 }
 
 /** Error que no se resuelve reintentando (el processor lo marca como fallo definitivo). */
@@ -72,10 +74,16 @@ export class MigrationSimulationService {
 
   async resolveTenant(tenantId: string): Promise<ResolvedTenant> {
     const rows = (await this.dataSource.query(
-      `SELECT id::text AS id, schema_name, status, deleted_at
+      `SELECT id::text AS id, schema_name, slug, status, deleted_at
          FROM public.tenants WHERE id = $1::uuid LIMIT 1`,
       [tenantId],
-    )) as Array<{ id: string; schema_name: string; status: string; deleted_at: unknown }>;
+    )) as Array<{
+      id: string;
+      schema_name: string;
+      slug: string;
+      status: string;
+      deleted_at: unknown;
+    }>;
     const tenant = rows[0];
     if (
       !tenant ||
@@ -85,7 +93,7 @@ export class MigrationSimulationService {
     ) {
       throw new MigrationPermanentError('MIGRATION_TENANT_INACTIVE');
     }
-    return { tenantId: tenant.id, schemaName: tenant.schema_name };
+    return { tenantId: tenant.id, schemaName: tenant.schema_name, tenantSlug: tenant.slug };
   }
 
   private async loadBatch(

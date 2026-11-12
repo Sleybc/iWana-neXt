@@ -217,16 +217,27 @@ async function createDisposableTenant(): Promise<void> {
   tenantAdminToken = session.accessToken;
 
   // Destinos de las equivalencias: un plan activo y una etiqueta del catálogo del tenant.
-  await expectJson('/commercial/catalog/plans', 'POST', 201, {
-    headers: tenantHeaders(),
-    data: {
-      name: PLAN_NAME,
-      vatConcept: 'INTERNET_ACCESS',
-      technology: 'FIBER',
-      downloadSpeedMbps: 100,
-      uploadSpeedMbps: 50,
-      installationRule: 'ALWAYS',
+  const plan = await expectJson<{ data: { id: string } }>(
+    '/commercial/catalog/plans',
+    'POST',
+    201,
+    {
+      headers: tenantHeaders(),
+      data: {
+        name: PLAN_NAME,
+        vatConcept: 'INTERNET_ACCESS',
+        technology: 'FIBER',
+        downloadSpeedMbps: 100,
+        uploadSpeedMbps: 50,
+        installationRule: 'ALWAYS',
+      },
     },
+  );
+  // Un plan sin precio vigente para el segmento del titular no puede congelarse en el contrato
+  // importado (snapshot de MOD06): los titulares sintéticos son personas naturales.
+  await expectJson(`/commercial/catalog/${plan.data.id}/prices`, 'POST', 201, {
+    headers: tenantHeaders(),
+    data: { customerSegment: 'RESIDENTIAL', basePrice: '80000.00', installationFee: '0.00' },
   });
   await expectJson('/crm/subscriber-tags', 'POST', 201, {
     headers: tenantHeaders(),

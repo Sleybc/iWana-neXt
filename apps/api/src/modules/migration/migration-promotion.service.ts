@@ -11,7 +11,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import type { Queue } from 'bullmq';
 import { createHash, randomUUID } from 'node:crypto';
 import { DataSource, type QueryRunner } from 'typeorm';
-import { runInTenantSchema, summarizeErrorForLog } from '@iwana/db';
+import { TenantContext, runInTenantSchema, summarizeErrorForLog } from '@iwana/db';
 import { ENCRYPTED_OBJECT_CONTENT_TYPE, STORAGE_PORT, type StoragePort } from '@iwana/storage';
 import {
   AuditAction,
@@ -243,6 +243,23 @@ export class MigrationPromotionService {
     actorId: string,
   ): Promise<'PROMOVIDO' | 'CONCILIADO' | 'OMITIDO'> {
     const tenant = await this.simulation.resolveTenant(tenantId);
+    // El job no hereda el contexto del request: el catálogo comercial (snapshot del plan) lo
+    // exige, y sin él todo contrato caía en PLAN_SIN_EQUIVALENCIA.
+    return TenantContext.run(
+      {
+        tenantId: tenant.tenantId,
+        schemaName: tenant.schemaName,
+        tenantSlug: tenant.tenantSlug ?? '',
+      },
+      () => this.promoteInContext(tenant, batchId, actorId),
+    );
+  }
+
+  private async promoteInContext(
+    tenant: ResolvedTenant,
+    batchId: string,
+    actorId: string,
+  ): Promise<'PROMOVIDO' | 'CONCILIADO' | 'OMITIDO'> {
     const batch = await runInTenantSchema(this.dataSource, tenant.schemaName, async (qr) => {
       const rows = (await qr.query(
         `SELECT status, purged_at, source_object_key, counts FROM migration_batches
