@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { BillingAccountStatement, BillingDocumentResponse } from '@iwana/shared';
 import { BillingPaymentDialog } from './BillingPaymentDialog';
-import { formatBillingMoney } from './billing-copy';
+import { formatBillingMoneyExact } from './billing-copy';
 
 jest.mock('@/components/access-control/permissions-context', () => ({
   usePermissions: (() => {
@@ -17,7 +17,7 @@ jest.mock('@/lib/api-client', () => ({
 }));
 
 const SUBSCRIBER_ID = '55555555-5555-4555-8555-555555555555';
-const money = (value: string) => formatBillingMoney(value).replace(/\s/gu, ' ');
+const money = (value: string) => formatBillingMoneyExact(value).replace(/\s/gu, ' ');
 
 function document(id: string, pending: string): BillingDocumentResponse {
   return {

@@ -25,6 +25,7 @@ import { BillingSubscriberPicker } from './BillingSubscriberPicker';
 import {
   documentReference,
   formatBillingMoney,
+  formatBillingMoneyExact,
   fromMoneyCents,
   moneyCents,
   PAYMENT_METHODS,
@@ -282,12 +283,11 @@ function PaymentForm({
           </label>
         </div>
         {pendingTotalCents > 0 ? (
-          <p className="flex flex-wrap items-center gap-2 text-sm">
-            Saldo pendiente: {formatBillingMoney(fromMoneyCents(pendingTotalCents))}
+          <p className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-iwana-primary/30 bg-iwana-primary/5 dark:border-iwana-primary-300/20 dark:bg-iwana-primary-400/10 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white">
+            Saldo pendiente: {formatBillingMoneyExact(fromMoneyCents(pendingTotalCents))}
             <Button
               type="button"
-              variant="secondary"
-              className="min-h-11 md:min-h-8"
+              className="min-h-11"
               onClick={() => setAmount(fromMoneyCents(pendingTotalCents))}
             >
               Pagar el saldo completo
@@ -299,8 +299,8 @@ function PaymentForm({
         ) : null}
         {cents > 0 && pendingTotalCents > cents && pendingTotalCents - cents < 100 ? (
           <p role="status" className="text-sm text-amber-700 dark:text-amber-300">
-            Quedan {formatBillingMoney(fromMoneyCents(pendingTotalCents - cents))} sin pagar: un
-            documento quedará con pago parcial.
+            Quedan {formatBillingMoneyExact(fromMoneyCents(pendingTotalCents - cents))} sin pagar:
+            un documento quedará con pago parcial.
           </p>
         ) : null}
         <label className="block space-y-1 text-sm">

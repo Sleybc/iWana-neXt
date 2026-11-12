@@ -61,6 +61,19 @@ export const PROTECTED_NOTICE =
 
 const cop = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' });
 export const formatBillingMoney = (value: string | number) => cop.format(Number(value));
+const copCents = new Intl.NumberFormat('es-CO', {
+  style: 'currency',
+  currency: 'COP',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+/** Monto exacto: muestra los centavos solo si los hay, para que el saldo sea pagable tal cual. */
+export const formatBillingMoneyExact = (value: string | number) => {
+  const amount = Number(value);
+  return Number.isInteger(Math.round(amount * 100) / 100)
+    ? cop.format(amount)
+    : copCents.format(amount);
+};
 
 export function moneyCents(value: string): number {
   const match = /^(\d{1,12})(?:[.,](\d{1,2}))?$/u.exec(value);
