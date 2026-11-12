@@ -716,10 +716,12 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
     // Punto 1: el valor visible de la tarjeta coincide con el saldo a favor.
     const creditCard = page.locator('article', { hasText: 'Saldo a favor disponible' });
     await expect(creditCard.getByText(await copInBrowser(page, 31))).toBeVisible();
-    // RS-12: aviso de adicionales sin cobrar.
+    // RS-12 + spec MOD14 2026-11-12 D3: los adicionales se cobran con su precio
+    // congelado; el sembrado por SQL no lo tiene, así que sigue contándose y avisándose.
     await expect(
       page.getByText(
-        'Este contrato tiene 1 adicionales que todavía no se cobran en este documento',
+        'Este contrato tiene 1 adicional sin precio guardado en el contrato; por eso no se cobró en este documento',
+        { exact: true },
       ),
     ).toBeVisible();
 
