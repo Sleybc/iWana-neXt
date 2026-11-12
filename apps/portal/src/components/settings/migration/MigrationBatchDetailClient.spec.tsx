@@ -89,6 +89,17 @@ describe('MigrationBatchDetailClient', () => {
     expect(screen.getByText('Simulado')).toBeInTheDocument();
   });
 
+  it('las tareas sin fuente se cuentan una a una, no por ticket', async () => {
+    const base = report();
+    getSpy.mockResolvedValue(
+      report({
+        counts: { ...base.counts, observaciones: { TAREAS_SIN_FUENTE: 3 }, tareasSinFuente: 9 },
+      }),
+    );
+    render(<MigrationBatchDetailClient batchId={BATCH_ID} />);
+    expect(await screen.findByText('Tareas de UISP que no se importan: 9')).toBeInTheDocument();
+  });
+
   it('Promover pide confirmación y no llama al API si se cancela', async () => {
     const promoteSpy = jest
       .spyOn(migrationApi, 'promote')

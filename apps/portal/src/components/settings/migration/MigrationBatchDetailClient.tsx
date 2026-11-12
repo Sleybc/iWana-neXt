@@ -204,7 +204,9 @@ function FileAndObservationReport({ report }: { report: MigrationBatchReport }) 
           <ul aria-label="Observaciones" className="ml-4 list-disc">
             {observations.map(([observation, count]) => (
               <li key={observation}>
-                {MIGRATION_OBSERVATION_LABELS[observation]}: {count}
+                {MIGRATION_OBSERVATION_LABELS[observation]}:{' '}
+                {/* Las tareas se cuentan una a una, no por ticket que las referencia. */}
+                {observation === 'TAREAS_SIN_FUENTE' ? report.counts.tareasSinFuente : count}
               </li>
             ))}
           </ul>

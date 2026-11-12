@@ -361,7 +361,9 @@ test.describe('Importación desde UISP — ADR-110 contra Portal, API y worker r
     expect(simulated.counts.entidades.DOCUMENTO_COBRO?.leidos).toBe(9);
     expect(simulated.counts.entidades.PAGO?.leidos).toBe(6);
     expect(simulated.counts.entidades.TICKET?.leidos).toBe(6);
-    expect(simulated.counts.observaciones.TAREAS_SIN_FUENTE).toBe(9);
+    // Tres tickets con tareas que no viajan (observación) suman 9 tareas sin fuente.
+    expect(simulated.counts.observaciones.TAREAS_SIN_FUENTE).toBe(3);
+    expect(simulated.counts.tareasSinFuente).toBe(9);
 
     await expect(page.getByText('Simulado', { exact: true })).toBeVisible({ timeout: 30_000 });
     const entityTable = page.getByRole('table', { name: 'Registros por entidad' });
