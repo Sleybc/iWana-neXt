@@ -29,4 +29,4 @@
 
 - Las plantillas de contrato ya publicadas en cada tenant imprimen la instalación como antes hasta publicar una versión nueva desde la semilla.
 
-- Contador: IVA de la instalación con internet excluido; tratamiento contable de la cortesía sobre lo emitido (R6).
+- Contador confirmó (2026-11-12): instalación al 19 % aunque el internet sea excluido; cortesía como ajuste que no cambia la base gravable.

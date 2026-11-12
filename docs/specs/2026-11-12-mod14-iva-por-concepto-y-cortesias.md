@@ -38,6 +38,7 @@
 - CA-3: ADMIN regala el prorrateo de octubre: el documento queda saldado y el siguiente mes se cobra completo.
 - CA-4: sin permiso no hay botón y la API responde 403; toda cortesía queda auditada con motivo.
 
-## Abierto
+## Confirmación del contador (2026-11-12)
 
-- Confirmar con el contador el IVA de la instalación vinculada a internet excluido (accesorio o independiente) y el tratamiento contable de la cortesía (R6).
+- La instalación causa IVA 19 % aunque el internet sea excluido o exento.
+- La cortesía sobre un documento emitido es un ajuste que no cambia la base gravable (R6).
