@@ -330,7 +330,7 @@ export abstract class BillingAccountReadPort {
 ### 6.1 Generación
 
 1. Al arrancar, `BillingGenerationProcessor` programa un job repetible por tenant `ACTIVE`, con `jobId = billing-generation:<schema>` y `repeat: { pattern: '0 <generation_hour> * * *', tz }`. Es el patrón de `network-provisioning-reconciler.processor.ts:93-120` y de `apps/api/src/modules/privacy/alerts/privacy-due-alerts.processor.ts`.
-2. Si `automatic_generation = false`, el job termina sin efecto. La generación manual (`POST /billing/documents/generate`) usa el mismo servicio.
+2. Si `automatic_generation = false`, el job termina sin efecto. La generación manual (`POST /billing/documents/generate`) usa el mismo servicio. Periodo cobrado tarde: si el vencimiento del ciclo es anterior a la fecha de generación o de emisión, vence en esa fecha + `payment_term_days` y el corte se corre igual (spec 2026-11-11 R8). El estado de cuenta marca `billingNotStarted` en los contratos `ACTIVE` sin documento emitido (R1).
 3. **Por cada contrato**, dentro de `runInTenantSchema`:
    0. **(RS-11)** calcula la política efectiva (tenant + contrato) y resuelve el periodo con `resolveGenerationTarget`. Un día sin job se recupera al día siguiente; si se pierde un ciclo completo, solo se genera el periodo más reciente;
    1. toma `pg_advisory_xact_lock(hashtextextended('billing:'||contract_id||':'||period_start, 0))`;
@@ -377,6 +377,7 @@ export abstract class BillingAccountReadPort {
 | `GET/PUT /billing/contracts/:contractId/policy` | `BILLING_INVOICES_READ` · `BILLING_POLICY_MANAGE` | Sobrescrituras |
 | `POST /billing/documents/generate` | `BILLING_INVOICES_MANAGE` | Un contrato o el día completo; devuelve un resumen |
 | `GET /billing/documents` · `GET /billing/documents/:id` | `BILLING_INVOICES_READ` | `ListResponse` (ADR-065), `limit` ≤ 100. **(RS-22)** Filtros `status`, `paymentState`, `cycleDay` (día de `period_start`), `subscriberId`, `from`, `to`; sin campos ordenables. Cada documento trae `periodStart`, `periodEnd`, `coveredStart` y `paymentState`, nulo si no está `EMITIDO` |
+| `POST /billing/documents/generate-first-charge` | `BILLING_INVOICES_MANAGE` | Primer cobro de un contrato `ACTIVE` sin documentos emitidos: ancla en la activación, pone al día los periodos vencidos, congela instalación y datos fiscales faltantes del contrato heredado y regulariza sus borradores (spec 2026-11-11 contrato activo sin cobros) |
 | `POST /billing/documents/issue` | `BILLING_INVOICES_MANAGE` | Lote de 1 a 100 borradores |
 | `POST /billing/documents/:id/void` | `BILLING_INVOICES_MANAGE` | Motivo de catálogo |
 | `DELETE /billing/documents/:id` | `BILLING_INVOICES_MANAGE` | Solo borradores |

@@ -1104,14 +1104,26 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
     page,
     request,
   }) => {
-    const listBefore = auditCount('BillingDocument', 'LIST_ACCESS');
     await loginInPortal(page, ADMIN_EMAIL, tenantAdminPassword);
+    const listBefore = auditCount('BillingDocument', 'LIST_ACCESS');
+    // Punto 6: una auditoría por cada listado que llega al servidor. En `next dev` el modo
+    // estricto de React pide la lista dos veces; se cuentan las peticiones reales.
+    let listRequests = 0;
+    page.on('response', (response) => {
+      const url = new URL(response.url());
+      if (
+        response.request().method() === 'GET' &&
+        url.pathname === '/api/v1/billing/documents' &&
+        response.status() === 200
+      )
+        listRequests += 1;
+    });
     await page.goto('/dashboard/billing/documents');
     await expect(page.getByText('Titular Bloqueado')).toBeVisible();
-    // Punto 6: la lista con permiso audita una vez el acceso a bloqueados.
+    expect(listRequests).toBeGreaterThanOrEqual(1);
     await expect
-      .poll(() => auditCount('BillingDocument', 'LIST_ACCESS'), { timeout: 15_000 })
-      .toBe(listBefore + 1);
+      .poll(() => auditCount('BillingDocument', 'LIST_ACCESS') - listBefore, { timeout: 15_000 })
+      .toBe(listRequests);
 
     const before = auditCount('BillingSubscriberStatement', 'RECORD_ACCESS');
     await page.goto(`/dashboard/crm/subscribers/${blockedSubscriberId}?tab=facturacion`);

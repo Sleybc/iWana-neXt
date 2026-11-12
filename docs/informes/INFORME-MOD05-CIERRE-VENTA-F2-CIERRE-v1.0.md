@@ -46,7 +46,7 @@ El CI de `d50e4428` (run 43108316976) falló en 4 E2E por dos regresiones: consu
 
 ## 4. No verificado, deudas y riesgos
 
-- `portal-billing-flow` RS-21: conteo de auditoría 14 en vez de 13; no lo toca esta fase. Requiere `e2e-triage`.
+- `portal-billing-flow` RS-21: era el modo estricto de React en `next dev` (dos peticiones, dos auditorías); la prueba ahora compara contra las peticiones reales (8/8 local). Brecha: el flujo MOD14 en navegador se omite en CI por falta de credenciales de plataforma (derivar a `plat-ops`).
 - `portal-contract-plan-change`: intermitente en corrida conjunta; pasa aislado.
 - `subscriber-rut-responsibilities` (integración): exige un tenant de `E2E_TENANT_SLUG` que no existe en `test`.
 - Sin E2E: cobro siguiente sin instalación y descuento total en cero (cubiertos por unit e integración); el texto del PDF no se extrae en E2E.
@@ -55,5 +55,5 @@ El CI de `d50e4428` (run 43108316976) falló en 4 E2E por dos regresiones: consu
 
 ## 5. Siguiente
 
-1. Contrato activo sin cobros: [spec](../specs/2026-11-11-mod05-mod14-contrato-activo-sin-cobros.md).
+1. Contrato activo sin cobros: [spec](../specs/2026-11-11-mod05-mod14-contrato-activo-sin-cobros.md), publicado en `57a43fd2`; contrato `fe648c40` regularizado en desarrollo (oct 53.548,39 con instalación, vence 25-nov; nov 55.000).
 2. Fase pendiente: etiquetas manuales + importación desde UISP.
