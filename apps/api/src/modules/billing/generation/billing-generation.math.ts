@@ -52,7 +52,9 @@ export function buildPlanLine(input: PlanLineInput): BillingLineValue {
   const base =
     input.coveredDays === input.periodDays
       ? roundCents(numericPrice)
-      : roundCents(prorate(input.price, input.coveredDays, input.periodDays, input.method));
+      : // El peso colombiano no circula con centavos: el tramo prorrateado se cobra en pesos
+        // enteros para que el saldo que ve el titular sea pagable exacto.
+        Math.round(prorate(input.price, input.coveredDays, input.periodDays, input.method));
   const tax = roundCents((base * input.ratePercent) / 100);
   const partial = input.coveredDays !== input.periodDays;
   return {

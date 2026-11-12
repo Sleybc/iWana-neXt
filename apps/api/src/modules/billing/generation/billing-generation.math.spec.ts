@@ -86,4 +86,21 @@ describe('billing generation math', () => {
   ])('rechaza %s', (_label, patch, message) => {
     expect(() => buildPlanLine({ ...base, ...patch })).toThrow(new RangeError(message));
   });
+
+  it('el tramo prorrateado se cobra en pesos enteros (COP sin centavos)', () => {
+    // 55.000 × 2/31 = 3.548,39 → 3.548: el saldo debe poder pagarse exacto.
+    const line = buildPlanLine({
+      price: '55000.00',
+      coveredDays: 2,
+      periodDays: 31,
+      method: 'DIAS_REALES',
+      treatment: 'EXEMPT',
+      ratePercent: 0,
+      legalBasis: null,
+      description: 'Plan de servicio',
+    });
+    expect(line.kind).toBe('PRORRATEO');
+    expect(line.baseAmount).toBe('3548.00');
+    expect(line.total).toBe('3548.00');
+  });
 });

@@ -24,7 +24,7 @@ import { MigrationPromotionService } from './migration-promotion.service';
 import { MigrationRevertService } from './migration-revert.service';
 import { MigrationSimulationService } from './migration-simulation.service';
 import { MigrationTitularErasureParticipant } from './privacy/migration-titular-erasure.participant';
-import { buildSyntheticUispZip } from './test/uisp-zip.fixture';
+import { SYNTHETIC_METHOD_ID, buildSyntheticUispZip } from './test/uisp-zip.fixture';
 
 /**
  * Bloque C contra PostgreSQL real (ADR-110 D3, D5–D7, D13; spec CA-2, CA-3, CA-4, CA-6): el
@@ -653,11 +653,20 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
     );
   }
 
+  /**
+   * Las pruebas de rechazo en promoción alteran las intermedias después de simular; la
+   * revalidación previa a la primera promoción las regeneraría desde el ZIP, así que se omite
+   * aquí para ejercitar las defensas propias de la promoción (como en un reintento).
+   */
+  const skipRestage = () =>
+    jest.spyOn(simulation, 'restageForPromotion').mockResolvedValueOnce(false);
+
   it('rechazos de cobro: SIN_CONTRATO_ASOCIADO cuando ningún contrato del titular se promueve', async () => {
     const batchId = await simulatedBatch([run * 10 + 5]);
     await mutateStaging(batchId, 'CONTRATO', (payload) => {
       payload['raw']['servicePlanId'] = 987654321;
     });
+    skipRestage();
     await promoteNow(batchId);
     expect(await rejectionsOf(batchId, 'CONTRATO')).toEqual([
       { rejection_reason: 'PLAN_SIN_EQUIVALENCIA', total: 2 },
@@ -678,6 +687,7 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
       if (index === 0) payload['raw']['total'] = -1;
       if (index === 1) payload['source']['pdfPath'] = 'invoices/no-existe.pdf';
     });
+    skipRestage();
     await promoteNow(batchId);
     expect(await rejectionsOf(batchId, 'DOCUMENTO_COBRO')).toEqual([
       { rejection_reason: 'ARCHIVO_AUSENTE', total: 1 },
@@ -724,6 +734,57 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
     );
     expect(after).toMatchObject({ total: before[0]!.total - 12, mine: 0, due: true });
     expect((await runErase('apply')).every((row) => row.changed === 0)).toBe(true);
+  });
+
+  it('E2E R4.1: un lote de 3 ZIP del fixture por defecto promueve los 3 titulares', async () => {
+    // Mismo escenario que e2e/tests/portal-importacion-uisp-live.spec.ts: CLIENT_IDS 9101–9103,
+    // valores por defecto del fixture (planes 501/502, etiqueta 11, ciclo 5, método sintético).
+    const clientIds = [9101, 9102, 9103];
+    const existing = await sql(
+      `SELECT 1 FROM subscribers WHERE external_id LIKE 'uisp:910_' LIMIT 1`,
+    );
+    expect(existing).toHaveLength(0);
+    const mapping = (kind: string, value: string, target: string) =>
+      sql(
+        `INSERT INTO migration_mappings
+           (tenant_id, source_system, kind, external_value, action, target_ref, created_by)
+         VALUES ($1, 'UISP', $2, $3, 'EQUIVALE', $4, $5)`,
+        [tenantId, kind, value, target, actorId],
+      );
+    const files = [];
+    for (const [index, clientId] of clientIds.entries()) {
+      files.push(
+        zipFile(
+          await buildSyntheticUispZip({
+            clientId,
+            document: `100000${clientId}`,
+            lastName: `Sintético ${index + 1}`,
+            stratum: '3',
+          }),
+          `cliente-${clientId}.zip`,
+        ),
+      );
+    }
+    const summary = await batches.createBatch(scope(), files, actorId);
+    createdBatches.push(summary.id);
+    await expect(simulation.simulate(tenantId, summary.id)).resolves.toBe('SIMULADO');
+    // Como en el Portal: las equivalencias se resuelven DESPUÉS de simular (D4).
+    const simulated = MigrationBatchReportSchema.parse(
+      await batches.getReport(scope(), summary.id),
+    );
+    expect(simulated.counts.entidades.SUSCRIPTOR?.leidos).toBe(3);
+    await mapping('PLAN', '501', planId);
+    await mapping('PLAN', '502', planId);
+    await mapping('ETIQUETA', '11', tagId);
+    await mapping('METODO_PAGO', SYNTHETIC_METHOD_ID, 'EFECTIVO');
+    await mapping('CICLO', '5', '1');
+    await expect(promoteNow(summary.id)).resolves.toBe('CONCILIADO');
+    const report = MigrationBatchReportSchema.parse(await batches.getReport(scope(), summary.id));
+    expect(report.promotion).toMatchObject({
+      promovidos: { SUSCRIPTOR: 3, CONTRATO: 6, DOCUMENTO_COBRO: 9, PAGO: 6 },
+      rechazados: {},
+    });
+    expect(report.reconciliation).toMatchObject({ resultado: 'CONCILIADO', titulares: 3 });
   });
 
   it('guardas: no se promueve sin simulación completa ni se revierte un lote solo simulado', async () => {

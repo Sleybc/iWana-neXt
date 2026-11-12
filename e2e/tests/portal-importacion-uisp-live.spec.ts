@@ -420,9 +420,11 @@ test.describe('Importación desde UISP — ADR-110 contra Portal, API y worker r
       batchId,
       (r) => (r.status === 'PROMOVIDO' || r.status === 'CONCILIADO') && r.promotion !== null,
     );
-    expect(promoted.promotion?.promovidos.SUSCRIPTOR).toBe(3);
-    expect(promoted.promotion?.promovidos.DOCUMENTO_COBRO).toBe(9);
-    expect(promoted.promotion?.promovidos.PAGO).toBe(6);
+    // Solo conteos por entidad y motivo: el informe de promoción no lleva PII.
+    const promotionReport = `informe de promoción: ${JSON.stringify(promoted.promotion)}`;
+    expect(promoted.promotion?.promovidos.SUSCRIPTOR, promotionReport).toBe(3);
+    expect(promoted.promotion?.promovidos.DOCUMENTO_COBRO, promotionReport).toBe(9);
+    expect(promoted.promotion?.promovidos.PAGO, promotionReport).toBe(6);
 
     // Repetir la promoción del mismo lote se rechaza y no duplica.
     const repeat = await api!.fetch(`${API_PREFIX}/migration/batches/${batchId}/promote`, {

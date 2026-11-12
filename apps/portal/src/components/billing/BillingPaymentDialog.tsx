@@ -179,6 +179,11 @@ function PaymentForm({
   const appliedAmounts = automatic
     ? Object.fromEntries(suggestion.map((item) => [item.documentId, item.amount]))
     : manual;
+  // Saldo exacto (con centavos si los hay) para no dejar un residuo al pagar el total.
+  const pendingTotalCents = pending.reduce(
+    (sum, document) => sum + (moneyCents(document.pendingAmount ?? '0') || 0),
+    0,
+  );
   const totalApplied = pending.reduce(
     (sum, document) => sum + (moneyCents(appliedAmounts[document.id] ?? '') || 0),
     0,
@@ -276,8 +281,27 @@ function PaymentForm({
             />
           </label>
         </div>
+        {pendingTotalCents > 0 ? (
+          <p className="flex flex-wrap items-center gap-2 text-sm">
+            Saldo pendiente: {formatBillingMoney(fromMoneyCents(pendingTotalCents))}
+            <Button
+              type="button"
+              variant="secondary"
+              className="min-h-11 md:min-h-8"
+              onClick={() => setAmount(fromMoneyCents(pendingTotalCents))}
+            >
+              Pagar el saldo completo
+            </Button>
+          </p>
+        ) : null}
         {cents > 0 ? (
           <p className="text-sm">{formatBillingMoney(fromMoneyCents(cents))} COP</p>
+        ) : null}
+        {cents > 0 && pendingTotalCents > cents && pendingTotalCents - cents < 100 ? (
+          <p role="status" className="text-sm text-amber-700 dark:text-amber-300">
+            Quedan {formatBillingMoney(fromMoneyCents(pendingTotalCents - cents))} sin pagar: un
+            documento quedará con pago parcial.
+          </p>
         ) : null}
         <label className="block space-y-1 text-sm">
           Notas

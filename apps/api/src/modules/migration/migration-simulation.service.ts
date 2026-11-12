@@ -136,10 +136,29 @@ export class MigrationSimulationService {
 
   async simulate(tenantId: string, batchId: string): Promise<'SIMULADO' | 'OMITIDO'> {
     const tenant = await this.resolveTenant(tenantId);
+    const done = await this.stage(tenant, batchId, 'SIMULADO');
+    return done ? 'SIMULADO' : 'OMITIDO';
+  }
+
+  /**
+   * Revalida las intermedias de un lote en `CARGADO` con las equivalencias vigentes, antes de
+   * su primera promoción (D4): el operador resuelve las equivalencias pendientes después de la
+   * simulación, y un registro rechazado entonces por falta de equivalencia no debe quedar
+   * excluido. No actúa si alguna fila ya se promovió (reintento de una promoción parcial).
+   */
+  async restageForPromotion(tenant: ResolvedTenant, batchId: string): Promise<boolean> {
+    return this.stage(tenant, batchId, 'CARGADO');
+  }
+
+  private async stage(
+    tenant: ResolvedTenant,
+    batchId: string,
+    expectedStatus: 'SIMULADO' | 'CARGADO',
+  ): Promise<boolean> {
     const batch = await this.loadBatch(tenant, batchId);
     if (!batch) throw new MigrationBatchNotVisibleError();
-    if (batch.status !== 'SIMULADO' || batch.purged_at || !batch.source_object_key) {
-      return 'OMITIDO';
+    if (batch.status !== expectedStatus || batch.purged_at || !batch.source_object_key) {
+      return false;
     }
     const expectedPrefix = `${tenant.schemaName}/migration/${batchId}/`;
     if (batch.source_object_key !== expectedPrefix) {
@@ -149,13 +168,21 @@ export class MigrationSimulationService {
     const files = counts.success ? counts.data.archivos.recibidos : 0;
     const packages = await this.readPackages(expectedPrefix, files);
 
-    await runInTenantSchema(this.dataSource, tenant.schemaName, async (qr) => {
+    const staged = await runInTenantSchema(this.dataSource, tenant.schemaName, async (qr) => {
       const locked = (await qr.query(
         `SELECT status, purged_at FROM migration_batches
           WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
         [batchId, tenant.tenantId],
       )) as Array<{ status: string; purged_at: unknown }>;
-      if (locked[0]?.status !== 'SIMULADO' || locked[0]?.purged_at) return;
+      if (locked[0]?.status !== expectedStatus || locked[0]?.purged_at) return false;
+      if (expectedStatus === 'CARGADO') {
+        const promoted = (await qr.query(
+          `SELECT 1 FROM migration_staging_records
+            WHERE batch_id = $1 AND status = 'PROMOVIDO' LIMIT 1`,
+          [batchId],
+        )) as unknown[];
+        if (promoted.length > 0) return false;
+      }
       const result = await this.buildResult(qr, tenant, packages);
       await qr.query(`DELETE FROM migration_staging_records WHERE batch_id = $1`, [batchId]);
       await this.insertRecords(qr, tenant.tenantId, batchId, result.records);
@@ -170,9 +197,16 @@ export class MigrationSimulationService {
           JSON.stringify(result.rejections),
         ],
       );
+      return true;
     });
-    this.logger.log(`[migration] Lote ${batchId} simulado (archivos=${files}).`);
-    return 'SIMULADO';
+    if (staged) {
+      this.logger.log(
+        expectedStatus === 'SIMULADO'
+          ? `[migration] Lote ${batchId} simulado (archivos=${files}).`
+          : `[migration] Lote ${batchId} revalidado antes de promover (archivos=${files}).`,
+      );
+    }
+    return staged;
   }
 
   private async buildResult(

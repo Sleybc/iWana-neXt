@@ -261,6 +261,8 @@ export class MigrationPromotionService {
       return 'OMITIDO';
     }
     const startedAt = new Date().toISOString();
+    // Las equivalencias resueltas tras la simulación deben pesar en la promoción (D4).
+    await this.simulation.restageForPromotion(tenant, batchId);
     const groups = await this.loadGroups(tenant, batchId);
     const mappings = await this.loadMappings(tenant);
     const prefix = batch.source_object_key;
