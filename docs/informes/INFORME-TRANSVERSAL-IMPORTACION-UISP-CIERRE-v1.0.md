@@ -3,7 +3,7 @@
 **Fecha:** 2026-11-12
 **Spec:** [2026-11-10-transversal-exportacion-importacion-suscriptor-uisp](../specs/2026-11-10-transversal-exportacion-importacion-suscriptor-uisp.md) v1.1 (G0 2026-11-12) · **ADR:** [ADR-110](../adrs/ADR-110-Importacion-por-Lotes-desde-UISP-y-Portabilidad.md) · **Plan:** [2026-11-12-transversal-importacion-uisp](../plans/2026-11-12-transversal-importacion-uisp.md)
 **Publicación:** un solo commit al terminar las 5 olas (decisión del usuario)
-**Estado:** G6 local ✅ (unit + integración) · E2E local no ejecutado (entorno caído) · G6.5 pendiente del CI
+**Estado:** G6 ✅ · G6.5 ✅ 2026-11-12 (CI de `4b0a5971`, run 43238683376; E2E `portal-importacion-uisp-live` verde con API y worker reales)
 
 ## 1. Entregado
 
@@ -32,7 +32,6 @@ D13 soportes en `subscriber_documents`; D14 deuda `IMPORTADO` cobrable y en el r
 
 ## 4. No verificado, deudas y riesgos
 
-- E2E en navegador no corrió en local (`pnpm dev` caído): se verifica en el CI.
 - Muestra real de UISP no contrastada (campos según la API pública); enlace PDF–factura por id o número.
 - Conector por API de UISP y exportación (§2): fases siguientes.
 - Titular creado a mano, anonimizado y luego importado: no se detecta (el HMAC se borra al anonimizar).
@@ -40,5 +39,5 @@ D13 soportes en `subscriber_documents`; D14 deuda `IMPORTADO` cobrable y en el r
 
 ## 5. Siguiente
 
-1. G6.5 con el CI del commit único.
+1. Arreglos tras el commit único: `9c498701` (conteo de tareas), `4151ec8c` (re-simulación antes de promover), `87bb3281` (contexto de tenant en la promoción), `b70e03e5` y `4b0a5971` (E2E).
 2. Exportación del paquete del suscriptor (ADR-110 D12).
