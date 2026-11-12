@@ -1,7 +1,7 @@
 # INFORME — MOD14 · IVA por concepto y cortesías · Cierre v1.0
 
 **Fecha:** 2026-11-12 · **Spec:** [2026-11-12-mod14-iva-por-concepto-y-cortesias](../specs/2026-11-12-mod14-iva-por-concepto-y-cortesias.md) (G0) · **Plan:** [2026-11-12-mod14-iva-por-concepto-y-cortesias](../plans/2026-11-12-mod14-iva-por-concepto-y-cortesias.md)
-**Publicación:** un solo commit al terminar las 4 olas · **Estado:** G6 ✅ · G6.5 pendiente del CI
+**Publicación:** un solo commit al terminar las 4 olas · **Estado:** G6 ✅ · G6.5 ✅ 2026-11-12 (CI de `cf4d4a21`, run 43270968357)
 
 ## 1. Entregado
 
