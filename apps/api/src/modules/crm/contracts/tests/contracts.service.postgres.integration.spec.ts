@@ -262,6 +262,8 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
     const realCatalog = new CommercialCatalogReadAdapter(dataSource);
     const planPort = {
       createSnapshot: realCatalog.createSnapshot.bind(realCatalog),
+      // MOD14 R2: el IVA de la instalación y de los adicionales sale del catálogo real.
+      getItemVatTreatments: realCatalog.getItemVatTreatments.bind(realCatalog),
       getPlanById: async (_tenantId: string, _schemaName: string, planId: string) => ({
         id: planId,
         name: 'Plan de integración',
@@ -878,6 +880,113 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
       ),
     );
     expect(legacy.installationFee).toBeNull();
+  });
+
+  it('MOD14 R2: el contrato congela el IVA de la instalación y de cada adicional del catálogo', async () => {
+    const { id: subscriberId } = await insertSubscriber();
+    const planId = randomUUID();
+    const productId = randomUUID();
+    const serviceId = randomUUID();
+    await runInTenantSchema(dataSource, testSchemaName, async (qr) => {
+      await qr.query(
+        `INSERT INTO catalog_items (id, tenant_id, type, name, is_active, vat_treatment, vat_legal_basis)
+         VALUES ($1, $2, 'PLAN', 'Plan IVA por ítem', true, NULL, NULL),
+                ($3, $2, 'PRODUCT', 'Router sintético', true, 'STANDARD', 'ET_468'),
+                ($4, $2, 'SERVICE', 'Servicio exento sintético', true, 'EXEMPT', 'ET_476_7')`,
+        [planId, tenantId, productId, serviceId],
+      );
+      await qr.query(
+        `INSERT INTO plan_details
+           (item_id, download_speed_mbps, upload_speed_mbps, technology,
+            installation_vat_treatment, installation_vat_legal_basis)
+         VALUES ($1, 300, 100, 'FTTH', 'EXCLUDED', 'ET_476_7')`,
+        [planId],
+      );
+      await qr.query(
+        `INSERT INTO catalog_price_history
+           (item_id, tenant_id, customer_segment, base_price, installation_fee, created_by)
+         VALUES ($1, $2, 'RESIDENTIAL', 90000, 50000, $3)`,
+        [planId, tenantId, actor.sub],
+      );
+    });
+
+    const response = await TenantContext.run(tenantContext(), () =>
+      request(app.getHttpServer())
+        .post('/api/v1/crm/contracts')
+        .send({
+          subscriberId,
+          planId,
+          planSnapshotJson: { id: planId },
+          billingCycleDay: 1,
+          additionalProductIds: [productId],
+          additionalServiceIds: [serviceId],
+        }),
+    );
+    expect(response.status).toBe(201);
+    const contractId = response.body.data.id as string;
+    expect(response.body.data.installationVatSnapshot).toMatchObject({
+      treatment: 'EXCLUDED',
+      legalBasis: 'ET_476_7',
+      ratePercent: 0,
+      source: 'CATALOG',
+    });
+    expect(response.body.data.additionalVatSnapshot).toEqual([
+      expect.objectContaining({ itemId: productId, itemType: 'PRODUCT', treatment: 'STANDARD' }),
+      expect.objectContaining({
+        itemId: serviceId,
+        itemType: 'SERVICE',
+        treatment: 'EXEMPT',
+        ratePercent: 0,
+      }),
+    ]);
+
+    // El catálogo cambia después: el contrato conserva lo congelado.
+    await runInTenantSchema(dataSource, testSchemaName, async (qr) => {
+      await qr.query(
+        `UPDATE plan_details SET installation_vat_treatment = 'STANDARD',
+                installation_vat_legal_basis = 'ET_468' WHERE item_id = $1`,
+        [planId],
+      );
+      await qr.query(
+        `UPDATE catalog_items SET vat_treatment = 'STANDARD', vat_legal_basis = 'ET_468'
+          WHERE id = $1`,
+        [serviceId],
+      );
+    });
+
+    // Agregar un adicional nuevo congela solo el nuevo; el existente conserva su IVA.
+    const secondProduct = randomUUID();
+    const updated = await TenantContext.run(tenantContext(), () =>
+      app
+        .get(ContractsService)
+        .update(
+          contractId,
+          { additionalProductIds: [productId, secondProduct], additionalServiceIds: [serviceId] },
+          actor.sub,
+        ),
+    );
+    expect(updated.installationVatSnapshot).toMatchObject({ treatment: 'EXCLUDED' });
+    expect(updated.additionalVatSnapshot).toEqual([
+      expect.objectContaining({ itemId: productId, source: 'CATALOG' }),
+      expect.objectContaining({ itemId: secondProduct, treatment: 'STANDARD', source: 'DEFAULT' }),
+      expect.objectContaining({ itemId: serviceId, treatment: 'EXEMPT' }),
+    ]);
+
+    const [row] = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query(
+        `SELECT installation_vat_snapshot, additional_vat_snapshot FROM contracts WHERE id = $1`,
+        [contractId],
+      ),
+    )) as Array<{
+      installation_vat_snapshot: { treatment: string };
+      additional_vat_snapshot: Array<{ itemId: string; treatment: string }>;
+    }>;
+    expect(row?.installation_vat_snapshot.treatment).toBe('EXCLUDED');
+    expect(row?.additional_vat_snapshot.map((entry) => entry.treatment)).toEqual([
+      'STANDARD',
+      'STANDARD',
+      'EXEMPT',
+    ]);
   });
 
   it('audita crear, activar y /service-point sin persistir nombre ni documento fiscales', async () => {

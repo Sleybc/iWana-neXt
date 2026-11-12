@@ -1,5 +1,7 @@
-// MOD05 Cierre de venta fase 2 · bloque D (CA-4, CA-5, D-F1) contra PostgreSQL real: la línea
+// MOD05 Cierre de venta fase 2 · bloque D (CA-4, CA-5) contra PostgreSQL real: la línea
 // «Instalación» del primer cobro leída por el adaptador real del puerto de contratos.
+// Spec MOD14 2026-11-12 (D2, R2, CA-1): la instalación lleva el IVA congelado en el contrato
+// (`installation_vat_snapshot`), por defecto 19 %; ya no copia el del internet (D-F1 sustituida).
 import { randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -13,7 +15,14 @@ import { BillingPaymentsService } from '../payments/billing-payments.service';
 import { BillingGenerationService } from './billing-generation.service';
 
 const STANDARD = { treatment: 'STANDARD', legalBasis: 'ET-468', ratePercent: 19 };
-const EXEMPT = { treatment: 'EXENTO', legalBasis: 'ET_481_H', ratePercent: 0 };
+const EXEMPT = { treatment: 'EXEMPT', legalBasis: 'ET_481_H', ratePercent: 0 };
+const frozen = (treatment: string, legalBasis: string, ratePercent: 0 | 19) => ({
+  treatment,
+  legalBasis,
+  ratePercent,
+  source: 'CATALOG',
+  frozenAt: '2026-10-01T00:00:00.000Z',
+});
 
 const describeDb = billingPostgresIntegrationEnabled ? describe : describe.skip;
 describeDb('Bloque D — línea de instalación del primer cobro (PostgreSQL real)', () => {
@@ -39,6 +48,8 @@ describeDb('Bloque D — línea de instalación del primer cobro (PostgreSQL rea
     fee: string | null;
     vat?: typeof STANDARD;
     discount?: string;
+    installationVat?: ReturnType<typeof frozen> | null;
+    monthlyPrice?: string;
   }): Promise<string> {
     const id = randomUUID();
     const subscriber = randomUUID();
@@ -47,19 +58,27 @@ describeDb('Bloque D — línea de instalación del primer cobro (PostgreSQL rea
       [subscriber, tenantId, randomUUID()],
     );
     await sql(
-      `INSERT INTO contracts (id,tenant_id,subscriber_id,status,billing_cycle_day,start_date,plan_snapshot_json,vat_snapshot,fiscal_document,installation_fee)
-       VALUES ($1,$2,$3,'ACTIVE',5,'2026-10-05',$4::jsonb,$5::jsonb,'900000001',$6)`,
+      `INSERT INTO contracts (id,tenant_id,subscriber_id,status,billing_cycle_day,start_date,plan_snapshot_json,vat_snapshot,fiscal_document,installation_fee,installation_vat_snapshot)
+       VALUES ($1,$2,$3,'ACTIVE',5,'2026-10-05',$4::jsonb,$5::jsonb,'900000001',$6,$7::jsonb)`,
       [
         id,
         tenantId,
         subscriber,
-        JSON.stringify({ name: 'Plan sintético', monthlyPrice: '100000.00' }),
+        JSON.stringify({
+          name: 'Plan sintético',
+          monthlyPrice: input.monthlyPrice ?? '100000.00',
+        }),
         JSON.stringify({
           ...(input.vat ?? STANDARD),
           requiresAccountantReview: false,
           resolvedAt: '2026-10-01T00:00:00Z',
         }),
         input.fee,
+        input.installationVat === undefined
+          ? JSON.stringify(frozen('STANDARD', 'ET_468', 19))
+          : input.installationVat === null
+            ? null
+            : JSON.stringify(input.installationVat),
       ],
     );
     if (input.discount) {
@@ -82,9 +101,11 @@ describeDb('Bloque D — línea de instalación del primer cobro (PostgreSQL rea
       tax_amount: string;
       total: string;
       vat_treatment: string;
+      vat_rate: string;
+      vat_legal_basis: string | null;
     }>(
       `SELECT p.period_start::text, l.kind, l.description, l.unit_price, l.base_amount,
-              l.tax_amount, l.total, l.vat_treatment
+              l.tax_amount, l.total, l.vat_treatment, l.vat_rate::text, l.vat_legal_basis
          FROM billing_document_lines l
          JOIN billing_documents d ON d.id = l.document_id
          JOIN billing_periods p ON p.id = d.period_id
@@ -164,7 +185,7 @@ describeDb('Bloque D — línea de instalación del primer cobro (PostgreSQL rea
     }
   });
 
-  it('CA-4 sin permanencia: el primer cobro trae «Instalación» con IVA del servicio; el siguiente no', async () => {
+  it('CA-4 sin permanencia: el primer cobro trae «Instalación» con su IVA; el siguiente no', async () => {
     const id = await seed({ fee: '80000.00' });
 
     expect(await firstCharge(id)).toMatchObject({ generated: 1 });
@@ -190,21 +211,70 @@ describeDb('Bloque D — línea de instalación del primer cobro (PostgreSQL rea
     ]);
   });
 
-  it('D-F1 contrato exento (estrato 1-3): la instalación sale sin IVA, igual que el servicio', async () => {
-    const id = await seed({ fee: '80000.00', vat: EXEMPT });
+  it('CA-1 estrato 2: internet exento y la instalación de 50.000 con IVA 19 % (9.500)', async () => {
+    // D-F1 sustituida (spec MOD14 2026-11-12 D2): antes la instalación copiaba el exento.
+    const id = await seed({
+      fee: '50000.00',
+      vat: EXEMPT,
+      installationVat: frozen('STANDARD', 'ET_468', 19),
+    });
+
+    await firstCharge(id);
+
+    const [internet, install] = await lines(id);
+    expect(internet).toMatchObject({
+      kind: 'PLAN',
+      base_amount: '100000.00',
+      tax_amount: '0.00',
+      vat_treatment: 'EXEMPT',
+      vat_rate: '0.0000',
+      vat_legal_basis: 'ET_481_H',
+    });
+    expect(install).toMatchObject({
+      kind: 'INSTALACION',
+      base_amount: '50000.00',
+      tax_amount: '9500.00',
+      total: '59500.00',
+      vat_treatment: 'STANDARD',
+      vat_rate: '19.0000',
+      vat_legal_basis: 'ET_468',
+    });
+    expect(await docs(id)).toEqual([
+      { subtotal: '150000.00', tax_total: '9500.00', total: '159500.00' },
+    ]);
+  });
+
+  it('R2 instalación con tratamiento propio exento: no causa IVA aunque el internet sí', async () => {
+    const id = await seed({
+      fee: '80000.00',
+      installationVat: frozen('EXEMPT', 'ET_476_7', 0),
+    });
+
+    await firstCharge(id);
+
+    const [internet, install] = await lines(id);
+    expect(internet).toMatchObject({ tax_amount: '19000.00', vat_treatment: 'STANDARD' });
+    expect(install).toMatchObject({
+      base_amount: '80000.00',
+      tax_amount: '0.00',
+      vat_treatment: 'EXEMPT',
+      vat_rate: '0.0000',
+      vat_legal_basis: 'ET_476_7',
+    });
+  });
+
+  it('D2 contrato heredado sin IVA congelado de la instalación: aplica STANDARD 19 %', async () => {
+    const id = await seed({ fee: '80000.00', vat: EXEMPT, installationVat: null });
 
     await firstCharge(id);
 
     const [, install] = await lines(id);
     expect(install).toMatchObject({
-      base_amount: '80000.00',
-      tax_amount: '0.00',
-      total: '80000.00',
-      vat_treatment: 'EXENTO',
+      tax_amount: '15200.00',
+      vat_treatment: 'STANDARD',
+      vat_rate: '19.0000',
+      vat_legal_basis: 'ET_468',
     });
-    expect(await docs(id)).toEqual([
-      { subtotal: '180000.00', tax_total: '0.00', total: '180000.00' },
-    ]);
   });
 
   it('CA-5 permanencia parcial: cobra cargo menos descontado y muestra el descuento', async () => {

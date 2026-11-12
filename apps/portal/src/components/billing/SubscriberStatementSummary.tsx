@@ -21,7 +21,11 @@ import {
   PROTECTED_LABEL,
   PROTECTED_NOTICE,
   formatOptionalBillingDate,
+  COURTESY_PENDING_NOTE,
+  statementCourtesyTotal,
+  documentCourtesyAmount,
 } from './billing-copy';
+import { StatementCourtesyList } from './StatementCourtesyList';
 import { BillingNotStartedNotice } from './BillingNotStartedNotice';
 import { BillingLoadState } from './billing-ui';
 import type { SubscriberStatementLoad } from './use-subscriber-statement';
@@ -78,6 +82,7 @@ function StatementBody({
 }) {
   const pending = pendingDocuments(statement.documents);
   const overdue = PAYMENT_STATES.VENCIDO;
+  const courtesyTotal = statementCourtesyTotal(statement);
   const hasOverdue = statement.documents.some((document) => document.paymentState === 'VENCIDO');
   return (
     <>
@@ -109,6 +114,14 @@ function StatementBody({
           value={formatBillingMoney(statement.creditBalance)}
         />
       </div>
+      {courtesyTotal ? (
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          Cortesías otorgadas:{' '}
+          <span className="font-semibold tabular-nums">{formatBillingMoney(courtesyTotal)}</span>.{' '}
+          {COURTESY_PENDING_NOTE}
+        </p>
+      ) : null}
+      <StatementCourtesyList statement={statement} limit={VISIBLE_DOCUMENTS} />
       {pending.length ? (
         <ul className="divide-y divide-gray-200 dark:divide-dark-border">
           {pending.slice(0, VISIBLE_DOCUMENTS).map((document) => (
@@ -126,6 +139,11 @@ function StatementBody({
                     : 'Sin periodo'}{' '}
                   · Vence {formatBillingDate(document.dueDate)}
                 </p>
+                {documentCourtesyAmount(document) ? (
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                    Cortesía −{formatBillingMoney(documentCourtesyAmount(document) ?? '0')}
+                  </p>
+                ) : null}
               </div>
               <div className="flex items-center gap-2">
                 {document.paymentState === 'VENCIDO' ? (

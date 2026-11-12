@@ -2,12 +2,18 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
-import { BILLING_TERMINATED_LOOKBACK_DAYS } from '@iwana/shared';
+import {
+  BILLING_TERMINATED_LOOKBACK_DAYS,
+  parseContractAdditionalVatSnapshots,
+  parseContractItemVatSnapshot,
+} from '@iwana/shared';
 import { DataSource, EntityManager } from 'typeorm';
 import { createFiscalDocumentCrypto } from '../../../common/crypto/fiscal-document.util';
 import type {
+  BillableAdditional,
   BillableContract,
   BillableContractStatus,
+  ContractInstallationVat,
   ContractVatSnapshot,
 } from '../../billing/ports/billing-contract-read.port';
 import { BillingContractReadPort } from '../../billing/ports/billing-contract-read.port';
@@ -27,8 +33,11 @@ type BillingContractRow = {
   plan_name: string | null;
   monthly_price: string | null;
   vat_snapshot: unknown;
-  unbilled_additional_count: number;
+  additional_product_ids?: unknown;
+  additional_service_ids?: unknown;
+  additional_vat_snapshot?: unknown;
   installation_fee?: string | null;
+  installation_vat_snapshot?: unknown;
   permanence_discount?: string | null;
   display_name: string | null;
   document_type: string | null;
@@ -55,12 +64,11 @@ const BILLABLE_CONTRACT_SELECT = `
          COALESCE(c.plan_snapshot_json->>'name', c.plan_snapshot_json->>'planName') AS plan_name,
          COALESCE(c.plan_snapshot_json->>'monthlyPrice', c.plan_snapshot_json->>'basePrice') AS monthly_price,
          c.vat_snapshot,
-         (CASE WHEN jsonb_typeof(c.additional_product_ids) = 'array'
-               THEN jsonb_array_length(c.additional_product_ids) ELSE 0 END
-          + CASE WHEN jsonb_typeof(c.additional_service_ids) = 'array'
-                 THEN jsonb_array_length(c.additional_service_ids) ELSE 0 END)::int
-           AS unbilled_additional_count,
+         c.additional_product_ids,
+         c.additional_service_ids,
+         c.additional_vat_snapshot,
          c.installation_fee::text AS installation_fee,
+         c.installation_vat_snapshot,
          (SELECT cp.discounted_amount::text
             FROM contract_permanence cp
            WHERE cp.contract_id = c.id AND cp.tenant_id = c.tenant_id AND cp.accepted = true)
@@ -122,6 +130,69 @@ function mapVatSnapshot(value: unknown): ContractVatSnapshot | null {
     requiresAccountantReview: record['requiresAccountantReview'],
     resolvedAt: record['resolvedAt'],
   };
+}
+
+/**
+ * Adicionales cobrables del contrato (spec MOD14 2026-11-12 bloque C, D3/R3): los que el contrato
+ * referencia y tienen IVA y precio congelados. Los demás (ítem sin precio vigente al congelar,
+ * contrato heredado de un titular anonimizado o identificador sin congelar) no se cobran y se
+ * cuentan en `unbilledCount`. Un identificador repetido cuenta una vez.
+ */
+export function mapBillableAdditionals(
+  productIds: unknown,
+  serviceIds: unknown,
+  snapshot: unknown,
+): { additionals: BillableAdditional[]; unbilledCount: number } {
+  const frozen = new Map(
+    parseContractAdditionalVatSnapshots(snapshot).map((entry) => [
+      `${entry.itemType}:${entry.itemId}`,
+      entry,
+    ]),
+  );
+  const additionals: BillableAdditional[] = [];
+  let unbilledCount = 0;
+  const seen = new Set<string>();
+  for (const [itemType, ids] of [
+    ['PRODUCT', productIds],
+    ['SERVICE', serviceIds],
+  ] as const) {
+    if (!Array.isArray(ids)) continue;
+    for (const itemId of ids) {
+      if (typeof itemId !== 'string' || itemId.length === 0) continue;
+      const key = `${itemType}:${itemId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const entry = frozen.get(key);
+      if (!entry || entry.unitPrice === null || entry.unitPrice === undefined) {
+        unbilledCount += 1;
+        continue;
+      }
+      additionals.push({
+        itemId,
+        itemType,
+        name: entry.name ?? null,
+        unitPrice: entry.unitPrice,
+        vat: {
+          treatment: entry.treatment,
+          legalBasis: entry.legalBasis,
+          ratePercent: entry.ratePercent,
+        },
+      });
+    }
+  }
+  return { additionals, unbilledCount };
+}
+
+/** IVA congelado de la instalación (spec MOD14 2026-11-12 R2); null si falta o es inválido. */
+function mapInstallationVat(value: unknown): ContractInstallationVat | null {
+  const snapshot = parseContractItemVatSnapshot(value);
+  return snapshot
+    ? {
+        treatment: snapshot.treatment,
+        legalBasis: snapshot.legalBasis,
+        ratePercent: snapshot.ratePercent,
+      }
+    : null;
 }
 
 @Injectable()
@@ -362,6 +433,11 @@ export class BillingContractReadAdapter extends BillingContractReadPort {
         ? this.fiscalDocumentCrypto.decrypt(row.document_number_encrypted)
         : (row.legacy_document_number ?? null);
     const documentNumber = document === 'eager' ? readDocumentNumber() : null;
+    const { additionals, unbilledCount } = mapBillableAdditionals(
+      row.additional_product_ids,
+      row.additional_service_ids,
+      row.additional_vat_snapshot,
+    );
 
     return {
       contractId: row.contract_id,
@@ -377,8 +453,10 @@ export class BillingContractReadAdapter extends BillingContractReadPort {
       planName: row.plan_name,
       monthlyPrice: row.monthly_price,
       vatSnapshot: mapVatSnapshot(row.vat_snapshot),
-      unbilledAdditionalCount: row.unbilled_additional_count,
+      unbilledAdditionalCount: unbilledCount,
+      additionals,
       installationFee: row.installation_fee ?? null,
+      installationVat: mapInstallationVat(row.installation_vat_snapshot),
       permanenceDiscount: row.permanence_discount ?? null,
       buyer: {
         displayName: row.display_name ?? 'Titular',

@@ -57,6 +57,7 @@ import {
   CONTRACT_PLAN_UUID_PATTERN,
   resolvePlanInstallationFee,
 } from './utils/plan-installation-fee.util';
+import { freezeAdditionalsVat, freezeInstallationVat } from './utils/contract-item-vat.util';
 import { appendContractActivatedEvent } from './contract-activation-events';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
@@ -285,6 +286,18 @@ export class ContractsService {
         installationFee: await this.resolveInstallationFee(
           qr.manager,
           planId,
+          dto.customerSegment ?? subscriber.customerSegment ?? null,
+        ),
+        // Spec MOD14 2026-11-12 R2: el IVA de la instalación y de cada adicional se congela con
+        // el contrato, como el cargo de instalación.
+        installationVatSnapshot: await this.freezeInstallationVat(qr.manager, planId),
+        additionalVatSnapshot: await this.freezeAdditionalsVat(
+          qr.manager,
+          {
+            productIds: dto.additionalProductIds ?? [],
+            serviceIds: dto.additionalServiceIds ?? [],
+          },
+          [],
           dto.customerSegment ?? subscriber.customerSegment ?? null,
         ),
         fiscalName: dto.fiscalName ?? null,
@@ -551,6 +564,17 @@ export class ContractsService {
             Number.isFinite(planSnapshot.installationFee) && planSnapshot.installationFee >= 0
               ? round2Money(planSnapshot.installationFee)
               : null,
+          // Spec MOD14 2026-11-12 R2: IVA de la instalación y de los adicionales congelado.
+          installationVatSnapshot: await this.freezeInstallationVat(qr.manager, planId),
+          additionalVatSnapshot: await this.freezeAdditionalsVat(
+            qr.manager,
+            {
+              productIds: (expediente.additionalProductIds as string[]) ?? [],
+              serviceIds: (expediente.additionalServiceIds as string[]) ?? [],
+            },
+            [],
+            customerSegment ?? null,
+          ),
           fiscalName: expediente.fiscalName ?? null,
           fiscalDocument: null,
           fiscalAddress: null,
@@ -1192,6 +1216,18 @@ export class ContractsService {
         entity.additionalProductIds = dto.additionalProductIds;
       if (dto.additionalServiceIds !== undefined)
         entity.additionalServiceIds = dto.additionalServiceIds;
+      if (dto.additionalProductIds !== undefined || dto.additionalServiceIds !== undefined) {
+        // R2: los adicionales que ya estaban conservan su IVA congelado; los nuevos lo congelan.
+        entity.additionalVatSnapshot = await this.freezeAdditionalsVat(
+          qr.manager,
+          {
+            productIds: entity.additionalProductIds ?? [],
+            serviceIds: entity.additionalServiceIds ?? [],
+          },
+          entity.additionalVatSnapshot ?? [],
+          entity.customerSegment ?? null,
+        );
+      }
       if (dto.paymentMethod !== undefined) entity.paymentMethod = dto.paymentMethod ?? null;
       if (dto.billingCycle !== undefined) entity.billingCycle = dto.billingCycle ?? null;
       if (dto.billingCycleDay !== undefined) entity.billingCycleDay = dto.billingCycleDay;
@@ -1332,6 +1368,7 @@ export class ContractsService {
         planSnapshotJson: entity.planSnapshotJson,
         vatSnapshot: entity.vatSnapshot,
         installationFee: entity.installationFee,
+        installationVatSnapshot: entity.installationVatSnapshot ?? null,
       };
       const next: Contract = Object.assign(new Contract(), entity, {
         planId: command.planId,
@@ -1343,6 +1380,11 @@ export class ContractsService {
           entity.status === ContractStatus.DRAFT
             ? round2Money(snapshot.installationFee)
             : entity.installationFee,
+        // El IVA de la instalación acompaña al cargo: se congela de nuevo solo en borrador.
+        installationVatSnapshot:
+          entity.status === ContractStatus.DRAFT
+            ? await this.freezeInstallationVat(qr.manager, command.planId)
+            : (entity.installationVatSnapshot ?? null),
       });
       if (entity.status === ContractStatus.ACTIVE) {
         this._validateActivationInputs(
@@ -1372,6 +1414,7 @@ export class ContractsService {
             planSnapshotJson: saved.planSnapshotJson,
             vatSnapshot: saved.vatSnapshot,
             installationFee: saved.installationFee,
+            installationVatSnapshot: saved.installationVatSnapshot ?? null,
             effectiveAt: new Date().toISOString(),
           },
         },
@@ -1448,6 +1491,36 @@ export class ContractsService {
       { tenantId, schemaName },
       manager,
       planId,
+      segment,
+    );
+  }
+
+  /** IVA del cargo de instalación del plan (spec MOD14 2026-11-12 R2), leído por el puerto MOD06. */
+  private async freezeInstallationVat(manager: EntityManager, planId: string) {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    return freezeInstallationVat(
+      this.commercialCatalogPort,
+      { tenantId, schemaName },
+      manager,
+      planId,
+    );
+  }
+
+  /** IVA de cada adicional (spec MOD14 2026-11-12 R2); conserva lo ya congelado. */
+  private async freezeAdditionalsVat(
+    manager: EntityManager,
+    additionals: { productIds: readonly string[]; serviceIds: readonly string[] },
+    previous: Parameters<typeof freezeAdditionalsVat>[4] = [],
+    segment: CustomerSegment | null = null,
+  ) {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    return freezeAdditionalsVat(
+      this.commercialCatalogPort,
+      { tenantId, schemaName },
+      manager,
+      additionals,
+      previous,
+      new Date(),
       segment,
     );
   }

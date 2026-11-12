@@ -66,6 +66,13 @@ import {
   type ServiceCatalogFilters,
 } from '@/components/commercial/catalog/catalog-filter-params';
 import { VAT_CONCEPT_OPTIONS, vatConceptNotice } from './catalog-tax-options';
+import {
+  catalogVatFormSchema,
+  catalogVatPayload,
+  catalogVatTreatmentLabel,
+  toCatalogVatFormValue,
+} from './catalog-item-vat';
+import { CatalogVatTreatmentField } from './CatalogVatTreatmentField';
 const SERVICE_CHARGE_TYPES = [
   ChargeType.ONE_TIME,
   ChargeType.ON_DEMAND,
@@ -80,6 +87,7 @@ const serviceFormSchema = z.object({
   installationFee: z.coerce.number().min(0, 'No puede ser negativo.'),
   isActive: z.boolean(),
   vatConcept: z.union([z.nativeEnum(VatConcept), z.literal('')]),
+  vat: catalogVatFormSchema,
 });
 
 type ServiceFormValues = z.infer<typeof serviceFormSchema>;
@@ -99,6 +107,7 @@ function getDefaultServiceFormValues(): ServiceFormValues {
     installationFee: 0,
     isActive: true,
     vatConcept: '',
+    vat: toCatalogVatFormValue(null, null),
   };
 }
 
@@ -111,6 +120,7 @@ function toServiceFormValues(service: AdditionalService): ServiceFormValues {
     installationFee: service.installationFee,
     isActive: service.isActive,
     vatConcept: service.vatConcept ?? '',
+    vat: toCatalogVatFormValue(service.vatTreatment, service.vatLegalBasis),
   };
 }
 
@@ -361,6 +371,7 @@ export function AdditionalServicesPanel({
     const normalizedDescription = values.description?.trim()
       ? values.description.trim()
       : undefined;
+    const vat = catalogVatPayload(values.vat);
 
     try {
       if (editingServiceId) {
@@ -372,6 +383,8 @@ export function AdditionalServicesPanel({
           installationFee: values.installationFee,
           isActive: values.isActive,
           ...(values.vatConcept ? { vatConcept: values.vatConcept } : {}),
+          vatTreatment: vat.treatment,
+          vatLegalBasis: vat.legalBasis,
         };
         await commercialApi.updateAdditionalService(editingServiceId, dto);
         setSuccessMessage('Servicio actualizado.');
@@ -384,6 +397,8 @@ export function AdditionalServicesPanel({
           installationFee: values.installationFee,
           isActive: values.isActive,
           vatConcept: values.vatConcept as VatConcept,
+          vatTreatment: vat.treatment,
+          vatLegalBasis: vat.legalBasis,
         };
         await commercialApi.createAdditionalService(dto);
         setSuccessMessage('Servicio creado.');
@@ -687,6 +702,9 @@ export function AdditionalServicesPanel({
                             <p className="font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
                               Instalación: {formatCurrency(service.installationFee)}
                             </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {catalogVatTreatmentLabel(service.vatTreatment)}
+                            </p>
                           </div>
                         </td>
                         <td className={portalDataTableCellClassName}>
@@ -930,6 +948,20 @@ export function AdditionalServicesPanel({
                 )}
               </div>
             </div>
+
+            <Controller
+              name="vat"
+              control={control}
+              render={({ field }) => (
+                <CatalogVatTreatmentField
+                  label="IVA del servicio"
+                  helperText="Se aplica al facturar este servicio; por defecto, IVA general del 19 %."
+                  value={field.value}
+                  error={errors.vat?.legalBasis?.message}
+                  onChange={field.onChange}
+                />
+              )}
+            />
 
             <Controller
               name="isActive"

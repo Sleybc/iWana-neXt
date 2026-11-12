@@ -20,6 +20,21 @@ import {
 export const billingInputClass =
   'min-h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-2 dark:text-white';
 
+/** Errores de cortesías (spec MOD14 2026-11-12 R4, R5). */
+const COURTESY_ERRORS: Record<string, string> = {
+  BILLING_COURTESY_EXCEEDS_BALANCE:
+    'La cortesía supera el saldo pendiente del documento. Usa un valor menor o igual al saldo.',
+  BILLING_COURTESY_MIXED_VAT:
+    'Este documento tiene conceptos con IVA distinto. Otorga la cortesía con «Regalar una línea».',
+  BILLING_COURTESY_LINE_NOT_ELIGIBLE:
+    'Esa línea ya no se puede regalar: no tiene valor o ya tiene una cortesía. Actualiza el documento.',
+  BILLING_COURTESY_DOCUMENT_NOT_ELIGIBLE: 'Un documento anulado no admite cortesías.',
+  BILLING_COURTESY_NOT_FOUND: 'No encontramos esta cortesía. Actualiza el documento.',
+  BILLING_COURTESY_ALREADY_VOIDED: 'Esta cortesía ya estaba anulada.',
+  BILLING_COURTESY_NOT_VOIDABLE:
+    'Esta cortesía ya forma parte de un documento emitido y no se puede anular.',
+};
+
 export function billingError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.code === 'PRIVACY_TITULAR_ANONYMIZED')
@@ -32,6 +47,8 @@ export function billingError(error: unknown): string {
       return 'La política fue modificada recientemente. Vuelve a abrirla para consultar los valores vigentes.';
     if (error.code === 'BILLING_IMPORTED_PDF_NOT_AVAILABLE')
       return 'El PDF de este documento histórico no se trajo en la importación.';
+    const courtesy = COURTESY_ERRORS[error.code];
+    if (courtesy) return courtesy;
     // Primer cobro (spec 2026-11-11 R3).
     if (error.code === 'CONTRACT_NOT_FOUND')
       return 'No encontramos este contrato. Actualiza la página e inténtalo de nuevo.';

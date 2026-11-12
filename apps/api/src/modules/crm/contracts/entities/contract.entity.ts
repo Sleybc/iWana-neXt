@@ -9,7 +9,11 @@ import {
 } from 'typeorm';
 import { ContractStatus } from '../../enums/contract-status.enum';
 import { CustomerSegment, ServiceUsage } from '@iwana/shared';
-import type { ContractServicePointSnapshot } from '@iwana/shared';
+import type {
+  ContractAdditionalVatSnapshot,
+  ContractItemVatSnapshot,
+  ContractServicePointSnapshot,
+} from '@iwana/shared';
 
 @Entity({ name: 'contracts' })
 @Index('idx_contracts_tenant_status', ['tenantId', 'status'])
@@ -111,6 +115,13 @@ export class Contract {
   @Column({ type: 'jsonb', name: 'additional_service_ids', default: [] })
   additionalServiceIds: string[];
 
+  /**
+   * IVA de cada adicional congelado al agregarlo (migración 201, spec MOD14 2026-11-12 R2): el
+   * tratamiento de su ítem del catálogo, por defecto STANDARD 19 %.
+   */
+  @Column({ type: 'jsonb', name: 'additional_vat_snapshot', default: () => "'[]'::jsonb" })
+  additionalVatSnapshot?: ContractAdditionalVatSnapshot[];
+
   // ── Facturación por servicio ──────────────────────────────────────────────
 
   @Column({ type: 'varchar', length: 30, name: 'payment_method', nullable: true })
@@ -132,6 +143,14 @@ export class Contract {
     },
   })
   installationFee: number | null;
+
+  /**
+   * IVA del cargo de instalación congelado al crear el contrato (migración 201, spec MOD14
+   * 2026-11-12 R2; sustituye D-F1): el tratamiento propio del cargo en el plan, por defecto
+   * STANDARD 19 %. Null en contratos heredados sin cargo congelado.
+   */
+  @Column({ type: 'jsonb', name: 'installation_vat_snapshot', nullable: true })
+  installationVatSnapshot?: ContractItemVatSnapshot | null;
 
   @Column({ type: 'varchar', length: 20, name: 'billing_cycle', nullable: true })
   /** @deprecated Dato libre heredado; los contratos nuevos usan billingCycleDay. */

@@ -38,6 +38,8 @@ export const BILLING_DOCUMENT_LINE_KINDS = [
   'ADICIONAL',
   'PRORRATEO',
   'INSTALACION',
+  /** Línea negativa de cortesía en un borrador (spec MOD14 2026-11-12 R4). */
+  'CORTESIA',
 ] as const;
 export type BillingDocumentLineKind = (typeof BILLING_DOCUMENT_LINE_KINDS)[number];
 
@@ -83,6 +85,41 @@ export const BILLING_BLOCKING_REASONS = [
 ] as const;
 export type BillingBlockingReason = (typeof BILLING_BLOCKING_REASONS)[number];
 
+/**
+ * Cortesías (spec MOD14 2026-11-12 D4, R4-R6). Sobre un BORRADOR se aplican como línea negativa
+ * «Cortesía»; sobre un EMITIDO o IMPORTADO, como ajuste no monetario que baja el saldo sin ser
+ * pago ni nota crédito y sin tocar la base gravable ya emitida.
+ */
+export const BILLING_COURTESY_APPLICATIONS = ['LINEA_EN_BORRADOR', 'AJUSTE_SOBRE_EMITIDO'] as const;
+export type BillingCourtesyApplication = (typeof BILLING_COURTESY_APPLICATIONS)[number];
+
+/** `VALOR`: un monto con IVA incluido. `LINEA`: el total de una línea del documento. */
+export const BILLING_COURTESY_TARGETS = ['VALOR', 'LINEA'] as const;
+export type BillingCourtesyTarget = (typeof BILLING_COURTESY_TARGETS)[number];
+
+export const BILLING_COURTESY_STATUSES = ['ACTIVA', 'ANULADA'] as const;
+export type BillingCourtesyStatus = (typeof BILLING_COURTESY_STATUSES)[number];
+
+/** Motivos de catálogo de una cortesía; `OTRO` exige nota. */
+export const BILLING_COURTESY_REASONS = [
+  'PRORRATEO_INICIAL',
+  'FALLA_DEL_SERVICIO',
+  'RETENCION_DEL_CLIENTE',
+  'PROMOCION_COMERCIAL',
+  'ERROR_OPERATIVO',
+  'OTRO',
+] as const;
+export type BillingCourtesyReason = (typeof BILLING_COURTESY_REASONS)[number];
+
+/** Motivos de anulación de una cortesía. */
+export const BILLING_COURTESY_VOID_REASONS = [
+  'ERROR_DE_REGISTRO',
+  'VALOR_INCORRECTO',
+  'DOCUMENTO_EQUIVOCADO',
+  'DECISION_REVERTIDA',
+] as const;
+export type BillingCourtesyVoidReason = (typeof BILLING_COURTESY_VOID_REASONS)[number];
+
 /** Tabla de códigos de error de Billing (HLD v1.1 §4, RS-6, RS-7). */
 export const BILLING_ERROR_CODES = {
   BILLING_ISSUER_INCOMPLETE: 'BILLING_ISSUER_INCOMPLETE',
@@ -100,5 +137,13 @@ export const BILLING_ERROR_CODES = {
   BILLING_IMPORTED_PDF_NOT_AVAILABLE: 'BILLING_IMPORTED_PDF_NOT_AVAILABLE',
   BILLING_IMPORTED_PDF_RESTRICTED: 'BILLING_IMPORTED_PDF_RESTRICTED',
   BILLING_IMPORTED_PDF_UNREADABLE: 'BILLING_IMPORTED_PDF_UNREADABLE',
+  /** Cortesías (spec MOD14 2026-11-12). */
+  BILLING_COURTESY_EXCEEDS_BALANCE: 'BILLING_COURTESY_EXCEEDS_BALANCE',
+  BILLING_COURTESY_DOCUMENT_NOT_ELIGIBLE: 'BILLING_COURTESY_DOCUMENT_NOT_ELIGIBLE',
+  BILLING_COURTESY_LINE_NOT_ELIGIBLE: 'BILLING_COURTESY_LINE_NOT_ELIGIBLE',
+  BILLING_COURTESY_MIXED_VAT: 'BILLING_COURTESY_MIXED_VAT',
+  BILLING_COURTESY_NOT_FOUND: 'BILLING_COURTESY_NOT_FOUND',
+  BILLING_COURTESY_ALREADY_VOIDED: 'BILLING_COURTESY_ALREADY_VOIDED',
+  BILLING_COURTESY_NOT_VOIDABLE: 'BILLING_COURTESY_NOT_VOIDABLE',
 } as const;
 export type BillingErrorCode = (typeof BILLING_ERROR_CODES)[keyof typeof BILLING_ERROR_CODES];

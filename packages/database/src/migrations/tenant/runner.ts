@@ -157,6 +157,10 @@ import { BillingImportedDocuments1970000000197 } from './197_billing_imported_do
 import { SeedMigrationImportPermission1980000000198 } from './198_seed_migration_import_permission';
 import { ImportPromotionAndSubscriberDocuments1990000000199 } from './199_import_promotion_and_subscriber_documents';
 import { ImportedDebtCollectible2000000000200 } from './200_imported_debt_collectible';
+import { CatalogItemVatTreatment2010000000201 } from './201_catalog_item_vat_treatment';
+import { BillingAdditionalLines2020000000202 } from './202_billing_additional_lines';
+import { BillingCourtesies2030000000203 } from './203_billing_courtesies';
+import { SeedBillingCourtesiesPermission2040000000204 } from './204_seed_billing_courtesies_permission';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -395,6 +399,10 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   SeedMigrationImportPermission1980000000198,
   ImportPromotionAndSubscriberDocuments1990000000199,
   ImportedDebtCollectible2000000000200,
+  CatalogItemVatTreatment2010000000201,
+  BillingAdditionalLines2020000000202,
+  BillingCourtesies2030000000203,
+  SeedBillingCourtesiesPermission2040000000204,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

@@ -52,6 +52,11 @@ import {
   toFormValues,
   type PlanFormValues,
 } from '@/components/commercial/catalog/plan-catalog-helpers';
+import {
+  catalogVatPayload,
+  planInstallationVatPayload,
+  toCatalogVatFormValue,
+} from '@/components/commercial/catalog/catalog-item-vat';
 import { PlanCatalogTable } from '@/components/commercial/catalog/PlanCatalogTable';
 import { PlanCatalogFormPeek } from '@/components/commercial/catalog/PlanCatalogFormPeek';
 
@@ -175,6 +180,7 @@ export function PlanCatalogPanel({
       installationEnabled: true,
       installationFee: 120000,
       installationRule: InstallationRule.ON_DEMAND,
+      installationVat: toCatalogVatFormValue(null, null),
       vatConcept: '',
       networkType: NetworkType.FIXED,
     },
@@ -410,6 +416,7 @@ export function PlanCatalogPanel({
       installationEnabled: true,
       installationFee: 120000,
       installationRule: InstallationRule.ON_DEMAND,
+      installationVat: toCatalogVatFormValue(null, null),
       vatConcept: '',
       networkType: NetworkType.FIXED,
     });
@@ -551,6 +558,7 @@ export function PlanCatalogPanel({
       ? values.installationRule
       : InstallationRule.NEVER;
 
+    const installationVat = planInstallationVatPayload(values.installationVat);
     const payload: CreatePlanCatalogItemDto = {
       name: values.name.trim(),
       technology: normalizeTechnologyName(values.technology),
@@ -560,6 +568,7 @@ export function PlanCatalogPanel({
       basePrice: values.basePrice,
       installationRule: normalizedInstallationRule,
       installationFee: values.installationEnabled ? values.installationFee : 0,
+      ...installationVat,
       vatConcept: values.vatConcept as NonNullable<PlanCatalogItem['vatConcept']>,
       networkType: values.networkType,
     };
@@ -603,6 +612,19 @@ export function PlanCatalogPanel({
 
         if (nextUploadSpeed !== current.uploadSpeedMbps) {
           updatePayload.uploadSpeedMbps = nextUploadSpeed;
+        }
+
+        const currentInstallationVat = catalogVatPayload(
+          toCatalogVatFormValue(
+            current.installationVatTreatment,
+            current.installationVatLegalBasis,
+          ),
+        );
+        if (
+          installationVat.installationVatTreatment !== currentInstallationVat.treatment ||
+          installationVat.installationVatLegalBasis !== currentInstallationVat.legalBasis
+        ) {
+          Object.assign(updatePayload, installationVat);
         }
 
         if (normalizedInstallationRule !== current.installationRule) {

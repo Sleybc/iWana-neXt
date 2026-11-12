@@ -76,6 +76,9 @@ export const MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG: readonly string[] = [
   'ImportExternalIdsCrmSupport1960000000196',
   'BillingImportedDocuments1970000000197',
   'ImportPromotionAndSubscriberDocuments1990000000199',
+  'CatalogItemVatTreatment2010000000201',
+  'BillingAdditionalLines2020000000202',
+  'BillingCourtesies2030000000203',
 ];
 
 /** Migraciones cuyo down() cuenta filas incompatibles y aborta antes de alterar el schema. */

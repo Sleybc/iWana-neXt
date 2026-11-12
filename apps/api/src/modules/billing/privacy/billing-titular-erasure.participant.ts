@@ -210,6 +210,8 @@ export class BillingTitularErasureParticipant implements TitularErasureParticipa
       [tenantId, subscriberIds],
     );
 
+    const courtesies = await this.courtesyNotes(qr, mode, tenantId, subscriberIds);
+
     return [
       {
         table: 'billing_documents',
@@ -232,7 +234,51 @@ export class BillingTitularErasureParticipant implements TitularErasureParticipa
         changed: changedPayments,
         residual: paymentResiduals,
       },
+      ...courtesies,
     ];
+  }
+
+  /**
+   * Notas libres de las cortesías (migración 203, spec MOD14 2026-11-12): la nota y la nota de
+   * anulación pueden traer datos del titular y se vacían. Monto, motivo de catálogo y estado son
+   * códigos y se conservan con el documento. Las cortesías de borradores ya se fueron con su
+   * borrador (ON DELETE CASCADE). Schemas anteriores a la 203 no tienen la tabla.
+   */
+  private async courtesyNotes(
+    qr: QueryRunner,
+    mode: 'dry-run' | 'apply',
+    tenantId: string,
+    subscriberIds: string[],
+  ): Promise<TitularErasureTableResult[]> {
+    const probe = (await qr.query(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.tables
+                       WHERE table_schema = current_schema()
+                         AND table_name = 'billing_courtesies') AS present`,
+    )) as Array<{ present: boolean }>;
+    if (probe[0]?.present !== true) return [];
+    const pendingSql = `SELECT COUNT(*)::int AS count
+           FROM billing_courtesies
+          WHERE tenant_id = $1::uuid
+            AND subscriber_id = ANY($2::uuid[])
+            AND (note IS NOT NULL OR void_note IS NOT NULL)`;
+    const selected = await this.count(qr, pendingSql, [tenantId, subscriberIds]);
+    let changed = 0;
+    if (mode === 'apply') {
+      const updated = normalizeErasureRows<IdRow>(
+        await qr.query(
+          `UPDATE billing_courtesies
+            SET note = NULL, void_note = NULL
+          WHERE tenant_id = $1::uuid
+            AND subscriber_id = ANY($2::uuid[])
+            AND (note IS NOT NULL OR void_note IS NOT NULL)
+          RETURNING id::text AS id`,
+          [tenantId, subscriberIds],
+        ),
+      );
+      changed = updated.length;
+    }
+    const residual = await this.count(qr, pendingSql, [tenantId, subscriberIds]);
+    return [{ table: 'billing_courtesies', category: 'COMERCIAL', selected, changed, residual }];
   }
 
   private async count(qr: QueryRunner, sql: string, parameters: unknown[]): Promise<number> {

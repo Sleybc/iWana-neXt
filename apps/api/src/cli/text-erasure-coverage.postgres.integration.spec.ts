@@ -23,8 +23,8 @@ if (integrationEnabled && !supportedDatabaseName) {
 
 jest.setTimeout(900_000);
 
-const EXPECTED_MANIFEST_SIZE = 777;
-const EXPECTED_CLASSIFIED_MOD14 = 41; // +billing_documents.external_pdf_key (199)
+const EXPECTED_MANIFEST_SIZE = 793; // +6 IVA por ítem del catálogo (201), +1 adicionales (202), +9 cortesías (203)
+const EXPECTED_CLASSIFIED_MOD14 = 51; // +billing_documents.external_pdf_key (199), +1 adicionales (202), +9 cortesías (203)
 
 /**
  * Predicado textual D-BT-10: el mismo que produjo el manifiesto desde
@@ -61,7 +61,7 @@ export function assertTextErasureManifestCovers(
 }
 
 describe('D-BT-10 — manifiesto de columnas textuales (puro)', () => {
-  it('el manifiesto declara 766 entradas únicas con motivo no vacío', () => {
+  it('el manifiesto declara 793 entradas únicas con motivo no vacío', () => {
     expect(TEXT_ERASURE_MANIFEST).toHaveLength(EXPECTED_MANIFEST_SIZE);
     const keys = TEXT_ERASURE_MANIFEST.map((entry) => `${entry.t}.${entry.c}`);
     expect(new Set(keys).size).toBe(EXPECTED_MANIFEST_SIZE);
@@ -70,14 +70,14 @@ describe('D-BT-10 — manifiesto de columnas textuales (puro)', () => {
     }
   });
 
-  it('MOD14 clasifica sus 41 columnas con siete reglas de supresión y cero pendientes', () => {
+  it('MOD14 clasifica sus 51 columnas con nueve reglas de supresión y cero pendientes', () => {
     const pending = TEXT_ERASURE_MANIFEST.filter((entry) => entry.k === 'PENDIENTE-MOD14');
     expect(pending).toHaveLength(0);
     const classified = TEXT_ERASURE_MANIFEST.filter(
       (entry) => entry.t.startsWith('billing_') || entry.t === 'crm_contract_price_backup_175',
     );
     expect(classified).toHaveLength(EXPECTED_CLASSIFIED_MOD14);
-    expect(classified.filter((entry) => entry.k === 'CUBIERTA')).toHaveLength(7);
+    expect(classified.filter((entry) => entry.k === 'CUBIERTA')).toHaveLength(9);
   });
 
   it('CA-BT-12 detecta en rojo una columna nueva sin clasificar', () => {

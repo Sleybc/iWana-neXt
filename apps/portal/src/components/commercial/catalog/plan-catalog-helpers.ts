@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { InstallationRule, NetworkType, VatConcept } from '@iwana/shared';
 import { ApiError, type PlanCatalogItem } from '@/lib/api-client';
 import type { PlanCatalogFilters } from '@/components/commercial/catalog/catalog-filter-params';
+import { catalogVatFormSchema, toCatalogVatFormValue } from './catalog-item-vat';
 
 export type SpeedMode = 'SYMMETRIC' | 'ASYMMETRIC';
 
@@ -24,6 +25,8 @@ export const planFormSchema = z
     installationEnabled: z.boolean(),
     installationFee: z.number().min(0, 'El valor no puede ser negativo.'),
     installationRule: z.nativeEnum(InstallationRule),
+    /** IVA del cargo de instalación (spec MOD14 2026-11-12 R1); por defecto 19 %. */
+    installationVat: catalogVatFormSchema,
     vatConcept: z.union([z.nativeEnum(VatConcept), z.literal('')]),
     networkType: z.nativeEnum(NetworkType),
   })
@@ -184,6 +187,10 @@ export function toFormValues(plan: PlanCatalogItem): PlanFormValues {
     installationEnabled: plan.installationRule !== 'NEVER',
     installationFee: parseMoneyFromApi(plan.installationFee),
     installationRule: plan.installationRule,
+    installationVat: toCatalogVatFormValue(
+      plan.installationVatTreatment,
+      plan.installationVatLegalBasis,
+    ),
     vatConcept: plan.vatConcept ?? '',
     networkType: plan.networkType,
   };

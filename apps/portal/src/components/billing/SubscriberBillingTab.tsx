@@ -39,8 +39,11 @@ import {
   PAYMENT_STATES,
   PROTECTED_LABEL,
   PROTECTED_NOTICE,
+  COURTESY_PENDING_NOTE,
   documentReference,
+  statementCourtesyTotal,
 } from './billing-copy';
+import { StatementCourtesyList } from './StatementCourtesyList';
 import { BillingLoadState, billingInputClass, useBillingMutation } from './billing-ui';
 import type { SubscriberStatementLoad } from './use-subscriber-statement';
 
@@ -81,6 +84,7 @@ export function SubscriberBillingTab({
       </div>
     );
 
+  const courtesyTotal = statementCourtesyTotal(data);
   const canApply =
     moneyCents(data.creditBalance) > 0 && pendingDocuments(data.documents).length > 0;
   return (
@@ -96,7 +100,9 @@ export function SubscriberBillingTab({
           description={IMPERSONATION_HOLD_NOTICE}
         />
       ) : null}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div
+        className={`grid gap-3 sm:grid-cols-2 ${courtesyTotal ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`}
+      >
         <PortalMetricCard
           eyebrow="Histórico"
           title="Total facturado"
@@ -107,10 +113,19 @@ export function SubscriberBillingTab({
           title="Total pagado"
           value={formatBillingMoney(data.totalPaid)}
         />
+        {courtesyTotal ? (
+          <PortalMetricCard
+            eyebrow="Histórico"
+            title="Cortesías otorgadas"
+            value={formatBillingMoney(courtesyTotal)}
+            description="No son pagos: bajan el saldo de los documentos."
+          />
+        ) : null}
         <PortalMetricCard
           eyebrow="Cartera"
           title="Deuda pendiente actual"
           value={formatBillingMoney(data.totalPending)}
+          {...(courtesyTotal ? { description: COURTESY_PENDING_NOTE } : {})}
           accent={
             data.documents.some((document) => document.paymentState === 'VENCIDO')
               ? 'warning'
@@ -153,6 +168,7 @@ export function SubscriberBillingTab({
             description={documentReference(document)}
           />
         ))}
+      <StatementCourtesyList statement={data} />
       <BillingDocumentList
         subscriberId={subscriberId}
         revision={revision}

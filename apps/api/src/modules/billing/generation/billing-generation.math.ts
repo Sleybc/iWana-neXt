@@ -13,7 +13,7 @@ export interface PlanLineInput {
 }
 
 export interface BillingLineValue {
-  kind: 'PLAN' | 'PRORRATEO' | 'INSTALACION';
+  kind: 'PLAN' | 'PRORRATEO' | 'INSTALACION' | 'ADICIONAL';
   description: string;
   quantity: string;
   unitPrice: string;
@@ -24,6 +24,8 @@ export interface BillingLineValue {
   vatRate: string;
   vatLegalBasis: string | null;
   position: number;
+  /** Solo líneas `ADICIONAL`: ítem del catálogo que las origina (idempotencia, migración 202). */
+  additionalItemId?: string | null;
 }
 
 function roundCents(amount: number): number {
@@ -96,8 +98,9 @@ function copMoney(amount: number): string {
  * Línea «Instalación» del primer cobro: cobra el cargo congelado menos el valor descontado
  * o diferido por permanencia aceptada; el descuento queda visible en la descripción y en
  * la diferencia entre precio unitario y base. Con descuento total sale en cero. IVA: el
- * mismo tratamiento del servicio de internet del contrato (D-F1, ADR-093). Sin cargo
- * (nulo o cero) no hay línea.
+ * tratamiento propio de la instalación congelado en el contrato (spec MOD14 2026-11-12 R2, que
+ * sustituye D-F1), por defecto STANDARD 19 %; nunca el del internet. Sin cargo (nulo o cero) no
+ * hay línea.
  */
 export function buildInstallationLine(input: InstallationLineInput): BillingLineValue | null {
   if (input.fee === null || input.fee === undefined) return null;
@@ -132,5 +135,52 @@ export function buildInstallationLine(input: InstallationLineInput): BillingLine
     vatRate: `${input.ratePercent.toFixed(4)}`,
     vatLegalBasis: input.legalBasis,
     position: 1,
+  };
+}
+
+export interface AdditionalLineInput {
+  itemId: string;
+  itemType: 'PRODUCT' | 'SERVICE';
+  name: string | null;
+  unitPrice: string;
+  /** Días cubiertos y del periodo: solo prorratean servicios. */
+  coveredDays: number;
+  periodDays: number;
+  method: BillingProrationMethod;
+  treatment: string;
+  ratePercent: 0 | 19;
+  legalBasis: string | null;
+  position: number;
+}
+
+/**
+ * Línea `ADICIONAL` (spec MOD14 2026-11-12 bloque C, D3/R3/CA-2). Un producto se cobra completo una
+ * sola vez; un servicio cada periodo, prorrateado igual que el plan (tramo parcial en pesos
+ * enteros). El IVA es el congelado del ítem en el contrato. Un precio en cero no genera línea.
+ */
+export function buildAdditionalLine(input: AdditionalLineInput): BillingLineValue | null {
+  const price = Number(input.unitPrice);
+  if (!Number.isFinite(price) || price < 0) {
+    throw new RangeError('El precio del adicional debe ser válido y no negativo.');
+  }
+  if (roundCents(price) === 0) return null;
+  const fallback = input.itemType === 'PRODUCT' ? 'Producto adicional' : 'Servicio adicional';
+  const description = input.name?.trim() || fallback;
+  const priced =
+    input.itemType === 'PRODUCT'
+      ? buildPlanLine({
+          ...input,
+          price: input.unitPrice,
+          coveredDays: 1,
+          periodDays: 1,
+          description,
+        })
+      : buildPlanLine({ ...input, price: input.unitPrice, description });
+  if (Number(priced.baseAmount) === 0) return null;
+  return {
+    ...priced,
+    kind: 'ADICIONAL',
+    position: input.position,
+    additionalItemId: input.itemId,
   };
 }

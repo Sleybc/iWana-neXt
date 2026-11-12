@@ -3,7 +3,9 @@
 import { useCallback, useState } from 'react';
 import {
   AccessPermissionKey,
+  VoidCourtesyCommandSchema,
   VoidDocumentCommandSchema,
+  type BillingCourtesyResponse,
   type BillingDocumentResponse,
 } from '@iwana/shared';
 import { Badge, Button } from '@iwana/ui';
@@ -12,14 +14,23 @@ import { formatBillingDate } from '@/components/crm/subscribers/billing-cycle-ui
 import { PortalAlert, PortalSidePeek } from '@/components/shared/portal-ui';
 import { billingApi } from '@/lib/api-client';
 import { BillingConfirmation } from './BillingConfirmation';
+import { BillingCourtesyDialog } from './BillingCourtesyDialog';
 import { downloadBillingDocumentPdf } from './billing-document-pdf';
 import {
   additionalNotice,
   BLOCKING_REASONS,
+  canReceiveCourtesy,
+  documentCourtesyAmount,
+  COURTESY_APPLICATIONS,
+  COURTESY_REASONS,
+  COURTESY_STATUSES,
+  COURTESY_VOID_REASONS,
   DOCUMENT_LINE_KINDS,
+  documentLineVat,
   DOCUMENT_STATES,
   DOCUMENT_VOID_REASONS,
   formatBillingMoney,
+  formatBillingMoneyExact,
   PAYMENT_STATES,
   PROTECTED_LABEL,
   PROTECTED_NOTICE,
@@ -41,7 +52,9 @@ export function BillingDocumentTable({
 }) {
   const { hasPermission } = usePermissions();
   const canManage = hasPermission(AccessPermissionKey.BILLING_INVOICES_MANAGE);
+  const canCourtesy = hasPermission(AccessPermissionKey.BILLING_COURTESIES_MANAGE);
   const [detail, setDetail] = useState<string | null>(null);
+  const [courtesyFor, setCourtesyFor] = useState<string | null>(null);
   const [action, setAction] = useState<{
     kind: 'issue' | 'void';
     document: BillingDocumentResponse;
@@ -110,7 +123,7 @@ export function BillingDocumentTable({
                 : (document.buyerSnapshot?.displayName ?? 'No disponible'),
               documentCoveredRange(document),
               formatBillingDate(document.dueDate),
-              formatBillingMoney(document.total),
+              <DocumentTotalCell document={document} />,
               document.pendingAmount == null ? '—' : formatBillingMoney(document.pendingAmount),
               <div className="space-y-1">
                 <Badge variant={status.variant}>{status.label}</Badge>
@@ -140,6 +153,17 @@ export function BillingDocumentTable({
                     onClick={() => setAction({ kind: 'issue', document })}
                   >
                     Emitir
+                  </Button>
+                ) : null}
+                {canCourtesy && canReceiveCourtesy(document) ? (
+                  <Button
+                    className="min-h-11"
+                    type="button"
+                    variant="ghost"
+                    aria-label={`Otorgar cortesía en el documento ${documentReference(document)}`}
+                    onClick={() => setCourtesyFor(document.id)}
+                  >
+                    Otorgar cortesía
                   </Button>
                 ) : null}
                 {document.status === 'EMITIDO' || document.status === 'IMPORTADO' ? (
@@ -173,7 +197,24 @@ export function BillingDocumentTable({
           };
         })}
       />
-      {detail ? <BillingDocumentDetail id={detail} onClose={() => setDetail(null)} /> : null}
+      {detail ? (
+        <BillingDocumentDetail
+          id={detail}
+          canCourtesy={canCourtesy}
+          onChanged={onChanged}
+          onClose={() => setDetail(null)}
+        />
+      ) : null}
+      {courtesyFor ? (
+        <BillingCourtesyDialog
+          documentId={courtesyFor}
+          onClose={() => setCourtesyFor(null)}
+          onSaved={() => {
+            setCourtesyFor(null);
+            onChanged();
+          }}
+        />
+      ) : null}
       {action ? (
         <BillingConfirmation
           key={`${action.kind}-${action.document.id}`}
@@ -207,10 +248,26 @@ export function BillingDocumentTable({
   );
 }
 
-function BillingDocumentDetail({ id, onClose }: { id: string; onClose: () => void }) {
+function BillingDocumentDetail({
+  id,
+  canCourtesy,
+  onChanged,
+  onClose,
+}: {
+  id: string;
+  canCourtesy: boolean;
+  onChanged: () => void;
+  onClose: () => void;
+}) {
   const load = useCallback(() => billingApi.document(id), [id]);
   const { data, error, loading, reload } = useBillingLoad(load);
+  const [granting, setGranting] = useState(false);
+  const [voiding, setVoiding] = useState<BillingCourtesyResponse>();
   const buyer = data?.buyerProtected ? null : data?.buyerSnapshot;
+  function changed() {
+    reload();
+    onChanged();
+  }
   return (
     <PortalSidePeek open onClose={onClose} title={data?.number ?? 'Documento de cobro'}>
       <BillingLoadState loading={loading} error={error} onRetry={reload} />
@@ -247,24 +304,156 @@ function BillingDocumentDetail({ id, onClose }: { id: string; onClose: () => voi
             </div>
             <div>
               <dt className="font-medium">Total</dt>
-              <dd>{formatBillingMoney(data.total)}</dd>
+              <dd className="tabular-nums">{formatBillingMoney(data.total)}</dd>
             </div>
+            {data.courtesyAmount && Number(data.courtesyAmount) > 0 ? (
+              <div>
+                <dt className="font-medium">Cortesías aplicadas</dt>
+                <dd className="tabular-nums">−{formatBillingMoneyExact(data.courtesyAmount)}</dd>
+              </div>
+            ) : null}
+            {data.pendingAmount != null ? (
+              <div>
+                <dt className="font-medium">Saldo pendiente</dt>
+                <dd className="tabular-nums">{formatBillingMoneyExact(data.pendingAmount)}</dd>
+              </div>
+            ) : null}
           </dl>
+          {canCourtesy && canReceiveCourtesy(data) ? (
+            <Button
+              className="min-h-11"
+              type="button"
+              variant="secondary"
+              onClick={() => setGranting(true)}
+            >
+              Otorgar cortesía
+            </Button>
+          ) : null}
           {data.lines?.length ? (
             <BillingTable
-              columns={['Tipo', 'Concepto', 'Total']}
+              columns={['Tipo', 'Concepto', 'IVA', 'Total']}
               rows={data.lines.map((line) => ({
                 id: line.id,
                 cells: [
                   DOCUMENT_LINE_KINDS[line.kind],
                   line.description,
-                  formatBillingMoney(line.total),
+                  documentLineVat(line),
+                  formatBillingMoneyExact(line.total),
                 ],
               }))}
             />
           ) : null}
+          {data.courtesies?.length ? (
+            <section aria-labelledby={`courtesies-${data.id}`} className="space-y-2">
+              <h3 id={`courtesies-${data.id}`} className="text-sm font-semibold">
+                Cortesías
+              </h3>
+              <BillingTable
+                columns={['Fecha', 'Motivo', 'Valor', 'Estado', 'Acciones']}
+                rows={data.courtesies.map((courtesy) => {
+                  const status = COURTESY_STATUSES[courtesy.status];
+                  return {
+                    id: courtesy.id,
+                    cells: [
+                      formatBillingDate(courtesy.createdAt),
+                      <div className="space-y-0.5">
+                        <p>{COURTESY_REASONS[courtesy.reasonCode]}</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          {COURTESY_APPLICATIONS[courtesy.application]}
+                        </p>
+                        {courtesy.note ? (
+                          <p className="text-xs text-gray-600 dark:text-gray-400">
+                            {courtesy.note}
+                          </p>
+                        ) : null}
+                      </div>,
+                      `−${formatBillingMoneyExact(courtesy.amount)}`,
+                      <div className="space-y-0.5">
+                        <Badge variant={status.variant}>{status.label}</Badge>
+                        {courtesy.voidReasonCode ? (
+                          <p className="text-xs text-gray-600 dark:text-gray-400">
+                            {COURTESY_VOID_REASONS[courtesy.voidReasonCode]}
+                          </p>
+                        ) : null}
+                      </div>,
+                      canCourtesy && courtesyVoidable(courtesy, data) ? (
+                        <Button
+                          className="min-h-11"
+                          type="button"
+                          variant="ghost"
+                          onClick={() => setVoiding(courtesy)}
+                        >
+                          Anular cortesía
+                        </Button>
+                      ) : (
+                        '—'
+                      ),
+                    ],
+                  };
+                })}
+              />
+            </section>
+          ) : null}
         </div>
       ) : null}
+      {granting && data ? (
+        <BillingCourtesyDialog
+          documentId={data.id}
+          onClose={() => setGranting(false)}
+          onSaved={() => {
+            setGranting(false);
+            changed();
+          }}
+        />
+      ) : null}
+      {voiding ? (
+        <BillingConfirmation
+          key={voiding.id}
+          title="Anular cortesía"
+          description={`El valor de ${formatBillingMoneyExact(voiding.amount)} vuelve al saldo del documento.`}
+          confirm="Confirmar anulación"
+          reasons={COURTESY_VOID_REASONS}
+          onClose={() => setVoiding(undefined)}
+          onConfirm={async (key, reasonCode, note) => {
+            await billingApi.voidCourtesy(
+              voiding.id,
+              VoidCourtesyCommandSchema.parse({
+                reasonCode,
+                ...(note.trim() ? { note: note.trim() } : {}),
+              }),
+              key,
+            );
+            changed();
+          }}
+        />
+      ) : null}
     </PortalSidePeek>
+  );
+}
+
+/** La línea de cortesía de un borrador ya emitido no se anula (R5); el ajuste sí. */
+function courtesyVoidable(
+  courtesy: BillingCourtesyResponse,
+  document: BillingDocumentResponse,
+): boolean {
+  if (courtesy.status !== 'ACTIVA' || document.status === 'ANULADO') return false;
+  return courtesy.application === 'AJUSTE_SOBRE_EMITIDO' || document.status === 'BORRADOR';
+}
+
+/** Total del documento y, si la tiene, la cortesía activa que ya bajó su saldo. */
+export function DocumentTotalCell({
+  document,
+}: {
+  document: { total: string; courtesyAmount?: string | undefined };
+}) {
+  const courtesy = documentCourtesyAmount(document);
+  if (!courtesy) return <>{formatBillingMoney(document.total)}</>;
+  return (
+    <div className="space-y-0.5">
+      <p>{formatBillingMoney(document.total)}</p>
+      <p className="text-xs text-gray-600 dark:text-gray-400">
+        Cortesía −{formatBillingMoney(courtesy)}
+      </p>
+    </div>
   );
 }

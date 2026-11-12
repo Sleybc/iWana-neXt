@@ -21,7 +21,7 @@ describe('BillingContractFirstChargeAdapter', () => {
   const contractId = randomUUID();
   const tenant = { tenantId: randomUUID(), schemaName: 'tenant_unit', tenantSlug: 'unit' };
   const settings = { getSnapshot: jest.fn().mockResolvedValue({ timezone: 'America/Bogota' }) };
-  const catalog = { createSnapshot: jest.fn() };
+  const catalog = { createSnapshot: jest.fn(), getItemVatTreatments: jest.fn() };
   const audit = { logWithin: jest.fn().mockResolvedValue(undefined) };
   const config = new ConfigService({
     PII_ENCRYPTION_KEY: '78'.repeat(32),
@@ -50,6 +50,7 @@ describe('BillingContractFirstChargeAdapter', () => {
   beforeEach(() => {
     query.mockReset();
     catalog.createSnapshot.mockReset();
+    catalog.getItemVatTreatments.mockReset().mockResolvedValue([]);
     audit.logWithin.mockClear();
   });
 
@@ -130,7 +131,18 @@ describe('BillingContractFirstChargeAdapter', () => {
         amount: '50000.00',
       });
       expect(query.mock.calls[1]?.[0]).toContain('updated_at = GREATEST');
-      expect(query.mock.calls[1]?.[1]).toEqual([contractId, tenant.tenantId, '50000.00']);
+      expect(query.mock.calls[1]?.[0]).toContain(
+        'installation_vat_snapshot = COALESCE(installation_vat_snapshot, $4::jsonb)',
+      );
+      const params = query.mock.calls[1]?.[1] as unknown[];
+      expect(params.slice(0, 3)).toEqual([contractId, tenant.tenantId, '50000.00']);
+      // Spec MOD14 2026-11-12 R2/D2: sin tratamiento propio en el plan, STANDARD 19 %.
+      expect(JSON.parse(params[3] as string)).toMatchObject({
+        treatment: 'STANDARD',
+        legalBasis: 'ET_468',
+        ratePercent: 19,
+        source: 'DEFAULT',
+      });
       expect(audit.logWithin).toHaveBeenCalledWith(
         expect.objectContaining({
           entityType: 'Contract',

@@ -272,6 +272,7 @@ describe('W0 F2 creación manual y activación manual — servicio', () => {
                 networkType: NetworkType.FIXED,
                 snapshotAt: new Date('2026-11-11T00:00:00Z'),
               })),
+            getItemVatTreatments: jest.fn().mockResolvedValue([]),
             getPlanById: jest.fn().mockResolvedValue({
               id: '00000000-0000-4000-8000-00000000f002',
               vatConcept: VatConcept.INTERNET_ACCESS,

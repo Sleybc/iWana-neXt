@@ -1,5 +1,5 @@
 import { Column, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn } from 'typeorm';
-import { InstallationRule, NetworkType } from '@iwana/shared';
+import { InstallationRule, NetworkType, VatTreatment } from '@iwana/shared';
 import { CatalogItem } from './catalog-item.entity';
 
 /**
@@ -33,6 +33,26 @@ export class PlanDetail {
     default: InstallationRule.ALWAYS,
   })
   installationRule: InstallationRule;
+
+  /**
+   * IVA del cargo de instalación del plan (migración 201, spec MOD14 2026-11-12 R2). El valor del
+   * cargo vive en `catalog_price_history.installation_fee`; por defecto STANDARD 19 % (D2).
+   */
+  @Column({
+    type: 'varchar',
+    length: 10,
+    name: 'installation_vat_treatment',
+    default: VatTreatment.STANDARD,
+  })
+  installationVatTreatment: VatTreatment;
+
+  @Column({
+    type: 'varchar',
+    length: 40,
+    name: 'installation_vat_legal_basis',
+    default: 'ET_468',
+  })
+  installationVatLegalBasis: string;
 
   @Column({ type: 'boolean', name: 'offers_permanence', default: false })
   offersPermanence: boolean;

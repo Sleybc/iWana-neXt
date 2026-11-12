@@ -132,6 +132,27 @@ describe('C-API-3 contrato', () => {
     expect(parsed.success).toBe(true);
   });
 
+  it('MOD14 R2: valida el IVA congelado de la instalación y de los adicionales', () => {
+    const frozen = {
+      treatment: 'STANDARD',
+      legalBasis: 'ET_468',
+      ratePercent: 19,
+      source: 'CATALOG',
+      frozenAt: '2026-11-12T00:00:00.000Z',
+    };
+    const installation = ContractResponseSchema.shape.installationVatSnapshot;
+    const additionals = ContractResponseSchema.shape.additionalVatSnapshot;
+
+    expect(installation.safeParse(frozen).success).toBe(true);
+    expect(installation.safeParse(null).success).toBe(true);
+    expect(installation.safeParse(undefined).success).toBe(true);
+    expect(installation.safeParse({ ...frozen, ratePercent: 0 }).success).toBe(false);
+    expect(
+      additionals.safeParse([{ ...frozen, itemId: 'svc-1', itemType: 'SERVICE' }]).success,
+    ).toBe(true);
+    expect(additionals.safeParse([{ ...frozen, itemType: 'SERVICE' }]).success).toBe(false);
+  });
+
   it('valida la marca de anonimización del titular como fecha ISO o nula', () => {
     const schema = ContractResponseSchema.shape.titularAnonymizedAt;
 

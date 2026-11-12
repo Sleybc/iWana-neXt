@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   MaxLength,
   Min,
   ValidateIf,
@@ -16,8 +17,16 @@ import {
   InstallationRule,
   NetworkType,
   ProductCategory,
+  CATALOG_ITEM_VAT_LEGAL_BASIS_PATTERN,
   VatConcept,
+  VatTreatment,
 } from '@iwana/shared';
+import { Transform } from 'class-transformer';
+
+/** Normaliza el código de base legal a mayúsculas sin espacios alrededor. */
+function upperCode({ value }: { value: unknown }): unknown {
+  return typeof value === 'string' ? value.trim().toUpperCase() : value;
+}
 
 export class CreateCatalogItemDto {
   @ApiProperty({ enum: CatalogItemType })
@@ -40,6 +49,58 @@ export class CreateCatalogItemDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  /**
+   * Solo productos y servicios (spec MOD14 2026-11-12 R1). Omitido al crear: STANDARD 19 %.
+   * Un plan no lo admite: su internet sigue la regla del estrato (ADR-093).
+   */
+  @ApiPropertyOptional({
+    enum: VatTreatment,
+    description:
+      'IVA del producto o servicio: STANDARD (19 %), EXEMPT o EXCLUDED. Omitido: STANDARD. ' +
+      'No aplica a planes.',
+  })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsEnum(VatTreatment)
+  vatTreatment?: VatTreatment;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    maxLength: 40,
+    pattern: CATALOG_ITEM_VAT_LEGAL_BASIS_PATTERN.source,
+    description:
+      'Código de la base legal (p. ej. ET_468). Obligatorio con EXEMPT o EXCLUDED; con STANDARD ' +
+      'omitido usa ET_468.',
+  })
+  @IsOptional()
+  @Transform(upperCode)
+  @IsString()
+  @Matches(CATALOG_ITEM_VAT_LEGAL_BASIS_PATTERN)
+  vatLegalBasis?: string | null;
+
+  /** Solo planes: IVA del cargo de instalación (spec MOD14 2026-11-12 R2). */
+  @ApiPropertyOptional({
+    enum: VatTreatment,
+    description:
+      'Solo planes: IVA del cargo de instalación. Omitido: STANDARD (19 %). El internet del plan ' +
+      'conserva la regla del estrato.',
+  })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsEnum(VatTreatment)
+  installationVatTreatment?: VatTreatment;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    maxLength: 40,
+    pattern: CATALOG_ITEM_VAT_LEGAL_BASIS_PATTERN.source,
+    description:
+      'Solo planes: base legal del IVA de la instalación. Obligatoria con EXEMPT o EXCLUDED.',
+  })
+  @IsOptional()
+  @Transform(upperCode)
+  @IsString()
+  @Matches(CATALOG_ITEM_VAT_LEGAL_BASIS_PATTERN)
+  installationVatLegalBasis?: string | null;
 
   @ApiPropertyOptional({ description: 'UUID de la clasificación tributaria' })
   @IsOptional()

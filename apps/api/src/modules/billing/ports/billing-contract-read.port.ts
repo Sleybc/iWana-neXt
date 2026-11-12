@@ -10,6 +10,32 @@ export interface ContractVatSnapshot {
   resolvedAt: string;
 }
 
+/**
+ * IVA del cargo de instalación congelado en el contrato (spec MOD14 2026-11-12 R2,
+ * `contracts.installation_vat_snapshot`). Sustituye D-F1: la instalación ya no copia el IVA del
+ * internet.
+ */
+export interface ContractInstallationVat {
+  treatment: string;
+  legalBasis: string;
+  ratePercent: 0 | 19;
+}
+
+/**
+ * Adicional cobrable del contrato (spec MOD14 2026-11-12 bloque C, D3/R3), con el nombre, precio e
+ * IVA congelados en `contracts.additional_vat_snapshot`. Un producto se cobra una vez; un servicio
+ * cada periodo, prorrateado como el plan.
+ */
+export interface BillableAdditional {
+  itemId: string;
+  itemType: 'PRODUCT' | 'SERVICE';
+  /** Nombre congelado del ítem; null en entradas sin nombre (descripción genérica). */
+  name: string | null;
+  /** Precio unitario congelado, texto con dos decimales. */
+  unitPrice: string;
+  vat: ContractInstallationVat;
+}
+
 export interface BillableContract {
   contractId: string;
   subscriberId: string;
@@ -24,7 +50,13 @@ export interface BillableContract {
   planName: string | null;
   monthlyPrice: string | null;
   vatSnapshot: ContractVatSnapshot | null;
+  /**
+   * Bloque C: adicionales referenciados por el contrato que NO se pueden cobrar (sin precio o IVA
+   * congelado). Los cobrables van en `additionals`; antes del bloque C eran todos.
+   */
   unbilledAdditionalCount: number;
+  /** Adicionales cobrables (bloque C). Ausente equivale a ninguno. */
+  additionals?: BillableAdditional[];
   /**
    * Cargo de instalación congelado en el contrato (`contracts.installation_fee`, migración 191).
    * Nulo o cero: el primer cobro no lleva línea de instalación.
@@ -35,6 +67,11 @@ export interface BillableContract {
    * (`contract_permanence.discounted_amount` con `accepted = true`); nulo sin permanencia.
    */
   permanenceDiscount?: string | null;
+  /**
+   * IVA congelado de la instalación; nulo en contratos heredados sin congelar: el cobro aplica
+   * entonces STANDARD 19 % (D2).
+   */
+  installationVat?: ContractInstallationVat | null;
   buyer: {
     displayName: string;
     documentType: string | null;

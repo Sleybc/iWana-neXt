@@ -221,7 +221,11 @@ function buildContract(overrides: Partial<Contract> = {}): Contract {
 
 describe('ContractsService', () => {
   let service: ContractsService;
-  const commercialCatalogPort = { getPlanById: jest.fn(), createSnapshot: jest.fn() };
+  const commercialCatalogPort = {
+    getPlanById: jest.fn(),
+    createSnapshot: jest.fn(),
+    getItemVatTreatments: jest.fn(),
+  };
   const planSnapshotOf = (_tenantId: string, _schema: string, planId: string) => ({
     planId,
     name: 'Plan sintético',
@@ -281,6 +285,7 @@ describe('ContractsService', () => {
     commercialCatalogPort.createSnapshot.mockImplementation(
       async (...args: [string, string, string]) => planSnapshotOf(...args),
     );
+    commercialCatalogPort.getItemVatTreatments.mockResolvedValue([]);
     mockRunInTenantSchema.mockReset();
     mockLockedContractStatus = ContractStatus.DRAFT;
     mockLockedContractBillingCycleDay = 1;
@@ -1243,6 +1248,71 @@ describe('ContractsService', () => {
       expect((result as unknown as Record<string, unknown>).alias).toBe(
         'Servicio — El Colegio Cr 2 2 02',
       );
+    });
+
+    it('MOD14 R2: congela el IVA de la instalación y de cada adicional al crear', async () => {
+      const planId = '00000000-0000-4000-8000-000000000001';
+      const serviceId = '00000000-0000-4000-8000-0000000000a1';
+      commercialCatalogPort.getItemVatTreatments.mockImplementation(
+        async (_t: string, _s: string, ids: string[]) =>
+          [
+            {
+              itemId: planId,
+              itemType: 'PLAN',
+              vatTreatment: null,
+              vatLegalBasis: null,
+              installationVatTreatment: 'STANDARD',
+              installationVatLegalBasis: 'ET_468',
+            },
+            {
+              itemId: serviceId,
+              itemType: 'SERVICE',
+              vatTreatment: 'EXEMPT',
+              vatLegalBasis: 'ET_476_7',
+              installationVatTreatment: null,
+              installationVatLegalBasis: null,
+            },
+          ].filter((row) => ids.includes(row.itemId)),
+      );
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            create: (_e: unknown, data: Record<string, unknown>) => data,
+            save: async (_e: unknown, data: Record<string, unknown>) => ({ ...data, id: 'ctr-v' }),
+          },
+        }),
+      );
+
+      const result = (await service.create({
+        subscriberId: 'sub-1',
+        planId,
+        planSnapshotJson: {},
+        additionalServiceIds: [serviceId],
+        additionalProductIds: ['legacy-product'],
+      })) as unknown as Record<string, unknown>;
+
+      expect(result['installationVatSnapshot']).toMatchObject({
+        treatment: 'STANDARD',
+        legalBasis: 'ET_468',
+        ratePercent: 19,
+        source: 'CATALOG',
+      });
+      expect(result['additionalVatSnapshot']).toEqual([
+        expect.objectContaining({
+          itemId: 'legacy-product',
+          itemType: 'PRODUCT',
+          treatment: 'STANDARD',
+          source: 'DEFAULT',
+        }),
+        expect.objectContaining({
+          itemId: serviceId,
+          itemType: 'SERVICE',
+          treatment: 'EXEMPT',
+          legalBasis: 'ET_476_7',
+          ratePercent: 0,
+          source: 'CATALOG',
+        }),
+      ]);
     });
 
     it('usa el alias provisto cuando viene en el DTO', async () => {

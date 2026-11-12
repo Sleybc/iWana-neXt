@@ -25,6 +25,15 @@
  * contratos, tickets y cobro. migration_staging_records.payload_encrypted pasa a CUBIERTA
  * (H2 sec-eng, 2026-11-12) por MigrationTitularErasureParticipant.
  * MOD14 clasificada en INFORME-MOD14-PRIVACY-CLASIFICACION-v1.0.md (2026-11-07).
+ * Las seis últimas son del IVA por ítem del catálogo (migración 201, spec MOD14 2026-11-12):
+ * tratamiento y código de base legal del catálogo y del plan, y los jsonb del contrato con el
+ * IVA congelado de la instalación y de los adicionales. Códigos y enums, sin texto libre.
+ * billing_document_lines.additional_item_id es de los adicionales facturados (migración 202, bloque C):
+ * identificador del ítem del catálogo, sin texto personal.
+ * Las nueve de billing_courtesies son de las cortesías (migración 203, bloque D de la misma spec):
+ * note y void_note son texto libre CUBIERTO por BillingTitularErasureParticipant; idempotency_key
+ * y void_idempotency_key son claves opacas de idempotencia; el resto son dominios cerrados con
+ * CHECK.
  */
 export type TextErasureManifestKind = 'CUBIERTA' | 'EXCLUIDA' | 'PENDIENTE-MOD14';
 
@@ -158,6 +167,12 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
     c: 'period_timing',
     k: 'EXCLUIDA',
     d: 'CONFIGURACION: enum de política de facturación del ISP/contrato, sin contenido personal',
+  },
+  {
+    t: 'billing_document_lines',
+    c: 'additional_item_id',
+    k: 'EXCLUIDA',
+    d: 'CATALOGO: identificador del ítem de catálogo de una línea ADICIONAL (migración 202, bloque C), sin texto personal',
   },
   {
     t: 'billing_document_lines',
@@ -4123,5 +4138,95 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
     c: 'promotion_meta',
     k: 'EXCLUIDA',
     d: 'CODIGO: ids y contadores de lo promovido, sin PII; se purga con el lote (ADR-110 D10)',
+  },
+  {
+    t: 'catalog_items',
+    c: 'vat_treatment',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado (STANDARD|EXEMPT|EXCLUDED), catálogo del ISP (migración 201)',
+  },
+  {
+    t: 'catalog_items',
+    c: 'vat_legal_basis',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: base legal con CHECK de patrón, catálogo del ISP (migración 201)',
+  },
+  {
+    t: 'plan_details',
+    c: 'installation_vat_treatment',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado (STANDARD|EXEMPT|EXCLUDED), catálogo del ISP (migración 201)',
+  },
+  {
+    t: 'plan_details',
+    c: 'installation_vat_legal_basis',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: base legal con CHECK de patrón, catálogo del ISP (migración 201)',
+  },
+  {
+    t: 'contracts',
+    c: 'installation_vat_snapshot',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: jsonb con tratamiento, código legal, tarifa, origen e instante; sin PII (migración 201)',
+  },
+  {
+    t: 'contracts',
+    c: 'additional_vat_snapshot',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: jsonb con id, tipo, nombre y precio unitario del ítem del catálogo y su IVA congelado; sin PII (migración 201, bloque C)',
+  },
+  {
+    t: 'billing_courtesies',
+    c: 'application',
+    k: 'EXCLUIDA',
+    d: 'ENUM: LINEA_EN_BORRADOR|AJUSTE_SOBRE_EMITIDO, dominio cerrado con CHECK (migración 203)',
+  },
+  {
+    t: 'billing_courtesies',
+    c: 'idempotency_key',
+    k: 'EXCLUIDA',
+    d: 'IDEMPOTENCIA: clave opaca del comando de otorgar cortesía, sin contenido personal por contrato',
+  },
+  {
+    t: 'billing_courtesies',
+    c: 'note',
+    k: 'CUBIERTA',
+    d: 'apps/api/src/modules/billing/privacy/billing-titular-erasure.participant.ts (nota libre de la cortesía; se vacía con el titular)',
+  },
+  {
+    t: 'billing_courtesies',
+    c: 'reason_code',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: motivo de catálogo de la cortesía con CHECK, sin texto libre (migración 203)',
+  },
+  {
+    t: 'billing_courtesies',
+    c: 'status',
+    k: 'EXCLUIDA',
+    d: 'ENUM: ACTIVA|ANULADA, dominio cerrado con CHECK (migración 203)',
+  },
+  {
+    t: 'billing_courtesies',
+    c: 'target',
+    k: 'EXCLUIDA',
+    d: 'ENUM: VALOR|LINEA, dominio cerrado con CHECK (migración 203)',
+  },
+  {
+    t: 'billing_courtesies',
+    c: 'void_note',
+    k: 'CUBIERTA',
+    d: 'apps/api/src/modules/billing/privacy/billing-titular-erasure.participant.ts (nota libre de la cortesía; se vacía con el titular)',
+  },
+  {
+    t: 'billing_courtesies',
+    c: 'void_idempotency_key',
+    k: 'EXCLUIDA',
+    d: 'IDEMPOTENCIA: clave opaca del comando de anular cortesía, sin contenido personal por contrato',
+  },
+  {
+    t: 'billing_courtesies',
+    c: 'void_reason_code',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: motivo de catálogo de la anulación con CHECK, sin texto libre (migración 203)',
   },
 ];

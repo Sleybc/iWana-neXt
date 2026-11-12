@@ -31,6 +31,8 @@ import { BillingImportedPdfService } from './documents/billing-imported-pdf.serv
 import { MediaModule } from '../media/media.module';
 import { BillingIssuerReadPort } from './ports/billing-issuer-read.port';
 import { TenantBillingIssuerReadAdapter } from './ports/tenant-billing-issuer-read.adapter';
+import { BillingCourtesiesController } from './courtesies/billing-courtesies.controller';
+import { BillingCourtesiesService } from './courtesies/billing-courtesies.service';
 
 @Module({
   imports: [
@@ -52,11 +54,17 @@ import { TenantBillingIssuerReadAdapter } from './ports/tenant-billing-issuer-re
     BullModule.registerQueue({ name: BILLING_GENERATION_QUEUE }),
     BullModule.registerQueue({ name: CRM_CONTRACT_EVENTS_QUEUE }),
   ],
-  controllers: [BillingPolicyController, BillingPaymentsController, BillingDocumentsController],
+  controllers: [
+    BillingPolicyController,
+    BillingPaymentsController,
+    BillingDocumentsController,
+    BillingCourtesiesController,
+  ],
   providers: [
     BillingPolicyService,
     BillingPaymentsService,
     BillingDocumentsService,
+    BillingCourtesiesService,
     BillingImportedPdfService,
     BillingGenerationService,
     BillingFirstChargeService,

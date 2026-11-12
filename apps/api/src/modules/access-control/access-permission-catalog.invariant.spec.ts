@@ -28,23 +28,33 @@ describe('matriz de permisos de Facturación de HLD §7', () => {
       AccessPermissionKey.BILLING_INVOICES_MANAGE,
       AccessPermissionKey.BILLING_PAYMENTS_REGISTER,
       AccessPermissionKey.BILLING_POLICY_MANAGE,
+      AccessPermissionKey.BILLING_COURTESIES_MANAGE,
     ],
     [UserRole.ACCOUNTANT]: [
       ...readPermissions,
       AccessPermissionKey.BILLING_INVOICES_MANAGE,
       AccessPermissionKey.BILLING_PAYMENTS_REGISTER,
+      AccessPermissionKey.BILLING_COURTESIES_MANAGE,
     ],
     [UserRole.SUPPORT]: readPermissions,
     [UserRole.SALES]: readPermissions,
     [UserRole.AUDITOR]: readPermissions,
   };
 
-  function expectBillingPermissions(matrix: Record<UserRole, AccessPermissionKey[]>): void {
+  // Las cortesías (spec MOD14 2026-11-12 D5) solo existen en el catálogo V2, como la importación.
+  const onlyV2 = new Set<AccessPermissionKey>([AccessPermissionKey.BILLING_COURTESIES_MANAGE]);
+
+  function expectBillingPermissions(
+    matrix: Record<UserRole, AccessPermissionKey[]>,
+    version: 'V1' | 'V2' = 'V2',
+  ): void {
     for (const role of Object.values(UserRole)) {
       const actual = matrix[role].filter((key) => key.startsWith('billing.')).sort();
       expect({ role, permissions: actual }).toEqual({
         role,
-        permissions: [...(expected[role] ?? [])].sort(),
+        permissions: [...(expected[role] ?? [])]
+          .filter((key) => version === 'V2' || !onlyV2.has(key))
+          .sort(),
       });
     }
   }
@@ -52,9 +62,9 @@ describe('matriz de permisos de Facturación de HLD §7', () => {
   describe.each([
     ['V1', ROLE_ASSIGNABLE_PERMISSION_MATRIX],
     ['V2', ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2],
-  ] as const)('%s', (_version, matrix) => {
+  ] as const)('%s', (version, matrix) => {
     it('asigna exactamente los permisos de Facturación previstos para cada rol', () => {
-      expectBillingPermissions(matrix);
+      expectBillingPermissions(matrix, version);
     });
 
     it('detecta si una copia de la matriz concede registrar pagos a Soporte', () => {
@@ -66,7 +76,7 @@ describe('matriz de permisos de Facturación de HLD §7', () => {
         ],
       };
 
-      expect(() => expectBillingPermissions(modifiedMatrix)).toThrow(
+      expect(() => expectBillingPermissions(modifiedMatrix, version)).toThrow(
         AccessPermissionKey.BILLING_PAYMENTS_REGISTER,
       );
     });
@@ -316,8 +326,9 @@ describe('invariante catálogo MOD00_ACCESS_V2', () => {
     expect(roles).not.toContain(UserRole.INVESTOR);
   });
 
-  it('ADMIN V2 contiene 51 claves ASSIGNABLE y descripciones promovidas sin "en fase futura"', () => {
-    expect(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.ADMIN]).toHaveLength(51);
+  it('ADMIN V2 contiene 52 claves ASSIGNABLE y descripciones promovidas sin "en fase futura"', () => {
+    // 52: +billing.courtesies.manage (spec MOD14 2026-11-12 D5).
+    expect(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.ADMIN]).toHaveLength(52);
     const promoted = [
       AccessPermissionKey.COMMERCIAL_CATALOG_READ,
       AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE,
@@ -428,6 +439,7 @@ describe('invariante Fase 2 — doble guard y excepciones D7', () => {
     AccessPermissionKey.BILLING_INVOICES_READ,
     AccessPermissionKey.BILLING_INVOICES_MANAGE,
     AccessPermissionKey.BILLING_POLICY_MANAGE,
+    AccessPermissionKey.BILLING_COURTESIES_MANAGE,
   ];
 
   it('todo handler con @Permissions declara también @Roles', () => {
@@ -473,6 +485,7 @@ describe('invariante Fase 2 — doble guard y excepciones D7', () => {
         AccessPermissionKey.BILLING_POLICY_MANAGE,
         AccessPermissionKey.BILLING_PAYMENTS_READ,
         AccessPermissionKey.BILLING_PAYMENTS_REGISTER,
+        AccessPermissionKey.BILLING_COURTESIES_MANAGE,
       ].sort(),
     );
   });
@@ -629,5 +642,42 @@ describe('permiso de importación por lotes (ADR-110 D9)', () => {
     );
     expect(source).toContain("profile.name = 'Administrador general'");
     expect(source).toContain("profile.base_role_constraint = 'ADMIN'");
+  });
+});
+
+describe('permiso de cortesías (spec MOD14 2026-11-12 D5)', () => {
+  const key = AccessPermissionKey.BILLING_COURTESIES_MANAGE;
+  const granted = [UserRole.ADMIN, UserRole.ACCOUNTANT];
+
+  it('no existe en el catálogo V1, como migration.import.manage', () => {
+    expect(MOD00_ACCESS_V1_CATALOG.some((entry) => entry.permissionKey === key)).toBe(false);
+    expect(
+      MOD00_ACCESS_V1_CATALOG.some(
+        (entry) => entry.permissionKey === AccessPermissionKey.MIGRATION_IMPORT_MANAGE,
+      ),
+    ).toBe(false);
+    expect(Object.values(ROLE_ASSIGNABLE_PERMISSION_MATRIX).flat()).not.toContain(key);
+  });
+
+  it('es ASSIGNABLE en el catálogo V2 del módulo billing', () => {
+    expect(MOD00_ACCESS_V2_CATALOG.find((entry) => entry.permissionKey === key)).toMatchObject({
+      moduleKey: 'billing',
+      action: 'courtesies.manage',
+      availability: AccessPermissionAvailability.ASSIGNABLE,
+      catalogVersion: AccessPermissionCatalogVersion.MOD00_ACCESS_V2,
+    });
+  });
+
+  it('solo Administración y Contable lo pueden recibir y lo traen por defecto', () => {
+    const holders = Object.values(UserRole)
+      .filter((role) => ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[role].includes(key))
+      .sort();
+    expect(holders).toEqual([...granted].sort());
+    const templates = MOD00_ACCESS_V2_SYSTEM_ROLE_TEMPLATES.filter((template) =>
+      template.permissionKeys.includes(key),
+    )
+      .map((template) => template.baseRoleConstraint)
+      .sort();
+    expect(templates).toEqual([...granted].sort());
   });
 });

@@ -62,7 +62,11 @@ describeWithDb('Cambio de plan: PostgreSQL y auditoría atómica en schema sint�
     networkType: NetworkType.FIXED,
     snapshotAt: new Date('2026-10-30T12:00:00.000Z'),
   };
-  const catalog = { getPlanById: jest.fn(), createSnapshot: jest.fn() };
+  const catalog = {
+    getPlanById: jest.fn(),
+    createSnapshot: jest.fn(),
+    getItemVatTreatments: jest.fn(),
+  };
   const marks = { activeMarks: jest.fn().mockResolvedValue({}) };
   const config = new ConfigService({
     PII_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
@@ -213,6 +217,7 @@ describeWithDb('Cambio de plan: PostgreSQL y auditoría atómica en schema sint�
     jest.restoreAllMocks();
     catalog.getPlanById.mockReset().mockResolvedValue({ id: 'plan-new', isActive: true });
     catalog.createSnapshot.mockReset().mockResolvedValue(snapshot);
+    catalog.getItemVatTreatments.mockReset().mockResolvedValue([]);
     marks.activeMarks.mockReset().mockResolvedValue({});
   });
   afterAll(async () => {

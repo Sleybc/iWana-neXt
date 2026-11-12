@@ -6,7 +6,8 @@ import {
   BILLING_DOCUMENT_VOID_REASONS,
   BILLING_PERIOD_PAYMENT_STATES,
 } from './billing-constants';
-import { billingMoneyStringSchema } from './billing-money.schema';
+import { billingMoneyStringSchema, billingSignedMoneyStringSchema } from './billing-money.schema';
+import { BillingCourtesyResponseSchema } from './billing-courtesies.contract';
 
 function isCivilDate(value: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
@@ -61,16 +62,34 @@ export const BillingDocumentLineSchema = z
     kind: z.enum(BILLING_DOCUMENT_LINE_KINDS),
     description: z.string().min(1).max(200),
     quantity: z.string().regex(/^\d+(\.\d{1,4})?$/u),
-    unitPrice: billingMoneyStringSchema,
-    baseAmount: billingMoneyStringSchema,
-    taxAmount: billingMoneyStringSchema,
-    total: billingMoneyStringSchema,
+    unitPrice: billingSignedMoneyStringSchema,
+    baseAmount: billingSignedMoneyStringSchema,
+    taxAmount: billingSignedMoneyStringSchema,
+    total: billingSignedMoneyStringSchema,
     vatTreatment: z.string().min(1).max(16),
     vatRate: z.string().regex(/^\d+(\.\d{1,4})?$/u),
     vatLegalBasis: z.string().max(60).nullable().optional(),
     position: z.number().int().min(0),
   })
-  .strict();
+  .strict()
+  // Solo la línea de cortesía (spec MOD14 2026-11-12 R4) resta: es la única con montos negativos
+  // y nunca suma (CHECK chk_billing_document_lines_courtesy_sign de la migración 203).
+  .refine(
+    (line) =>
+      line.kind === 'CORTESIA' ||
+      [line.unitPrice, line.baseAmount, line.taxAmount, line.total].every(
+        (value) => !value.startsWith('-'),
+      ),
+    { message: 'Solo una línea de cortesía admite montos negativos.', path: ['total'] },
+  )
+  .refine(
+    (line) =>
+      line.kind !== 'CORTESIA' ||
+      [line.unitPrice, line.baseAmount, line.taxAmount, line.total].every(
+        (value) => value.startsWith('-') || Number(value) === 0,
+      ),
+    { message: 'Una línea de cortesía no puede tener montos positivos.', path: ['total'] },
+  );
 
 export type BillingDocumentLine = z.infer<typeof BillingDocumentLineSchema>;
 
@@ -130,6 +149,11 @@ export const BillingDocumentResponseSchema = z
     subtotal: billingMoneyStringSchema,
     taxTotal: billingMoneyStringSchema,
     total: billingMoneyStringSchema,
+    /**
+     * Spec MOD14 2026-11-12 bloque C: los adicionales con precio congelado ya se facturan como
+     * líneas `ADICIONAL`; este conteo queda solo para los que el contrato referencia sin precio
+     * congelado (ítem sin tarifa vigente o contrato de titular anonimizado). Normalmente 0.
+     */
     unbilledAdditionalCount: z.number().int().min(0),
     blockingReason: z.enum(BILLING_BLOCKING_REASONS).nullable().optional(),
     buyerSnapshot: BillingBuyerSnapshotSchema.nullable().optional(),
@@ -143,7 +167,16 @@ export const BillingDocumentResponseSchema = z
     updatedAt: z.string(),
     lines: z.array(BillingDocumentLineSchema).optional(),
     paidAmount: billingMoneyStringSchema.optional(),
+    /**
+     * Ajustes de cortesía activos aplicados a un EMITIDO o IMPORTADO (spec MOD14 2026-11-12 R4),
+     * sin superar lo que el pago dejó pendiente; `0.00` en otro estado. Misma fórmula en el detalle
+     * y en el estado de cuenta. No incluye la línea `CORTESIA` (ya está en `total`). No es pago:
+     * `paidAmount` no la incluye; `pendingAmount` y `paymentState` sí la restan.
+     */
+    courtesyAmount: billingMoneyStringSchema.optional(),
     pendingAmount: billingMoneyStringSchema.optional(),
+    /** Cortesías del documento, activas y anuladas; solo en el detalle. */
+    courtesies: z.array(BillingCourtesyResponseSchema).optional(),
   })
   .strict();
 

@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
-import { CustomerSegment, NetworkType, VatConcept } from '@iwana/shared';
+import {
+  CatalogItemType,
+  CustomerSegment,
+  NetworkType,
+  VatConcept,
+  VatTreatment,
+} from '@iwana/shared';
 
 /**
  * Snapshot inmutable del catálogo comercial consumido por CRM.
@@ -44,6 +50,28 @@ export interface CommercialProductReference {
   isActive: boolean;
   requiresInventory: boolean;
   isLoan: boolean;
+}
+
+/**
+ * IVA propio de un ítem del catálogo (spec MOD14 2026-11-12 R1/R2), para que CRM lo congele en el
+ * contrato. Un tratamiento null significa «sin tratamiento propio»: el cobro aplica STANDARD 19 %.
+ */
+export interface CommercialItemVatReference {
+  itemId: string;
+  itemType: CatalogItemType;
+  /** Producto o servicio: su IVA. Null en un plan (su internet sigue el estrato). */
+  vatTreatment: VatTreatment | null;
+  vatLegalBasis: string | null;
+  /** Plan: IVA del cargo de instalación. Null en productos y servicios. */
+  installationVatTreatment: VatTreatment | null;
+  installationVatLegalBasis: string | null;
+  /** Nombre del ítem (bloque C: el contrato lo congela para la línea del cobro). */
+  name?: string;
+  /**
+   * Precio base vigente (`catalog_price_history.is_current`) para el segmento pedido, en texto con
+   * dos decimales. Solo cuando la consulta trae `segment`; null sin precio vigente.
+   */
+  currentBasePrice?: string | null;
 }
 
 /**
@@ -103,4 +131,19 @@ export abstract class CommercialCatalogReadPort {
     planId: string,
     ctx?: { manager: EntityManager },
   ): Promise<CommercialCatalogItem | null>;
+
+  /**
+   * IVA propio de los ítems pedidos, activos o no (el contrato ya los referencia). Los
+   * identificadores que no son UUID o no existen en el tenant se omiten del resultado.
+   *
+   * Solo lee (D3): con `ctx` reutiliza la conexión de la transacción del llamante.
+   */
+  abstract getItemVatTreatments(
+    tenantId: string,
+    schemaName: string,
+    itemIds: string[],
+    ctx?: { manager: EntityManager },
+    /** Bloque C: con segmento devuelve también `currentBasePrice` del ítem para ese segmento. */
+    segment?: CustomerSegment,
+  ): Promise<CommercialItemVatReference[]>;
 }

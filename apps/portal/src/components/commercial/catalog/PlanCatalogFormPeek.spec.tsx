@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useForm } from 'react-hook-form';
-import { InstallationRule, NetworkType } from '@iwana/shared';
+import { InstallationRule, NetworkType, VatTreatment } from '@iwana/shared';
 import { PlanCatalogFormPeek } from './PlanCatalogFormPeek';
 import type { PlanFormValues } from './plan-catalog-helpers';
 
@@ -25,6 +25,7 @@ const baseFormValues: PlanFormValues = {
   installationEnabled: false,
   installationFee: 0,
   installationRule: InstallationRule.ON_DEMAND,
+  installationVat: { treatment: VatTreatment.STANDARD, legalBasis: '' },
 };
 
 function RenderFormPeek({ speedMode = 'SYMMETRIC' }: { speedMode?: PlanFormValues['speedMode'] }) {

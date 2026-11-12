@@ -24,6 +24,7 @@ import { CommercialCatalogReadPort } from '../../commercial/ports/commercial-cat
 import { SettingsPriorityTenantReadPort } from '../../tenant/ports/settings-priority-tenant-read.port';
 import { getTenantLocalDate } from './billing-cycle-date.util';
 import { resolvePlanInstallationFee } from './utils/plan-installation-fee.util';
+import { freezeInstallationVat } from './utils/contract-item-vat.util';
 
 const CIVIL_DATE = /^\d{4}-\d{2}-\d{2}$/u;
 
@@ -165,17 +166,26 @@ export class BillingContractFirstChargeAdapter extends BillingContractFirstCharg
       );
       if (fee == null) return { outcome: 'UNRESOLVED', amount: null };
       const amount = fee.toFixed(2);
+      // Spec MOD14 2026-11-12 R2: el IVA de la instalación se congela con el cargo; uno ya
+      // congelado no se toca.
+      const installationVat = await freezeInstallationVat(
+        this.catalog,
+        { tenantId, schemaName },
+        qr.manager,
+        row.plan_id,
+      );
       // Sube `updated_at` (versión/ETag del contrato) como cualquier otra escritura del contrato.
       // TypeORM devuelve [filas, afectadas] para UPDATE en PostgreSQL.
       const [, affected] = (await qr.query(
         `UPDATE contracts
             SET installation_fee = $3::numeric,
+                installation_vat_snapshot = COALESCE(installation_vat_snapshot, $4::jsonb),
                 updated_at = GREATEST(
                   date_trunc('milliseconds', clock_timestamp()),
                   date_trunc('milliseconds', updated_at) + interval '1 millisecond'
                 )
           WHERE id = $1::uuid AND tenant_id = $2 AND installation_fee IS NULL`,
-        [contractId, tenantId, amount],
+        [contractId, tenantId, amount, JSON.stringify(installationVat)],
       )) as [unknown[], number];
       if (affected !== 1)
         throw new Error('El cargo de instalación cambió durante el congelamiento.');

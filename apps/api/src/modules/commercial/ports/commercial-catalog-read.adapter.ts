@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
-import { CatalogItemType, CustomerSegment, NetworkType } from '@iwana/shared';
+import { CatalogItemType, CustomerSegment, NetworkType, VatTreatment } from '@iwana/shared';
 import { CatalogItem } from '../entities/catalog-item.entity';
 import { PlanDetail } from '../entities/plan-detail.entity';
 import { ProductDetail } from '../entities/product-detail.entity';
@@ -11,6 +11,7 @@ import {
   CommercialCatalogItem,
   CommercialCatalogReadPort,
   CommercialItemSnapshot,
+  CommercialItemVatReference,
   CommercialProductReference,
 } from './commercial-catalog-read.port';
 import type { PlanCatalogLookupItem } from './plan-catalog-read.port';
@@ -219,6 +220,55 @@ export class CommercialCatalogReadAdapter extends CommercialCatalogReadPort {
       networkType: detail?.networkType ?? NetworkType.FIXED,
       snapshotAt: new Date(),
     };
+  }
+
+  async getItemVatTreatments(
+    tenantId: string,
+    schemaName: string,
+    itemIds: string[],
+    ctx?: { manager: EntityManager },
+    segment?: CustomerSegment,
+  ): Promise<CommercialItemVatReference[]> {
+    const scope = this.scopedTenant(tenantId, schemaName);
+    const validIds = [...new Set(itemIds)].filter((id) => UUID_PATTERN.test(id));
+    // Sin UUIDs no se consulta: un 22P02 abortaría la transacción del llamante.
+    if (validIds.length === 0) return [];
+    const load = async (manager: EntityManager): Promise<CommercialItemVatReference[]> => {
+      const rows = (await manager.query(
+        `SELECT ci.id::text AS item_id, ci.type AS item_type, ci.name,
+                ci.vat_treatment, ci.vat_legal_basis,
+                pd.installation_vat_treatment, pd.installation_vat_legal_basis,
+                (SELECT ph.base_price::text FROM catalog_price_history ph
+                  WHERE ph.item_id = ci.id AND ph.tenant_id = ci.tenant_id
+                    AND ph.customer_segment = $3 AND ph.is_current = true
+                  ORDER BY ph.valid_from DESC LIMIT 1) AS current_base_price
+           FROM catalog_items ci
+           LEFT JOIN plan_details pd ON pd.item_id = ci.id AND ci.type = 'PLAN'
+          WHERE ci.tenant_id = $1 AND ci.id = ANY($2::uuid[])`,
+        [scope.tenantId, validIds, segment ?? null],
+      )) as Array<{
+        item_id: string;
+        name: string;
+        current_base_price: string | null;
+        item_type: CatalogItemType;
+        vat_treatment: VatTreatment | null;
+        vat_legal_basis: string | null;
+        installation_vat_treatment: VatTreatment | null;
+        installation_vat_legal_basis: string | null;
+      }>;
+      return rows.map((row) => ({
+        itemId: row.item_id,
+        itemType: row.item_type,
+        vatTreatment: row.vat_treatment,
+        vatLegalBasis: row.vat_legal_basis,
+        installationVatTreatment: row.installation_vat_treatment,
+        installationVatLegalBasis: row.installation_vat_legal_basis,
+        name: row.name,
+        ...(segment ? { currentBasePrice: row.current_base_price } : {}),
+      }));
+    };
+    if (ctx) return load(ctx.manager);
+    return runInTenantSchema(this.dataSource, scope.schemaName, (qr) => load(qr.manager));
   }
 
   async getActiveProducts(

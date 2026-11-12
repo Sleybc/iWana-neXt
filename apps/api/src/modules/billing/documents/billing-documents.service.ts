@@ -35,6 +35,9 @@ import {
   encryptAes256Gcm,
   loadPiiAesGcmKeyPair,
 } from '../../../common/crypto/aes-gcm.util';
+import { activeCourtesySum, appliedCourtesyCents } from '../courtesies/billing-courtesy.sql';
+import { courtesiesByDocument, redactCourtesyNotes } from '../courtesies/billing-courtesy.mapper';
+import { fromCents } from '../courtesies/billing-courtesies.service';
 
 interface DocumentRow {
   id: string;
@@ -67,6 +70,8 @@ interface DocumentRow {
   created_at: Date | string;
   updated_at: Date | string;
   paid_amount: string;
+  /** Ajustes de cortesía activos (spec MOD14 2026-11-12 R4); no es pago. */
+  courtesy_amount: string;
   pending_amount: string;
 }
 
@@ -86,6 +91,10 @@ interface DocumentLineRow {
   position: number;
 }
 
+const PAID_SQL = `COALESCE((SELECT SUM(a.amount) FROM billing_payment_allocations a
+                  JOIN billing_payments p2 ON p2.id = a.payment_id
+                 WHERE a.document_id = d.id AND a.reversed_at IS NULL AND p2.status = 'REGISTRADO'), 0)`;
+
 const SELECT_DOCUMENTS = `SELECT d.id::text, d.tenant_id::text, d.period_id::text,
        d.contract_id::text, d.subscriber_id::text, d.status, d.number, d.external_number,
        d.issue_date::text,
@@ -95,12 +104,9 @@ const SELECT_DOCUMENTS = `SELECT d.id::text, d.tenant_id::text, d.period_id::tex
        d.unbilled_additional_count, d.blocking_reason, d.buyer_snapshot,
        d.buyer_document_encrypted, d.issuer_snapshot, d.void_reason_code, d.void_note,
        d.voided_at, d.voided_by::text, d.created_by::text, d.created_at, d.updated_at,
-       COALESCE((SELECT SUM(a.amount) FROM billing_payment_allocations a
-                  JOIN billing_payments p2 ON p2.id = a.payment_id
-                 WHERE a.document_id = d.id AND a.reversed_at IS NULL AND p2.status = 'REGISTRADO'), 0)::text AS paid_amount,
-       GREATEST(d.total - COALESCE((SELECT SUM(a.amount) FROM billing_payment_allocations a
-                  JOIN billing_payments p2 ON p2.id = a.payment_id
-                 WHERE a.document_id = d.id AND a.reversed_at IS NULL AND p2.status = 'REGISTRADO'), 0), 0)::text AS pending_amount
+       ${PAID_SQL}::text AS paid_amount,
+       ${activeCourtesySum('d')}::numeric(14,2)::text AS courtesy_amount,
+       GREATEST(d.total - ${PAID_SQL} - ${activeCourtesySum('d')}, 0)::text AS pending_amount
   FROM billing_documents d
   LEFT JOIN billing_periods p ON p.id = d.period_id`;
 
@@ -199,7 +205,8 @@ export class BillingDocumentsService {
     if (input.paymentState) {
       params.push(localDate);
       const dateParam = `$${params.length}`;
-      const paidExpr = `COALESCE((SELECT SUM(a.amount) FROM billing_payment_allocations a JOIN billing_payments p2 ON p2.id = a.payment_id WHERE a.document_id = d.id AND a.reversed_at IS NULL AND p2.status = 'REGISTRADO'), 0)`;
+      // Spec MOD14 2026-11-12 R4: la cortesía activa salda igual que un pago en el estado.
+      const paidExpr = `(${PAID_SQL} + ${activeCourtesySum('d')})`;
       const stateCase = `CASE WHEN d.status NOT IN ('EMITIDO', 'IMPORTADO') THEN 'NO_EMITIDO' WHEN ${paidExpr} >= d.total THEN 'PAGADO' WHEN ${dateParam} > d.due_date::text THEN 'VENCIDO' WHEN ${paidExpr} > 0 THEN 'PARCIAL' ELSE 'PENDIENTE' END`;
       params.push(input.paymentState);
       conditions.push(`${stateCase} = $${params.length}`);
@@ -459,7 +466,8 @@ export class BillingDocumentsService {
                         blocking_reason, buyer_snapshot, buyer_document_encrypted, issuer_snapshot,
                         void_reason_code, void_note, voided_at, voided_by::text, created_by::text,
                         created_at::text AS created_at, updated_at::text AS updated_at,
-                        '0'::text AS paid_amount, total::text AS pending_amount`,
+                        '0'::text AS paid_amount, '0.00'::text AS courtesy_amount,
+                        total::text AS pending_amount`,
             [
               number,
               JSON.stringify({
@@ -722,6 +730,16 @@ export class BillingDocumentsService {
       grouped.push(line);
       linesByDocument.set(line.document_id, grouped);
     }
+    const courtesies =
+      purpose === 'detail'
+        ? await runInTenantSchema(this.dataSource, context.schemaName, (qr) =>
+            courtesiesByDocument(
+              qr.manager,
+              context.tenantId,
+              rows.map(({ id }) => id),
+            ),
+          )
+        : null;
     const piiKeys =
       purpose === 'detail' && (blockedRows.length === 0 || mayReadBlocked)
         ? loadPiiAesGcmKeyPair(this.config)
@@ -788,19 +806,41 @@ export class BillingDocumentsService {
         updatedAt: iso(row.updated_at),
         lines,
         paidAmount: row.paid_amount,
+        courtesyAmount: fromCents(this.courtesyCents(row)),
         pendingAmount: row.pending_amount,
+        // Notas de texto libre: null si el titular está bloqueado y el lector no tiene permiso.
+        ...(courtesies
+          ? {
+              courtesies: (courtesies.get(row.id) ?? []).map((courtesy) =>
+                buyerProtected ? redactCourtesyNotes(courtesy) : courtesy,
+              ),
+            }
+          : {}),
       });
     });
   }
 
+  /** `courtesyAmount` con la misma fórmula que el estado de cuenta (appliedCourtesyCents). */
+  private courtesyCents(
+    row: Pick<DocumentRow, 'status' | 'total' | 'paid_amount' | 'courtesy_amount'>,
+  ): number {
+    return appliedCourtesyCents({
+      status: row.status,
+      totalCents: moneyToCents(row.total),
+      paidCents: moneyToCents(row.paid_amount),
+      adjustmentCents: moneyToCents(row.courtesy_amount ?? '0'),
+    });
+  }
+
   private documentPaymentState(
-    row: Pick<DocumentRow, 'status' | 'total' | 'paid_amount' | 'due_date'>,
+    row: Pick<DocumentRow, 'status' | 'total' | 'paid_amount' | 'courtesy_amount' | 'due_date'>,
     localDate: string,
   ): BillingPeriodPaymentState | null {
     // RS-22: nulo si no está EMITIDO, con el orden de ADR-103 D3 y la fecha civil del tenant.
     // Un IMPORTADO (ADR-110 D5) cuenta en cartera: su estado de pago se calcula igual.
     if (row.status !== 'EMITIDO' && row.status !== 'IMPORTADO') return null;
-    const paid = moneyToCents(row.paid_amount);
+    // Spec MOD14 2026-11-12 R4: el ajuste de cortesía salda sin ser pago.
+    const paid = moneyToCents(row.paid_amount) + this.courtesyCents(row);
     const total = moneyToCents(row.total);
     if (paid >= total) return 'PAGADO';
     if (localDate > row.due_date) return 'VENCIDO';

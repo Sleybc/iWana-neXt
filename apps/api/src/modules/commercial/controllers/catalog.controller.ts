@@ -76,7 +76,8 @@ export class CatalogController {
       '`missingVatConcept` (ítems legacy sin concepto fiscal), `model` (SALE|LOAN), ' +
       '`charge` (servicios). Planes en modo page: `sortBy`/`sortDir` y ' +
       '`sortableFields` de columnas de dato. Cada fila incluye vatConcept; los planes también incluyen ' +
-      'networkType. Productos/servicios y modo cursor: `sortableFields: []`.',
+      'networkType. Productos/servicios y modo cursor: `sortableFields: []`. ' +
+      'Productos y servicios incluyen vatTreatment y vatLegalBasis (IVA propio; STANDARD 19 % por defecto); los planes incluyen installationVatTreatment e installationVatLegalBasis (IVA del cargo de instalación) y su internet sigue el estrato (ADR-093).',
   })
   @ApiResponse({
     status: 200,
@@ -93,7 +94,9 @@ export class CatalogController {
   @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_READ)
   @ApiOperation({
     summary: 'Obtener ítem del catálogo por ID',
-    description: 'La respuesta incluye vatConcept; los planes también incluyen networkType.',
+    description:
+      'La respuesta incluye vatConcept; los planes también incluyen networkType. ' +
+      'Productos y servicios incluyen vatTreatment y vatLegalBasis (IVA propio; STANDARD 19 % por defecto); los planes incluyen installationVatTreatment e installationVatLegalBasis (IVA del cargo de instalación) y su internet sigue el estrato (ADR-093).',
   })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.catalogService.findOne(id);
@@ -105,7 +108,10 @@ export class CatalogController {
   @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE)
   @ApiOperation({
     summary: 'Crear ítem en el catálogo (plan, producto o servicio)',
-    description: 'Requiere vatConcept; la respuesta incluye el concepto fiscal del ítem.',
+    description:
+      'Requiere vatConcept. Productos y servicios aceptan vatTreatment/vatLegalBasis; planes, ' +
+      'installationVatTreatment/installationVatLegalBasis. EXEMPT o EXCLUDED exigen la base legal ' +
+      '(400 VAT_LEGAL_BASIS_REQUIRED); un campo de otro tipo de ítem responde 400.',
   })
   @ApiResponse({ status: 201, description: 'Ítem creado exitosamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos o campos de detalle faltantes' })
@@ -150,7 +156,10 @@ export class CatalogController {
   @ApiOperation({
     summary: 'Actualizar ítem del catálogo',
     description:
-      'vatConcept y, para planes, networkType son opcionales. La respuesta conserva ambos campos.',
+      'vatConcept y, para planes, networkType son opcionales. La respuesta conserva ambos campos. ' +
+      'vatTreatment/vatLegalBasis (productos y servicios) e installationVatTreatment/' +
+      'installationVatLegalBasis (planes) son opcionales: omitidos conservan el valor; el cambio ' +
+      'solo afecta contratos nuevos (el contrato congela el tratamiento al crearse).',
   })
   async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateCatalogItemDto) {
     const data = await this.catalogService.update(id, dto);

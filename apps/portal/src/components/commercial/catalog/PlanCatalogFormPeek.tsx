@@ -10,6 +10,7 @@ import type {
 import { Controller } from 'react-hook-form';
 import { CheckCircle2, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Button, Input, RadioCardGroup, Select, cn } from '@iwana/ui';
+import { CatalogVatTreatmentField } from './CatalogVatTreatmentField';
 import type { PlanCatalogItem } from '@/lib/api-client';
 import {
   normalizeTechnologyName,
@@ -540,6 +541,23 @@ export function PlanCatalogFormPeek({
                 error={errors.installationFee?.message}
                 {...register('installationFee', { valueAsNumber: true })}
               />
+
+              <div className="md:col-span-2">
+                <Controller
+                  name="installationVat"
+                  control={control}
+                  render={({ field }) => (
+                    <CatalogVatTreatmentField
+                      label="IVA de la instalación"
+                      helperText="El acceso a internet sigue el estrato; la instalación causa 19 % salvo que indiques otra cosa."
+                      value={field.value}
+                      error={errors.installationVat?.legalBasis?.message}
+                      disabled={!canEdit || isSubmitting}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
+              </div>
             </div>
           )}
         </section>

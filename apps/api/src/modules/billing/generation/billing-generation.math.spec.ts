@@ -1,5 +1,5 @@
 import { computeBillingPeriod, prorate } from '@iwana/shared';
-import { buildPlanLine } from './billing-generation.math';
+import { buildAdditionalLine, buildPlanLine } from './billing-generation.math';
 
 describe('billing generation math', () => {
   it.each([28, 29, 30, 31])(
@@ -102,5 +102,83 @@ describe('billing generation math', () => {
     expect(line.kind).toBe('PRORRATEO');
     expect(line.baseAmount).toBe('3548.00');
     expect(line.total).toBe('3548.00');
+  });
+});
+
+describe('buildAdditionalLine (spec MOD14 2026-11-12 bloque C, R3/CA-2)', () => {
+  const base = {
+    itemId: 'item-1',
+    name: 'IP fija',
+    unitPrice: '30000.00',
+    coveredDays: 16,
+    periodDays: 31,
+    method: 'DIAS_REALES' as const,
+    treatment: 'STANDARD',
+    ratePercent: 19 as const,
+    legalBasis: 'ET_468',
+    position: 2,
+  };
+
+  it('servicio: prorratea como el plan en pesos enteros, con su IVA y enlace al ítem', () => {
+    expect(buildAdditionalLine({ ...base, itemType: 'SERVICE' })).toEqual({
+      kind: 'ADICIONAL',
+      description: 'IP fija',
+      quantity: '1.0000',
+      unitPrice: '30000.00',
+      baseAmount: '15484.00',
+      taxAmount: '2941.96',
+      total: '18425.96',
+      vatTreatment: 'STANDARD',
+      vatRate: '19.0000',
+      vatLegalBasis: 'ET_468',
+      position: 2,
+      additionalItemId: 'item-1',
+    });
+  });
+
+  it('servicio en periodo completo cobra el precio exacto', () => {
+    expect(buildAdditionalLine({ ...base, itemType: 'SERVICE', coveredDays: 31 })?.baseAmount).toBe(
+      '30000.00',
+    );
+  });
+
+  it('producto: precio completo aunque el periodo sea parcial; exento sin IVA', () => {
+    const line = buildAdditionalLine({
+      ...base,
+      itemType: 'PRODUCT',
+      name: null,
+      treatment: 'EXEMPT',
+      ratePercent: 0,
+      legalBasis: 'ET_476_7',
+    });
+    expect(line).toMatchObject({
+      kind: 'ADICIONAL',
+      description: 'Producto adicional',
+      baseAmount: '30000.00',
+      taxAmount: '0.00',
+      vatRate: '0.0000',
+    });
+  });
+
+  it('sin nombre el servicio usa la descripción genérica', () => {
+    expect(buildAdditionalLine({ ...base, itemType: 'SERVICE', name: '  ' })?.description).toBe(
+      'Servicio adicional',
+    );
+  });
+
+  it('precio cero o tramo que redondea a cero no genera línea', () => {
+    expect(buildAdditionalLine({ ...base, itemType: 'PRODUCT', unitPrice: '0.00' })).toBeNull();
+    expect(
+      buildAdditionalLine({ ...base, itemType: 'SERVICE', unitPrice: '10.00', coveredDays: 1 }),
+    ).toBeNull();
+  });
+
+  it('rechaza un precio inválido', () => {
+    expect(() => buildAdditionalLine({ ...base, itemType: 'PRODUCT', unitPrice: '-1' })).toThrow(
+      RangeError,
+    );
+    expect(() => buildAdditionalLine({ ...base, itemType: 'PRODUCT', unitPrice: 'x' })).toThrow(
+      RangeError,
+    );
   });
 });

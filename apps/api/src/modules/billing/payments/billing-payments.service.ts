@@ -31,6 +31,17 @@ import { BillingContractReadPort } from '../ports/billing-contract-read.port';
 import { BillingAccountReadPort } from '../ports/billing-account-read.port';
 import { buildPageMeta, clampPage } from '../../../common/pagination';
 import { suggestFifoAllocations } from './allocation';
+import {
+  activeCourtesySum,
+  appliedCourtesyCents,
+  courtesyLineSum,
+} from '../courtesies/billing-courtesy.sql';
+import {
+  COURTESY_COLUMNS,
+  redactCourtesyNotes,
+  toCourtesyResponse,
+  type CourtesyRow,
+} from '../courtesies/billing-courtesy.mapper';
 
 type Queryable = Pick<EntityManager, 'query'>;
 
@@ -119,6 +130,8 @@ type StatementDocumentRow = {
   created_at: Date | string;
   updated_at: Date | string;
   paid_amount: string;
+  courtesy_amount?: string;
+  courtesy_line_amount?: string;
 };
 
 const PAYMENT_COLUMNS = `p.id::text, p.tenant_id::text, p.subscriber_id::text, p.method,
@@ -613,7 +626,8 @@ export class BillingPaymentsService extends BillingAccountReadPort {
        SELECT l.contract_id::text AS contract_id, l.due_date::text AS due_date,
               d.id::text AS document_id, d.total::text AS total,
               COALESCE(SUM(a.amount) FILTER (WHERE a.reversed_at IS NULL), 0)::numeric(14,2)::text
-                AS paid_amount
+                AS paid_amount,
+              ${activeCourtesySum('d')}::numeric(14,2)::text AS courtesy_amount
          FROM latest l
          LEFT JOIN billing_documents d
            ON d.period_id = l.id AND d.tenant_id = $1 AND d.status = 'EMITIDO'
@@ -627,10 +641,12 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       document_id: string | null;
       total: string | null;
       paid_amount: string;
+      courtesy_amount?: string;
     }>;
     for (const row of rows) {
       if (!row.document_id || row.total == null) continue;
-      const paid = moneyCents(row.paid_amount);
+      // Spec MOD14 2026-11-12 R4: `paidAmount` del periodo es lo saldado (pagos + cortesías).
+      const paid = moneyCents(row.paid_amount) + moneyCents(row.courtesy_amount ?? '0.00');
       const total = moneyCents(row.total);
       const state: BillingPeriodPaymentState =
         paid >= total
@@ -700,7 +716,9 @@ export class BillingPaymentsService extends BillingAccountReadPort {
                 d.voided_by::text, d.created_by::text, d.created_at, d.updated_at,
                 COALESCE((SELECT SUM(a.amount) FROM billing_payment_allocations a
                            WHERE a.document_id = d.id AND a.tenant_id = d.tenant_id
-                             AND a.reversed_at IS NULL), 0)::numeric(14,2)::text AS paid_amount
+                             AND a.reversed_at IS NULL), 0)::numeric(14,2)::text AS paid_amount,
+                ${activeCourtesySum('d')}::numeric(14,2)::text AS courtesy_amount,
+                ${courtesyLineSum('d')}::numeric(14,2)::text AS courtesy_line_amount
            FROM billing_documents d
             -- ADR-110 D5: un IMPORTADO no tiene periodo y sí cuenta en el estado de cuenta.
             LEFT JOIN billing_periods p ON p.id = d.period_id AND p.tenant_id = d.tenant_id
@@ -733,30 +751,52 @@ export class BillingPaymentsService extends BillingAccountReadPort {
         payments.map((payment) => this.toPaymentResponse(qr.manager, payment)),
       );
 
+      const courtesyRows = (await qr.manager.query(
+        `SELECT ${COURTESY_COLUMNS} FROM billing_courtesies c
+          WHERE c.tenant_id = $1 AND c.subscriber_id = $2::uuid
+          ORDER BY c.created_at DESC, c.id DESC`,
+        [tenantId, subscriberId],
+      )) as CourtesyRow[] | undefined;
+
       let totalInvoicedCents = 0;
       let totalPaidCents = 0;
+      let totalCourtesyCents = 0;
       let totalPendingCents = 0;
       const summaryByContract = new Map<
         string,
-        { totalInvoiced: number; totalPaid: number; totalPending: number }
+        { totalInvoiced: number; totalPaid: number; totalCourtesy: number; totalPending: number }
       >();
       const documents = documentRows.map((row) => {
         // Cartera: emitidos de iWana e históricos importados (ADR-110 D5).
         const isIssued = row.status === 'EMITIDO' || row.status === 'IMPORTADO';
         const totalCents = moneyCents(row.total);
         const paidCents = isIssued ? Math.min(totalCents, moneyCents(row.paid_amount)) : 0;
-        const pendingCents = isIssued ? Math.max(0, totalCents - paidCents) : 0;
+        // Spec MOD14 2026-11-12 R4/R5: la cortesía baja el saldo sin ser pago ni superarlo.
+        const courtesyCents = appliedCourtesyCents({
+          status: row.status,
+          totalCents,
+          paidCents,
+          adjustmentCents: moneyCents(row.courtesy_amount ?? '0.00'),
+        });
+        const pendingCents = isIssued ? Math.max(0, totalCents - paidCents - courtesyCents) : 0;
+        // «Cortesías otorgadas»: ajustes activos más las líneas CORTESIA ya emitidas.
+        const grantedCents = isIssued
+          ? courtesyCents + moneyCents(row.courtesy_line_amount ?? '0.00')
+          : 0;
         if (isIssued) {
           totalInvoicedCents += totalCents;
           totalPaidCents += paidCents;
+          totalCourtesyCents += grantedCents;
           totalPendingCents += pendingCents;
           const summary = summaryByContract.get(row.contract_id) ?? {
             totalInvoiced: 0,
             totalPaid: 0,
+            totalCourtesy: 0,
             totalPending: 0,
           };
           summary.totalInvoiced += totalCents;
           summary.totalPaid += paidCents;
+          summary.totalCourtesy += grantedCents;
           summary.totalPending += pendingCents;
           summaryByContract.set(row.contract_id, summary);
         }
@@ -791,6 +831,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
           createdAt: toIso(row.created_at),
           updatedAt: toIso(row.updated_at),
           paidAmount: centsMoney(paidCents),
+          courtesyAmount: centsMoney(courtesyCents),
           pendingAmount: centsMoney(pendingCents),
         };
       });
@@ -833,15 +874,21 @@ export class BillingPaymentsService extends BillingAccountReadPort {
         impersonationHold,
         totalInvoiced: centsMoney(totalInvoicedCents),
         totalPaid: centsMoney(totalPaidCents),
+        totalCourtesy: centsMoney(totalCourtesyCents),
         totalPending: centsMoney(totalPendingCents),
         creditBalance: centsMoney(Math.max(0, paymentsRegisteredCents - allocatedCents)),
         documents,
         payments: paymentResponses,
+        // Las notas son texto libre del titular: con DATOS_BLOQUEADOS sin permiso, null.
+        courtesies: (courtesyRows ?? [])
+          .map(toCourtesyResponse)
+          .map((courtesy) => (buyerProtected ? redactCourtesyNotes(courtesy) : courtesy)),
         contractSummaries: [...summaryByContract.entries()]
           .map(([contractId, summary]) => ({
             contractId,
             totalInvoiced: centsMoney(summary.totalInvoiced),
             totalPaid: centsMoney(summary.totalPaid),
+            totalCourtesy: centsMoney(summary.totalCourtesy),
             totalPending: centsMoney(summary.totalPending),
             periodState: periodStates[contractId]?.state ?? WITHOUT_DOCUMENT_STATE,
             billingNotStarted: notStartedIn(contractId),
@@ -851,6 +898,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
               contractId,
               totalInvoiced: '0.00',
               totalPaid: '0.00',
+              totalCourtesy: '0.00',
               totalPending: '0.00',
               periodState: WITHOUT_DOCUMENT_STATE,
               billingNotStarted: true,
@@ -879,10 +927,10 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     });
   }
   private statementDocumentState(
-    row: Pick<StatementDocumentRow, 'total' | 'paid_amount' | 'due_date'>,
+    row: Pick<StatementDocumentRow, 'total' | 'paid_amount' | 'courtesy_amount' | 'due_date'>,
     localDate: string,
   ): BillingPeriodPaymentState {
-    const paid = moneyCents(row.paid_amount);
+    const paid = moneyCents(row.paid_amount) + moneyCents(row.courtesy_amount ?? '0.00');
     const total = moneyCents(row.total);
     if (paid >= total) return 'PAGADO';
     if (localDate > row.due_date) return 'VENCIDO';
@@ -902,7 +950,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       [tenantId, subscriberId],
     )) as Array<{ id: string }>;
     const rows = (await manager.query(
-      `SELECT d.id::text, d.due_date::text, (d.total-COALESCE(SUM(a.amount) FILTER(WHERE a.reversed_at IS NULL),0))::numeric(14,2)::text AS pending_amount
+      `SELECT d.id::text, d.due_date::text, (d.total-COALESCE(SUM(a.amount) FILTER(WHERE a.reversed_at IS NULL),0)-${activeCourtesySum('d')})::numeric(14,2)::text AS pending_amount
        FROM billing_documents d LEFT JOIN billing_payment_allocations a ON a.document_id=d.id AND a.tenant_id=d.tenant_id
        WHERE d.tenant_id=$1 AND d.id=ANY($2::uuid[]) GROUP BY d.id ORDER BY d.due_date,d.id`,
       [tenantId, locked.map((x) => x.id)],
@@ -979,12 +1027,19 @@ export class BillingPaymentsService extends BillingAccountReadPort {
         );
       }
       const paidRows = (await manager.query(
-        `SELECT COALESCE(SUM(amount), 0)::numeric(14,2)::text AS paid_amount
-           FROM billing_payment_allocations
-          WHERE document_id = $1::uuid AND tenant_id = $2 AND reversed_at IS NULL`,
+        `SELECT COALESCE((SELECT SUM(amount) FROM billing_payment_allocations
+                           WHERE document_id = d.id AND tenant_id = d.tenant_id
+                             AND reversed_at IS NULL), 0)::numeric(14,2)::text AS paid_amount,
+                ${activeCourtesySum('d')}::numeric(14,2)::text AS courtesy_amount
+           FROM billing_documents d
+          WHERE d.id = $1::uuid AND d.tenant_id = $2`,
         [document.id, tenantId],
-      )) as Array<{ paid_amount: string }>;
-      const pending = moneyCents(document.total) - moneyCents(paidRows[0]?.paid_amount ?? '0.00');
+      )) as Array<{ paid_amount: string; courtesy_amount: string }>;
+      // Spec MOD14 2026-11-12 R4: la cortesía activa ya saldó parte del documento.
+      const pending =
+        moneyCents(document.total) -
+        moneyCents(paidRows[0]?.paid_amount ?? '0.00') -
+        moneyCents(paidRows[0]?.courtesy_amount ?? '0.00');
       if (item.cents > pending) throw this.allocationExceeded();
 
       await manager.query(
@@ -1022,7 +1077,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     let count = 0;
     for (const payment of payments) {
       const [balance] = (await manager.query(
-        `SELECT (d.total-COALESCE((SELECT SUM(a.amount) FROM billing_payment_allocations a WHERE a.tenant_id=$1 AND a.document_id=d.id AND a.reversed_at IS NULL),0))::numeric(14,2)::text AS pending FROM billing_documents d WHERE d.tenant_id=$1 AND d.id=$2`,
+        `SELECT (d.total-COALESCE((SELECT SUM(a.amount) FROM billing_payment_allocations a WHERE a.tenant_id=$1 AND a.document_id=d.id AND a.reversed_at IS NULL),0)-${activeCourtesySum('d')})::numeric(14,2)::text AS pending FROM billing_documents d WHERE d.tenant_id=$1 AND d.id=$2`,
         [tenantId, documentId],
       )) as Array<{ pending: string }>;
       const [used] = (await manager.query(
@@ -1091,7 +1146,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
                       SELECT SUM(a.amount) FROM billing_payment_allocations a
                        WHERE a.document_id = d.id AND a.tenant_id = d.tenant_id
                          AND a.reversed_at IS NULL
-                    ), 0)
+                    ), 0) + ${activeCourtesySum('d')}
                 ) AS all_paid`,
         [periodId, tenantId],
       )) as Array<{ has_document: boolean; all_paid: boolean }>;

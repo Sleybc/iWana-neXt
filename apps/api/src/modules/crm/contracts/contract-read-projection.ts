@@ -89,6 +89,8 @@ export async function projectContractsForRead(
         installationStratum: null,
         stratumEvidenceMediaId: null,
         vatSnapshot: null,
+        installationVatSnapshot: null,
+        additionalVatSnapshot: [],
         additionalProductIds: [],
         additionalServiceIds: [],
         paymentMethod: null,

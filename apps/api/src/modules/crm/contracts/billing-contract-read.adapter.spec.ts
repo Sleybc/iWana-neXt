@@ -3,7 +3,10 @@ import { DataSource, EntityManager, QueryRunner } from 'typeorm';
 import { TenantContext } from '@iwana/db';
 import { SettingsPriorityTenantReadPort } from '../../tenant/ports/settings-priority-tenant-read.port';
 import { encryptAes256Gcm } from '../../../common/crypto/aes-gcm.util';
-import { BillingContractReadAdapter } from './billing-contract-read.adapter';
+import {
+  BillingContractReadAdapter,
+  mapBillableAdditionals,
+} from './billing-contract-read.adapter';
 
 describe('BillingContractReadAdapter', () => {
   const key = Buffer.from(
@@ -69,7 +72,10 @@ describe('BillingContractReadAdapter', () => {
         plan_name: 'Plan de prueba',
         monthly_price: '85000.00',
         vat_snapshot: null,
-        unbilled_additional_count: 5,
+        // Bloque C: sin precio congelado, los 5 adicionales siguen sin cobrar.
+        additional_product_ids: ['p-1', 'p-2', 'p-3'],
+        additional_service_ids: ['s-1', 's-2'],
+        additional_vat_snapshot: [],
         display_name: 'Titular sintético',
         document_type: 'CC',
         address: null,
@@ -102,6 +108,59 @@ describe('BillingContractReadAdapter', () => {
     expect(managerQuery.mock.calls[0]?.[1]?.[3]).toBe(200);
     expect(managerQuery.mock.calls[0]?.[1]?.[4]).toBe('America/Bogota');
     expect(managerQuery.mock.calls[0]?.[1]?.[5]).toBe(62);
+  });
+
+  it('MOD14 R2: proyecta el IVA congelado de la instalación y descarta uno inválido', async () => {
+    const base = {
+      contract_id: '00000000-0000-4000-8000-000000000020',
+      subscriber_id: '00000000-0000-4000-8000-000000000021',
+      party_id: null,
+      status: 'ACTIVE',
+      status_reason_code: null,
+      terminated_at: null,
+      cycle_day: 1,
+      cutoff_day: 15,
+      start_date: '2026-01-01',
+      end_date: null,
+      plan_name: 'Plan',
+      monthly_price: '85000.00',
+      vat_snapshot: null,
+      unbilled_additional_count: 0,
+      installation_fee: '50000.00',
+      display_name: 'Titular sintético',
+      document_type: 'CC',
+      address: null,
+      rut_responsibilities: [],
+      anonymized_at: null,
+      anonymized_request_id: null,
+    };
+    managerQuery.mockResolvedValue([
+      {
+        ...base,
+        installation_vat_snapshot: {
+          treatment: 'EXEMPT',
+          legalBasis: 'ET_476_7',
+          ratePercent: 0,
+          source: 'CATALOG',
+          frozenAt: '2026-11-12T00:00:00.000Z',
+        },
+      },
+      {
+        ...base,
+        contract_id: '00000000-0000-4000-8000-000000000022',
+        installation_vat_snapshot: { treatment: 'EXEMPT', ratePercent: 19 },
+      },
+      { ...base, contract_id: '00000000-0000-4000-8000-000000000023' },
+    ]);
+
+    const result = await adapter.findBillableForDate('2026-11-01', { limit: 10 });
+
+    expect(managerQuery.mock.calls[0]?.[0]).toContain('c.installation_vat_snapshot');
+    expect(result.map((row) => row.installationVat)).toEqual([
+      { treatment: 'EXEMPT', legalBasis: 'ET_476_7', ratePercent: 0 },
+      null,
+      null,
+    ]);
   });
 
   it('descifra documento en findByContractId solo cuando se pide con revealDocument:true', async () => {
@@ -338,5 +397,66 @@ describe('BillingContractReadAdapter', () => {
       { cycleDay: 15, cutoffDay: 30 },
     ]);
     expect(managerQuery.mock.calls[0]?.[0]).toContain('active = true');
+  });
+});
+
+describe('mapBillableAdditionals (spec MOD14 2026-11-12 bloque C)', () => {
+  const frozen = (itemId: string, itemType: 'PRODUCT' | 'SERVICE', extra = {}) => ({
+    itemId,
+    itemType,
+    treatment: 'STANDARD',
+    legalBasis: 'ET_468',
+    ratePercent: 19,
+    source: 'CATALOG',
+    frozenAt: '2026-11-12T00:00:00.000Z',
+    ...extra,
+  });
+
+  it('cobra los adicionales con precio congelado y cuenta los demás como sin cobrar', () => {
+    const result = mapBillableAdditionals(
+      ['p-1', 'p-1', 'p-2', 'p-legado', ''],
+      ['s-1'],
+      [
+        frozen('p-1', 'PRODUCT', { name: 'Router', unitPrice: '120000.00' }),
+        frozen('p-2', 'PRODUCT', { unitPrice: null }),
+        frozen('s-1', 'SERVICE', {
+          treatment: 'EXEMPT',
+          legalBasis: 'ET_476_7',
+          ratePercent: 0,
+          unitPrice: '30000.00',
+        }),
+        { itemId: 'roto' },
+      ],
+    );
+
+    expect(result).toEqual({
+      additionals: [
+        {
+          itemId: 'p-1',
+          itemType: 'PRODUCT',
+          name: 'Router',
+          unitPrice: '120000.00',
+          vat: { treatment: 'STANDARD', legalBasis: 'ET_468', ratePercent: 19 },
+        },
+        {
+          itemId: 's-1',
+          itemType: 'SERVICE',
+          name: null,
+          unitPrice: '30000.00',
+          vat: { treatment: 'EXEMPT', legalBasis: 'ET_476_7', ratePercent: 0 },
+        },
+      ],
+      unbilledCount: 2,
+    });
+  });
+
+  it('un producto congelado como servicio no se cobra como producto', () => {
+    expect(
+      mapBillableAdditionals(['x'], [], [frozen('x', 'SERVICE', { unitPrice: '1.00' })]),
+    ).toEqual({ additionals: [], unbilledCount: 1 });
+  });
+
+  it('tolera columnas que no son arreglos', () => {
+    expect(mapBillableAdditionals('no', null, '{}')).toEqual({ additionals: [], unbilledCount: 0 });
   });
 });

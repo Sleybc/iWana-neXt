@@ -188,3 +188,44 @@ describe('SubscriberStatementSummary (spec 2026-11-09 §3)', () => {
     expect(within(region).queryByText('UISP-779')).not.toBeInTheDocument();
   });
 });
+
+describe('SubscriberStatementSummary: cortesías (spec MOD14 2026-11-12 R4)', () => {
+  const COURTESY = {
+    id: 'c1111111-1111-4111-8111-111111111111',
+    documentId: '11111111-1111-4111-8111-111111111111',
+    subscriberId: '55555555-5555-4555-8555-555555555555',
+    application: 'AJUSTE_SOBRE_EMITIDO',
+    target: 'VALOR',
+    sourceLineId: null,
+    lineId: null,
+    amount: '20.00',
+    reasonCode: 'FALLA_DEL_SERVICIO',
+    note: null,
+    status: 'ACTIVA',
+    voidReasonCode: null,
+    voidNote: null,
+    voidedAt: null,
+    voidedBy: null,
+    createdBy: '66666666-6666-4666-8666-666666666666',
+    createdAt: '2026-11-10T12:00:00.000Z',
+  } as const;
+
+  it('muestra el total, la cortesía del documento y el detalle de cortesías', () => {
+    const document = buildDocument({ courtesyAmount: '20.00', pendingAmount: '99.00' });
+    const { region } = renderSummary(
+      loaded({
+        ...STATEMENT,
+        totalCourtesy: '20.00',
+        documents: [document],
+        courtesies: [COURTESY],
+      }),
+    );
+    expect(region).toHaveTextContent('Cortesías otorgadas:');
+    expect(within(region).getByText(`Cortesía −${money('20.00')}`)).toBeInTheDocument();
+    const detail = within(region).getByRole('region', { name: 'Detalle de cortesías' });
+    expect(detail).toHaveTextContent('Compensación por falla del servicio');
+    expect(detail).toHaveTextContent(formatBillingDate(COURTESY.createdAt));
+    expect(detail).toHaveTextContent('Aplicada');
+    expect(detail).toHaveTextContent(money('20.00'));
+  });
+});

@@ -71,6 +71,13 @@ import {
   type ProductSortMode,
 } from '@/components/commercial/catalog/catalog-filter-params';
 import { VAT_CONCEPT_OPTIONS, vatConceptNotice } from './catalog-tax-options';
+import {
+  catalogVatFormSchema,
+  catalogVatPayload,
+  catalogVatTreatmentLabel,
+  toCatalogVatFormValue,
+} from './catalog-item-vat';
+import { CatalogVatTreatmentField } from './CatalogVatTreatmentField';
 
 const PRODUCT_CATEGORY_VALUES = [
   ProductCategory.ENTERTAINMENT,
@@ -90,6 +97,7 @@ const productFormSchema = z.object({
   requiresInventory: z.boolean(),
   isActive: z.boolean(),
   vatConcept: z.union([z.nativeEnum(VatConcept), z.literal('')]),
+  vat: catalogVatFormSchema,
 });
 
 type ProductFormValues = z.infer<typeof productFormSchema>;
@@ -119,6 +127,7 @@ function getDefaultProductFormValues(): ProductFormValues {
     requiresInventory: false,
     isActive: true,
     vatConcept: '',
+    vat: toCatalogVatFormValue(null, null),
   };
 }
 
@@ -132,6 +141,7 @@ function toProductFormValues(product: AdditionalProduct): ProductFormValues {
     requiresInventory: product.requiresInventory,
     isActive: product.isActive,
     vatConcept: product.vatConcept ?? '',
+    vat: toCatalogVatFormValue(product.vatTreatment, product.vatLegalBasis),
   };
 }
 
@@ -408,6 +418,7 @@ export function AdditionalProductsPanel({
     const normalizedDescription = values.description?.trim()
       ? values.description.trim()
       : undefined;
+    const vat = catalogVatPayload(values.vat);
 
     try {
       if (editingProductId) {
@@ -419,6 +430,8 @@ export function AdditionalProductsPanel({
           requiresInventory: values.requiresInventory,
           isActive: values.isActive,
           ...(values.vatConcept ? { vatConcept: values.vatConcept } : {}),
+          vatTreatment: vat.treatment,
+          vatLegalBasis: vat.legalBasis,
           basePrice: values.basePrice,
         };
         await commercialApi.updateAdditionalProduct(editingProductId, dto);
@@ -432,6 +445,8 @@ export function AdditionalProductsPanel({
           requiresInventory: values.requiresInventory,
           isActive: values.isActive,
           vatConcept: values.vatConcept as VatConcept,
+          vatTreatment: vat.treatment,
+          vatLegalBasis: vat.legalBasis,
           basePrice: values.basePrice,
         };
         await commercialApi.createAdditionalProduct(dto);
@@ -788,6 +803,9 @@ export function AdditionalProductsPanel({
                               formatCurrency(product.basePrice ?? 0)
                             )}
                           </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {catalogVatTreatmentLabel(product.vatTreatment)}
+                          </p>
                         </td>
                         <td className={portalDataTableCellClassName}>
                           <Badge
@@ -1065,6 +1083,20 @@ export function AdditionalProductsPanel({
                 )}
               />
             </div>
+
+            <Controller
+              name="vat"
+              control={control}
+              render={({ field }) => (
+                <CatalogVatTreatmentField
+                  label="IVA del producto"
+                  helperText="Se aplica al facturar este producto; por defecto, IVA general del 19 %."
+                  value={field.value}
+                  error={errors.vat?.legalBasis?.message}
+                  onChange={field.onChange}
+                />
+              )}
+            />
 
             <Controller
               name="isActive"

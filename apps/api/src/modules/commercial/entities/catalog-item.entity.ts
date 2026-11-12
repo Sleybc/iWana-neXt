@@ -7,7 +7,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { CatalogItemType, VatConcept } from '@iwana/shared';
+import { CatalogItemType, VatConcept, VatTreatment } from '@iwana/shared';
 
 /**
  * Tabla base del catálogo comercial (Class Table Inheritance manual).
@@ -33,6 +33,17 @@ export class CatalogItem {
 
   @Column({ type: 'varchar', length: 30, name: 'vat_concept', nullable: true })
   vatConcept: VatConcept | null;
+
+  /**
+   * IVA propio de un producto o servicio (migración 201, spec MOD14 2026-11-12 R1). NULL en un
+   * plan (su internet sigue el estrato, ADR-093) y en ítems legados: se cobra STANDARD 19 %.
+   */
+  @Column({ type: 'varchar', length: 10, name: 'vat_treatment', nullable: true })
+  vatTreatment: VatTreatment | null;
+
+  /** Código de la base legal del tratamiento (p. ej. `ET_468`); NULL junto con el tratamiento. */
+  @Column({ type: 'varchar', length: 40, name: 'vat_legal_basis', nullable: true })
+  vatLegalBasis: string | null;
 
   @Column({ type: 'varchar', length: 200 })
   name: string;

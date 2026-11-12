@@ -55,6 +55,8 @@ describeDb('Contrato activo sin cobros — primer cobro (PostgreSQL real)', () =
         return { planId, installationFee: 50000, monthlyPrice: 100000 };
       },
     ),
+    // MOD14 R2: el plan no trae tratamiento propio de instalación → STANDARD 19 % (D2).
+    getItemVatTreatments: jest.fn().mockResolvedValue([]),
   };
   const config = new ConfigService({
     PII_ENCRYPTION_KEY: '56'.repeat(32),
@@ -195,7 +197,7 @@ describeDb('Contrato activo sin cobros — primer cobro (PostgreSQL real)', () =
         ADD COLUMN nit varchar(500) NULL;
       ALTER TABLE contracts
         ADD COLUMN plan_id varchar(120) NOT NULL DEFAULT 'plan-heredado',
-        ADD COLUMN customer_segment varchar(20) NULL,
+        ADD COLUMN IF NOT EXISTS customer_segment varchar(20) NULL, -- el fixture ya la trae (202)
         ADD COLUMN status_changed_at timestamptz NULL,
         ADD COLUMN updated_at timestamptz NOT NULL DEFAULT now(),
         ADD COLUMN fiscal_document_hmac varchar(64) NULL;
@@ -295,6 +297,8 @@ describeDb('Contrato activo sin cobros — primer cobro (PostgreSQL real)', () =
         contractId: withoutCharges,
         totalInvoiced: '0.00',
         totalPaid: '0.00',
+        // Cortesías (spec MOD14 2026-11-12 bloque D): el resumen suma sus ajustes.
+        totalCourtesy: '0.00',
         totalPending: '0.00',
         periodState: 'SIN_DOCUMENTO',
         billingNotStarted: true,
@@ -350,6 +354,17 @@ describeDb('Contrato activo sin cobros — primer cobro (PostgreSQL real)', () =
 
     const after = await contractRow(contractId);
     expect(after.installation_fee).toBe('50000.00');
+    // MOD14 R2: el IVA de la instalación se congela junto con el cargo del contrato heredado.
+    const [frozenVat] = await sql<{ installation_vat_snapshot: Record<string, unknown> }>(
+      'SELECT installation_vat_snapshot FROM contracts WHERE id = $1',
+      [contractId],
+    );
+    expect(frozenVat?.installation_vat_snapshot).toMatchObject({
+      treatment: 'STANDARD',
+      legalBasis: 'ET_468',
+      ratePercent: 19,
+      source: 'DEFAULT',
+    });
     expect(after.updated_at.getTime()).toBeGreaterThan(before.updated_at.getTime());
     expect(catalog.createSnapshot).toHaveBeenCalledWith(
       tenantId,

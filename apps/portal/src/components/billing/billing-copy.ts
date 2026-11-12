@@ -1,5 +1,15 @@
 import { BILLING_BLOCKED_BUYER_DISPLAY_NAME } from '@iwana/shared';
-import type { BillingDocumentLineKind, BillingPeriodPaymentState } from '@iwana/shared';
+import type {
+  BillingCourtesyApplication,
+  BillingCourtesyReason,
+  BillingCourtesyResponse,
+  BillingCourtesyStatus,
+  BillingCourtesyVoidReason,
+  BillingDocumentLine,
+  BillingDocumentLineKind,
+  BillingDocumentResponse,
+  BillingPeriodPaymentState,
+} from '@iwana/shared';
 import type { BadgeProps } from '@iwana/ui';
 import { formatBillingDate } from '../crm/subscribers/billing-cycle-ui';
 
@@ -33,7 +43,94 @@ export const DOCUMENT_LINE_KINDS = {
   ADICIONAL: 'Adicional',
   PRORRATEO: 'Prorrateo',
   INSTALACION: 'Instalación',
+  CORTESIA: 'Cortesía',
 } satisfies Record<BillingDocumentLineKind, string>;
+
+/** IVA visible de una línea: tarifa general o el tratamiento exento/excluido. */
+export function documentLineVat(
+  line: Pick<BillingDocumentLine, 'vatTreatment' | 'vatRate'>,
+): string {
+  if (line.vatTreatment === 'EXEMPT') return 'Exento';
+  if (line.vatTreatment === 'EXCLUDED') return 'Excluido';
+  return `IVA ${Number(line.vatRate).toLocaleString('es-CO')} %`;
+}
+
+/** Motivos de catálogo de una cortesía (spec MOD14 2026-11-12 D4). */
+export const COURTESY_REASONS = {
+  PRORRATEO_INICIAL: 'Prorrateo del primer mes',
+  FALLA_DEL_SERVICIO: 'Compensación por falla del servicio',
+  RETENCION_DEL_CLIENTE: 'Retención del cliente',
+  PROMOCION_COMERCIAL: 'Promoción comercial',
+  ERROR_OPERATIVO: 'Error operativo',
+  OTRO: 'Otro motivo',
+} satisfies Record<BillingCourtesyReason, string>;
+
+export const COURTESY_VOID_REASONS = {
+  ERROR_DE_REGISTRO: 'Error al registrar la cortesía',
+  VALOR_INCORRECTO: 'Valor incorrecto',
+  DOCUMENTO_EQUIVOCADO: 'Documento equivocado',
+  DECISION_REVERTIDA: 'Se revirtió la decisión',
+} satisfies Record<BillingCourtesyVoidReason, string>;
+
+export const COURTESY_STATUSES = {
+  ACTIVA: { label: 'Aplicada', variant: 'success' },
+  ANULADA: { label: 'Anulada', variant: 'neutral' },
+} satisfies Record<BillingCourtesyStatus, { label: string; variant: BadgeProps['variant'] }>;
+
+export const COURTESY_APPLICATIONS = {
+  LINEA_EN_BORRADOR: 'Línea en el borrador',
+  AJUSTE_SOBRE_EMITIDO: 'Ajuste sobre el documento emitido',
+} satisfies Record<BillingCourtesyApplication, string>;
+
+/**
+ * Un documento anulado no admite cortesías. Un borrador sí; un emitido o importado solo mientras
+ * tenga saldo pendiente mayor que cero (la cortesía no puede superar el saldo).
+ */
+export function canReceiveCourtesy(
+  document: Pick<BillingDocumentResponse, 'status' | 'pendingAmount'>,
+): boolean {
+  if (document.status === 'ANULADO') return false;
+  if (document.status === 'BORRADOR') return true;
+  return document.pendingAmount != null && moneyCents(document.pendingAmount) > 0;
+}
+
+/** Líneas que se pueden regalar: con valor, que no sean cortesía ni estén ya regaladas. */
+export function courtesyEligibleLines(
+  document: Pick<BillingDocumentResponse, 'lines' | 'courtesies'>,
+): BillingDocumentLine[] {
+  const gifted = new Set(
+    (document.courtesies ?? [])
+      .filter((courtesy: BillingCourtesyResponse) => courtesy.status === 'ACTIVA')
+      .map((courtesy) => courtesy.sourceLineId),
+  );
+  return (document.lines ?? []).filter(
+    (line) => line.kind !== 'CORTESIA' && moneyCents(line.total) > 0 && !gifted.has(line.id),
+  );
+}
+
+/** Saldo que la cortesía puede cubrir: el total del borrador o el pendiente del emitido (R5). */
+export function courtesyBaseCents(
+  document: Pick<BillingDocumentResponse, 'status' | 'pendingAmount' | 'total'>,
+): number {
+  if (document.status === 'BORRADOR') return moneyCents(document.total);
+  return moneyCents(document.pendingAmount ?? document.total);
+}
+
+/**
+ * En un borrador con conceptos de IVA distinto, la cortesía por valor no se puede repartir:
+ * debe otorgarse por línea (BILLING_COURTESY_MIXED_VAT).
+ */
+export function courtesyNeedsLine(
+  document: Pick<BillingDocumentResponse, 'status' | 'lines'>,
+): boolean {
+  if (document.status !== 'BORRADOR') return false;
+  const rates = new Set(
+    (document.lines ?? [])
+      .filter((line) => line.kind !== 'CORTESIA' && moneyCents(line.total) > 0)
+      .map((line) => `${line.vatTreatment}|${Number(line.vatRate)}|${line.vatLegalBasis ?? ''}`),
+  );
+  return rates.size > 1;
+}
 
 export const DOCUMENT_VOID_REASONS = {
   ERROR_DE_VALOR: 'Error en el valor facturado',
@@ -80,12 +177,33 @@ export function moneyCents(value: string): number {
   return match ? Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2, '0')) : NaN;
 }
 
+/** Total de cortesías activas del estado de cuenta, o null si no hay (spec MOD14 R4). */
+export function statementCourtesyTotal(statement: {
+  totalCourtesy?: string | undefined;
+}): string | null {
+  const total = statement.totalCourtesy;
+  return total && moneyCents(total) > 0 ? total : null;
+}
+
+/** Cortesía activa aplicada a un documento emitido o importado, o null si no tiene. */
+export function documentCourtesyAmount(document: {
+  courtesyAmount?: string | undefined;
+}): string | null {
+  const amount = document.courtesyAmount;
+  return amount && moneyCents(amount) > 0 ? amount : null;
+}
+
+export const COURTESY_PENDING_NOTE = 'Ya descuenta las cortesías otorgadas.';
+
 export function fromMoneyCents(value: number): string {
   return `${Math.floor(value / 100)}.${String(value % 100).padStart(2, '0')}`;
 }
 
+/** Adicionales del contrato sin precio congelado: no se cobran hasta que el contrato lo tenga. */
 export function additionalNotice(count: number): string {
-  return `Este contrato tiene ${count} adicionales que todavía no se cobran en este documento`;
+  if (count === 1)
+    return 'Este contrato tiene 1 adicional sin precio guardado en el contrato; por eso no se cobró en este documento';
+  return `Este contrato tiene ${count} adicionales sin precio guardado en el contrato; por eso no se cobraron en este documento`;
 }
 
 export const IMPERSONATION_HOLD_TITLE =

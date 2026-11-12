@@ -6,6 +6,7 @@ import {
   computeGenerationDate,
   computeDueAndCutoff,
   diffInDays,
+  resolveCatalogItemVat,
   resolveGenerationTarget,
   shiftLateDueAndCutoff,
   type BillingBlockingReason,
@@ -25,6 +26,7 @@ import {
 import { BillingDocumentsService } from '../documents/billing-documents.service';
 import type { PeriodEvent } from '../payments/billing-payments.service';
 import {
+  buildAdditionalLine,
   buildInstallationLine,
   buildPlanLine,
   type BillingLineValue,
@@ -612,18 +614,29 @@ export class BillingGenerationService {
             description: contract.planName ?? 'Plan de servicio',
           })
         : null;
-    // Bloque D (CA-4/CA-5): la instalación va solo en el primer documento del contrato.
+    // Bloque D (CA-4/CA-5): la instalación va solo en el primer documento del contrato. Su IVA
+    // es el congelado en el contrato (spec MOD14 2026-11-12 R2, sustituye D-F1); sin él,
+    // STANDARD 19 % (D2).
+    const installationVat = contract.installationVat ?? resolveCatalogItemVat(null, null);
     const installation =
       hasTax && (await this.isFirstChargeWithoutInstallation(manager, tenantId, contract, target))
         ? buildInstallationLine({
             fee: contract.installationFee,
             permanenceDiscount: contract.permanenceDiscount,
-            treatment: contract.vatSnapshot!.treatment,
-            ratePercent: contract.vatSnapshot!.ratePercent,
-            legalBasis: contract.vatSnapshot!.legalBasis,
+            treatment: installationVat.treatment,
+            ratePercent: installationVat.ratePercent,
+            legalBasis: installationVat.legalBasis,
           })
         : null;
-    const lines: BillingLineValue[] = [line, installation].filter(
+    // Bloque C (spec MOD14 2026-11-12 D3/R3): adicionales con su IVA congelado.
+    const additionalLines = hasTax
+      ? await this.buildAdditionalLines(manager, tenantId, contract, {
+          coveredDays,
+          periodDays,
+          method: effectivePolicy.proration_method,
+        })
+      : [];
+    const lines: BillingLineValue[] = [line, installation, ...additionalLines].filter(
       (value): value is BillingLineValue => value !== null,
     );
     const subtotal = lines.reduce((acc, value) => acc + Number(value.baseAmount), 0);
@@ -684,8 +697,9 @@ export class BillingGenerationService {
       await manager.query(
         `INSERT INTO billing_document_lines
            (tenant_id, document_id, kind, description, quantity, unit_price, base_amount,
-            tax_amount, total, vat_treatment, vat_rate, vat_legal_basis, position)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+            tax_amount, total, vat_treatment, vat_rate, vat_legal_basis, position,
+            additional_item_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [
           tenantId,
           documentId,
@@ -700,6 +714,7 @@ export class BillingGenerationService {
           value.vatRate,
           value.vatLegalBasis,
           value.position,
+          value.additionalItemId ?? null,
         ],
       );
     }
@@ -727,6 +742,63 @@ export class BillingGenerationService {
       this.logger.warn('Documento generado con adicionales sin cobrar.');
     }
     return blockingReason ? 'blocked' : 'generated';
+  }
+
+  /**
+   * Líneas de adicionales del documento (bloque C, R3/CA-2). Servicio: cada periodo, prorrateado
+   * como el plan (la idempotencia por periodo la da el documento vivo del periodo). Producto: una
+   * sola vez por contrato: se omite si un documento vivo del contrato ya trae su línea. El candado
+   * por contrato serializa la generación de periodos distintos del mismo contrato.
+   */
+  private async buildAdditionalLines(
+    manager: EntityManager,
+    tenantId: string,
+    contract: BillableContract,
+    period: {
+      coveredDays: number;
+      periodDays: number;
+      method: BillingPolicyRow['proration_method'];
+    },
+  ): Promise<BillingLineValue[]> {
+    const additionals = contract.additionals ?? [];
+    if (additionals.length === 0) return [];
+    const productIds = additionals
+      .filter((item) => item.itemType === 'PRODUCT')
+      .map((item) => item.itemId);
+    let charged = new Set<string>();
+    if (productIds.length) {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        `billing:additional-products:${contract.contractId}`,
+      ]);
+      const rows = (await manager.query(
+        `SELECT DISTINCT l.additional_item_id
+           FROM billing_document_lines l
+           JOIN billing_documents d ON d.id = l.document_id AND d.tenant_id = l.tenant_id
+          WHERE d.tenant_id = $1 AND d.contract_id = $2 AND d.status <> 'ANULADO'
+            AND l.kind = 'ADICIONAL' AND l.additional_item_id = ANY($3::text[])`,
+        [tenantId, contract.contractId, productIds],
+      )) as Array<{ additional_item_id: string }>;
+      charged = new Set(rows.map((row) => row.additional_item_id));
+    }
+    const lines: BillingLineValue[] = [];
+    for (const item of additionals) {
+      if (item.itemType === 'PRODUCT' && charged.has(item.itemId)) continue;
+      const built = buildAdditionalLine({
+        itemId: item.itemId,
+        itemType: item.itemType,
+        name: item.name,
+        unitPrice: item.unitPrice,
+        coveredDays: period.coveredDays,
+        periodDays: period.periodDays,
+        method: period.method,
+        treatment: item.vat.treatment,
+        ratePercent: item.vat.ratePercent,
+        legalBasis: item.vat.legalBasis,
+        position: 2 + lines.length,
+      });
+      if (built) lines.push(built);
+    }
+    return lines;
   }
 
   /**

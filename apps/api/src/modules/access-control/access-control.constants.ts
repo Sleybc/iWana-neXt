@@ -846,6 +846,15 @@ export const MOD00_ACCESS_V2_CATALOG: PermissionSeedDefinition[] = [
     catalogVersion: versionV2,
     availability: AccessPermissionAvailability.ASSIGNABLE,
   },
+  // Cortesías (spec MOD14 2026-11-12 D5; migración 204): solo ADMIN y ACCOUNTANT.
+  {
+    permissionKey: AccessPermissionKey.BILLING_COURTESIES_MANAGE,
+    moduleKey: 'billing',
+    action: 'courtesies.manage',
+    description: 'Otorgar y anular cortesías sobre cobros',
+    catalogVersion: versionV2,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
   // ── Importación desde UISP (ADR-110 D9; migración 198) ──
   {
     permissionKey: AccessPermissionKey.MIGRATION_IMPORT_MANAGE,
@@ -943,6 +952,7 @@ export const ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2: Record<UserRole, AccessPermis
     AccessPermissionKey.BILLING_INVOICES_MANAGE,
     AccessPermissionKey.BILLING_PAYMENTS_READ,
     AccessPermissionKey.BILLING_PAYMENTS_REGISTER,
+    AccessPermissionKey.BILLING_COURTESIES_MANAGE,
     AccessPermissionKey.CRM_SUBSCRIBERS_READ,
     AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
     AccessPermissionKey.CRM_SUBSCRIBERS_DOCUMENT_READ,

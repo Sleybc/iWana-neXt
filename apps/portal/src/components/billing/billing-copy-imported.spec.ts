@@ -1,4 +1,6 @@
 import {
+  additionalNotice,
+  canReceiveCourtesy,
   DOCUMENT_STATES,
   documentCoveredRange,
   documentReference,
@@ -28,5 +30,32 @@ describe('billing-copy — documentos importados de UISP', () => {
       / al /u,
     );
     expect(formatOptionalBillingDate('2026-11-01')).not.toBe('Sin periodo');
+  });
+});
+
+describe('canReceiveCourtesy (spec MOD14 2026-11-12 R5)', () => {
+  it('ofrece la cortesía en un borrador aunque no tenga saldo calculado', () => {
+    expect(canReceiveCourtesy({ status: 'BORRADOR' })).toBe(true);
+  });
+
+  it('en emitido o importado solo con saldo pendiente mayor que cero', () => {
+    expect(canReceiveCourtesy({ status: 'EMITIDO', pendingAmount: '10.00' })).toBe(true);
+    expect(canReceiveCourtesy({ status: 'IMPORTADO', pendingAmount: '0.01' })).toBe(true);
+    expect(canReceiveCourtesy({ status: 'EMITIDO', pendingAmount: '0.00' })).toBe(false);
+    expect(canReceiveCourtesy({ status: 'IMPORTADO', pendingAmount: '0.00' })).toBe(false);
+    expect(canReceiveCourtesy({ status: 'EMITIDO' })).toBe(false);
+  });
+
+  it('nunca en un documento anulado', () => {
+    expect(canReceiveCourtesy({ status: 'ANULADO', pendingAmount: '10.00' })).toBe(false);
+  });
+});
+
+describe('additionalNotice', () => {
+  it('explica que los adicionales no tienen precio guardado y no se cobraron', () => {
+    expect(additionalNotice(1)).toBe(
+      'Este contrato tiene 1 adicional sin precio guardado en el contrato; por eso no se cobró en este documento',
+    );
+    expect(additionalNotice(2)).toContain('2 adicionales sin precio guardado');
   });
 });

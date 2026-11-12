@@ -59,7 +59,11 @@ describe('ContractsService.changePlan', () => {
     networkType: NetworkType.FIXED,
     snapshotAt: new Date(command.expectedUpdatedAt),
   };
-  const catalog = { getPlanById: jest.fn(), createSnapshot: jest.fn() };
+  const catalog = {
+    getPlanById: jest.fn(),
+    createSnapshot: jest.fn(),
+    getItemVatTreatments: jest.fn(),
+  };
   const vat = { resolve: jest.fn() };
   const audit = { logWithin: jest.fn() };
   const marks = { activeMarks: jest.fn() };
@@ -92,6 +96,7 @@ describe('ContractsService.changePlan', () => {
     );
     catalog.getPlanById.mockResolvedValue({ id: command.planId, isActive: true });
     catalog.createSnapshot.mockResolvedValue(snapshot);
+    catalog.getItemVatTreatments.mockResolvedValue([]);
     marks.activeMarks.mockResolvedValue({});
     audit.logWithin.mockResolvedValue(undefined);
     vat.resolve.mockReturnValue({
@@ -167,6 +172,53 @@ describe('ContractsService.changePlan', () => {
     catalog.createSnapshot.mockResolvedValue({ ...snapshot, installationFee: 120_000 });
     const result = await service.changePlan(contract.id, command);
     expect(result.installationFee).toBe(50_000);
+  });
+  it('MOD14 R2: DRAFT vuelve a congelar el IVA de la instalación con el plan nuevo', async () => {
+    catalog.getItemVatTreatments.mockResolvedValue([
+      {
+        itemId: 'plan-new',
+        itemType: 'PLAN',
+        vatTreatment: null,
+        vatLegalBasis: null,
+        installationVatTreatment: VatTreatment.EXCLUDED,
+        installationVatLegalBasis: 'ET_476_7',
+      },
+    ]);
+    const result = await service.changePlan(contract.id, command, 'actor-test');
+    expect(catalog.getItemVatTreatments).toHaveBeenCalledWith(
+      'tenant-test',
+      'tenant_plan_test',
+      ['plan-new'],
+      expect.objectContaining({ manager }),
+    );
+    expect(result.installationVatSnapshot).toMatchObject({
+      treatment: 'EXCLUDED',
+      legalBasis: 'ET_476_7',
+      ratePercent: 0,
+      source: 'CATALOG',
+    });
+    expect(audit.logWithin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        newValue: expect.objectContaining({
+          installationVatSnapshot: expect.objectContaining({ treatment: 'EXCLUDED' }),
+        }),
+      }),
+      manager,
+    );
+  });
+  it('MOD14 R2: ACTIVE conserva el IVA congelado de la instalación', async () => {
+    contract.status = ContractStatus.ACTIVE;
+    const frozen = {
+      treatment: VatTreatment.STANDARD,
+      legalBasis: 'ET_468',
+      ratePercent: 19 as const,
+      source: 'CATALOG' as const,
+      frozenAt: '2026-10-01T00:00:00.000Z',
+    };
+    contract.installationVatSnapshot = frozen;
+    const result = await service.changePlan(contract.id, command);
+    expect(result.installationVatSnapshot).toEqual(frozen);
+    expect(catalog.getItemVatTreatments).not.toHaveBeenCalled();
   });
   it('ACTIVE resuelve IVA con el mismo snapshot capturado y segmento override', async () => {
     contract.status = ContractStatus.ACTIVE;

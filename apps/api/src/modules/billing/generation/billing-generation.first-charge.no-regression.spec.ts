@@ -6,6 +6,8 @@
 //     iguales a la suma de líneas e idempotencia por contrato.
 //   - Cambió a propósito en el bloque D (CA-4): con `installation_fee` congelado el primer
 //     cobro trae la línea «Instalación»; sin cargo (nulo o cero) sigue sin traerla.
+//   - Cambió a propósito en MOD14 bloque A (spec 2026-11-12 D2/R2, D-F1 sustituida): la
+//     instalación lleva su IVA congelado en el contrato, por defecto 19 %, no el del internet.
 import { BillingGenerationService } from './billing-generation.service';
 import type { BillableContract } from '../ports/billing-contract-read.port';
 
@@ -135,7 +137,15 @@ const lineInserts = () => inserts.filter(({ sql }) => sql.includes('billing_docu
 const documentInsert = () =>
   inserts.find(({ sql }) => sql.includes('INSERT INTO billing_documents'));
 // Orden de columnas de billing_document_lines en el INSERT actual.
-const LINE = { kind: 2, description: 3, baseAmount: 6, taxAmount: 7, total: 8 } as const;
+const LINE = {
+  kind: 2,
+  description: 3,
+  baseAmount: 6,
+  taxAmount: 7,
+  total: 8,
+  vatTreatment: 9,
+  vatLegalBasis: 11,
+} as const;
 const DOC = { subtotal: 5, tax: 6, total: 7 } as const;
 
 describe('W0 F2 primer cobro por activación — línea base de MOD14', () => {
@@ -212,16 +222,35 @@ describe('W0 F2 primer cobro por activación — línea base de MOD14', () => {
     }
   });
 
-  it('[cambió en D] con cargo congelado el primer cobro trae la línea «Instalación» y la suma', async () => {
+  it('[cambió en D y en MOD14 A] con cargo congelado trae «Instalación» con 19 % aunque el internet sea exento', async () => {
+    // Sin IVA congelado de la instalación (contrato heredado) aplica STANDARD 19 % (D2).
     const { service } = build(contract({ installationFee: '80000.00' }));
 
     await firstCharge(service);
 
     const lines = lineInserts();
     expect(lines.map(({ params }) => params[LINE.kind])).toEqual(['PLAN', 'INSTALACION']);
+    expect(lines[0]!.params[LINE.taxAmount]).toBe('0.00');
     expect(lines[1]!.params[LINE.description]).toBe('Instalación');
     expect(lines[1]!.params[LINE.baseAmount]).toBe('80000.00');
-    expect(lines[1]!.params[LINE.taxAmount]).toBe('0.00');
-    expect(documentInsert()!.params[DOC.total]).toBe('180000.00');
+    expect(lines[1]!.params[LINE.taxAmount]).toBe('15200.00');
+    expect(documentInsert()!.params[DOC.total]).toBe('195200.00');
+  });
+
+  it('[MOD14 A] la instalación usa el tratamiento congelado en el contrato', async () => {
+    const { service } = build(
+      contract({
+        installationFee: '50000.00',
+        installationVat: { treatment: 'EXCLUDED', legalBasis: 'ET_476_7', ratePercent: 0 },
+      }),
+    );
+
+    await firstCharge(service);
+
+    const [, install] = lineInserts();
+    expect(install!.params[LINE.taxAmount]).toBe('0.00');
+    expect(install!.params[LINE.vatTreatment]).toBe('EXCLUDED');
+    expect(install!.params[LINE.vatLegalBasis]).toBe('ET_476_7');
+    expect(documentInsert()!.params[DOC.total]).toBe('150000.00');
   });
 });

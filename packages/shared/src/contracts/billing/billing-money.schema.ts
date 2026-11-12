@@ -24,3 +24,12 @@ export const billingMoneyStringSchema = z
   .string()
   .regex(BILLING_MONEY_STRING_PATTERN)
   .refine((value) => Number(value) <= BILLING_MONEY_MAX);
+
+/**
+ * Monto con signo compatible con numeric(14,2). Solo lo usa la línea `CORTESIA` de un
+ * borrador (spec MOD14 2026-11-12 R4), que resta del documento.
+ */
+export const billingSignedMoneyStringSchema = z
+  .string()
+  .regex(/^-?\d{1,12}(\.\d{1,2})?$/u)
+  .refine((value) => Math.abs(Number(value)) <= BILLING_MONEY_MAX);

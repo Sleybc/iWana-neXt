@@ -2,6 +2,10 @@ import { z } from 'zod';
 import { CustomerSegment } from '../enums/customer-segment.enum';
 import { VatTreatment } from '../enums/vat-treatment.enum';
 import { NetworkType, ServiceUsage, VatConcept, VatLegalBasis } from '../enums/taxation';
+import {
+  contractAdditionalVatSnapshotSchema,
+  contractItemVatSnapshotSchema,
+} from '../commercial/catalog-item-vat';
 
 const ServicePointFieldsShape = {
   serviceUsage: z.nativeEnum(ServiceUsage).optional(),
@@ -182,6 +186,14 @@ export const ContractResponseSchema = z
      * Opcional en el tipo para no romper consumidores; la API siempre lo envía.
      */
     installationFee: z.number().finite().nonnegative().nullable().optional(),
+    /**
+     * IVA del cargo de instalación congelado al crear el contrato (spec MOD14 2026-11-12 R2): el
+     * tratamiento propio del cargo en el plan, por defecto STANDARD 19 %. Null en contratos
+     * heredados sin cargo; el cobro aplica entonces STANDARD 19 % (D2).
+     */
+    installationVatSnapshot: contractItemVatSnapshotSchema.nullable().optional(),
+    /** IVA de cada adicional congelado al agregarlo al contrato (spec MOD14 2026-11-12 R2). */
+    additionalVatSnapshot: z.array(contractAdditionalVatSnapshotSchema).optional(),
     billingCycleDay: z.number().int().min(1).max(28).nullable(),
     /**
      * true si el contrato está en borrador sin ciclo de facturación (fase 2, bloque B; CA-2):

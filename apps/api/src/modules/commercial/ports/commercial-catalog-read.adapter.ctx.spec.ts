@@ -161,4 +161,103 @@ describe('CommercialCatalogReadAdapter · contexto de transacción (D3)', () => 
       expect.any(Function),
     );
   });
+
+  it('MOD14: getItemVatTreatments omite identificadores no UUID sin consultar', async () => {
+    const manager = { query: jest.fn() };
+
+    await expect(
+      adapter.getItemVatTreatments('ten-caller', 'tenant_caller', ['legacy', ''], {
+        manager: manager as never,
+      }),
+    ).resolves.toEqual([]);
+    expect(manager.query).not.toHaveBeenCalled();
+    expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+  });
+
+  it('MOD14: getItemVatTreatments con ctx lee en la transacción del llamante y mapea', async () => {
+    const manager = {
+      query: jest.fn().mockResolvedValue([
+        {
+          item_id: PLAN_ID,
+          item_type: 'PLAN',
+          vat_treatment: null,
+          vat_legal_basis: null,
+          installation_vat_treatment: 'STANDARD',
+          installation_vat_legal_basis: 'ET_468',
+        },
+      ]),
+    };
+
+    const result = await adapter.getItemVatTreatments(
+      'ten-caller',
+      'tenant_caller',
+      [PLAN_ID, PLAN_ID, 'legacy'],
+      { manager: manager as never },
+    );
+
+    expect(result).toEqual([
+      {
+        itemId: PLAN_ID,
+        itemType: 'PLAN',
+        vatTreatment: null,
+        vatLegalBasis: null,
+        installationVatTreatment: 'STANDARD',
+        installationVatLegalBasis: 'ET_468',
+      },
+    ]);
+    // El tenant sale de TenantContext, nunca del llamante; ids deduplicados y solo UUID.
+    expect(manager.query).toHaveBeenCalledWith(expect.stringContaining('ci.tenant_id = $1'), [
+      TENANT.tenantId,
+      [PLAN_ID],
+      null,
+    ]);
+    expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+  });
+
+  it('MOD14 bloque C: con segmento devuelve nombre y precio vigente del segmento', async () => {
+    const manager = {
+      query: jest.fn().mockResolvedValue([
+        {
+          item_id: PLAN_ID,
+          item_type: 'SERVICE',
+          name: 'IP fija',
+          vat_treatment: 'STANDARD',
+          vat_legal_basis: 'ET_468',
+          installation_vat_treatment: null,
+          installation_vat_legal_basis: null,
+          current_base_price: '30000.00',
+        },
+      ]),
+    };
+
+    const [row] = await adapter.getItemVatTreatments(
+      'ten-caller',
+      'tenant_caller',
+      [PLAN_ID],
+      { manager: manager as never },
+      'BUSINESS' as never,
+    );
+
+    expect(row).toMatchObject({ name: 'IP fija', currentBasePrice: '30000.00' });
+    expect(manager.query).toHaveBeenCalledWith(
+      expect.stringContaining('ph.customer_segment = $3'),
+      [TENANT.tenantId, [PLAN_ID], 'BUSINESS'],
+    );
+  });
+
+  it('MOD14: getItemVatTreatments sin ctx abre su transacción tenant', async () => {
+    const manager = { query: jest.fn().mockResolvedValue([]) };
+    mockRunInTenantSchema.mockImplementationOnce(
+      async (_ds: unknown, _schema: unknown, cb: (qr: unknown) => Promise<unknown>) =>
+        cb({ manager }),
+    );
+
+    await adapter.getItemVatTreatments('ten-caller', 'tenant_caller', [PLAN_ID]);
+
+    expect(mockRunInTenantSchema).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT.schemaName,
+      expect.any(Function),
+    );
+  });
 });

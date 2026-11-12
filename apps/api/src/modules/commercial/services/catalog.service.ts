@@ -6,8 +6,11 @@ import { TenantContext, runInTenantSchema } from '@iwana/db';
 import {
   CatalogItemType,
   CustomerSegment,
+  DEFAULT_CATALOG_ITEM_VAT_LEGAL_BASIS,
+  DEFAULT_CATALOG_ITEM_VAT_TREATMENT,
   InstallationRule,
   NetworkType,
+  VatTreatment,
   type ListResponse,
 } from '@iwana/shared';
 import { CatalogItem } from '../entities/catalog-item.entity';
@@ -57,6 +60,47 @@ export interface CatalogItemWithDetail extends CatalogItem {
   chargeType?: string | undefined;
   currentPrice?: string | null | undefined;
   installationFee?: string | null | undefined;
+  /** Solo planes: IVA del cargo de instalación (spec MOD14 2026-11-12 R2); null en los demás. */
+  installationVatTreatment?: VatTreatment | null | undefined;
+  installationVatLegalBasis?: string | null | undefined;
+}
+
+interface ItemVatValue {
+  treatment: VatTreatment;
+  legalBasis: string;
+}
+
+/**
+ * Tratamiento resultante de crear o editar el IVA de un ítem (spec MOD14 2026-11-12 R1/R2).
+ * Sin cambios devuelve el actual (o STANDARD/ET_468 si no hay). Pasar a STANDARD sin base usa
+ * ET_468; EXEMPT o EXCLUDED exigen base legal, salvo que el tratamiento no cambie y ya la tenga.
+ */
+export function resolveItemVatInput(
+  current: { treatment: VatTreatment | null; legalBasis: string | null },
+  treatmentInput: VatTreatment | undefined,
+  legalBasisInput: string | null | undefined,
+  field: string,
+): ItemVatValue {
+  const currentTreatment = current.treatment ?? DEFAULT_CATALOG_ITEM_VAT_TREATMENT;
+  const treatment = treatmentInput ?? currentTreatment;
+  let legalBasis: string | null;
+  if (legalBasisInput !== undefined) {
+    legalBasis = legalBasisInput;
+  } else if (treatment === currentTreatment && current.legalBasis) {
+    legalBasis = current.legalBasis;
+  } else {
+    legalBasis = null;
+  }
+  if (!legalBasis) {
+    if (treatment !== VatTreatment.STANDARD) {
+      throw new BadRequestException({
+        code: 'VAT_LEGAL_BASIS_REQUIRED',
+        message: `Un tratamiento exento o excluido exige la base legal (${field}).`,
+      });
+    }
+    legalBasis = DEFAULT_CATALOG_ITEM_VAT_LEGAL_BASIS;
+  }
+  return { treatment, legalBasis };
 }
 
 @Injectable()
@@ -227,12 +271,24 @@ export class CatalogService {
       throw new BadRequestException('Para crear un ítem se requiere vatConcept');
     }
     this._validateDetailRequired(dto);
+    this._assertVatFieldsMatchType(dto.type, dto);
+    const isPlan = dto.type === CatalogItemType.PLAN;
+    const itemVat = isPlan
+      ? null
+      : resolveItemVatInput(
+          { treatment: null, legalBasis: null },
+          dto.vatTreatment,
+          dto.vatLegalBasis,
+          'vatLegalBasis',
+        );
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const item = qr.manager.create(CatalogItem, {
         tenantId,
         type: dto.type,
         vatConcept: dto.vatConcept,
+        vatTreatment: itemVat?.treatment ?? null,
+        vatLegalBasis: itemVat?.legalBasis ?? null,
         name: dto.name,
         description: dto.description ?? null,
         taxClassificationId: dto.taxClassificationId ?? null,
@@ -242,11 +298,13 @@ export class CatalogService {
       await qr.manager.save(CatalogItem, item);
 
       // Crear registro de detalle según el tipo
-      await this._createDetail(qr.manager, item.id, dto);
+      const installationVat = await this._createDetail(qr.manager, item.id, dto);
 
       return {
         ...item,
-        ...(dto.type === CatalogItemType.PLAN && {
+        installationVatTreatment: installationVat?.treatment ?? null,
+        installationVatLegalBasis: installationVat?.legalBasis ?? null,
+        ...(isPlan && {
           networkType: dto.networkType ?? NetworkType.FIXED,
         }),
       };
@@ -262,8 +320,21 @@ export class CatalogService {
       });
       if (!item) throw new NotFoundException(`CatalogItem ${id} no encontrado`);
 
+      this._assertVatFieldsMatchType(item.type, dto);
+      const itemVat =
+        item.type !== CatalogItemType.PLAN &&
+        (dto.vatTreatment !== undefined || dto.vatLegalBasis !== undefined)
+          ? resolveItemVatInput(
+              { treatment: item.vatTreatment, legalBasis: item.vatLegalBasis },
+              dto.vatTreatment,
+              dto.vatLegalBasis,
+              'vatLegalBasis',
+            )
+          : null;
+
       const wasActive = item.isActive;
       Object.assign(item, {
+        ...(itemVat && { vatTreatment: itemVat.treatment, vatLegalBasis: itemVat.legalBasis }),
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.vatConcept !== undefined && { vatConcept: dto.vatConcept }),
         ...(dto.description !== undefined && { description: dto.description }),
@@ -279,7 +350,27 @@ export class CatalogService {
 
       // Actualizar detalle específico — TypeORM lanza si se pasa un partial vacío {}; guardamos antes.
       if (item.type === CatalogItemType.PLAN) {
+        let installationVat: ItemVatValue | null = null;
+        if (
+          dto.installationVatTreatment !== undefined ||
+          dto.installationVatLegalBasis !== undefined
+        ) {
+          const currentDetail = await qr.manager.findOne(PlanDetail, { where: { itemId: id } });
+          installationVat = resolveItemVatInput(
+            {
+              treatment: currentDetail?.installationVatTreatment ?? null,
+              legalBasis: currentDetail?.installationVatLegalBasis ?? null,
+            },
+            dto.installationVatTreatment,
+            dto.installationVatLegalBasis,
+            'installationVatLegalBasis',
+          );
+        }
         const planUpdate = {
+          ...(installationVat && {
+            installationVatTreatment: installationVat.treatment,
+            installationVatLegalBasis: installationVat.legalBasis,
+          }),
           ...(dto.downloadSpeedMbps !== undefined && { downloadSpeedMbps: dto.downloadSpeedMbps }),
           ...(dto.uploadSpeedMbps !== undefined && { uploadSpeedMbps: dto.uploadSpeedMbps }),
           ...(dto.technology !== undefined && { technology: dto.technology }),
@@ -529,12 +620,48 @@ export class CatalogService {
     }
   }
 
+  /**
+   * El IVA de producto o servicio no aplica a un plan (su internet sigue el estrato, ADR-093) y el
+   * IVA de la instalación solo aplica a un plan (spec MOD14 2026-11-12 R1/R2).
+   */
+  private _assertVatFieldsMatchType(
+    type: CatalogItemType,
+    dto: Pick<
+      CreateCatalogItemDto,
+      'vatTreatment' | 'vatLegalBasis' | 'installationVatTreatment' | 'installationVatLegalBasis'
+    >,
+  ): void {
+    const isPlan = type === CatalogItemType.PLAN;
+    if (isPlan && (dto.vatTreatment !== undefined || dto.vatLegalBasis !== undefined)) {
+      throw new BadRequestException({
+        code: 'VAT_TREATMENT_NOT_APPLICABLE',
+        message:
+          'El IVA del internet de un plan sigue el estrato; para la instalación usa installationVatTreatment.',
+      });
+    }
+    if (
+      !isPlan &&
+      (dto.installationVatTreatment !== undefined || dto.installationVatLegalBasis !== undefined)
+    ) {
+      throw new BadRequestException({
+        code: 'INSTALLATION_VAT_NOT_APPLICABLE',
+        message: 'El IVA de la instalación solo aplica a un plan.',
+      });
+    }
+  }
+
   private async _createDetail(
     manager: DataSource['manager'],
     itemId: string,
     dto: CreateCatalogItemDto,
-  ): Promise<void> {
+  ): Promise<ItemVatValue | null> {
     if (dto.type === CatalogItemType.PLAN) {
+      const installationVat = resolveItemVatInput(
+        { treatment: null, legalBasis: null },
+        dto.installationVatTreatment,
+        dto.installationVatLegalBasis,
+        'installationVatLegalBasis',
+      );
       const detail = manager.create(PlanDetail, {
         itemId,
         networkType: dto.networkType ?? NetworkType.FIXED,
@@ -542,8 +669,11 @@ export class CatalogService {
         uploadSpeedMbps: dto.uploadSpeedMbps!,
         technology: dto.technology!,
         installationRule: dto.installationRule ?? InstallationRule.ALWAYS,
+        installationVatTreatment: installationVat.treatment,
+        installationVatLegalBasis: installationVat.legalBasis,
       });
       await manager.save(PlanDetail, detail);
+      return installationVat;
     } else if (dto.type === CatalogItemType.PRODUCT) {
       const detail = manager.create(ProductDetail, {
         itemId,
@@ -559,6 +689,7 @@ export class CatalogService {
       });
       await manager.save(ServiceDetail, detail);
     }
+    return null;
   }
 
   private async _hydratePage(
@@ -596,16 +727,26 @@ export class CatalogService {
 
     return items.map((item) => {
       const price = priceMap.get(item.id);
+      const isPlan = item.type === CatalogItemType.PLAN;
       const base: CatalogItemWithDetail = {
         ...item,
+        // D2: un producto o servicio sin tratamiento propio se cobra a STANDARD 19 %.
+        vatTreatment: isPlan ? null : (item.vatTreatment ?? DEFAULT_CATALOG_ITEM_VAT_TREATMENT),
+        vatLegalBasis: isPlan ? null : (item.vatLegalBasis ?? DEFAULT_CATALOG_ITEM_VAT_LEGAL_BASIS),
+        installationVatTreatment: null,
+        installationVatLegalBasis: null,
         currentPrice: price?.basePrice ?? null,
         installationFee: price?.installationFee ?? null,
       };
 
-      if (item.type === CatalogItemType.PLAN) {
+      if (isPlan) {
         const detail = planMap.get(item.id);
         return {
           ...base,
+          installationVatTreatment:
+            detail?.installationVatTreatment ?? DEFAULT_CATALOG_ITEM_VAT_TREATMENT,
+          installationVatLegalBasis:
+            detail?.installationVatLegalBasis ?? DEFAULT_CATALOG_ITEM_VAT_LEGAL_BASIS,
           downloadSpeedMbps: detail?.downloadSpeedMbps,
           uploadSpeedMbps: detail?.uploadSpeedMbps,
           technology: detail?.technology,

@@ -103,6 +103,8 @@ describeWithDb('Contrato automático desde la oportunidad (fase 2, A+B) con Post
         };
       },
     ),
+    // MOD14 R2: sin tratamiento propio en el catálogo, el contrato congela STANDARD 19 %.
+    getItemVatTreatments: jest.fn().mockResolvedValue([]),
   };
 
   async function insertSale(input: {
@@ -281,6 +283,11 @@ describeWithDb('Contrato automático desde la oportunidad (fase 2, A+B) con Post
       // D1: uso derivado (NATURAL + segmento RESIDENTIAL → RESIDENTIAL, ADR-093).
       serviceUsage: ServiceUsage.RESIDENTIAL,
       installationFee: 60000,
+      // MOD14 R2/D2: la instalación y el adicional congelan su IVA (19 % sin tratamiento propio).
+      installationVatSnapshot: expect.objectContaining({ treatment: 'STANDARD', ratePercent: 19 }),
+      additionalVatSnapshot: [
+        expect.objectContaining({ itemId: 'svc-auto-1', itemType: 'SERVICE', ratePercent: 19 }),
+      ],
     });
     // D2: snapshot completo del plan, el que lee el primer cobro (nombre y mensualidad).
     expect(rows[0]!.planSnapshotJson).toMatchObject({

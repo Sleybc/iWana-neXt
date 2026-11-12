@@ -269,6 +269,7 @@ import type {
   BillingAccountStatement,
   BillingContractPolicyResponse,
   BillingContractPolicyUpdate,
+  BillingCourtesyResponse,
   BillingDocumentResponse,
   BillingFirstChargeResult,
   BillingGenerationSummary,
@@ -277,8 +278,10 @@ import type {
   AllocateCreditCommand,
   GenerateDocumentsCommand,
   GenerateFirstChargeCommand,
+  GrantCourtesyCommand,
   IssueDocumentsCommand,
   RegisterPaymentCommand,
+  VoidCourtesyCommand,
   VoidDocumentCommand,
   VoidPaymentCommand,
   BillingPolicyPreview,
@@ -1671,6 +1674,9 @@ export interface PlanCatalogItem extends PlanCatalogTaxFields {
   /** Precio vigente en COP; `null` si no hay fila `is_current` (no usar 0 como sentinel). */
   basePrice: number | null;
   installationFee: number;
+  /** IVA del cargo de instalación (spec MOD14 2026-11-12 R1); null = 19 % por defecto. */
+  installationVatTreatment?: VatTreatment | null;
+  installationVatLegalBasis?: string | null;
   currentPrice?: string | null;
   description?: string | null;
   retentionApplicable?: boolean;
@@ -1702,6 +1708,9 @@ export interface CreatePlanCatalogItemDto extends CreatePlanCatalogTaxFields {
   uploadSpeedMbps: number;
   basePrice: number;
   installationFee?: number;
+  /** IVA del cargo de instalación (spec MOD14 2026-11-12 R1). */
+  installationVatTreatment?: VatTreatment;
+  installationVatLegalBasis?: string | null;
   validFrom?: string;
   validTo?: string;
   isActive?: boolean;
@@ -1715,6 +1724,9 @@ export interface UpdatePlanCatalogItemDto extends UpdatePlanCatalogTaxFields {
   uploadSpeedMbps?: number;
   basePrice?: number;
   installationFee?: number;
+  /** IVA del cargo de instalación (spec MOD14 2026-11-12 R1). */
+  installationVatTreatment?: VatTreatment;
+  installationVatLegalBasis?: string | null;
   validFrom?: string;
   validTo?: string;
   isActive?: boolean;
@@ -1732,6 +1744,8 @@ export interface AdditionalProduct extends CatalogItemTaxFields {
   currentPrice: string | null;
   /** Precio vigente en COP; `null` si no hay precio current. */
   basePrice: number | null;
+  vatTreatment?: VatTreatment | null;
+  vatLegalBasis?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1746,6 +1760,8 @@ export interface AdditionalService extends CatalogItemTaxFields {
   /** Precio vigente en COP; `null` si no hay precio current. */
   basePrice: number | null;
   installationFee: number;
+  vatTreatment?: VatTreatment | null;
+  vatLegalBasis?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -2010,6 +2026,9 @@ export interface SimulateTaxResult {
 }
 
 export interface CreateAdditionalProductDto extends CreateCatalogItemTaxFields {
+  /** IVA del ítem (spec MOD14 2026-11-12 R1). */
+  vatTreatment?: VatTreatment;
+  vatLegalBasis?: string | null;
   name: string;
   description?: string | undefined;
   category: AdditionalProduct['category'];
@@ -2020,6 +2039,9 @@ export interface CreateAdditionalProductDto extends CreateCatalogItemTaxFields {
 }
 
 export interface UpdateAdditionalProductDto extends UpdateCatalogItemTaxFields {
+  /** IVA del ítem (spec MOD14 2026-11-12 R1). */
+  vatTreatment?: VatTreatment;
+  vatLegalBasis?: string | null;
   name?: string;
   description?: string | undefined;
   category?: AdditionalProduct['category'];
@@ -2030,6 +2052,9 @@ export interface UpdateAdditionalProductDto extends UpdateCatalogItemTaxFields {
 }
 
 export interface CreateAdditionalServiceDto extends CreateCatalogItemTaxFields {
+  /** IVA del ítem (spec MOD14 2026-11-12 R1). */
+  vatTreatment?: VatTreatment;
+  vatLegalBasis?: string | null;
   name: string;
   description?: string | undefined;
   chargeType: ChargeType;
@@ -2039,6 +2064,9 @@ export interface CreateAdditionalServiceDto extends CreateCatalogItemTaxFields {
 }
 
 export interface UpdateAdditionalServiceDto extends UpdateCatalogItemTaxFields {
+  /** IVA del ítem (spec MOD14 2026-11-12 R1). */
+  vatTreatment?: VatTreatment;
+  vatLegalBasis?: string | null;
   name?: string;
   description?: string | undefined;
   chargeType?: ChargeType;
@@ -2294,6 +2322,10 @@ interface CommercialCatalogItemPayload {
   chargeType?: ChargeType;
   isLoan?: boolean;
   requiresInventory?: boolean;
+  vatTreatment?: VatTreatment | null;
+  vatLegalBasis?: string | null;
+  installationVatTreatment?: VatTreatment | null;
+  installationVatLegalBasis?: string | null;
 }
 
 function mapCurrentPriceAmount(currentPrice: string | null | undefined): number | null {
@@ -2314,6 +2346,8 @@ function mapCommercialPlan(item: CommercialCatalogItemPayload): PlanCatalogItem 
     uploadSpeedMbps: item.uploadSpeedMbps ?? 0,
     basePrice: mapCurrentPriceAmount(item.currentPrice),
     installationFee: Number(item.installationFee ?? 0),
+    installationVatTreatment: item.installationVatTreatment ?? null,
+    installationVatLegalBasis: item.installationVatLegalBasis ?? null,
     currentPrice: item.currentPrice ?? null,
     description: item.description,
     retentionApplicable: item.retentionApplicable,
@@ -2337,6 +2371,8 @@ function mapCommercialProduct(item: CommercialCatalogItemPayload): AdditionalPro
     description: item.description,
     currentPrice: item.currentPrice ?? null,
     basePrice: mapCurrentPriceAmount(item.currentPrice),
+    vatTreatment: item.vatTreatment ?? null,
+    vatLegalBasis: item.vatLegalBasis ?? null,
     createdAt: item.createdAt ?? new Date(0).toISOString(),
     updatedAt: item.updatedAt ?? new Date(0).toISOString(),
     vatConcept: item.vatConcept ?? null,
@@ -2353,6 +2389,8 @@ function mapCommercialService(item: CommercialCatalogItemPayload): AdditionalSer
     currentPrice: item.currentPrice ?? null,
     basePrice: mapCurrentPriceAmount(item.currentPrice),
     installationFee: Number(item.installationFee ?? 0),
+    vatTreatment: item.vatTreatment ?? null,
+    vatLegalBasis: item.vatLegalBasis ?? null,
     createdAt: item.createdAt ?? new Date(0).toISOString(),
     updatedAt: item.updatedAt ?? new Date(0).toISOString(),
     vatConcept: item.vatConcept ?? null,
@@ -2685,6 +2723,10 @@ export const commercialApi = {
           uploadSpeedMbps: dto.uploadSpeedMbps,
           vatConcept: dto.vatConcept,
           ...(dto.networkType ? { networkType: dto.networkType } : {}),
+          ...(dto.installationVatTreatment !== undefined && {
+            installationVatTreatment: dto.installationVatTreatment,
+            installationVatLegalBasis: dto.installationVatLegalBasis ?? null,
+          }),
           retentionApplicable: false,
         }),
       },
@@ -2719,6 +2761,10 @@ export const commercialApi = {
       ...(dto.uploadSpeedMbps !== undefined && { uploadSpeedMbps: dto.uploadSpeedMbps }),
       ...(dto.vatConcept !== undefined && { vatConcept: dto.vatConcept }),
       ...(dto.networkType !== undefined && { networkType: dto.networkType }),
+      ...(dto.installationVatTreatment !== undefined && {
+        installationVatTreatment: dto.installationVatTreatment,
+        installationVatLegalBasis: dto.installationVatLegalBasis ?? null,
+      }),
       ...(dto.isActive !== undefined && { isActive: dto.isActive }),
     };
 
@@ -2795,6 +2841,10 @@ export const commercialApi = {
           isLoan: dto.isLoan ?? false,
           requiresInventory: dto.requiresInventory ?? false,
           vatConcept: dto.vatConcept,
+          ...(dto.vatTreatment !== undefined && {
+            vatTreatment: dto.vatTreatment,
+            vatLegalBasis: dto.vatLegalBasis ?? null,
+          }),
           retentionApplicable: false,
         }),
       },
@@ -2825,6 +2875,10 @@ export const commercialApi = {
             requiresInventory: dto.requiresInventory,
           }),
           ...(dto.vatConcept !== undefined && { vatConcept: dto.vatConcept }),
+          ...(dto.vatTreatment !== undefined && {
+            vatTreatment: dto.vatTreatment,
+            vatLegalBasis: dto.vatLegalBasis ?? null,
+          }),
           ...(dto.isActive !== undefined && { isActive: dto.isActive }),
         }),
       },
@@ -2880,6 +2934,10 @@ export const commercialApi = {
           description: dto.description,
           chargeType: dto.chargeType,
           vatConcept: dto.vatConcept,
+          ...(dto.vatTreatment !== undefined && {
+            vatTreatment: dto.vatTreatment,
+            vatLegalBasis: dto.vatLegalBasis ?? null,
+          }),
           retentionApplicable: false,
         }),
       },
@@ -2913,6 +2971,10 @@ export const commercialApi = {
           ...(dto.description !== undefined && { description: dto.description }),
           ...(dto.chargeType !== undefined && { chargeType: dto.chargeType }),
           ...(dto.vatConcept !== undefined && { vatConcept: dto.vatConcept }),
+          ...(dto.vatTreatment !== undefined && {
+            vatTreatment: dto.vatTreatment,
+            vatLegalBasis: dto.vatLegalBasis ?? null,
+          }),
           ...(dto.isActive !== undefined && { isActive: dto.isActive }),
         }),
       },
@@ -7537,6 +7599,22 @@ export const billingApi = {
   voidDocument: (id: string, input: VoidDocumentCommand, key: string) =>
     billingMutation<BillingDocumentResponse>(
       `/billing/documents/${encodeURIComponent(id)}/void`,
+      'POST',
+      input,
+      key,
+    ),
+  /** Otorga una cortesía por línea o por valor (spec MOD14 2026-11-12 D4). Idempotente. */
+  grantCourtesy: (documentId: string, input: GrantCourtesyCommand, key: string) =>
+    billingMutation<BillingCourtesyResponse>(
+      `/billing/documents/${encodeURIComponent(documentId)}/courtesies`,
+      'POST',
+      input,
+      key,
+    ),
+  /** Anula una cortesía con motivo (R5): el saldo vuelve al documento. */
+  voidCourtesy: (courtesyId: string, input: VoidCourtesyCommand, key: string) =>
+    billingMutation<BillingCourtesyResponse>(
+      `/billing/courtesies/${encodeURIComponent(courtesyId)}/void`,
       'POST',
       input,
       key,

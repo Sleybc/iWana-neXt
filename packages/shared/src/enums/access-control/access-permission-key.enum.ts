@@ -57,6 +57,8 @@ export enum AccessPermissionKey {
   BILLING_INVOICES_READ = 'billing.invoices.read',
   BILLING_INVOICES_MANAGE = 'billing.invoices.manage',
   BILLING_POLICY_MANAGE = 'billing.policy.manage',
+  /** Otorgar y anular cortesías sobre cobros (spec MOD14 2026-11-12 D4/D5): solo ADMIN y ACCOUNTANT. */
+  BILLING_COURTESIES_MANAGE = 'billing.courtesies.manage',
   PRIVACY_READ = 'privacy.read',
   PRIVACY_MANAGE = 'privacy.manage',
   CRM_BLOCKED_DATA_READ = 'crm.blocked_data.read',

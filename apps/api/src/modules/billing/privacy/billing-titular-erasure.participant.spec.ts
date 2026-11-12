@@ -17,11 +17,11 @@ function createScope(overrides: Partial<TitularErasureScope> = {}): TitularErasu
 }
 
 /** La sonda de columna (`external_pdf_key`, 199) responde aparte; el resto va al mock de la prueba. */
-function qrOf(query: jest.Mock, hasPdf = true): QueryRunner {
+function qrOf(query: jest.Mock, hasPdf = true, hasCourtesies = false): QueryRunner {
   return {
     query: (sql: string, parameters?: unknown[]) =>
       /information_schema/u.test(sql)
-        ? Promise.resolve([{ present: hasPdf }])
+        ? Promise.resolve([{ present: /billing_courtesies/u.test(sql) ? hasCourtesies : hasPdf }])
         : query(sql, parameters),
   } as unknown as QueryRunner;
 }
@@ -151,5 +151,58 @@ describe('BillingTitularErasureParticipant', () => {
     expect(
       result.every((row) => row.selected === 0 && row.changed === 0 && row.residual === 0),
     ).toBe(true);
+  });
+
+  it('cortesías (203): vacía nota y nota de anulación y verifica cero residuales', async () => {
+    query
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ count: 2 }])
+      .mockResolvedValueOnce([{ id: 'cortesia-1' }, { id: 'cortesia-2' }])
+      .mockResolvedValueOnce([{ count: 0 }]);
+
+    const result = await participant.apply(createScope(), qrOf(query, true, true), 'apply');
+
+    expect(result[3]).toEqual({
+      table: 'billing_courtesies',
+      category: 'COMERCIAL',
+      selected: 2,
+      changed: 2,
+      residual: 0,
+    });
+    const update = String(query.mock.calls[11]?.[0]);
+    expect(update).toContain('SET note = NULL, void_note = NULL');
+    expect(query.mock.calls[11]?.[1]).toEqual([tenantId, [subscriberId]]);
+  });
+
+  it('cortesías en vista previa: cuenta notas sin escribir', async () => {
+    query
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ count: 0 }])
+      .mockResolvedValueOnce([{ count: 1 }])
+      .mockResolvedValueOnce([{ count: 1 }]);
+
+    const result = await participant.plan(createScope(), qrOf(query, true, true));
+
+    expect(result[3]).toEqual({
+      table: 'billing_courtesies',
+      category: 'COMERCIAL',
+      selected: 1,
+      changed: 0,
+      residual: 1,
+    });
+    expect(query.mock.calls.every(([sql]) => !String(sql).trim().startsWith('UPDATE'))).toBe(true);
   });
 });
