@@ -26,6 +26,7 @@ import {
 import { billingApi, type Contract } from '@/lib/api-client';
 import { formatBillingDate } from '@/components/crm/subscribers/billing-cycle-ui';
 import { BillingContractPolicy } from './BillingContractPolicy';
+import { BillingNotStartedNotice } from './BillingNotStartedNotice';
 import { BillingDocumentList } from './BillingDocumentsClient';
 import { BillingPaymentDialog, pendingDocuments } from './BillingPaymentDialog';
 import { BillingPaymentTable } from './BillingPaymentsClient';
@@ -41,6 +42,8 @@ import {
 } from './billing-copy';
 import { BillingLoadState, billingInputClass, useBillingMutation } from './billing-ui';
 import type { SubscriberStatementLoad } from './use-subscriber-statement';
+
+const NOT_STARTED_BADGE = { label: 'Sin cobros emitidos', variant: 'warning' } as const;
 
 export function SubscriberBillingTab({
   subscriberId,
@@ -65,12 +68,23 @@ export function SubscriberBillingTab({
     reload();
   }
 
-  if (!data) return <BillingLoadState loading={loading} error={error} onRetry={reload} />;
+  // Primer hijo en ambas ramas: el resultado del primer cobro sobrevive a la recarga.
+  const notStarted = (
+    <BillingNotStartedNotice statement={data} contracts={contracts} onGenerated={changed} />
+  );
+  if (!data)
+    return (
+      <div className="space-y-4">
+        {notStarted}
+        <BillingLoadState loading={loading} error={error} onRetry={reload} />
+      </div>
+    );
 
   const canApply =
     moneyCents(data.creditBalance) > 0 && pendingDocuments(data.documents).length > 0;
   return (
     <div className="space-y-4">
+      {notStarted}
       {data.buyerProtected ? (
         <PortalAlert variant="info" title={PROTECTED_LABEL} description={PROTECTED_NOTICE} />
       ) : null}
@@ -158,7 +172,12 @@ export function SubscriberBillingTab({
           <ul className="divide-y divide-gray-200 dark:divide-dark-border">
             {contracts.map((item) => {
               const summary = data.contractSummaries.find((entry) => entry.contractId === item.id);
-              const state = summary?.periodState ? PAYMENT_STATES[summary.periodState] : null;
+              // Sin cobros emitidos no es «al día»: la insignia lo dice en vez del estado (R2).
+              const state = summary?.billingNotStarted
+                ? NOT_STARTED_BADGE
+                : summary?.periodState
+                  ? PAYMENT_STATES[summary.periodState]
+                  : null;
               return (
                 <li
                   key={item.id}

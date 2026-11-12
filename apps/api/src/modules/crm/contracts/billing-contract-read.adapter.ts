@@ -299,6 +299,21 @@ export class BillingContractReadAdapter extends BillingContractReadPort {
     });
   }
 
+  async findActiveContractIds(subscriberId: string): Promise<string[]> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return this.withTenant(schemaName, async (manager) => {
+      const rows = (await manager.query(
+        `SELECT id::text AS contract_id
+           FROM contracts
+          WHERE tenant_id = $1 AND subscriber_id = $2::uuid
+            AND status = 'ACTIVE' AND deleted_at IS NULL
+          ORDER BY id ASC`,
+        [tenantId, subscriberId],
+      )) as Array<{ contract_id: string }>;
+      return rows.map(({ contract_id }) => contract_id);
+    });
+  }
+
   async lockTitularForBillingWrite(
     subscriberId: string,
     ctx: { manager: EntityManager },

@@ -30,6 +30,13 @@ export function billingError(error: unknown): string {
       return 'No se encontró el estado de cuenta de este titular.';
     if (error.code === 'BILLING_POLICY_CHANGED')
       return 'La política fue modificada recientemente. Vuelve a abrirla para consultar los valores vigentes.';
+    // Primer cobro (spec 2026-11-11 R3).
+    if (error.code === 'CONTRACT_NOT_FOUND')
+      return 'No encontramos este contrato. Actualiza la página e inténtalo de nuevo.';
+    if (error.code === 'CONTRACT_NOT_ACTIVE')
+      return 'El contrato ya no está activo, así que no se puede generar su primer cobro.';
+    if (error.code === 'ACTIVATION_DATE_UNKNOWN')
+      return 'El contrato no tiene una fecha de activación registrada, así que no podemos calcular desde cuándo cobrar.';
   }
   return 'No pudimos completar la operación de facturación.';
 }

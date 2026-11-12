@@ -21,6 +21,7 @@ import {
   PROTECTED_LABEL,
   PROTECTED_NOTICE,
 } from './billing-copy';
+import { BillingNotStartedNotice } from './BillingNotStartedNotice';
 import { BillingLoadState } from './billing-ui';
 import type { SubscriberStatementLoad } from './use-subscriber-statement';
 
@@ -30,10 +31,13 @@ const VISIBLE_DOCUMENTS = 3;
 export function SubscriberStatementSummary({
   statement,
   onOpenBilling,
+  contracts = [],
   anonymized = false,
 }: {
   statement: SubscriberStatementLoad;
   onOpenBilling: () => void;
+  /** Contratos de la ficha: dan el nombre del servicio en el aviso de contrato sin cobros. */
+  contracts?: readonly { id: string; alias: string }[];
   /** Titular anonimizado: la API ya no entrega el estado de cuenta (404 a propósito). */
   anonymized?: boolean;
 }) {
@@ -53,6 +57,8 @@ export function SubscriberStatementSummary({
       actions={<OpenBillingLink label="Ver facturación" onClick={onOpenBilling} />}
       contentClassName="space-y-4"
     >
+      {/* Fuera del condicional: el resultado del primer cobro sobrevive a la recarga. */}
+      <BillingNotStartedNotice statement={data} contracts={contracts} onGenerated={reload} />
       {data ? (
         <StatementBody statement={data} onOpenBilling={onOpenBilling} />
       ) : (

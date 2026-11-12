@@ -35,7 +35,12 @@ import {
   BILLING_PERIOD_PAYMENT_STATES,
   UserRole,
   GenerateDocumentsCommandSchema,
+  GenerateFirstChargeCommandSchema,
   BillingGenerationSummarySchema,
+  BILLING_FIRST_CHARGE_ANCHOR_SOURCES,
+  BILLING_FIRST_CHARGE_INSTALLATION_OUTCOMES,
+  BILLING_FIRST_CHARGE_FISCAL_FIELDS,
+  BILLING_FIRST_CHARGE_FISCAL_OUTCOMES,
   IssueDocumentsCommandSchema,
   VoidDocumentCommandSchema,
 } from '@iwana/shared';
@@ -49,10 +54,93 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { BillingGenerationService } from '../generation/billing-generation.service';
+import { BillingFirstChargeService } from '../generation/billing-first-charge.service';
 import { BillingDocumentsService } from './billing-documents.service';
 import { renderBillingDocumentPdf } from './billing-documents.pdf';
 
 const generationSummaryFields = BillingGenerationSummarySchema.keyof().options;
+
+const GENERATION_SUMMARY_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: generationSummaryFields,
+  properties: Object.fromEntries(
+    generationSummaryFields.map((field) => [field, { type: 'integer', minimum: 0 }]),
+  ),
+};
+
+const FIRST_CHARGE_RESULT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['data'],
+  properties: {
+    data: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'contractId',
+        'anchorDate',
+        'anchorSource',
+        'installationFee',
+        'fiscalData',
+        'summary',
+        'regularizedDrafts',
+      ],
+      properties: {
+        contractId: { type: 'string', format: 'uuid' },
+        anchorDate: {
+          type: 'string',
+          format: 'date',
+          nullable: true,
+          description: 'Fecha civil de activación usada como ancla; null si ya había periodos.',
+        },
+        anchorSource: {
+          type: 'string',
+          enum: [...BILLING_FIRST_CHARGE_ANCHOR_SOURCES],
+          nullable: true,
+        },
+        installationFee: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['outcome', 'amount'],
+          properties: {
+            outcome: { type: 'string', enum: [...BILLING_FIRST_CHARGE_INSTALLATION_OUTCOMES] },
+            amount: { type: 'string', pattern: '^\\d+\\.\\d{2}$', nullable: true },
+          },
+        },
+        fiscalData: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['outcome', 'frozenFields', 'missingFields'],
+          description: 'Datos fiscales congelados desde el suscriptor (solo nombres de campo).',
+          properties: {
+            outcome: { type: 'string', enum: [...BILLING_FIRST_CHARGE_FISCAL_OUTCOMES] },
+            frozenFields: {
+              type: 'array',
+              items: { type: 'string', enum: [...BILLING_FIRST_CHARGE_FISCAL_FIELDS] },
+            },
+            missingFields: {
+              type: 'array',
+              items: { type: 'string', enum: [...BILLING_FIRST_CHARGE_FISCAL_FIELDS] },
+            },
+          },
+        },
+        summary: GENERATION_SUMMARY_SCHEMA,
+        regularizedDrafts: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['unblocked', 'rescheduled'],
+          description:
+            'Borradores existentes desbloqueados (SIN_DATOS_FISCALES) y con vencimiento corregido.',
+          properties: {
+            unblocked: { type: 'integer', minimum: 0 },
+            rescheduled: { type: 'integer', minimum: 0 },
+          },
+        },
+      },
+    },
+  },
+};
 
 const DocumentListQuerySchema = z
   .object({
@@ -89,6 +177,7 @@ export class BillingDocumentsController {
   constructor(
     private readonly documents: BillingDocumentsService,
     private readonly generation: BillingGenerationService,
+    private readonly firstCharge: BillingFirstChargeService,
   ) {}
 
   @Post('generate')
@@ -112,16 +201,7 @@ export class BillingDocumentsController {
       type: 'object',
       additionalProperties: false,
       required: ['data'],
-      properties: {
-        data: {
-          type: 'object',
-          additionalProperties: false,
-          required: generationSummaryFields,
-          properties: Object.fromEntries(
-            generationSummaryFields.map((field) => [field, { type: 'integer', minimum: 0 }]),
-          ),
-        },
-      },
+      properties: { data: GENERATION_SUMMARY_SCHEMA },
     },
   })
   @ApiBadRequestResponse({ description: 'La solicitud no es válida.' })
@@ -133,6 +213,45 @@ export class BillingDocumentsController {
       data: await this.generation.generate({
         ...(input.date !== undefined ? { date: input.date } : {}),
         ...(input.contractId !== undefined ? { contractId: input.contractId } : {}),
+        actorId: actorId(request),
+      }),
+    };
+  }
+
+  @Post('generate-first-charge')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  @Permissions(AccessPermissionKey.BILLING_INVOICES_MANAGE)
+  @ApiOperation({
+    summary: 'Generar el primer cobro de un contrato activo sin periodos',
+    description:
+      'Ancla el primer cobro en la fecha civil de activación, congela el cargo de instalación ' +
+      'vigente si el contrato no lo tiene y genera los periodos vencidos hasta el actual. ' +
+      'Idempotente: con periodos existentes responde `existing` sin error.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['contractId'],
+      properties: { contractId: { type: 'string', format: 'uuid' } },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Resultado del primer cobro sin datos personales.',
+    schema: FIRST_CHARGE_RESULT_SCHEMA,
+  })
+  @ApiBadRequestResponse({ description: 'La solicitud no es válida.' })
+  @ApiUnauthorizedResponse({ description: 'La sesión no es válida.' })
+  @ApiForbiddenResponse({ description: 'El rol o permiso no permite esta acción.' })
+  @ApiNotFoundResponse({ description: 'No se encontró el contrato.' })
+  @ApiResponse({ status: 409, description: 'El contrato no está activo.' })
+  @ApiResponse({ status: 422, description: 'No se pudo determinar la fecha de activación.' })
+  async generateFirstCharge(@Body() body: unknown, @Req() request: AuthenticatedRequest) {
+    const input = new ZodValidationPipe(GenerateFirstChargeCommandSchema).transform(body);
+    return {
+      data: await this.firstCharge.generateFirstCharge({
+        contractId: input.contractId,
         actorId: actorId(request),
       }),
     };

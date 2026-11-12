@@ -17,6 +17,11 @@ export const ContractBillingSummarySchema = z
     totalPaid: billingMoneyStringSchema,
     totalPending: billingMoneyStringSchema,
     periodState: z.enum(BILLING_PERIOD_PAYMENT_STATES).optional(),
+    /**
+     * Contrato `ACTIVE` sin ninguna fila en `billing_periods` (spec 2026-11-11 R1). La ficha y
+     * la pestaña Facturación lo muestran como «Contrato activo sin cobros generados» (R2).
+     */
+    billingNotStarted: z.boolean().default(false),
   })
   .strict();
 

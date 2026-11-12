@@ -21,7 +21,7 @@ import {
 } from '@iwana/shared';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { DataSource, EntityManager } from 'typeorm';
-import { computeDueAndCutoff } from '@iwana/shared';
+import { computeDueAndCutoff, shiftLateDueAndCutoff } from '@iwana/shared';
 import { AuditService } from '../../audit/audit.service';
 import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
@@ -415,16 +415,24 @@ export class BillingDocumentsService {
       if (!cycle?.cycleDay || !period)
         throw new Error('No se pudo resolver el ciclo del periodo para emitir.');
       const effective = period.effective_policy as Record<string, unknown>;
-      const dates = computeDueAndCutoff(
-        { periodStart: period.period_start, periodEnd: period.period_end },
-        {
-          cutoffMode: effective['cutoff_mode'] as 'DIA_FIJO_CICLO' | 'VENCIMIENTO_MAS_GRACIA',
-          paymentTermDays: Number(effective['payment_term_days']),
-          graceDays: Number(effective['grace_days']),
-          cutoffEnabled: Boolean(effective['cutoff_enabled']),
-        },
+      // R8 (spec 2026-11-11): al emitir se recalculan las fechas; un periodo cobrado tarde
+      // tampoco nace vencido en la emisión (vence en emisión + plazo, corte corrido igual).
+      const dates = shiftLateDueAndCutoff(
+        computeDueAndCutoff(
+          { periodStart: period.period_start, periodEnd: period.period_end },
+          {
+            cutoffMode: effective['cutoff_mode'] as 'DIA_FIJO_CICLO' | 'VENCIMIENTO_MAS_GRACIA',
+            paymentTermDays: Number(effective['payment_term_days']),
+            graceDays: Number(effective['grace_days']),
+            cutoffEnabled: Boolean(effective['cutoff_enabled']),
+          },
+          issueDate,
+          cycle.cutoffDay,
+        ),
         issueDate,
-        cycle.cutoffDay,
+        Number.isInteger(Number(effective['payment_term_days']))
+          ? Number(effective['payment_term_days'])
+          : 0,
       );
       await manager.query(
         'UPDATE billing_periods SET due_date = $1::date, cutoff_date = $2::date WHERE tenant_id = $3 AND id = $4',

@@ -53,6 +53,10 @@ import { projectSubscriberForList } from '../subscribers/subscriber-projection';
 import { ContractsTenantSettingsReadPort } from './ports/contracts-tenant-settings-read.port';
 import { BillingAccountReadPort } from '../../billing/ports/billing-account-read.port';
 import { getTenantLocalDate } from './billing-cycle-date.util';
+import {
+  CONTRACT_PLAN_UUID_PATTERN,
+  resolvePlanInstallationFee,
+} from './utils/plan-installation-fee.util';
 import { appendContractActivatedEvent } from './contract-activation-events';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
@@ -136,9 +140,6 @@ const AUDITABLE_CONTRACT_UPDATE_FIELDS = new Set([
   'endDate',
   'planSnapshotJson',
 ]);
-
-const CONTRACT_PLAN_UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 export type ContractAutoCreationOutcome =
   | { outcome: 'CREATED'; contract: Contract }
@@ -1441,23 +1442,14 @@ export class ContractsService {
     planId: string,
     segment: CustomerSegment | null,
   ): Promise<number | null> {
-    if (!CONTRACT_PLAN_UUID_PATTERN.test(planId)) return null;
     const { schemaName, tenantId } = TenantContext.getOrThrow();
-    try {
-      const snapshot = await this.commercialCatalogPort.createSnapshot(
-        tenantId,
-        schemaName,
-        planId,
-        segment ?? undefined,
-        { manager },
-      );
-      return Number.isFinite(snapshot.installationFee) && snapshot.installationFee >= 0
-        ? round2Money(snapshot.installationFee)
-        : null;
-    } catch (error) {
-      if (error instanceof NotFoundException) return null;
-      throw error;
-    }
+    return resolvePlanInstallationFee(
+      this.commercialCatalogPort,
+      { tenantId, schemaName },
+      manager,
+      planId,
+      segment,
+    );
   }
 
   /**

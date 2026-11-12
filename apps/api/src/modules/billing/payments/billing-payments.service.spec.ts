@@ -50,6 +50,7 @@ describe('BillingPaymentsService', () => {
     findTitularRefs: jest.fn(),
     lockTitularForBillingWrite: jest.fn(),
     hasImpersonationSuspension: jest.fn().mockResolvedValue(false),
+    findActiveContractIds: jest.fn().mockResolvedValue([]),
   } as unknown as BillingContractReadPort;
   const audit = { logWithin: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
   const eventEmitter = { emitAsync: jest.fn() } as unknown as EventEmitter2;

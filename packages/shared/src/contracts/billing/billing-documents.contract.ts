@@ -154,3 +154,91 @@ export const BillingGenerationSummarySchema = z
   .strict();
 
 export type BillingGenerationSummary = z.infer<typeof BillingGenerationSummarySchema>;
+
+/** Comando «Generar primer cobro» de un contrato activo sin periodos (spec 2026-11-11 R3). */
+export const GenerateFirstChargeCommandSchema = z
+  .object({
+    contractId: z.string().uuid(),
+  })
+  .strict();
+
+export type GenerateFirstChargeCommand = z.infer<typeof GenerateFirstChargeCommandSchema>;
+
+/** Fuente de la fecha civil de activación que ancla el primer cobro. */
+export const BILLING_FIRST_CHARGE_ANCHOR_SOURCES = [
+  'ACTIVATION_EVENT',
+  'START_DATE',
+  'STATUS_CHANGED_AT',
+] as const;
+
+export type BillingFirstChargeAnchorSource = (typeof BILLING_FIRST_CHARGE_ANCHOR_SOURCES)[number];
+
+/**
+ * Resultado del congelamiento del cargo de instalación (R4): `FROZEN` lo congeló ahora,
+ * `ALREADY_SET` el contrato ya lo tenía (incluido `0`), `UNRESOLVED` el plan no tiene precio
+ * vigente para el segmento y `NOT_APPLICABLE` el contrato ya tenía periodos.
+ */
+export const BILLING_FIRST_CHARGE_INSTALLATION_OUTCOMES = [
+  'FROZEN',
+  'ALREADY_SET',
+  'UNRESOLVED',
+  'NOT_APPLICABLE',
+] as const;
+
+export type BillingFirstChargeInstallationOutcome =
+  (typeof BILLING_FIRST_CHARGE_INSTALLATION_OUTCOMES)[number];
+
+/** Datos fiscales del contrato heredado (R7): qué se congeló desde el suscriptor. */
+export const BILLING_FIRST_CHARGE_FISCAL_OUTCOMES = [
+  'FROZEN',
+  'ALREADY_SET',
+  'UNRESOLVED',
+  'NOT_APPLICABLE',
+] as const;
+
+export type BillingFirstChargeFiscalOutcome = (typeof BILLING_FIRST_CHARGE_FISCAL_OUTCOMES)[number];
+
+export const BILLING_FIRST_CHARGE_FISCAL_FIELDS = ['NAME', 'DOCUMENT', 'ADDRESS'] as const;
+
+export type BillingFirstChargeFiscalField = (typeof BILLING_FIRST_CHARGE_FISCAL_FIELDS)[number];
+
+export const BillingFirstChargeResultSchema = z
+  .object({
+    contractId: z.string().uuid(),
+    /** Fecha civil de activación usada como ancla; null si el contrato ya tenía periodos. */
+    anchorDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/u)
+      .nullable(),
+    anchorSource: z.enum(BILLING_FIRST_CHARGE_ANCHOR_SOURCES).nullable(),
+    installationFee: z
+      .object({
+        outcome: z.enum(BILLING_FIRST_CHARGE_INSTALLATION_OUTCOMES),
+        amount: billingMoneyStringSchema.nullable(),
+      })
+      .strict(),
+    /**
+     * R7: `FROZEN` congeló al menos un campo, `ALREADY_SET` el contrato ya los tenía,
+     * `UNRESOLVED` el suscriptor no tiene con qué completarlos y `NOT_APPLICABLE` el contrato
+     * ya tiene documentos no borrador. Solo nombres de campo, nunca valores.
+     */
+    fiscalData: z
+      .object({
+        outcome: z.enum(BILLING_FIRST_CHARGE_FISCAL_OUTCOMES),
+        frozenFields: z.array(z.enum(BILLING_FIRST_CHARGE_FISCAL_FIELDS)),
+        missingFields: z.array(z.enum(BILLING_FIRST_CHARGE_FISCAL_FIELDS)),
+      })
+      .strict(),
+    /** Suma del primer cobro y de los periodos vencidos generados hasta el vigente. */
+    summary: BillingGenerationSummarySchema,
+    /**
+     * Borradores existentes del contrato regularizados: `unblocked` dejaron de estar bloqueados
+     * por SIN_DATOS_FISCALES (R7) y `rescheduled` corrigieron un vencimiento pasado (R8).
+     */
+    regularizedDrafts: z
+      .object({ unblocked: generationCount, rescheduled: generationCount })
+      .strict(),
+  })
+  .strict();
+
+export type BillingFirstChargeResult = z.infer<typeof BillingFirstChargeResultSchema>;

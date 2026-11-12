@@ -21,6 +21,7 @@ import { TenantModule } from '../tenant/tenant.module';
 import { PrivacyModule } from '../privacy/privacy.module';
 import { BillingGenerationService } from './generation/billing-generation.service';
 import { BillingGenerationProcessor } from './generation/billing-generation.processor';
+import { BillingFirstChargeService } from './generation/billing-first-charge.service';
 import { CRM_CONTRACT_EVENTS_QUEUE } from '@iwana/shared';
 import { BILLING_GENERATION_QUEUE } from './generation/billing-generation.constants';
 import { ContractActivatedProcessor } from './generation/contract-activated.processor';
@@ -53,6 +54,7 @@ import { TenantBillingIssuerReadAdapter } from './ports/tenant-billing-issuer-re
     BillingPaymentsService,
     BillingDocumentsService,
     BillingGenerationService,
+    BillingFirstChargeService,
     BillingGenerationProcessor,
     ContractActivatedProcessor,
     TenantBillingIssuerReadAdapter,

@@ -255,6 +255,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
               canReadBilling ? (
                 <SubscriberStatementSummary
                   statement={statement}
+                  contracts={subscriber360.contracts}
                   anonymized={anonymized}
                   onOpenBilling={() => selectSubscriberTab('facturacion')}
                 />

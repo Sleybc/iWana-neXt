@@ -8,6 +8,7 @@ import { EffectivePermissionsService } from '../../access-control/services/effec
 import { BillingDocumentsController } from './billing-documents.controller';
 import { BillingDocumentsService } from './billing-documents.service';
 import { BillingGenerationService } from '../generation/billing-generation.service';
+import { BillingFirstChargeService } from '../generation/billing-first-charge.service';
 
 jest.mock('./billing-documents.pdf', () => ({
   renderBillingDocumentPdf: jest.fn().mockResolvedValue(Buffer.from('%PDF-fixture')),
@@ -32,6 +33,7 @@ describe('BR-2.13 HTTP documentos CA-FAC-11', () => {
       providers: [
         { provide: BillingDocumentsService, useValue: documents },
         { provide: BillingGenerationService, useValue: generation },
+        { provide: BillingFirstChargeService, useValue: { generateFirstCharge: jest.fn() } },
         {
           provide: EffectivePermissionsService,
           useValue: { getEffectivePermissionsForUser: async () => grants },

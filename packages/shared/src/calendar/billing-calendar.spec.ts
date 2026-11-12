@@ -8,6 +8,7 @@ import {
   nextBillingDates,
   prorate,
   roundHalfUpToCents,
+  shiftLateDueAndCutoff,
 } from './billing-calendar';
 import type {
   BillingCutoffMode,
@@ -330,6 +331,37 @@ describe('billing-calendar (ADR-103 D5, PRD §6, CA-FAC-01)', () => {
         today: '2026-11-01',
       });
       expect(onGenerationDate[0]?.generationDate).toBe('2026-11-01');
+    });
+  });
+
+  describe('shiftLateDueAndCutoff (spec 2026-11-11 R8, CA-7)', () => {
+    it('periodo de octubre generado el 11-nov vence el 25-nov y el corte se corre igual', () => {
+      const cycle = computeDueAndCutoff(
+        { periodStart: '2026-10-01', periodEnd: '2026-10-31' },
+        { cutoffMode: 'DIA_FIJO_CICLO', paymentTermDays: 14, graceDays: 0 },
+        '2026-11-11',
+        15,
+      );
+      expect(cycle).toEqual({ dueDate: '2026-10-14', cutoffDate: '2026-10-15' });
+      expect(shiftLateDueAndCutoff(cycle, '2026-11-11', 14)).toEqual({
+        dueDate: '2026-11-25',
+        cutoffDate: '2026-11-26',
+      });
+    });
+
+    it('no cambia un vencimiento en la fecha de referencia o posterior', () => {
+      const onTime = { dueDate: '2026-11-14', cutoffDate: '2026-11-15' };
+      expect(shiftLateDueAndCutoff(onTime, '2026-11-14', 14)).toBe(onTime);
+      expect(shiftLateDueAndCutoff(onTime, '2026-11-01', 14)).toBe(onTime);
+    });
+
+    it('conserva el corte deshabilitado y rechaza plazos inválidos', () => {
+      expect(
+        shiftLateDueAndCutoff({ dueDate: '2026-10-14', cutoffDate: null }, '2026-11-11', 0),
+      ).toEqual({ dueDate: '2026-11-11', cutoffDate: null });
+      expect(() =>
+        shiftLateDueAndCutoff({ dueDate: '2026-10-14', cutoffDate: null }, '2026-11-11', -1),
+      ).toThrow(RangeError);
     });
   });
 });

@@ -590,6 +590,8 @@ describeWithServices('Firma del contrato: PostgreSQL + Redis reales', () => {
     await expect(read(technician)).resolves.toEqual({
       contractId: f.contractId,
       status: 'DRAFT',
+      // Fase 2 (D-F2): la OT avisa si el borrador no tiene ciclo; el fixture lo tiene.
+      billingCycleMissing: false,
       holder: {
         fullName: 'Adquirente de prueba',
         documentType: 'NIT',

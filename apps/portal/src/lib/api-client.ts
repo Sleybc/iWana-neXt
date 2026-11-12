@@ -256,11 +256,13 @@ import type {
   BillingContractPolicyResponse,
   BillingContractPolicyUpdate,
   BillingDocumentResponse,
+  BillingFirstChargeResult,
   BillingGenerationSummary,
   BillingPaymentResponse,
   BillingPeriodPaymentState,
   AllocateCreditCommand,
   GenerateDocumentsCommand,
+  GenerateFirstChargeCommand,
   IssueDocumentsCommand,
   RegisterPaymentCommand,
   VoidDocumentCommand,
@@ -7360,6 +7362,14 @@ export const billingApi = {
     request<Blob>(`/billing/documents/${encodeURIComponent(id)}/pdf`, { responseType: 'blob' }),
   generate: (input: GenerateDocumentsCommand, key: string) =>
     billingMutation<BillingGenerationSummary>('/billing/documents/generate', 'POST', input, key),
+  /** Primer cobro de un contrato activo sin periodos (spec 2026-11-11 R3). Idempotente. */
+  generateFirstCharge: (input: GenerateFirstChargeCommand, key: string) =>
+    billingMutation<BillingFirstChargeResult>(
+      '/billing/documents/generate-first-charge',
+      'POST',
+      input,
+      key,
+    ),
   issue: (input: IssueDocumentsCommand, key: string) =>
     billingMutation<BillingDocumentResponse[]>('/billing/documents/issue', 'POST', input, key),
   voidDocument: (id: string, input: VoidDocumentCommand, key: string) =>

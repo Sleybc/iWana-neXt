@@ -71,6 +71,7 @@ describeWithDb('BillingPaymentsService contra PostgreSQL real', () => {
       | 'lockTitularForBillingWrite'
       | 'findTitularDisplayNames'
       | 'hasImpersonationSuspension'
+      | 'findActiveContractIds'
     >
   >;
   let activeMarks: Record<string, string[]>;
@@ -316,6 +317,7 @@ describeWithDb('BillingPaymentsService contra PostgreSQL real', () => {
       lockTitularForBillingWrite: jest.fn(),
       findTitularDisplayNames: jest.fn(),
       hasImpersonationSuspension: jest.fn().mockResolvedValue(false),
+      findActiveContractIds: jest.fn().mockResolvedValue([]),
     };
     contractReadPort.findTitularRefs.mockImplementation(async (ids) =>
       ids.includes(subscriberId) ? [{ subscriberId, partyId, anonymized: false }] : [],

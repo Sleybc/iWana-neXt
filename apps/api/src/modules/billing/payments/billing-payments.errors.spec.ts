@@ -106,6 +106,7 @@ describe('BillingPaymentsService — rechazos y acceso a datos protegidos', () =
     findTitularDisplayNames: jest.Mock;
     lockTitularForBillingWrite: jest.Mock;
     hasImpersonationSuspension: jest.Mock;
+    findActiveContractIds: jest.Mock;
   };
   let audit: { logWithin: jest.Mock };
   let privacyMarks: { activeMarks: jest.Mock };
@@ -149,6 +150,7 @@ describe('BillingPaymentsService — rechazos y acceso a datos protegidos', () =
         .fn()
         .mockResolvedValue({ exists: true, partyId: PARTY, anonymized: false }),
       hasImpersonationSuspension: jest.fn().mockResolvedValue(false),
+      findActiveContractIds: jest.fn().mockResolvedValue([]),
     };
     audit = { logWithin: jest.fn().mockResolvedValue(undefined) };
     privacyMarks = { activeMarks: jest.fn().mockResolvedValue({}) };

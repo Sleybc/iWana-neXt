@@ -675,6 +675,9 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     // puerto ANTES de la transacción (un puerto dentro abriría otra conexión).
     const suspendedByImpersonation =
       await this.contractReadPort.hasImpersonationSuspension(subscriberId);
+    // Spec 2026-11-11 R1: contratos ACTIVE del titular (CRM) para señalar los que no tienen
+    // ningún periodo; los periodos se cruzan dentro de la transacción de Billing.
+    const activeContractIds = await this.contractReadPort.findActiveContractIds(subscriberId);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       // RS-22: misma condición de omisión por suplantación del paso 2b de §6.1.
@@ -791,6 +794,27 @@ export class BillingPaymentsService extends BillingAccountReadPort {
         [...summaryByContract.keys()],
         localDate,
       );
+      // R1 (ampliada 2026-11-11): un contrato ACTIVE sigue «sin cobros» mientras no tenga
+      // ningún documento emitido; los borradores no cuentan en cartera.
+      const withIssued = activeContractIds.length
+        ? new Set(
+            (
+              (await qr.manager.query(
+                `SELECT DISTINCT contract_id::text AS contract_id
+                   FROM billing_documents
+                  WHERE tenant_id = $1 AND contract_id = ANY($2::uuid[])
+                    AND status <> 'BORRADOR'`,
+                [tenantId, activeContractIds],
+              )) as Array<{ contract_id: string }>
+            ).map(({ contract_id }) => contract_id),
+          )
+        : new Set<string>();
+      const activeIds = new Set(activeContractIds);
+      const notStartedIn = (contractId: string) =>
+        activeIds.has(contractId) && !withIssued.has(contractId);
+      const notStarted = activeContractIds.filter(
+        (contractId) => !withIssued.has(contractId) && !summaryByContract.has(contractId),
+      );
       const paymentsRegisteredCents = moneyCents(paymentCountRows[0]?.registered_amount ?? '0.00');
       const allocatedCents = moneyCents(paymentCountRows[0]?.allocated_amount ?? '0.00');
       const statement = BillingAccountStatementSchema.parse({
@@ -803,13 +827,25 @@ export class BillingPaymentsService extends BillingAccountReadPort {
         creditBalance: centsMoney(Math.max(0, paymentsRegisteredCents - allocatedCents)),
         documents,
         payments: paymentResponses,
-        contractSummaries: [...summaryByContract.entries()].map(([contractId, summary]) => ({
-          contractId,
-          totalInvoiced: centsMoney(summary.totalInvoiced),
-          totalPaid: centsMoney(summary.totalPaid),
-          totalPending: centsMoney(summary.totalPending),
-          periodState: periodStates[contractId]?.state ?? WITHOUT_DOCUMENT_STATE,
-        })),
+        contractSummaries: [...summaryByContract.entries()]
+          .map(([contractId, summary]) => ({
+            contractId,
+            totalInvoiced: centsMoney(summary.totalInvoiced),
+            totalPaid: centsMoney(summary.totalPaid),
+            totalPending: centsMoney(summary.totalPending),
+            periodState: periodStates[contractId]?.state ?? WITHOUT_DOCUMENT_STATE,
+            billingNotStarted: notStartedIn(contractId),
+          }))
+          .concat(
+            notStarted.map((contractId) => ({
+              contractId,
+              totalInvoiced: '0.00',
+              totalPaid: '0.00',
+              totalPending: '0.00',
+              periodState: WITHOUT_DOCUMENT_STATE,
+              billingNotStarted: true,
+            })),
+          ),
       });
 
       if (blocked && readAccess.canSeeBlocked) {

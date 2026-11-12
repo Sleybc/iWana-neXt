@@ -73,6 +73,12 @@ export abstract class BillingContractReadPort {
    */
   abstract hasImpersonationSuspension(subscriberId: string): Promise<boolean>;
 
+  /**
+   * Contratos `ACTIVE` del suscriptor (sin borrados), para señalar en el estado de cuenta los
+   * que aún no tienen ningún periodo de cobro (spec 2026-11-11 R1). Solo identificadores.
+   */
+  abstract findActiveContractIds(subscriberId: string): Promise<string[]>;
+
   /** Proyección mínima sin PII para previsualizar el ciclo de un contrato. */
   abstract findBillingCycleByContractId(
     contractId: string,

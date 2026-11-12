@@ -233,6 +233,28 @@ export function computeDueAndCutoff(
 }
 
 /**
+ * Periodo cobrado tarde (spec 2026-11-11 R8): si el vencimiento del ciclo es anterior a la fecha
+ * de referencia (generación o emisión), vence en esa fecha + `paymentTermDays` y el corte se
+ * corre los mismos días. Un documento nunca nace vencido. Sin cambio si vence en la fecha o después.
+ */
+export function shiftLateDueAndCutoff(
+  dates: BillingDueAndCutoff,
+  referenceDate: string,
+  paymentTermDays: number,
+): BillingDueAndCutoff {
+  if (dates.dueDate >= referenceDate) return dates;
+  if (!Number.isInteger(paymentTermDays) || paymentTermDays < 0) {
+    throw new RangeError('El plazo de pago debe ser un entero no negativo.');
+  }
+  const dueDate = addDays(referenceDate, paymentTermDays);
+  const shift = diffInDays(dates.dueDate, dueDate);
+  return {
+    dueDate,
+    cutoffDate: dates.cutoffDate == null ? null : addDays(dates.cutoffDate, shift),
+  };
+}
+
+/**
  * Calcula el prorrateo de un valor para un periodo incompleto (ADR-103 D5).
  * - DIAS_REALES: price * coveredDays / periodDays
  * - MES_30: price * coveredDays / 30

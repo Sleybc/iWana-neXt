@@ -7,6 +7,8 @@ import {
   computeDueAndCutoff,
   diffInDays,
   resolveGenerationTarget,
+  shiftLateDueAndCutoff,
+  type BillingBlockingReason,
   type BillingProrationMethod,
   type BillingGenerationSummary,
 } from '@iwana/shared';
@@ -54,6 +56,7 @@ interface ContractPolicyRow {
 }
 
 const PAGE_SIZE = 200;
+const CATCH_UP_MAX_PERIODS = 24;
 
 function emptySummary(): BillingGenerationSummary {
   return {
@@ -86,6 +89,19 @@ function previousPeriodStart(cycleDay: number, periodStart: string): string {
     : computeBillingPeriod(cycleDay, year, month - 1).periodStart;
 }
 
+/** Motivo que impide emitir el borrador de este contrato (RF-FAC-15); null si se puede emitir. */
+export function draftBlockingReason(contract: BillableContract): BillingBlockingReason | null {
+  return !contract.monthlyPrice
+    ? 'SIN_PRECIO'
+    : !contract.vatSnapshot
+      ? 'SIN_TRATAMIENTO_IVA'
+      : !contract.buyer.displayName ||
+          !contract.buyer.documentType ||
+          !contract.buyer.hasDocumentNumber
+        ? 'SIN_DATOS_FISCALES'
+        : null;
+}
+
 /** Periodo del ciclo que contiene la fecha civil `date` (día de ciclo 1-28). */
 export function periodContaining(cycleDay: number, date: string) {
   const year = Number(date.slice(0, 4));
@@ -97,7 +113,7 @@ export function periodContaining(cycleDay: number, date: string) {
     : computeBillingPeriod(cycleDay, year, month - 1);
 }
 
-function localDateFor(date: Date, timezone: string): string {
+export function localDateFor(date: Date, timezone: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
     year: 'numeric',
@@ -136,6 +152,12 @@ export class BillingGenerationService {
        * tiene cualquier periodo, devuelve `existing` (idempotente por contrato y periodo).
        */
       firstChargeFrom?: string;
+      /**
+       * Puesta al día del primer cobro (spec 2026-11-11 R3): genera el periodo del ciclo que
+       * empieza en esta fecha civil sin esperar al lote y sin regenerar uno existente. Exige
+       * `contractId`; quien llama decide qué periodos ya vencieron (`pendingCatchUpPeriods`).
+       */
+      targetPeriodStart?: string;
     } = {},
   ): Promise<BillingGenerationSummary> {
     const context = TenantContext.getOrThrow();
@@ -172,10 +194,11 @@ export class BillingGenerationService {
             fullContract,
             localDate,
             input.actorId ?? null,
-            !!input.contractId && !input.firstChargeFrom,
+            !!input.contractId && !input.firstChargeFrom && !input.targetPeriodStart,
             prepared,
             events,
             input.contractId ? input.firstChargeFrom : undefined,
+            input.contractId && !input.firstChargeFrom ? input.targetPeriodStart : undefined,
           ),
         );
         await this.documents.publishEvents(events);
@@ -188,6 +211,183 @@ export class BillingGenerationService {
       }
     }
     return summary;
+  }
+
+  /** El contrato ya tiene al menos un periodo de cobro (spec 2026-11-11 R1). */
+  async hasAnyPeriod(contractId: string): Promise<boolean> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const rows = (await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      qr.query('SELECT 1 FROM billing_periods WHERE tenant_id = $1 AND contract_id = $2 LIMIT 1', [
+        tenantId,
+        contractId,
+      ]),
+    )) as unknown[];
+    return rows.length > 0;
+  }
+
+  /** Todos los documentos del contrato siguen en BORRADOR (sin emitidos ni anulados). */
+  async onlyDraftDocuments(contractId: string): Promise<boolean> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const rows = (await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      qr.query(
+        `SELECT 1 FROM billing_documents
+          WHERE tenant_id = $1 AND contract_id = $2 AND status <> 'BORRADOR' LIMIT 1`,
+        [tenantId, contractId],
+      ),
+    )) as unknown[];
+    return rows.length === 0;
+  }
+
+  /**
+   * Regulariza los borradores existentes del contrato (spec 2026-11-11 R7/R8):
+   * - Un borrador bloqueado por SIN_DATOS_FISCALES se re-evalúa con los datos fiscales actuales
+   *   del contrato (misma regla que la generación).
+   * - Un periodo sin documentos emitidos cuyo vencimiento es anterior a su fecha de generación
+   *   vence en generación + plazo de pago (política congelada) y su corte se corre igual; los
+   *   borradores del periodo toman el nuevo vencimiento.
+   * Nunca toca documentos emitidos ni anulados. Cada borrador cambiado queda auditado.
+   */
+  async regularizeDrafts(
+    contractId: string,
+    actorId: string | null,
+  ): Promise<{ unblocked: number; rescheduled: number }> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    // Puerto fuera de la transacción: abre su propia conexión.
+    const contract = await this.contracts.findByContractId(contractId, { revealDocument: false });
+    const blocking = contract ? draftBlockingReason(contract) : null;
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rows = (await qr.manager.query(
+        `SELECT d.id::text AS document_id, d.blocking_reason, d.due_date::text AS document_due,
+                p.id::text AS period_id, p.generation_date::text AS generation_date,
+                p.due_date::text AS due_date, p.cutoff_date::text AS cutoff_date,
+                p.effective_policy,
+                EXISTS (SELECT 1 FROM billing_documents x
+                         WHERE x.tenant_id = p.tenant_id AND x.period_id = p.id
+                           AND x.status = 'EMITIDO') AS has_issued
+           FROM billing_documents d
+           JOIN billing_periods p ON p.id = d.period_id AND p.tenant_id = d.tenant_id
+          WHERE d.tenant_id = $1 AND d.contract_id = $2 AND d.status = 'BORRADOR'
+          ORDER BY p.period_start, d.id
+          FOR UPDATE OF d, p`,
+        [tenantId, contractId],
+      )) as Array<{
+        document_id: string;
+        blocking_reason: BillingBlockingReason | null;
+        document_due: string;
+        period_id: string;
+        generation_date: string;
+        due_date: string;
+        cutoff_date: string | null;
+        effective_policy: Partial<BillingPolicyRow>;
+        has_issued: boolean;
+      }>;
+      const rescheduledPeriods = new Map<string, { dueDate: string; cutoffDate: string | null }>();
+      let unblocked = 0;
+      let rescheduled = 0;
+      for (const row of rows) {
+        let dates = rescheduledPeriods.get(row.period_id);
+        if (!dates && !row.has_issued) {
+          const shifted = shiftLateDueAndCutoff(
+            { dueDate: civilDate(row.due_date), cutoffDate: row.cutoff_date },
+            civilDate(row.generation_date),
+            Number(row.effective_policy.payment_term_days ?? 0),
+          );
+          if (shifted.dueDate !== civilDate(row.due_date)) {
+            await qr.manager.query(
+              `UPDATE billing_periods SET due_date = $3::date, cutoff_date = $4::date
+                WHERE tenant_id = $1 AND id = $2`,
+              [tenantId, row.period_id, shifted.dueDate, shifted.cutoffDate],
+            );
+            rescheduledPeriods.set(row.period_id, shifted);
+            dates = shifted;
+          }
+        }
+        const nextDue =
+          dates && civilDate(row.document_due) !== dates.dueDate ? dates.dueDate : null;
+        const nextBlocking =
+          contract &&
+          row.blocking_reason === 'SIN_DATOS_FISCALES' &&
+          blocking !== 'SIN_DATOS_FISCALES'
+            ? blocking
+            : row.blocking_reason;
+        const unblocks = nextBlocking !== row.blocking_reason;
+        if (!nextDue && !unblocks) continue;
+        await qr.manager.query(
+          `UPDATE billing_documents
+              SET blocking_reason = $3, due_date = COALESCE($4::date, due_date), updated_at = now()
+            WHERE tenant_id = $1 AND id = $2 AND status = 'BORRADOR'`,
+          [tenantId, row.document_id, nextBlocking, nextDue],
+        );
+        await this.audit.logWithin(
+          {
+            action: AuditAction.UPDATE,
+            entityType: 'BillingDocument',
+            entityId: row.document_id,
+            userId: actorId,
+            oldValue: {
+              blockingReason: row.blocking_reason,
+              dueDate: civilDate(row.document_due),
+            },
+            newValue: {
+              blockingReason: nextBlocking,
+              dueDate: nextDue ?? civilDate(row.document_due),
+              reason: 'PRIMER_COBRO_CONTRATO_HEREDADO',
+            },
+          },
+          qr.manager,
+        );
+        if (unblocks) unblocked += 1;
+        if (nextDue) rescheduled += 1;
+      }
+      return { unblocked, rescheduled };
+    });
+  }
+
+  /**
+   * Inicios de los periodos posteriores al último generado del contrato cuya generación ya
+   * llegó en `localDate` según la política efectiva (tenant + override del contrato). Sin
+   * periodos previos devuelve vacío: el primero lo ancla `firstChargeFrom`.
+   */
+  async pendingCatchUpPeriods(
+    contractId: string,
+    cycleDay: number,
+    localDate: string,
+  ): Promise<string[]> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const rows = (await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      qr.query(
+        `SELECT COALESCE(cp.period_timing, p.period_timing) AS period_timing,
+                COALESCE(cp.generation_lead_days, p.generation_lead_days) AS generation_lead_days,
+                (SELECT MAX(bp.period_start)::text FROM billing_periods bp
+                  WHERE bp.tenant_id = $1 AND bp.contract_id = $2) AS last_start
+           FROM billing_policy p
+           LEFT JOIN billing_contract_policy cp
+             ON cp.tenant_id = p.tenant_id AND cp.contract_id = $2
+          WHERE p.tenant_id = $1`,
+        [tenantId, contractId],
+      ),
+    )) as Array<{
+      period_timing: 'ANTICIPADO' | 'VENCIDO';
+      generation_lead_days: number;
+      last_start: string | null;
+    }>;
+    const row = rows[0];
+    if (!row?.last_start) return [];
+    const current = resolveGenerationTarget(
+      cycleDay,
+      { periodTiming: row.period_timing, generationLeadDays: row.generation_lead_days },
+      localDate,
+    );
+    const starts: string[] = [];
+    let cursor = periodContaining(cycleDay, civilDate(row.last_start));
+    // Tope defensivo: dos años de periodos por invocación.
+    for (let guard = 0; guard < CATCH_UP_MAX_PERIODS; guard += 1) {
+      const next = periodContaining(cycleDay, addDays(cursor.periodEnd, 1));
+      if (next.periodStart > current.periodStart) break;
+      starts.push(next.periodStart);
+      cursor = next;
+    }
+    return starts;
   }
 
   async automaticGenerationEnabled(tenantId: string, schemaName: string): Promise<boolean> {
@@ -241,6 +441,7 @@ export class BillingGenerationService {
     prepared: Awaited<ReturnType<BillingDocumentsService['prepareIssue']>>,
     events: PeriodEvent[],
     firstChargeFrom?: string,
+    targetPeriodStart?: string,
   ): Promise<
     'generated' | 'existing' | 'omittedTermination' | 'blocked' | 'notDue' | 'withoutCycle'
   > {
@@ -274,11 +475,13 @@ export class BillingGenerationService {
     // de cobro, sin esperar la fecha de generación del lote (CA-3).
     let target = firstChargeFrom
       ? periodContaining(contract.cycleDay, civilDate(billingStart ?? firstChargeFrom))
-      : resolveGenerationTarget(
-          contract.cycleDay,
-          { periodTiming: policy.period_timing, generationLeadDays: policy.generation_lead_days },
-          localDate,
-        );
+      : targetPeriodStart
+        ? periodContaining(contract.cycleDay, targetPeriodStart)
+        : resolveGenerationTarget(
+            contract.cycleDay,
+            { periodTiming: policy.period_timing, generationLeadDays: policy.generation_lead_days },
+            localDate,
+          );
     if (billingStart && billingStart > target.periodEnd) return 'notDue';
     let combinedStart: string | null = null;
     if (
@@ -370,28 +573,26 @@ export class BillingGenerationService {
     const periodDays = diffInDays(target.periodStart, target.periodEnd) + 1;
     const coveredDays = diffInDays(coveredStart, coveredEnd) + 1;
     const issueDate = localDate;
-    const dueAndCutoff = computeDueAndCutoff(
-      target,
-      {
-        // RS-18: al reutilizar el periodo, el vencimiento sale de la política congelada.
-        cutoffMode: effectivePolicy.cutoff_mode,
-        paymentTermDays: effectivePolicy.payment_term_days,
-        graceDays: effectivePolicy.grace_days,
-        cutoffEnabled: effectivePolicy.cutoff_enabled,
-      },
+    // R8 (spec 2026-11-11): un periodo cobrado tarde no nace vencido; vence en la generación
+    // más el plazo de pago y el corte se corre los mismos días.
+    const dueAndCutoff = shiftLateDueAndCutoff(
+      computeDueAndCutoff(
+        target,
+        {
+          // RS-18: al reutilizar el periodo, el vencimiento sale de la política congelada.
+          cutoffMode: effectivePolicy.cutoff_mode,
+          paymentTermDays: effectivePolicy.payment_term_days,
+          graceDays: effectivePolicy.grace_days,
+          cutoffEnabled: effectivePolicy.cutoff_enabled,
+        },
+        issueDate,
+        contract.cutoffDay,
+      ),
       issueDate,
-      contract.cutoffDay,
+      effectivePolicy.payment_term_days,
     );
 
-    const blockingReason = !contract.monthlyPrice
-      ? 'SIN_PRECIO'
-      : !contract.vatSnapshot
-        ? 'SIN_TRATAMIENTO_IVA'
-        : !contract.buyer.displayName ||
-            !contract.buyer.documentType ||
-            !contract.buyer.hasDocumentNumber
-          ? 'SIN_DATOS_FISCALES'
-          : null;
+    const blockingReason = draftBlockingReason(contract);
     const hasTax = contract.vatSnapshot !== null;
     const line =
       contract.monthlyPrice && hasTax

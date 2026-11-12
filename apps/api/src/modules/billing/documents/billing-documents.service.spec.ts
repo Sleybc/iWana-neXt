@@ -374,6 +374,36 @@ describe('BillingDocumentsService — emisión, anulación y descarte', () => {
       expect(update?.[0]).toContain("SET status = 'EMITIDO'");
     });
 
+    it('R8: al emitir tarde, vence en emisión + plazo y el corte se corre igual', async () => {
+      const manager = { query } as unknown as EntityManager;
+      // Ciclo 5, corte 20: el periodo del 5-oct vence el 19-oct; se emite el 5-nov (+15 días).
+      await service.issueWithinManager(manager, TENANT, [DOCUMENT], ACTOR, prepared(), []);
+      const periodUpdate = query.mock.calls.find(([sql]) =>
+        String(sql).includes('UPDATE billing_periods SET due_date'),
+      );
+      expect(periodUpdate?.[1]).toEqual(['2026-11-20', '2026-11-21', TENANT, PERIOD]);
+      const documentUpdate = query.mock.calls.find(([sql]) =>
+        String(sql).includes("SET status = 'EMITIDO'"),
+      );
+      expect(documentUpdate?.[1]).toContain('2026-11-20');
+    });
+
+    it('R8: al emitir a tiempo conserva el vencimiento del ciclo', async () => {
+      const manager = { query } as unknown as EntityManager;
+      await service.issueWithinManager(
+        manager,
+        TENANT,
+        [DOCUMENT],
+        ACTOR,
+        { ...prepared(), issueDate: '2026-10-10' },
+        [],
+      );
+      const periodUpdate = query.mock.calls.find(([sql]) =>
+        String(sql).includes('UPDATE billing_periods SET due_date'),
+      );
+      expect(periodUpdate?.[1]).toEqual(['2026-10-19', '2026-10-20', TENANT, PERIOD]);
+    });
+
     it('reintenta el consecutivo ante una colisión y se detiene tras tres intentos', async () => {
       const conflict = Object.assign(new Error('duplicate'), {
         driverError: { code: '23505', constraint: 'billing_documents_tenant_id_number_key' },

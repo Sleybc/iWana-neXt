@@ -16,6 +16,8 @@ import { BillingModule } from './billing.module';
 import { BillingPaymentsService } from './payments/billing-payments.service';
 import { BillingAccountReadPort } from './ports/billing-account-read.port';
 import { BillingContractReadPort } from './ports/billing-contract-read.port';
+import { BillingContractFirstChargePort } from './ports/billing-contract-first-charge.port';
+import { BillingContractFirstChargeAdapter } from '../crm/contracts/billing-contract-first-charge.adapter';
 
 const meta = (key: string, target: object): unknown[] =>
   (Reflect.getMetadata(key, target) as unknown[] | undefined) ?? [];
@@ -47,8 +49,19 @@ describe('BR-4 composición de módulos y contratos', () => {
   it('BR-4.5 BillingContractReadModule provee y exporta solo puertos', () => {
     const providers = meta(MODULE_METADATA.PROVIDERS, BillingContractReadModule);
     const exports = meta(MODULE_METADATA.EXPORTS, BillingContractReadModule);
-    // SEC-3 añade el puerto de lectura del outbox de activación; siguen sin exportarse adaptadores.
-    expect(exports).toEqual([BillingContractReadPort, ContractActivationEventReadPort]);
+    // SEC-3 añade el puerto de lectura del outbox de activación y la spec 2026-11-11 el del
+    // primer cobro (R3/R4); siguen sin exportarse adaptadores.
+    expect(exports).toEqual([
+      BillingContractReadPort,
+      ContractActivationEventReadPort,
+      BillingContractFirstChargePort,
+    ]);
+    expect(providers).toContainEqual(
+      expect.objectContaining({
+        provide: BillingContractFirstChargePort,
+        useExisting: BillingContractFirstChargeAdapter,
+      }),
+    );
     expect(providers).toContainEqual(
       expect.objectContaining({
         provide: ContractActivationEventReadPort,

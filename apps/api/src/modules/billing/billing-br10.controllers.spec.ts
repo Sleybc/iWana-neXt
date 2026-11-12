@@ -5,6 +5,7 @@ import { EffectivePermissionsService } from '../access-control/services/effectiv
 import { BillingDocumentsController } from './documents/billing-documents.controller';
 import { BillingDocumentsService } from './documents/billing-documents.service';
 import { BillingGenerationService } from './generation/billing-generation.service';
+import { BillingFirstChargeService } from './generation/billing-first-charge.service';
 import { BillingPaymentsController } from './payments/billing-payments.controller';
 import { BillingPaymentsService } from './payments/billing-payments.service';
 import { BillingPolicyController } from './policy/billing-policy.controller';
@@ -45,6 +46,7 @@ describe('Controladores de facturación — ramas de actor y permisos', () => {
       controller = new BillingDocumentsController(
         documents as unknown as BillingDocumentsService,
         generation as unknown as BillingGenerationService,
+        { generateFirstCharge: jest.fn() } as unknown as BillingFirstChargeService,
       );
     });
 
