@@ -59,6 +59,8 @@ describeDb('Contrato activo sin cobros — primer cobro (PostgreSQL real)', () =
   const config = new ConfigService({
     PII_ENCRYPTION_KEY: '56'.repeat(32),
     MFA_ENCRYPTION_KEY: '56'.repeat(32),
+    // Explícita: el CI no define PII_HASH_KEY y ConfigService caería a process.env.
+    PII_HASH_KEY: '57'.repeat(32),
     NODE_ENV: 'test',
   });
   const fiscalCrypto = createFiscalDocumentCrypto(config);
