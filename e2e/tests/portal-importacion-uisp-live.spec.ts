@@ -474,7 +474,11 @@ test.describe('Importación desde UISP — ADR-110 contra Portal, API y worker r
     await expect(page).toHaveURL(/[?&]tab=documentos(?:&|$)/u);
     for (const n of [1, 2, 3]) {
       await expect(
-        page.getByText(`Histórico importado SINT-2023-${n}`, { exact: true }),
+        // La actividad de la ficha también lo nombra: se acota al panel de Documentos.
+        page
+          .getByRole('tabpanel', { name: 'Documentos' })
+          .getByText(`Histórico importado SINT-2023-${n}`, { exact: true })
+          .first(),
       ).toBeVisible();
     }
     await expect(page.getByText('Soporte importado (PDF)', { exact: true })).toBeVisible();
