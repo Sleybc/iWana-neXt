@@ -55,5 +55,5 @@ El CI de `d50e4428` (run 43108316976) falló en 4 E2E por dos regresiones: consu
 
 ## 5. Siguiente
 
-1. Contrato activo sin cobros: [spec](../specs/2026-11-11-mod05-mod14-contrato-activo-sin-cobros.md), publicado en `57a43fd2`; contrato `fe648c40` regularizado en desarrollo (oct 53.548,39 con instalación, vence 25-nov; nov 55.000).
+1. Contrato activo sin cobros: [spec](../specs/2026-11-11-mod05-mod14-contrato-activo-sin-cobros.md), publicado en `57a43fd2` + `441ef807` + `8f06a8f9`, G6.5 ✅ 2026-11-12 (CI 43129869007); contrato `fe648c40` regularizado en desarrollo (oct 53.548,39 con instalación, vence 25-nov; nov 55.000).
 2. Fase pendiente: etiquetas manuales + importación desde UISP.
