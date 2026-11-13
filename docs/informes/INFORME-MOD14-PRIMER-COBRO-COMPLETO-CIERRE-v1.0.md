@@ -1,7 +1,7 @@
 # INFORME — MOD14 · Primer cobro completo · Cierre v1.0
 
 **Fecha:** 2026-11-13 · **Spec:** [2026-11-13-mod14-primer-cobro-completo](../specs/2026-11-13-mod14-primer-cobro-completo.md) (G0) · **Plan:** [2026-11-13-mod14-primer-cobro-completo](../plans/2026-11-13-mod14-primer-cobro-completo.md)
-**Publicación:** un solo commit al terminar las 4 olas · **Estado:** G6 ✅ · G6.5 pendiente del CI
+**Publicación:** un solo commit al terminar las 4 olas · **Estado:** G6 ✅ · G6.5 ✅ 2026-11-13 (CI de `61470065`, run 43479881594; E2E 348 passed, 0 failed)
 
 ## 1. Entregado
 
@@ -24,7 +24,7 @@
 
 ## 3. No verificado y pendientes
 
-- El E2E nuevo corre por primera vez en CI.
+- Arreglos tras el commit único: `310540b8` y `61470065` (seed y formato del E2E), `a5433838` (facturación de persona jurídica con NIT, defecto previo a la fase; tablas navegables con teclado; pestañas sin transición).
 - Contador: marca de agente retenedor (persona jurídica u O-13/O-23), tolerancia de 1 peso y de tarifa (2 pp), conservación del certificado frente a la supresión.
 - Mano de obra en el valor real: abierto.
 - Base de desarrollo: si ya tiene la 206, revertir y reaplicar por el índice único nuevo.
