@@ -150,7 +150,7 @@ describe('BillingPaymentsService — retenciones (spec MOD14 2026-11-13 R6–R8)
         exists: true,
         partyId: null,
         anonymized: false,
-        withholdingAgent: 'PERSONA_JURIDICA',
+        withholdingAgent: 'AGENTE_RETENEDOR',
       }),
       findTitularRefs: jest
         .fn()

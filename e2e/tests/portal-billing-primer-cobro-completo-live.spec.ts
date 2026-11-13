@@ -18,9 +18,10 @@
  * - CA-3 / R4: el router instalado queda «En comodato» con su serial y su valor de referencia.
  * - CA-2 / R5: OT cerrada después de emitir el primer cobro → el desglose aparece en el documento
  *   emitido sin cambiar montos; un solo registro y una sola auditoría por OT.
- * - CA-4 / R6 / R7 / R8: persona jurídica paga desde el diálogo con retefuente 4 % y reteICA sobre
- *   una base de 1.000.000 → el documento queda saldado y el estado de cuenta muestra las
- *   retenciones; una persona natural no es elegible.
+ * - CA-4 / R6 / R7 / R8: persona jurídica con O-23 en el RUT paga desde el diálogo con retefuente
+ *   4 % y reteICA sobre una base de 1.000.000 (valores ajustados al peso, decisión D4) → el
+ *   documento queda saldado y el estado de cuenta muestra las retenciones; ni una persona natural
+ *   sin O-23 ni una jurídica con solo O-13 son elegibles (decisión D3).
  * - CA-5 / R8: anular ese pago anula las retenciones y reabre el saldo.
  * - a11y: axe WCAG 2.2 AA (serious/critical) del diálogo de pago con retenciones en claro y oscuro
  *   y de la sección del valor real.
@@ -959,8 +960,14 @@ async function seedResidentialContract(tag: string): Promise<ContractSeed> {
   return { subscriberId: subscriber.id, contractId: contract.id };
 }
 
-/** Persona jurídica (R7) con contrato empresarial de 1.000.000. */
-async function seedBusinessContract(tag: string): Promise<ContractSeed> {
+/**
+ * Persona jurídica con contrato empresarial de 1.000.000. Decisión D3 (spec MOD14 2026-11-13):
+ * solo O-23 en `rutResponsibilities` la habilita para retener.
+ */
+async function seedBusinessContract(
+  tag: string,
+  rutResponsibilities: string[],
+): Promise<ContractSeed> {
   const headers = tenantHeaders();
   const nit = syntheticNit();
   const subscriber = await expectJson<{ id: string }>('/crm/subscribers', 'POST', 201, {
@@ -981,7 +988,7 @@ async function seedBusinessContract(tag: string): Promise<ContractSeed> {
       city: 'Bogotá',
       department: 'Cundinamarca',
       vatResponsibility: 'RESPONSABLE',
-      rutResponsibilities: ['O-13'],
+      rutResponsibilities,
       authorizationChannel: 'PRESENCIAL',
       authorizations: [{ purpose: 'TRATAMIENTO_CONTRACTUAL', granted: true, legalTextId }],
     },
@@ -1371,7 +1378,17 @@ test.describe('MOD14 Primer cobro completo — E2E vivo', () => {
     );
     expect(naturalOptions.eligible).toBe(false);
 
-    const seed = await seedBusinessContract('ca4');
+    // Decisión D3: ser persona jurídica u O-13 gran contribuyente ya no basta.
+    const juridicaO13 = await seedBusinessContract('ca4j', ['O-13']);
+    const juridicaO13Options = await expectJson<{ eligible: boolean; eligibility: string | null }>(
+      `/billing/subscribers/${juridicaO13.subscriberId}/withholding-options`,
+      'GET',
+      200,
+      { headers: tenantHeaders() },
+    );
+    expect(juridicaO13Options).toMatchObject({ eligible: false, eligibility: null });
+
+    const seed = await seedBusinessContract('ca4', ['O-13', 'O-23']);
     const options = await expectJson<{
       eligible: boolean;
       eligibility: string | null;
@@ -1379,7 +1396,7 @@ test.describe('MOD14 Primer cobro completo — E2E vivo', () => {
     }>(`/billing/subscribers/${seed.subscriberId}/withholding-options`, 'GET', 200, {
       headers: tenantHeaders(),
     });
-    expect(options).toMatchObject({ eligible: true, eligibility: 'PERSONA_JURIDICA' });
+    expect(options).toMatchObject({ eligible: true, eligibility: 'AGENTE_RETENEDOR' });
     expect(options.options.map((option) => option.taxCode).sort()).toEqual([
       'RETE_FUENTE_SERVICIOS',
       'RETE_ICA',
@@ -1392,7 +1409,8 @@ test.describe('MOD14 Primer cobro completo — E2E vivo', () => {
       total: '1190000.00',
       pendingAmount: '1190000.00',
     });
-    // Base 1.000.000: retefuente 4 % = 40.000; reteICA 9,66 por mil = 9.660. Recibido = saldo − retenciones.
+    // Base 1.000.000: retefuente 4 % = 40.000; reteICA 9,66 por mil = 9.660, ambas en pesos enteros
+    // (ajuste al peso, decisión D4). Recibido = saldo − retenciones.
     const withholdingTotal = 40_000 + 9_660;
     const received = 1_190_000 - withholdingTotal;
 
@@ -1418,9 +1436,7 @@ test.describe('MOD14 Primer cobro completo — E2E vivo', () => {
     await page.emulateMedia({ colorScheme: 'light' });
 
     const dialog = await openPaymentDialog(page, billingTab);
-    await expect(dialog).toContainText(
-      'El titular es persona jurídica y puede practicar retenciones.',
-    );
+    await expect(dialog).toContainText('El titular es agente de retención según su RUT.');
     await dialog.getByLabel('Método de pago').selectOption('TRANSFERENCIA');
     await dialog.getByLabel('Referencia').fill(`QA-PC-${RUN_ID}`);
     const retefuente = await fillWithholding(dialog, 1, {
@@ -1429,14 +1445,14 @@ test.describe('MOD14 Primer cobro completo — E2E vivo', () => {
       rate: '4',
       certificate: `CERT-RF-${RUN_ID}`,
     });
-    await expect(retefuente.getByLabel('Valor retenido (COP)')).toHaveValue(/^40000(\.00)?$/u);
+    await expect(retefuente.getByLabel('Valor retenido (COP)')).toHaveValue('40000');
     const reteica = await fillWithholding(dialog, 2, {
       taxCode: 'RETE_ICA',
       base: '1000000',
       rate: '0.966',
       certificate: `CERT-ICA-${RUN_ID}`,
     });
-    await expect(reteica.getByLabel('Valor retenido (COP)')).toHaveValue(/^9660(\.00)?$/u);
+    await expect(reteica.getByLabel('Valor retenido (COP)')).toHaveValue('9660');
     // R6: «Pagar el saldo completo» deja como recibido el saldo menos lo retenido.
     await dialog.getByRole('button', { name: 'Pagar el saldo completo' }).click();
     await expect(dialog.getByLabel('Monto del pago (COP)')).toHaveValue(

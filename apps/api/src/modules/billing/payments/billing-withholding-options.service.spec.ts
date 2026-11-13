@@ -42,7 +42,7 @@ describe('BillingWithholdingOptionsService (spec MOD14 2026-11-13 R7)', () => {
         exists: true,
         partyId: null,
         anonymized: false,
-        withholdingAgent: 'PERSONA_JURIDICA',
+        withholdingAgent: 'AGENTE_RETENEDOR',
       }),
       lockTitularForBillingWrite: jest.fn(),
     };
@@ -62,7 +62,7 @@ describe('BillingWithholdingOptionsService (spec MOD14 2026-11-13 R7)', () => {
     expect(result).toEqual({
       subscriberId: SUBSCRIBER,
       eligible: true,
-      eligibility: 'PERSONA_JURIDICA',
+      eligibility: 'AGENTE_RETENEDOR',
       options: [
         {
           taxCode: 'RETE_FUENTE_SERVICIOS',

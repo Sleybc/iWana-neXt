@@ -213,9 +213,8 @@ export function buyerDocumentType(
   return row.person_type === 'JURIDICA' ? DocumentTypeParty.NIT : row.document_type;
 }
 
-/** Spec MOD14 2026-11-13 R7 (C1): persona jurídica o RUT con O-13/O-23 ($3). */
+/** Spec MOD14 2026-11-13 R7 (decisión D3): solo el RUT con O-23 ($3), sin importar el tipo de persona. */
 const WITHHOLDING_AGENT_SQL = `CASE
-                WHEN person_type::text = 'JURIDICA' THEN 'PERSONA_JURIDICA'
                 WHEN COALESCE(rut_responsibilities, '{}'::text[]) && $3::text[] THEN 'AGENTE_RETENEDOR'
                 ELSE NULL
               END`;

@@ -213,7 +213,7 @@ const REGISTER_PAYMENT_REQUEST_SCHEMA: SchemaObject = {
       type: 'array',
       maxItems: BILLING_WITHHOLDING_MAX_LINES,
       description:
-        'Retenciones del cliente: solo persona jurídica o agente retenedor. amount + retenciones se aplica contra el saldo.',
+        'Retenciones del cliente: solo titulares agentes de retención (O-23 en el RUT). amount + retenciones se aplica contra el saldo.',
       items: WITHHOLDING_REQUEST_SCHEMA,
     },
   },

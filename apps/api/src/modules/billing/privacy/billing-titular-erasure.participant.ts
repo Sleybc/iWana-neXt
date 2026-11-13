@@ -211,7 +211,9 @@ export class BillingTitularErasureParticipant implements TitularErasureParticipa
     );
 
     const courtesies = await this.courtesyNotes(qr, mode, tenantId, subscriberIds);
-    const withholdings = await this.withholdingCertificates(qr, mode, tenantId, subscriberIds);
+    // El número de certificado de retención (billing_payment_withholdings, migración 206) se
+    // conserva: es soporte contable y tributario del ISP (decisión D5 de la spec MOD14 2026-11-13).
+    // Las lecturas lo ocultan con DATOS_BLOQUEADOS o titular anonimizado.
 
     return [
       {
@@ -236,51 +238,6 @@ export class BillingTitularErasureParticipant implements TitularErasureParticipa
         residual: paymentResiduals,
       },
       ...courtesies,
-      ...withholdings,
-    ];
-  }
-
-  /**
-   * Número de certificado de las retenciones del pago (migración 206, spec MOD14 2026-11-13 R6):
-   * texto libre del titular, se vacía. Tipo, base, tarifa y valor son montos y códigos y se
-   * conservan con el pago. Schemas anteriores a la 206 no tienen la tabla.
-   */
-  private async withholdingCertificates(
-    qr: QueryRunner,
-    mode: 'dry-run' | 'apply',
-    tenantId: string,
-    subscriberIds: string[],
-  ): Promise<TitularErasureTableResult[]> {
-    const probe = (await qr.query(
-      `SELECT EXISTS (SELECT 1 FROM information_schema.tables
-                       WHERE table_schema = current_schema()
-                         AND table_name = 'billing_payment_withholdings') AS present`,
-    )) as Array<{ present: boolean }>;
-    if (probe[0]?.present !== true) return [];
-    const pendingSql = `SELECT COUNT(*)::int AS count
-           FROM billing_payment_withholdings
-          WHERE tenant_id = $1::uuid
-            AND subscriber_id = ANY($2::uuid[])
-            AND certificate_number IS NOT NULL`;
-    const selected = await this.count(qr, pendingSql, [tenantId, subscriberIds]);
-    let changed = 0;
-    if (mode === 'apply') {
-      const updated = normalizeErasureRows<IdRow>(
-        await qr.query(
-          `UPDATE billing_payment_withholdings
-            SET certificate_number = NULL
-          WHERE tenant_id = $1::uuid
-            AND subscriber_id = ANY($2::uuid[])
-            AND certificate_number IS NOT NULL
-          RETURNING id::text AS id`,
-          [tenantId, subscriberIds],
-        ),
-      );
-      changed = updated.length;
-    }
-    const residual = await this.count(qr, pendingSql, [tenantId, subscriberIds]);
-    return [
-      { table: 'billing_payment_withholdings', category: 'COMERCIAL', selected, changed, residual },
     ];
   }
 

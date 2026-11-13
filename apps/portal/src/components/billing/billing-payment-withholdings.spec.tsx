@@ -76,7 +76,7 @@ const STATEMENT: BillingAccountStatement = {
 const ELIGIBLE: BillingWithholdingOptionsResponse = {
   subscriberId: SUBSCRIBER_ID,
   eligible: true,
-  eligibility: 'PERSONA_JURIDICA',
+  eligibility: 'AGENTE_RETENEDOR',
   options: [
     {
       taxCode: 'RETE_FUENTE_SERVICIOS',
@@ -138,21 +138,19 @@ describe('BillingPaymentDialog — retenciones (spec MOD14 2026-11-13 R6, R7)', 
     mockRegisterPayment.mockResolvedValue({});
     renderDialog();
     expect(await screen.findByRole('heading', { name: 'Retenciones' })).toBeInTheDocument();
-    expect(
-      screen.getByText(/El titular es persona jurídica y puede practicar retenciones/u),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/El titular es agente de retención según su RUT/u)).toBeInTheDocument();
 
     const first = await addLine(1);
     expect(within(first).getByLabelText('Tipo de retención')).toHaveValue('RETE_FUENTE_SERVICIOS');
     expect(within(first).getByLabelText('Base (COP)')).toHaveValue('1000000.00');
     expect(within(first).getByLabelText('Tarifa (%)')).toHaveValue('4');
-    expect(within(first).getByLabelText('Valor retenido (COP)')).toHaveValue('40000.00');
+    expect(within(first).getByLabelText('Valor retenido (COP)')).toHaveValue('40000');
     await userEvent.type(within(first).getByLabelText('Número de certificado'), 'RF-2026-17');
 
     const second = await addLine(2);
     await userEvent.selectOptions(within(second).getByLabelText('Tipo de retención'), 'RETE_ICA');
     expect(within(second).getByLabelText('Tarifa (%)')).toHaveValue('0.966');
-    expect(within(second).getByLabelText('Valor retenido (COP)')).toHaveValue('9660.00');
+    expect(within(second).getByLabelText('Valor retenido (COP)')).toHaveValue('9660');
     await userEvent.type(within(second).getByLabelText('Número de certificado'), 'ICA-2026-04');
 
     // «Pagar el saldo completo» descuenta lo retenido del valor recibido.
@@ -195,7 +193,7 @@ describe('BillingPaymentDialog — retenciones (spec MOD14 2026-11-13 R6, R7)', 
     });
   });
 
-  it('valida localmente la tolerancia de 1 peso y el certificado obligatorio', async () => {
+  it('valida localmente el ajuste al peso exacto (decisión D4) y el certificado obligatorio', async () => {
     mockWithholdingOptions.mockResolvedValue(ELIGIBLE);
     renderDialog();
     const line = await addLine(1);
@@ -211,16 +209,23 @@ describe('BillingPaymentDialog — retenciones (spec MOD14 2026-11-13 R6, R7)', 
       screen.getByText('Revisa las retenciones marcadas antes de registrar el pago.'),
     ).toBeInTheDocument();
     expect(amount).toHaveAttribute('aria-invalid', 'true');
-    expect(amount).toHaveAccessibleDescription(/El valor debe estar a máximo/u);
+    expect(amount).toHaveAccessibleDescription(/El valor debe ser base × tarifa ajustado al peso/u);
     const certificate = within(line).getByLabelText('Número de certificado');
     expect(certificate).toHaveAccessibleDescription(
       'Escribe el número del certificado de retención.',
     );
 
-    // Dentro de la tolerancia y con certificado, se envía.
-    mockRegisterPayment.mockResolvedValue({});
+    // Un peso de diferencia ya no se acepta (sin tolerancia).
     await userEvent.clear(amount);
     await userEvent.type(amount, '40001');
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar pago' }));
+    expect(mockRegisterPayment).not.toHaveBeenCalled();
+    expect(amount).toHaveAttribute('aria-invalid', 'true');
+
+    // Con el valor exacto y con certificado, se envía.
+    mockRegisterPayment.mockResolvedValue({});
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '40000');
     await userEvent.type(certificate, 'RF-1');
     await userEvent.click(screen.getByRole('button', { name: 'Registrar pago' }));
     expect(mockRegisterPayment).toHaveBeenCalledTimes(1);
@@ -249,7 +254,7 @@ describe('BillingPaymentDialog — retenciones (spec MOD14 2026-11-13 R6, R7)', 
   it('traduce el 422 de retención no permitida', async () => {
     mockWithholdingOptions.mockResolvedValue(ELIGIBLE);
     mockRegisterPayment.mockRejectedValue(
-      new ApiError(422, 'BILLING_WITHHOLDING_NOT_ALLOWED', 'Solo persona jurídica'),
+      new ApiError(422, 'BILLING_WITHHOLDING_NOT_ALLOWED', 'Solo agente de retención'),
     );
     renderDialog();
     const line = await addLine(1);
@@ -286,7 +291,8 @@ describe('BillingPaymentDialog — retenciones (spec MOD14 2026-11-13 R6, R7)', 
     await userEvent.type(await screen.findByLabelText('Monto del pago (COP)'), '500000');
     const line = await addLine(1);
     expect(within(line).getByLabelText('Base (COP)')).toHaveValue('500000.00');
-    expect(within(line).getByLabelText('Valor retenido (COP)')).toHaveValue('20000.00');
+    // Decisión D4: el valor sugerido va en pesos enteros.
+    expect(within(line).getByLabelText('Valor retenido (COP)')).toHaveValue('20000');
   });
 
   it('quita una línea y vuelve al resumen sin retenciones', async () => {

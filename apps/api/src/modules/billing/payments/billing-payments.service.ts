@@ -287,8 +287,11 @@ function mapWithholding(row: WithholdingRow): BillingPaymentWithholdingResponse 
 }
 
 /**
- * H-2: texto libre del pago ligado al titular (el participante de supresión lo vacía): número de
- * certificado de cada retención, referencia, nota y nota de anulación. Montos e IDs se conservan.
+ * H-2: texto libre del pago ligado al titular: número de certificado de cada retención,
+ * referencia, nota y nota de anulación. Montos e IDs se conservan. El participante de supresión
+ * vacía referencia y notas; el número de certificado se conserva en la base como soporte contable
+ * y tributario (decisión D5 de la spec MOD14 2026-11-13), así que este ocultamiento es lo único que
+ * lo protege en lecturas de titulares anonimizados o con DATOS_BLOQUEADOS.
  */
 export function redactPaymentFreeText(payment: BillingPaymentResponse): BillingPaymentResponse {
   return {
@@ -386,7 +389,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       }
 
       const withholdingLines = command.withholdings ?? [];
-      // Spec MOD14 2026-11-13 R7: solo persona jurídica o agente retenedor practica retenciones.
+      // Spec MOD14 2026-11-13 R7 (decisión D3): solo el agente de retención (O-23) practica retenciones.
       if (withholdingLines.length > 0 && !titular.withholdingAgent) {
         throw this.withholdingNotAllowed();
       }
@@ -1836,7 +1839,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     return new UnprocessableEntityException(
       errorResponse(
         BILLING_ERROR_CODES.BILLING_WITHHOLDING_NOT_ALLOWED,
-        'Solo un titular persona jurídica o agente retenedor puede registrar retenciones.',
+        'Solo un titular agente de retención (O-23 en su RUT) puede registrar retenciones.',
       ),
     );
   }

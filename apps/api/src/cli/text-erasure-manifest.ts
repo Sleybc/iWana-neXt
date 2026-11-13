@@ -35,8 +35,9 @@
  * y void_idempotency_key son claves opacas de idempotencia; el resto son dominios cerrados con
  * CHECK.
  * Las dos de billing_payment_withholdings son de las retenciones en el pago (migración 206, spec
- * MOD14 2026-11-13 bloque C): certificate_number es texto libre CUBIERTO por
- * BillingTitularErasureParticipant; tax_code es un dominio cerrado con CHECK.
+ * MOD14 2026-11-13 bloque C): certificate_number queda EXCLUIDA por la decisión D5 (soporte
+ * contable y tributario del ISP; se oculta en lecturas con DATOS_BLOQUEADOS o titular
+ * anonimizado); tax_code es un dominio cerrado con CHECK.
  * Las ocho de billing_installation_breakdowns(_items) son del consumo de la instalación (migración
  * 205, spec MOD14 2026-11-13 bloque A): número de OT, identificadores, nombre y unidad del
  * catálogo de inventario, seriales del equipo (ocultos al leer si el titular está anonimizado o
@@ -4239,8 +4240,8 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
   {
     t: 'billing_payment_withholdings',
     c: 'certificate_number',
-    k: 'CUBIERTA',
-    d: 'apps/api/src/modules/billing/privacy/billing-titular-erasure.participant.ts (número de certificado de retención; se vacía con el titular)',
+    k: 'EXCLUIDA',
+    d: 'soporte contable y tributario del ISP; se oculta en lecturas con DATOS_BLOQUEADOS/anonimizado (spec MOD14 2026-11-13 decisión D5)',
   },
   {
     t: 'billing_payment_withholdings',

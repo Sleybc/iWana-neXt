@@ -34,35 +34,66 @@ describe('Retenciones en el pago — contrato (spec MOD14 2026-11-13 R6, R7)', (
     }
   });
 
-  it('la marca de agente retenedor usa responsabilidades del catálogo del RUT', () => {
+  it('la marca de agente retenedor es solo O-23 del catálogo del RUT (decisión D3)', () => {
+    expect([...BILLING_WITHHOLDING_AGENT_RUT_RESPONSIBILITIES]).toEqual(['O-23']);
     for (const code of BILLING_WITHHOLDING_AGENT_RUT_RESPONSIBILITIES) {
       expect(RUT_RESPONSIBILITIES).toContain(code);
     }
   });
 
-  it('calcula el valor esperado con redondeo al centavo y tarifas de cuatro decimales', () => {
+  it('calcula el valor exacto con ajuste al peso (mitad hacia arriba) y tarifas de cuatro decimales', () => {
     expect(expectedWithholdingCents('1000000.00', '4')).toBe(4_000_000);
     expect(expectedWithholdingCents('1000000', 0.414)).toBe(414_000);
-    expect(expectedWithholdingCents('123.45', '0.966')).toBe(119);
-    expect(expectedWithholdingCents(999_999_999_999.99, 100)).toBe(99_999_999_999_999);
+    // 1,1925 pesos → 1 peso.
+    expect(expectedWithholdingCents('123.45', '0.966')).toBe(100);
+    // 465,75 pesos → 466 pesos.
+    expect(expectedWithholdingCents('112500', '0.414')).toBe(46_600);
+    // 40,50 pesos → 41 pesos (la mitad sube).
+    expect(expectedWithholdingCents('1012.50', '4')).toBe(4_100);
+    // 40,49 pesos → 40 pesos.
+    expect(expectedWithholdingCents('1012.25', '4')).toBe(4_000);
+    expect(expectedWithholdingCents(999_999_999_999, 100)).toBe(99_999_999_999_900);
+    expect(expectedWithholdingCents('112500', '0.414') % 100).toBe(0);
   });
 
-  it('acepta una línea válida, con tarifa editada y redondeo dentro de un peso', () => {
+  it('acepta una línea con el valor exacto ajustado al peso, con o sin decimales', () => {
     expect(PaymentWithholdingInputSchema.safeParse(retefuente).success).toBe(true);
+    for (const amount of ['35000.00', '35000', 35000]) {
+      expect(
+        PaymentWithholdingInputSchema.safeParse({ ...retefuente, rate: 3.5, amount, documentId })
+          .success,
+      ).toBe(true);
+    }
     expect(
       PaymentWithholdingInputSchema.safeParse({
         ...retefuente,
-        rate: 3.5,
-        amount: '35000.90',
-        documentId,
+        base: '112500',
+        rate: '0.414',
+        amount: '466',
       }).success,
     ).toBe(true);
   });
 
-  it('rechaza valor fuera de la tolerancia, superior a la base o sin certificado', () => {
+  it('decisión D4: sin tolerancia; un peso de diferencia o centavos se rechazan', () => {
+    for (const amount of ['40001.00', '39999.00', '40000.50', '40000.01']) {
+      const parsed = PaymentWithholdingInputSchema.safeParse({ ...retefuente, amount });
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues[0]?.message).toBe(
+        'El valor de la retención debe ser base × tarifa ajustado al peso.',
+      );
+    }
+    // 465,75 sin ajustar al peso ya no se acepta.
     expect(
-      PaymentWithholdingInputSchema.safeParse({ ...retefuente, amount: '40001.01' }).success,
+      PaymentWithholdingInputSchema.safeParse({
+        ...retefuente,
+        base: '112500',
+        rate: '0.414',
+        amount: '465.75',
+      }).success,
     ).toBe(false);
+  });
+
+  it('rechaza valor superior a la base o sin certificado', () => {
     expect(
       PaymentWithholdingInputSchema.safeParse({
         ...retefuente,
@@ -148,22 +179,31 @@ describe('Retenciones en el pago — contrato (spec MOD14 2026-11-13 R6, R7)', (
     ).toBe(false);
   });
 
-  it('las opciones de retención declaran elegibilidad y origen de la tarifa', () => {
+  it('las opciones de retención declaran elegibilidad (solo AGENTE_RETENEDOR) y origen de la tarifa', () => {
+    const options = {
+      subscriberId: documentId,
+      eligible: true,
+      eligibility: 'AGENTE_RETENEDOR',
+      options: [
+        {
+          taxCode: 'RETE_ICA',
+          name: 'ReteICA',
+          suggestedRate: '0.4140',
+          source: 'TRIBUTACION',
+        },
+      ],
+    };
+    expect(BillingWithholdingOptionsResponseSchema.safeParse(options).success).toBe(true);
+    expect(
+      BillingWithholdingOptionsResponseSchema.safeParse({ ...options, eligibility: null }).success,
+    ).toBe(true);
+    // Decisión D3: PERSONA_JURIDICA se retiró del contrato.
     expect(
       BillingWithholdingOptionsResponseSchema.safeParse({
-        subscriberId: documentId,
-        eligible: true,
+        ...options,
         eligibility: 'PERSONA_JURIDICA',
-        options: [
-          {
-            taxCode: 'RETE_ICA',
-            name: 'ReteICA',
-            suggestedRate: '0.4140',
-            source: 'TRIBUTACION',
-          },
-        ],
       }).success,
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('totalWithholding del estado de cuenta es dinero opcional', () => {

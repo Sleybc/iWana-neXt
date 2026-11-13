@@ -101,6 +101,10 @@ describe('Retenciones en el pago — OpenAPI (spec MOD14 2026-11-13 R6, R7)', ()
       document.paths['/billing/subscribers/{subscriberId}/withholding-options']?.get;
     const data = props(jsonSchema(operation, '200'))['data'] as Schema;
     expect(data['required']).toEqual(['subscriberId', 'eligible', 'eligibility', 'options']);
+    // Decisión D3 (spec MOD14 2026-11-13): solo O-23; PERSONA_JURIDICA se retiró del contrato.
+    expect(props(data)['eligibility']).toEqual(
+      expect.objectContaining({ enum: ['AGENTE_RETENEDOR'], nullable: true }),
+    );
     expect(
       Reflect.getMetadata(
         PERMISSIONS_KEY,

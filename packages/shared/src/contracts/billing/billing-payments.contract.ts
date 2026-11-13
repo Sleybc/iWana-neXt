@@ -4,7 +4,6 @@ import {
   BILLING_PAYMENT_STATUSES,
   BILLING_PAYMENT_VOID_REASONS,
   BILLING_WITHHOLDING_MAX_LINES,
-  BILLING_WITHHOLDING_ROUNDING_TOLERANCE_CENTS,
   BILLING_WITHHOLDING_TAX_CODES,
 } from './billing-constants';
 import { billingMoneyInputSchema, billingMoneyStringSchema } from './billing-money.schema';
@@ -64,12 +63,14 @@ function rateToTenThousandths(value: string | number): bigint {
 }
 
 /**
- * Valor esperado de una retención en centavos: base × tarifa / 100, redondeado al centavo.
- * Es la sugerencia; el cliente puede redondear distinto dentro de la tolerancia.
+ * Valor exacto de una retención, en centavos: base × tarifa / 100 con ajuste al peso (redondeo
+ * al peso entero más cercano, la mitad hacia arriba). Siempre es múltiplo de 100 centavos.
+ * Decisión D4 de la spec MOD14 2026-11-13: sin tolerancia, el valor retenido debe ser este.
  */
 export function expectedWithholdingCents(base: string | number, rate: string | number): number {
+  // centavos × diezmilésimas de punto porcentual: 1 peso = 100 × 10_000 × 100 unidades.
   const numerator = moneyToCents(base) * rateToTenThousandths(rate);
-  return Number((numerator + 500_000n) / 1_000_000n);
+  return Number(((numerator + 50_000_000n) / 100_000_000n) * 100n);
 }
 
 /**
@@ -97,13 +98,12 @@ export const PaymentWithholdingInputSchema = z
       });
       return;
     }
-    const expected = BigInt(expectedWithholdingCents(line.base, line.rate));
-    const difference = amount > expected ? amount - expected : expected - amount;
-    if (difference > BigInt(BILLING_WITHHOLDING_ROUNDING_TOLERANCE_CENTS)) {
+    // Decisión D4: ajuste al peso exacto, sin tolerancia.
+    if (amount !== BigInt(expectedWithholdingCents(line.base, line.rate))) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['amount'],
-        message: 'El valor de la retención no corresponde a la base por la tarifa.',
+        message: 'El valor de la retención debe ser base × tarifa ajustado al peso.',
       });
     }
   });
@@ -125,7 +125,7 @@ export const RegisterPaymentCommandSchema = z
     allocations: z.array(PaymentAllocationInputSchema).optional(),
     /**
      * Retenciones practicadas por el cliente (spec MOD14 2026-11-13 R6, R7): solo para titulares
-     * persona jurídica o agentes retenedores. `amount` (valor recibido) + retenciones es lo que
+     * agentes de retención (O-23 en el RUT, decisión D3). `amount` (valor recibido) + retenciones es lo que
      * se aplica contra el saldo, por FIFO o por `allocations`.
      */
     withholdings: z
@@ -236,8 +236,11 @@ export const BillingWithholdingOptionsResponseSchema = z
   .object({
     subscriberId: z.string().uuid(),
     eligible: z.boolean(),
-    /** Por qué puede retener: persona jurídica o responsabilidad del RUT de agente retenedor. */
-    eligibility: z.enum(['PERSONA_JURIDICA', 'AGENTE_RETENEDOR']).nullable(),
+    /**
+     * Por qué puede retener: solo la responsabilidad O-23 del RUT (decisión D3 de la spec MOD14
+     * 2026-11-13; `PERSONA_JURIDICA` se retiró del contrato).
+     */
+    eligibility: z.enum(['AGENTE_RETENEDOR']).nullable(),
     options: z.array(BillingWithholdingOptionSchema),
   })
   .strict();

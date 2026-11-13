@@ -397,9 +397,9 @@ describe('BillingContractReadAdapter', () => {
     expect(managerQuery.mock.calls[0]?.[0]).toContain('FOR SHARE');
   });
 
-  it('marca agente retenedor por persona jurídica o por O-13/O-23 del RUT (spec MOD14 2026-11-13 R7)', async () => {
+  it('marca agente retenedor solo por O-23 del RUT (spec MOD14 2026-11-13 R7, decisión D3)', async () => {
     const callerManager = { query: managerQuery } as unknown as EntityManager;
-    for (const withholding_agent of ['PERSONA_JURIDICA', 'AGENTE_RETENEDOR', null]) {
+    for (const withholding_agent of ['AGENTE_RETENEDOR', null]) {
       managerQuery.mockResolvedValueOnce([
         { party_id: null, anonymized_at: null, anonymized_request_id: null, withholding_agent },
       ]);
@@ -410,9 +410,11 @@ describe('BillingContractReadAdapter', () => {
       ).resolves.toMatchObject({ exists: true, withholdingAgent: withholding_agent });
     }
     const [sql, params] = managerQuery.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain("person_type::text = 'JURIDICA'");
+    // Ser persona jurídica u O-13 ya no habilita: la regla no mira person_type.
+    expect(sql).not.toContain("person_type::text = 'JURIDICA' THEN");
+    expect(sql).not.toContain('PERSONA_JURIDICA');
     expect(sql).toContain('rut_responsibilities');
-    expect(params[2]).toEqual(['O-13', 'O-23']);
+    expect(params[2]).toEqual(['O-23']);
   });
 
   it('falla cerrado si cualquiera de las marcas de anonimización está presente', async () => {

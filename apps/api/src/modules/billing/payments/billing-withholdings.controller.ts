@@ -36,7 +36,7 @@ export const WITHHOLDING_OPTIONS_RESPONSE_SCHEMA: SchemaObject = {
         eligible: { type: 'boolean' },
         eligibility: {
           type: 'string',
-          enum: ['PERSONA_JURIDICA', 'AGENTE_RETENEDOR'],
+          enum: ['AGENTE_RETENEDOR'],
           nullable: true,
         },
         options: {

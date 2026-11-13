@@ -85,8 +85,11 @@ export interface BillableContract {
   };
 }
 
-/** Por qué un titular puede practicar retenciones al pagar (spec MOD14 2026-11-13 R7). */
-export type BillingWithholdingEligibility = 'PERSONA_JURIDICA' | 'AGENTE_RETENEDOR';
+/**
+ * Por qué un titular puede practicar retenciones al pagar (spec MOD14 2026-11-13 R7, decisión
+ * D1): solo por ser agente de retención (O-23 en su RUT).
+ */
+export type BillingWithholdingEligibility = 'AGENTE_RETENEDOR';
 
 /** Puerto de lectura CRM para Billing. CRM conserva el ownership de sus tablas. */
 export abstract class BillingContractReadPort {
@@ -138,12 +141,6 @@ export abstract class BillingContractReadPort {
   ): Promise<Array<{ subscriberId: string; displayName: string | null }>>;
 
   /**
-   * Reutiliza el manager de la transacción Billing que protege el alta de pago.
-   * `withholdingAgent` (spec MOD14 2026-11-13 R7): el titular puede practicar retenciones porque
-   * es persona jurídica (`PERSONA_JURIDICA`) o su RUT trae O-13 u O-23 (`AGENTE_RETENEDOR`);
-   * `null` si no puede. Ausente equivale a `null`.
-   */
-  /**
    * Elegibilidad de retención del titular, de solo lectura (sin `FOR SHARE` ni transacción de
    * escritura): la usa la consulta de opciones de retención (H-7). Misma regla que
    * `lockTitularForBillingWrite.withholdingAgent`.
@@ -154,6 +151,11 @@ export abstract class BillingContractReadPort {
     withholdingAgent: BillingWithholdingEligibility | null;
   }>;
 
+  /**
+   * Reutiliza el manager de la transacción Billing que protege el alta de pago.
+   * `withholdingAgent` (spec MOD14 2026-11-13 R7, decisión D3): `AGENTE_RETENEDOR` si el RUT del
+   * titular trae O-23, sea persona natural o jurídica; `null` si no puede. Ausente equivale a `null`.
+   */
   abstract lockTitularForBillingWrite(
     subscriberId: string,
     ctx: { manager: EntityManager },

@@ -1,5 +1,4 @@
 import {
-  BILLING_WITHHOLDING_ROUNDING_TOLERANCE_CENTS,
   expectedWithholdingCents,
   type BillingPaymentWithholdingResponse,
   type BillingWithholdingOption,
@@ -40,12 +39,13 @@ export function editableRate(rate: string | null): string {
   return Number.isFinite(number) ? String(number) : '';
 }
 
-/** Valor sugerido (base × tarifa, al centavo) o '' si la base o la tarifa no son válidas. */
+/** Valor exacto (base × tarifa ajustado al peso, decisión D4) o '' si la base o la tarifa no son válidas. */
 export function suggestedWithholdingAmount(base: string, rate: string): string {
   const baseCents = moneyCents(base.trim());
   const normalized = normalizeWithholdingRate(rate);
   if (!Number.isFinite(baseCents) || baseCents <= 0 || !normalized) return '';
-  return fromMoneyCents(expectedWithholdingCents(fromMoneyCents(baseCents), normalized));
+  // Siempre múltiplo de 100 centavos: se muestra y se envía en pesos enteros («38400»).
+  return String(expectedWithholdingCents(fromMoneyCents(baseCents), normalized) / 100);
 }
 
 export function newWithholdingDraft(
@@ -74,7 +74,7 @@ export function withholdingTotalCents(lines: readonly WithholdingDraft[]): numbe
   }, 0);
 }
 
-/** Validación local de una línea; espeja `PaymentWithholdingInputSchema` (base × tarifa ± 1 peso). */
+/** Validación local de una línea; espeja `PaymentWithholdingInputSchema` (base × tarifa ajustado al peso). */
 export function withholdingLineErrors(line: WithholdingDraft): WithholdingErrors {
   const errors: WithholdingErrors = {};
   const base = moneyCents(line.base.trim());
@@ -90,10 +90,10 @@ export function withholdingLineErrors(line: WithholdingDraft): WithholdingErrors
     errors.amount = 'La retención no puede superar su base.';
   } else if (!errors.base && rate) {
     const expected = expectedWithholdingCents(fromMoneyCents(base), rate);
-    if (Math.abs(amount - expected) > BILLING_WITHHOLDING_ROUNDING_TOLERANCE_CENTS) {
-      errors.amount = `El valor debe estar a máximo ${formatBillingMoneyExact(
-        fromMoneyCents(BILLING_WITHHOLDING_ROUNDING_TOLERANCE_CENTS),
-      )} de base × tarifa (${formatBillingMoneyExact(fromMoneyCents(expected))}).`;
+    if (amount !== expected) {
+      errors.amount = `El valor debe ser base × tarifa ajustado al peso: ${formatBillingMoneyExact(
+        fromMoneyCents(expected),
+      )}.`;
     }
   }
   if (!line.certificateNumber.trim())

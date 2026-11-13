@@ -53,7 +53,7 @@ const WITHHOLDING_BASE_ERROR =
  */
 const WITHHOLDING_ERRORS: Readonly<Record<WithholdingErrorCode, string>> = {
   BILLING_WITHHOLDING_NOT_ALLOWED:
-    'Este titular no puede registrar retenciones: solo una persona jurídica o un agente de retención. Quita las retenciones y registra el valor recibido.',
+    'Este titular no puede registrar retenciones: solo un agente de retención según su RUT. Quita las retenciones y registra el valor recibido.',
   BILLING_WITHHOLDING_NOT_ATTRIBUTABLE:
     'Cada retención debe corresponder a un documento que este pago salda. Revisa el documento de cada retención o la distribución del pago.',
   BILLING_WITHHOLDING_DUPLICATE: WITHHOLDING_DUPLICATE_ERROR,

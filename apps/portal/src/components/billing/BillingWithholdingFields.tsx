@@ -31,7 +31,7 @@ const warningTextClass = 'text-xs text-amber-700 dark:text-amber-300';
 
 /**
  * Retenciones del registro de pago (spec MOD14 2026-11-13 R6, R7). Solo se monta si el titular
- * es persona jurídica o agente de retención; la lógica de cálculo vive en `billing-withholdings`.
+ * es agente de retención (O-23 en su RUT); la lógica de cálculo vive en `billing-withholdings`.
  */
 export function BillingWithholdingFields({
   options,
@@ -231,7 +231,7 @@ function WithholdingLine({
           label="Valor retenido (COP)"
           hint={
             suggested
-              ? `Base × tarifa: ${formatBillingMoneyExact(suggested)}. Puedes ajustarlo hasta ${formatBillingMoneyExact(1)}.`
+              ? `Base × tarifa ajustado al peso: ${formatBillingMoneyExact(suggested)}.`
               : 'Se calcula con la base y la tarifa.'
           }
           error={errors.amount}
@@ -239,7 +239,7 @@ function WithholdingLine({
           <input
             id={fieldId('amount')}
             className={billingInputClass}
-            inputMode="decimal"
+            inputMode="numeric"
             value={line.amount}
             aria-invalid={invalid('amount')}
             aria-describedby={describedBy('amount', true)}

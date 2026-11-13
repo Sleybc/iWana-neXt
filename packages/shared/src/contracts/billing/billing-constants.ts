@@ -128,14 +128,11 @@ export const BILLING_WITHHOLDING_TAX_CODES = ['RETE_FUENTE_SERVICIOS', 'RETE_ICA
 export type BillingWithholdingTaxCode = (typeof BILLING_WITHHOLDING_TAX_CODES)[number];
 
 /**
- * Responsabilidades del RUT que marcan a un titular persona natural como agente retenedor
- * (spec MOD14 2026-11-13 R7): O-13 gran contribuyente y O-23 agente de retención. La persona
- * jurídica siempre puede practicar retenciones.
+ * Responsabilidades del RUT que marcan a un titular como agente retenedor (spec MOD14 2026-11-13
+ * R7, decisión D3 del contador): solo O-23 agente de retención. Ser persona jurídica u O-13 gran
+ * contribuyente ya no basta.
  */
-export const BILLING_WITHHOLDING_AGENT_RUT_RESPONSIBILITIES = ['O-13', 'O-23'] as const;
-
-/** Diferencia máxima, en pesos, entre el valor de la retención y base × tarifa. */
-export const BILLING_WITHHOLDING_ROUNDING_TOLERANCE_CENTS = 100;
+export const BILLING_WITHHOLDING_AGENT_RUT_RESPONSIBILITIES = ['O-23'] as const;
 
 /** Máximo de líneas de retención en un pago. */
 export const BILLING_WITHHOLDING_MAX_LINES = 10;

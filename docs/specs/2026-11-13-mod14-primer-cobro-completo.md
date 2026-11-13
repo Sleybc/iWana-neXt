@@ -18,6 +18,9 @@ Plan congelado en el contrato, prorrateo por fecha de corte (pesos enteros, venc
 |---|---|
 | D1 | Los materiales y equipos de la instalación **no se cobran**: se cuantifican y se muestran como detalle informativo dentro del cargo de instalación («valor real de la instalación»). |
 | D2 | Las retenciones se registran **al registrar el pago**, con su certificado, y saldan el documento. |
+| D3 | Contador, 2026-11-13. Agente retenedor = **solo** el titular con **O-23** en `subscribers.rut_responsibilities`, sea persona natural o jurídica. Ser persona jurídica u O-13 ya no basta. `eligibility` de las opciones de retención queda `AGENTE_RETENEDOR` o `null`; `PERSONA_JURIDICA` se retira del contrato (`@iwana/shared`, OpenAPI y portal en el mismo cambio). Reemplaza C1. |
+| D4 | Contador, 2026-11-13. **Ajuste al peso**: el valor de la retención es exactamente base × tarifa redondeado al peso entero (la mitad hacia arriba), sin tolerancia; se escribe en pesos enteros. Se retira `BILLING_WITHHOLDING_ROUNDING_TOLERANCE_CENTS`. La tolerancia de tarifa de H-1 (c), `BILLING_WITHHOLDING_RATE_TOLERANCE_PP`, se mantiene. Reemplaza la tolerancia de 1 peso de C2. |
+| D5 | Contador, 2026-11-13. El **número de certificado se conserva** al suprimir al titular: es soporte contable y tributario del ISP. El participante de supresión de Billing ya no lo vacía; el manifiesto de texto libre lo clasifica EXCLUIDA. Las lecturas lo siguen ocultando con DATOS_BLOQUEADOS sin permiso o titular anonimizado (H-2). Reemplaza C5 en lo que toca a la supresión. |
 
 ## Reglas
 
@@ -29,7 +32,7 @@ Plan congelado en el contrato, prorrateo por fecha de corte (pesos enteros, venc
 | R4 | El PDF del documento y el portal muestran ese desglose. Equipos en comodato se marcan como «en comodato» (valor informativo, se devuelven). |
 | R5 | Si la OT cierra después de generar el primer cobro, el desglose se agrega al documento (borrador o emitido) sin alterar montos; idempotente por OT. |
 | R6 | Pago con retenciones: el registro de pago admite líneas de retención (tipo de los presets de Tributación: RETE_FUENTE_SERVICIOS, RETE_ICA; base, tarifa, valor, número de certificado). Valor recibido + retenciones aplica contra el saldo. |
-| R7 | Solo para titulares persona jurídica o marcados como agentes retenedores; las tarifas sugeridas salen de Tributación y son editables. |
+| R7 | Solo para titulares agentes de retención (O-23 en el RUT, D3); las tarifas sugeridas salen de Tributación y son editables. |
 | R8 | El estado de cuenta muestra retenciones por documento y en total; quedan auditadas; anular el pago anula sus retenciones. |
 
 ## Criterios de aceptación
@@ -44,18 +47,18 @@ Plan congelado en el contrato, prorrateo por fecha de corte (pesos enteros, venc
 
 | # | Decisión |
 |---|---|
-| C1 | Marca de agente retenedor (R7): sin columna nueva. Puede retener el titular con `person_type = JURIDICA` o con O-13 (gran contribuyente) u O-23 (agente de retención) en `subscribers.rut_responsibilities`. La lee el puerto `lockTitularForBillingWrite` de CRM. |
-| C2 | Tarifa sugerida (R7): definición activa del tenant en Tributación (`TaxCatalogReadPort`); si no hay, el preset del sistema. Editable: el valor puede diferir de base × tarifa en 1 peso como máximo. |
+| C1 | Marca de agente retenedor (R7): sin columna nueva. ~~Puede retener el titular con `person_type = JURIDICA` o con O-13 u O-23.~~ Reemplazada por D3: solo O-23 en `subscribers.rut_responsibilities`. La leen los puertos `lockTitularForBillingWrite` y `findTitularWithholdingEligibility` de CRM. |
+| C2 | Tarifa sugerida (R7): definición activa del tenant en Tributación (`TaxCatalogReadPort`); si no hay, el preset del sistema. Editable. ~~El valor puede diferir de base × tarifa en 1 peso como máximo.~~ Reemplazado por D4: el valor es exactamente base × tarifa ajustado al peso. |
 | C3 | Cada retención se atribuye a un documento que el mismo pago salda (explícito o el primero con espacio, en orden FIFO o manual). Las retenciones de un documento no superan lo que el pago le aplica. |
 | C4 | `billing_payments.amount` sigue siendo el valor recibido. La capacidad del pago (FIFO, aplicación manual, saldo a favor) es valor recibido + retenciones vigentes. |
-| C5 | El número de certificado es obligatorio en el contrato; es texto libre y lo vacía la supresión del titular. |
+| C5 | El número de certificado es obligatorio en el contrato. ~~Lo vacía la supresión del titular.~~ Por D5 se conserva como soporte contable y solo se oculta en lecturas (H-2). |
 
 ## Correcciones de la revisión (sr-backend, 2026-11-13)
 
 | # | Decisión |
 |---|---|
 | H-1 | Con el documento `FOR UPDATE`: (a) una sola retención vigente por (documento, tipo), también entre pagos (índice único parcial en la 206); (b) la base acumulada del tipo no supera el subtotal antes de IVA; (c) la tarifa no supera la sugerida de Tributación (o el preset) más `BILLING_WITHHOLDING_RATE_TOLERANCE_PP` (puntos porcentuales, defecto 2, de 0 a 100). Por encima exige `BILLING_COURTESIES_MANAGE` y queda auditada (`rateAboveCeiling`); sin permiso, 422 `BILLING_WITHHOLDING_RATE_ABOVE_CEILING`. (a) y (b) responden 422 `BILLING_WITHHOLDING_DUPLICATE` y `BILLING_WITHHOLDING_BASE_EXCEEDS_SUBTOTAL`. Sin tarifa sugerida, cualquier tarifa exige el permiso. |
-| H-2 | Detalle, registro, aplicación y anulación de pagos aplican la regla del listado: titular anonimizado, o con DATOS_BLOQUEADOS sin permiso, recibe certificado, referencia, nota y nota de anulación en null; con permiso se audita `RECORD_ACCESS`. El listado y el estado de cuenta también redactan referencia y notas (el participante de supresión las vacía igual que el certificado). En lectura, si no se pueden verificar marcas o auditar, 503; en escritura (pago ya confirmado) se redacta. |
+| H-2 | Detalle, registro, aplicación y anulación de pagos aplican la regla del listado: titular anonimizado, o con DATOS_BLOQUEADOS sin permiso, recibe certificado, referencia, nota y nota de anulación en null; con permiso se audita `RECORD_ACCESS`. El listado y el estado de cuenta también redactan referencia y notas (el participante de supresión las vacía; el certificado se conserva por D5 y solo se oculta). En lectura, si no se pueden verificar marcas o auditar, 503; en escritura (pago ya confirmado) se redacta. |
 | H-3 | Anular un documento anula sus retenciones vigentes (`voided_at`/`voided_by`, auditoría en el documento y en cada pago). Dejan de sumar a la capacidad del pago: no saldan el documento de reemplazo. |
 | H-4 | Retenciones y aplicaciones van en la misma transacción; si aplicar falla, ninguna queda confirmada. |
 | H-5 | `withoutContract`: hasta 3 intentos con el backoff exponencial del productor (1 s, 2 s) antes de descartar con log. |
@@ -66,3 +69,19 @@ Plan congelado en el contrato, prorrateo por fecha de corte (pesos enteros, venc
 ## Abierto
 
 - Mano de obra en el valor real: ¿valor fijo por plan o no se muestra?
+
+## Mano de obra en el valor real (prevista, sin construir)
+
+Decisión del usuario 2026-11-13: queda prevista hasta capturar los datos. Estado actual de la OT de instalación:
+
+| Dato | Hoy | Falta |
+|---|---|---|
+| Técnico asignado | `assigned_technician_id` | — |
+| Tiempo en sitio | `started_at` → `closed_at` | Llegada al sitio como evento propio |
+| Salida hacia el cliente | Estado `EN_ROUTE` sin hora registrada | Hora de cada transición de estado |
+| Desplazamiento (km/tiempo) | No | Ubicación de salida o estimación sede → cliente |
+| Personal adicional | `assigned_crew_id` sin cuadrillas | Cuadrillas, integrantes y horas por persona |
+| Pausas | No | Registro de pausas |
+| Tarifas | No | Tarifa por hora por rol y costo de desplazamiento por sede |
+
+Fórmula prevista: horas en sitio × personas × tarifa + desplazamiento, informativa dentro del valor real (sin cobro).

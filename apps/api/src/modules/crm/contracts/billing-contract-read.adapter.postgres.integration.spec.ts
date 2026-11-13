@@ -325,6 +325,25 @@ describeWithDb('BillingContractReadAdapter contra PostgreSQL real', () => {
       { exists: false, anonymized: false, withholdingAgent: null },
       { exists: false, anonymized: false, withholdingAgent: null },
     ]);
+
+    // Decisión D3 (spec MOD14 2026-11-13): O-13 gran contribuyente no basta; solo O-23.
+    const eligibilityWith = async (rut: string[]) => {
+      await runInTenantSchema(dataSource, schemaName, (qr) =>
+        qr.query('UPDATE subscribers SET rut_responsibilities = $2::text[] WHERE id = $1', [
+          present,
+          rut,
+        ]),
+      );
+      return TenantContext.run(tenantContext, () =>
+        adapter.findTitularWithholdingEligibility(present),
+      );
+    };
+    await expect(eligibilityWith(['O-13', 'O-47'])).resolves.toMatchObject({
+      withholdingAgent: null,
+    });
+    await expect(eligibilityWith(['O-13', 'O-23'])).resolves.toMatchObject({
+      withholdingAgent: 'AGENTE_RETENEDOR',
+    });
   });
 
   it('acepta lista vacía y rechaza más de 200 referencias', async () => {

@@ -18,7 +18,8 @@ function createScope(overrides: Partial<TitularErasureScope> = {}): TitularErasu
 
 /**
  * Las sondas de esquema responden aparte: columna `external_pdf_key` (199), tabla
- * `billing_courtesies` (203) y tabla `billing_payment_withholdings` (206). El resto va al mock.
+ * `billing_courtesies` (203) y tabla `billing_payment_withholdings` (206, que el participante ya no
+ * consulta: decisión D5). El resto va al mock.
  */
 function qrOf(
   query: jest.Mock,
@@ -199,58 +200,27 @@ describe('BillingTitularErasureParticipant', () => {
     expect(query.mock.calls[11]?.[1]).toEqual([tenantId, [subscriberId]]);
   });
 
-  it('retenciones (206): vacía el número de certificado y verifica cero residuales', async () => {
-    query
-      .mockResolvedValueOnce([{ count: 0 }])
-      .mockResolvedValueOnce([{ count: 0 }])
-      .mockResolvedValueOnce([{ count: 0 }])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ count: 0 }])
-      .mockResolvedValueOnce([{ count: 0 }])
-      .mockResolvedValueOnce([{ count: 0 }])
-      .mockResolvedValueOnce([{ count: 2 }])
-      .mockResolvedValueOnce([[{ id: 'retencion-1' }, { id: 'retencion-2' }], 2])
-      .mockResolvedValueOnce([{ count: 0 }]);
+  it('retenciones (206): conserva el número de certificado como soporte contable (decisión D5)', async () => {
+    // Conteos en cero y escrituras vacías, para la vista previa y la aplicación.
+    query.mockImplementation((sql: string) =>
+      Promise.resolve(/COUNT\(\*\)/u.test(sql) ? [{ count: 0 }] : []),
+    );
+    const seen: string[] = [];
+    const base = qrOf(query, true, false, true);
+    const qr = {
+      query: (sql: string, parameters?: unknown[]) => {
+        seen.push(sql);
+        return base.query(sql, parameters);
+      },
+    } as unknown as QueryRunner;
 
-    const result = await participant.apply(createScope(), qrOf(query, true, false, true), 'apply');
-
-    expect(result[3]).toEqual({
-      table: 'billing_payment_withholdings',
-      category: 'COMERCIAL',
-      selected: 2,
-      changed: 2,
-      residual: 0,
-    });
-    const update = String(query.mock.calls[11]?.[0]);
-    expect(update).toContain('SET certificate_number = NULL');
-    expect(update).toContain('tenant_id = $1::uuid');
-    expect(query.mock.calls[11]?.[1]).toEqual([tenantId, [subscriberId]]);
-  });
-
-  it('retenciones en vista previa: cuenta certificados sin escribir', async () => {
-    query
-      .mockResolvedValueOnce([{ count: 0 }])
-      .mockResolvedValueOnce([{ count: 0 }])
-      .mockResolvedValueOnce([{ count: 0 }])
-      .mockResolvedValueOnce([{ count: 0 }])
-      .mockResolvedValueOnce([{ count: 0 }])
-      .mockResolvedValueOnce([{ count: 0 }])
-      .mockResolvedValueOnce([{ count: 1 }])
-      .mockResolvedValueOnce([{ count: 1 }]);
-
-    const result = await participant.plan(createScope(), qrOf(query, true, false, true));
-
-    expect(result[3]).toEqual({
-      table: 'billing_payment_withholdings',
-      category: 'COMERCIAL',
-      selected: 1,
-      changed: 0,
-      residual: 1,
-    });
-    expect(query.mock.calls.every(([sql]) => !String(sql).trim().startsWith('UPDATE'))).toBe(true);
+    for (const mode of ['dry-run', 'apply'] as const) {
+      const result = await participant.apply(createScope(), qr, mode);
+      expect(result.map((row) => row.table)).not.toContain('billing_payment_withholdings');
+    }
+    expect(seen.some((sql) => /billing_payment_withholdings|certificate_number/u.test(sql))).toBe(
+      false,
+    );
   });
 
   it('cortesías en vista previa: cuenta notas sin escribir', async () => {

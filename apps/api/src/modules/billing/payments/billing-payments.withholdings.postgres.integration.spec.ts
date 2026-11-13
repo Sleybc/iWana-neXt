@@ -30,7 +30,8 @@ const CERT_ICA = 'CERT-ICA-SINTETICO-001';
 
 /**
  * Spec MOD14 2026-11-13 bloque C (R6–R8, CA-4, CA-5) contra PostgreSQL real: tabla de la 206,
- * elegibilidad leída por el adaptador real de CRM y supresión del número de certificado.
+ * elegibilidad leída por el adaptador real de CRM (solo O-23, decisión D3) y conservación del
+ * número de certificado en la supresión (decisión D5).
  */
 describeWithDb('Retenciones en el pago contra PostgreSQL real', () => {
   let dataSource: DataSource;
@@ -52,10 +53,18 @@ describeWithDb('Retenciones en el pago contra PostgreSQL real', () => {
   const sql = <T>(text: string, params: unknown[] = []) =>
     runInTenantSchema(dataSource, schemaName, (qr) => qr.query(text, params)) as Promise<T>;
 
-  async function insertSubscriber(kind: 'JURIDICA' | 'NATURAL' | 'NATURAL_O23'): Promise<void> {
-    if (kind === 'JURIDICA') {
-      // La jurídica activa exige representante legal (157). Sin O-13/O-23: la elegibilidad
-      // sale solo de ser persona jurídica.
+  /**
+   * Decisión D3 (spec MOD14 2026-11-13): solo O-23 en el RUT habilita las retenciones, sea
+   * persona natural o jurídica. `JURIDICA_O23` es la empresa agente retenedora; `JURIDICA` trae
+   * solo O-47 y `JURIDICA_O13` gran contribuyente sin O-23: ninguna de las dos puede retener.
+   */
+  async function insertSubscriber(
+    kind: 'JURIDICA' | 'JURIDICA_O13' | 'JURIDICA_O23' | 'NATURAL' | 'NATURAL_O23',
+  ): Promise<void> {
+    if (kind.startsWith('JURIDICA')) {
+      const rut =
+        kind === 'JURIDICA_O23' ? ['O-23', 'O-47'] : kind === 'JURIDICA_O13' ? ['O-13'] : ['O-47'];
+      // La jurídica activa exige representante legal (157).
       const representativeId = randomUUID();
       await sql(
         `INSERT INTO party (id, party_type, document_type, document_number, display_name)
@@ -68,8 +77,8 @@ describeWithDb('Retenciones en el pago contra PostgreSQL real', () => {
            business_name, vat_treatment, vat_responsibility, rut_responsibilities, address,
            legal_representative_party_id, created_by)
          VALUES ($1, $2, 'ACTIVE', 'JURIDICA', 'PYME', '900123456', '8', 'Empresa Sintética',
-                 'STANDARD', 'RESPONSABLE', ARRAY['O-47']::text[], 'Dirección sintética', $3, $4)`,
-        [subscriberId, tenantId, representativeId, actorId],
+                 'STANDARD', 'RESPONSABLE', $5::text[], 'Dirección sintética', $3, $4)`,
+        [subscriberId, tenantId, representativeId, actorId, rut],
       );
       return;
     }
@@ -238,7 +247,7 @@ describeWithDb('Retenciones en el pago contra PostgreSQL real', () => {
   });
 
   it('CA-4: empresa paga neto de retefuente 4 % y reteICA; el documento queda saldado', async () => {
-    await insertSubscriber('JURIDICA');
+    await insertSubscriber('JURIDICA_O23');
     const documentId = await insertDocument({
       subtotal: '1000000.00',
       tax: '190000.00',
@@ -308,7 +317,7 @@ describeWithDb('Retenciones en el pago contra PostgreSQL real', () => {
   });
 
   it('CA-5: anular el pago anula sus retenciones y reabre el saldo', async () => {
-    await insertSubscriber('JURIDICA');
+    await insertSubscriber('JURIDICA_O23');
     const documentId = await insertDocument({
       subtotal: '1000000.00',
       tax: '190000.00',
@@ -362,7 +371,7 @@ describeWithDb('Retenciones en el pago contra PostgreSQL real', () => {
   });
 
   it('aplicación manual: atribuye al documento indicado y no deja aplicar más que recibido + retenciones', async () => {
-    await insertSubscriber('JURIDICA');
+    await insertSubscriber('JURIDICA_O23');
     const older = await insertDocument({
       subtotal: '100.00',
       tax: '0.00',
@@ -425,7 +434,7 @@ describeWithDb('Retenciones en el pago contra PostgreSQL real', () => {
   });
 
   it('la retención que sobra queda como saldo a favor y la aplicación manual posterior la usa', async () => {
-    await insertSubscriber('JURIDICA');
+    await insertSubscriber('JURIDICA_O23');
     const first = await insertDocument({ subtotal: '100.00', tax: '0.00', total: '100.00' });
     const payment = await inTenant(() =>
       service.registerPayment(
@@ -469,7 +478,24 @@ describeWithDb('Retenciones en el pago contra PostgreSQL real', () => {
     await expect(allocate('4.00')).resolves.toMatchObject({ unallocatedAmount: '0.00' });
   });
 
-  it('R7: persona natural sin O-13/O-23 no registra retenciones; con O-23 sí (adaptador real)', async () => {
+  it.each(['JURIDICA', 'JURIDICA_O13'] as const)(
+    'R7 (decisión D3): persona jurídica sin O-23 (%s) no registra retenciones (adaptador real)',
+    async (kind) => {
+      await insertSubscriber(kind);
+      await insertDocument({ subtotal: '1000000.00', tax: '190000.00', total: '1190000.00' });
+      await expect(
+        inTenant(() => service.registerPayment(ca4Command(), `juridica-${kind}`, actorId)),
+      ).rejects.toMatchObject({
+        status: 422,
+        response: { code: BILLING_ERROR_CODES.BILLING_WITHHOLDING_NOT_ALLOWED },
+      });
+      expect(
+        await sql<Array<{ total: number }>>('SELECT COUNT(*)::int AS total FROM billing_payments'),
+      ).toEqual([{ total: 0 }]);
+    },
+  );
+
+  it('R7: persona natural sin O-23 no registra retenciones; con O-23 sí (adaptador real)', async () => {
     await insertSubscriber('NATURAL');
     await insertDocument({ subtotal: '1000000.00', tax: '190000.00', total: '1190000.00' });
     await expect(
@@ -482,6 +508,15 @@ describeWithDb('Retenciones en el pago contra PostgreSQL real', () => {
       await sql<Array<{ total: number }>>('SELECT COUNT(*)::int AS total FROM billing_payments'),
     ).toEqual([{ total: 0 }]);
 
+    await sql("UPDATE subscribers SET rut_responsibilities = ARRAY['O-13']::text[] WHERE id = $1", [
+      subscriberId,
+    ]);
+    await expect(
+      inTenant(() => service.registerPayment(ca4Command(), 'natural-o13', actorId)),
+    ).rejects.toMatchObject({
+      response: { code: BILLING_ERROR_CODES.BILLING_WITHHOLDING_NOT_ALLOWED },
+    });
+
     await sql("UPDATE subscribers SET rut_responsibilities = ARRAY['O-23']::text[] WHERE id = $1", [
       subscriberId,
     ]);
@@ -491,7 +526,7 @@ describeWithDb('Retenciones en el pago contra PostgreSQL real', () => {
   });
 
   it('idempotencia: el mismo cuerpo devuelve el pago; otro certificado con la misma clave da 409', async () => {
-    await insertSubscriber('JURIDICA');
+    await insertSubscriber('JURIDICA_O23');
     await insertDocument({ subtotal: '1000000.00', tax: '190000.00', total: '1190000.00' });
     const first = await inTenant(() =>
       service.registerPayment(ca4Command(), 'idempotente', actorId),
@@ -525,8 +560,8 @@ describeWithDb('Retenciones en el pago contra PostgreSQL real', () => {
     ).toEqual([{ total: 2 }]);
   });
 
-  it('la supresión del titular vacía el número de certificado y conserva montos', async () => {
-    await insertSubscriber('JURIDICA');
+  it('la supresión del titular conserva el número de certificado y los montos (decisión D5)', async () => {
+    await insertSubscriber('JURIDICA_O23');
     await insertDocument({ subtotal: '1000000.00', tax: '190000.00', total: '1190000.00' });
     await inTenant(() => service.registerPayment(ca4Command(), 'supresion', actorId));
     const participant = new BillingTitularErasureParticipant();
@@ -536,25 +571,20 @@ describeWithDb('Retenciones en el pago contra PostgreSQL real', () => {
       runInTenantSchema(dataSource, schemaName, (qr) => participant.apply(scope, qr, 'apply')),
     );
 
-    expect(result.find((row) => row.table === 'billing_payment_withholdings')).toEqual({
-      table: 'billing_payment_withholdings',
-      category: 'COMERCIAL',
-      selected: 2,
-      changed: 2,
-      residual: 0,
-    });
+    // Soporte contable y tributario del ISP: el participante no la toca; las lecturas la ocultan.
+    expect(result.map((row) => row.table)).not.toContain('billing_payment_withholdings');
     expect(
       await sql<Array<{ certificate_number: string | null; amount: string }>>(
         'SELECT certificate_number, amount::text FROM billing_payment_withholdings ORDER BY billing_payment_withholdings.amount ASC',
       ),
     ).toEqual([
-      { certificate_number: null, amount: '4140.00' },
-      { certificate_number: null, amount: '40000.00' },
+      { certificate_number: ca4Withholdings[1]!.certificateNumber, amount: '4140.00' },
+      { certificate_number: ca4Withholdings[0]!.certificateNumber, amount: '40000.00' },
     ]);
   });
 
   it('migración 206: down() bloquea con retenciones y up()/down() son simétricos', async () => {
-    await insertSubscriber('JURIDICA');
+    await insertSubscriber('JURIDICA_O23');
     await insertDocument({ subtotal: '1000000.00', tax: '190000.00', total: '1190000.00' });
     await inTenant(() => service.registerPayment(ca4Command(), 'migracion', actorId));
     const migration = new BillingPaymentWithholdings2060000000206();
@@ -589,7 +619,7 @@ describeWithDb('Retenciones en el pago contra PostgreSQL real', () => {
 
   describe('H-1: una retención no condona', () => {
     it('intento de saldar con tarifa 100 %: 422 propio, sin pago ni retención y saldo intacto', async () => {
-      await insertSubscriber('JURIDICA');
+      await insertSubscriber('JURIDICA_O23');
       const documentId = await insertDocument({
         subtotal: '1000000.00',
         tax: '190000.00',
@@ -655,7 +685,7 @@ describeWithDb('Retenciones en el pago contra PostgreSQL real', () => {
     });
 
     it('(a) una sola retención vigente por documento y tipo, también entre pagos', async () => {
-      await insertSubscriber('JURIDICA');
+      await insertSubscriber('JURIDICA_O23');
       const documentId = await insertDocument({
         subtotal: '1000000.00',
         tax: '190000.00',
@@ -707,7 +737,7 @@ describeWithDb('Retenciones en el pago contra PostgreSQL real', () => {
   });
 
   it('H-3: anular el documento anula sus retenciones; emitir otro no las reaplica', async () => {
-    await insertSubscriber('JURIDICA');
+    await insertSubscriber('JURIDICA_O23');
     const voidedDocument = await insertDocument({
       subtotal: '1000000.00',
       tax: '190000.00',
@@ -782,7 +812,7 @@ describeWithDb('Retenciones en el pago contra PostgreSQL real', () => {
   });
 
   it('H-4: las retenciones no se confirman sin sus aplicaciones', async () => {
-    await insertSubscriber('JURIDICA');
+    await insertSubscriber('JURIDICA_O23');
     const documentId = await insertDocument({
       subtotal: '1000000.00',
       tax: '190000.00',

@@ -70,14 +70,15 @@ describe('D-BT-10 — manifiesto de columnas textuales (puro)', () => {
     }
   });
 
-  it('MOD14 clasifica sus 61 columnas con diez reglas de supresión y cero pendientes', () => {
+  it('MOD14 clasifica sus 61 columnas con nueve reglas de supresión y cero pendientes', () => {
     const pending = TEXT_ERASURE_MANIFEST.filter((entry) => entry.k === 'PENDIENTE-MOD14');
     expect(pending).toHaveLength(0);
     const classified = TEXT_ERASURE_MANIFEST.filter(
       (entry) => entry.t.startsWith('billing_') || entry.t === 'crm_contract_price_backup_175',
     );
     expect(classified).toHaveLength(EXPECTED_CLASSIFIED_MOD14);
-    expect(classified.filter((entry) => entry.k === 'CUBIERTA')).toHaveLength(10);
+    // Nueve: billing_payment_withholdings.certificate_number pasó a EXCLUIDA (decisión D5, 2026-11-13).
+    expect(classified.filter((entry) => entry.k === 'CUBIERTA')).toHaveLength(9);
   });
 
   it('CA-BT-12 detecta en rojo una columna nueva sin clasificar', () => {

@@ -47,10 +47,13 @@ describe('billing-withholdings', () => {
     expect(editableRate(null)).toBe('');
   });
 
-  it('calcula base × tarifa al centavo (CA-4: 1.000.000 al 4 % y reteICA 0,966 %)', () => {
-    expect(suggestedWithholdingAmount('1000000', '4')).toBe('40000.00');
-    expect(suggestedWithholdingAmount('1000000', '0.966')).toBe('9660.00');
-    expect(suggestedWithholdingAmount('333.33', '4')).toBe('13.33');
+  it('calcula base × tarifa ajustado al peso en pesos enteros (CA-4 y decisión D4)', () => {
+    expect(suggestedWithholdingAmount('1000000', '4')).toBe('40000');
+    expect(suggestedWithholdingAmount('1000000', '0.966')).toBe('9660');
+    // 13,3332 → 13; 465,75 → 466; 40,50 → 41.
+    expect(suggestedWithholdingAmount('333.33', '4')).toBe('13');
+    expect(suggestedWithholdingAmount('112500', '0,414')).toBe('466');
+    expect(suggestedWithholdingAmount('1012.50', '4')).toBe('41');
     expect(suggestedWithholdingAmount('', '4')).toBe('');
     expect(suggestedWithholdingAmount('1000', '')).toBe('');
   });
@@ -66,7 +69,7 @@ describe('billing-withholdings', () => {
       taxCode: 'RETE_ICA',
       base: '1000000.00',
       rate: '0.966',
-      amount: '9660.00',
+      amount: '9660',
       certificateNumber: '',
       documentId: '',
     });
@@ -77,21 +80,32 @@ describe('billing-withholdings', () => {
     expect(withholdingTotalCents([line({ amount: 'x' })])).toBe(0);
   });
 
-  it('acepta una diferencia de hasta 1 peso y rechaza más (tolerancia del contrato)', () => {
-    expect(withholdingLineErrors(line({ amount: '40001.00' }))).toEqual({});
-    expect(withholdingLineErrors(line({ amount: '39999.00' }))).toEqual({});
-    expect(withholdingLineErrors(line({ amount: '40001.01' })).amount).toMatch(
-      /^El valor debe estar a máximo/u,
-    );
+  it('decisión D4: exige el valor exacto ajustado al peso, sin tolerancia', () => {
+    expect(withholdingLineErrors(line({ amount: '40000' }))).toEqual({});
+    expect(withholdingLineErrors(line({ amount: '40000.00' }))).toEqual({});
+    for (const amount of ['40001', '39999', '40000.50']) {
+      expect(withholdingLineErrors(line({ amount })).amount).toMatch(
+        /^El valor debe ser base × tarifa ajustado al peso: \$\s40\.000\.$/u,
+      );
+    }
     // Misma regla que el contrato compartido.
-    expect(
-      PaymentWithholdingInputSchema.safeParse(toWithholdingInput(line({ amount: '40001.00' })))
-        .success,
-    ).toBe(true);
-    expect(
-      PaymentWithholdingInputSchema.safeParse(toWithholdingInput(line({ amount: '40001.01' })))
-        .success,
-    ).toBe(false);
+    for (const [amount, ok] of [
+      ['40000', true],
+      ['40001.00', false],
+      ['40000.50', false],
+    ] as const) {
+      expect(
+        PaymentWithholdingInputSchema.safeParse(toWithholdingInput(line({ amount }))).success,
+      ).toBe(ok);
+    }
+    // El valor sugerido siempre pasa la validación local y la del contrato.
+    const odd = line({
+      base: '112500',
+      rate: '0.414',
+      amount: suggestedWithholdingAmount('112500', '0.414'),
+    });
+    expect(withholdingLineErrors(odd)).toEqual({});
+    expect(PaymentWithholdingInputSchema.safeParse(toWithholdingInput(odd)).success).toBe(true);
   });
 
   it('exige certificado, base, tarifa y valor no mayor que la base', () => {

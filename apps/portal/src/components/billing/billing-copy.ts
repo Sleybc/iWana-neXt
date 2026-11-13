@@ -141,9 +141,8 @@ export const WITHHOLDING_TAX_CODES = {
   RETE_ICA: 'Retención de ICA',
 } satisfies Record<BillingWithholdingTaxCode, string>;
 
-/** Por qué el titular puede practicar retenciones (R7). */
+/** Por qué el titular puede practicar retenciones (R7, decisión D3: solo O-23 en el RUT). */
 export const WITHHOLDING_ELIGIBILITY = {
-  PERSONA_JURIDICA: 'El titular es persona jurídica y puede practicar retenciones.',
   AGENTE_RETENEDOR: 'El titular es agente de retención según su RUT.',
 } satisfies Record<NonNullable<BillingWithholdingOptionsResponse['eligibility']>, string>;
 
