@@ -27,7 +27,7 @@ import { EffectivePermissionsService } from '../../access-control/services/effec
 import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
 import { SettingsPriorityTenantReadPort } from '../../tenant/ports/settings-priority-tenant-read.port';
 import { BillingContractReadPort } from '../ports/billing-contract-read.port';
-import { BillingPaymentsService } from '../payments/billing-payments.service';
+import { BillingPaymentsService, returningRows } from '../payments/billing-payments.service';
 import type { PeriodEvent } from '../payments/billing-payments.service';
 import { BillingIssuerReadPort } from '../ports/billing-issuer-read.port';
 import {
@@ -38,6 +38,12 @@ import {
 import { activeCourtesySum, appliedCourtesyCents } from '../courtesies/billing-courtesy.sql';
 import { courtesiesByDocument, redactCourtesyNotes } from '../courtesies/billing-courtesy.mapper';
 import { fromCents } from '../courtesies/billing-courtesies.service';
+import {
+  buildDocumentInstallationBreakdown,
+  hasInstallationLine,
+  installationBreakdownRowsByContract,
+  type InstallationBreakdownReadRow,
+} from '../installation/billing-installation-breakdown.read';
 
 interface DocumentRow {
   id: string;
@@ -567,6 +573,23 @@ export class BillingDocumentsService {
         `UPDATE billing_payment_allocations SET reversed_at=now(), reversed_by=$1 WHERE document_id=$2 AND tenant_id=$3 AND reversed_at IS NULL`,
         [actorId, documentId, tenantId],
       );
+      // H-3 (decisión del usuario 2026-11-13: «se anulan con la factura»): las retenciones
+      // vigentes atribuidas al documento se anulan con él y dejan de sumar a la capacidad de su
+      // pago (valor recibido + retenciones vigentes): no pueden saldar otro documento. Es seguro
+      // sin bloquear los pagos: cada retención es ≤ lo que su pago aplicó a este documento, y esas
+      // aplicaciones se revierten en la misma transacción.
+      const voidedWithholdings = returningRows<{ payment_id: string; amount: string }>(
+        await qr.query(
+          `UPDATE billing_payment_withholdings SET voided_at=now(), voided_by=$1
+              WHERE document_id=$2 AND tenant_id=$3 AND voided_at IS NULL
+              RETURNING payment_id::text, amount::text`,
+          [actorId, documentId, tenantId],
+        ),
+      ).sort((left, right) => left.payment_id.localeCompare(right.payment_id));
+      const withholdingCents = (rows: Array<{ amount: string }>) =>
+        rows.reduce((sum, row) => sum + Math.round(Number(row.amount) * 100), 0);
+      const centsText = (cents: number) =>
+        `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
       await this.audit.logWithin(
         {
           action: AuditAction.UPDATE,
@@ -574,10 +597,40 @@ export class BillingDocumentsService {
           entityId: documentId,
           userId: actorId,
           oldValue: { status: 'EMITIDO' },
-          newValue: { status: 'ANULADO', reasonCode },
+          newValue: {
+            status: 'ANULADO',
+            reasonCode,
+            ...(voidedWithholdings.length > 0
+              ? {
+                  voidedWithholdingCount: voidedWithholdings.length,
+                  voidedWithholdingAmount: centsText(withholdingCents(voidedWithholdings)),
+                }
+              : {}),
+          },
         },
         qr.manager,
       );
+      const byPayment = new Map<string, Array<{ amount: string }>>();
+      for (const row of voidedWithholdings) {
+        byPayment.set(row.payment_id, [...(byPayment.get(row.payment_id) ?? []), row]);
+      }
+      for (const [paymentId, paymentRows] of byPayment) {
+        await this.audit.logWithin(
+          {
+            action: AuditAction.UPDATE,
+            entityType: 'BillingPayment',
+            entityId: paymentId,
+            userId: actorId,
+            newValue: {
+              action: 'WITHHOLDINGS_VOIDED_WITH_DOCUMENT',
+              documentId,
+              voidedWithholdingCount: paymentRows.length,
+              voidedWithholdingAmount: centsText(withholdingCents(paymentRows)),
+            },
+          },
+          qr.manager,
+        );
+      }
       return this.payments.recalculateSignals(qr.manager, tenantId, [rows[0].period_id]);
     });
     await this.payments.emitEvents(events);
@@ -740,6 +793,19 @@ export class BillingDocumentsService {
             ),
           )
         : null;
+    // Valor real de la instalación (spec MOD14 2026-11-13 R3–R5): solo en el detalle y solo si el
+    // documento lleva la línea INSTALACION; se lee por contrato, así llega la OT cerrada después.
+    const installationContracts =
+      purpose === 'detail'
+        ? rows
+            .filter((row) => hasInstallationLine(linesByDocument.get(row.id) ?? []))
+            .map(({ contract_id }) => contract_id)
+        : [];
+    const installationRows = installationContracts.length
+      ? await runInTenantSchema(this.dataSource, context.schemaName, (qr) =>
+          installationBreakdownRowsByContract(qr.manager, context.tenantId, installationContracts),
+        )
+      : new Map<string, InstallationBreakdownReadRow[]>();
     const piiKeys =
       purpose === 'detail' && (blockedRows.length === 0 || mayReadBlocked)
         ? loadPiiAesGcmKeyPair(this.config)
@@ -813,6 +879,17 @@ export class BillingDocumentsService {
           ? {
               courtesies: (courtesies.get(row.id) ?? []).map((courtesy) =>
                 buyerProtected ? redactCourtesyNotes(courtesy) : courtesy,
+              ),
+            }
+          : {}),
+        // Informativo: no cambia base, IVA ni total. Seriales ocultos como el resto del detalle
+        // protegido (bloqueado sin permiso) o del titular anonimizado.
+        ...(purpose === 'detail'
+          ? {
+              installationBreakdown: buildDocumentInstallationBreakdown(
+                installationRows.get(row.contract_id),
+                linesByDocument.get(row.id) ?? [],
+                buyerProtected || refsBySubscriber.get(row.subscriber_id)?.anonymized === true,
               ),
             }
           : {}),

@@ -5,6 +5,7 @@ import { BillingLineKindInstallation1930000000193 } from '../../../../../package
 import { BillingImportedDocuments1970000000197 } from '../../../../../packages/database/src/migrations/tenant/197_billing_imported_documents';
 import { BillingAdditionalLines2020000000202 } from '../../../../../packages/database/src/migrations/tenant/202_billing_additional_lines';
 import { BillingCourtesies2030000000203 } from '../../../../../packages/database/src/migrations/tenant/203_billing_courtesies';
+import { BillingPaymentWithholdings2060000000206 } from '../../../../../packages/database/src/migrations/tenant/206_billing_payment_withholdings';
 
 /** Billing siempre se crea con la 173 real (más 193 y 197); las tablas mínimas de CRM son del fixture del adaptador. */
 export async function createBillingSchema(dataSource: DataSource) {
@@ -85,6 +86,8 @@ export async function createBillingSchema(dataSource: DataSource) {
     await new BillingAdditionalLines2020000000202().up(qr);
     // Cortesías (bloque D): el saldo de los documentos resta sus ajustes activos.
     await new BillingCourtesies2030000000203().up(qr);
+    // Retenciones en el pago (spec MOD14 2026-11-13 R6): la capacidad del pago las suma.
+    await new BillingPaymentWithholdings2060000000206().up(qr);
     await qr.commitTransaction();
   } catch (error) {
     await qr.rollbackTransaction();

@@ -31,7 +31,7 @@ import { BundleController } from './controllers/bundle.controller';
 import { PromotionController } from './controllers/promotion.controller';
 import { CompatibilityController } from './controllers/compatibility.controller';
 
-import { CommercialCatalogReadAdapter } from './ports/commercial-catalog-read.adapter';
+import { CommercialCatalogReadModule } from './ports/commercial-catalog-read.module';
 import { CommercialCompatibilityReadAdapter } from './ports/commercial-compatibility-read.adapter';
 
 import { TaxationModule } from '../taxation/taxation.module';
@@ -53,6 +53,8 @@ import { AccessControlModule } from '../access-control/access-control.module';
     TaxationModule,
     AccessControlModule,
     AuditModule,
+    // Puerto del catálogo en módulo fino (M3): una sola instancia del adaptador, reexportada.
+    CommercialCatalogReadModule,
   ],
   controllers: [
     CatalogController,
@@ -69,13 +71,8 @@ import { AccessControlModule } from '../access-control/access-control.module';
     PromotionService,
     CompatibilityService,
     CommercialDashboardService,
-    CommercialCatalogReadAdapter,
     PlanPermanenceService,
     { provide: PlanPermanenceOfferReadPort, useExisting: PlanPermanenceService },
-    {
-      provide: CommercialCatalogReadPort,
-      useExisting: CommercialCatalogReadAdapter,
-    },
     {
       provide: PlanCatalogReadPort,
       useExisting: CommercialCatalogReadPort,
@@ -87,7 +84,7 @@ import { AccessControlModule } from '../access-control/access-control.module';
     },
   ],
   exports: [
-    CommercialCatalogReadPort,
+    CommercialCatalogReadModule,
     PlanCatalogReadPort,
     CommercialCompatibilityReadPort,
     PlanPermanenceOfferReadPort,

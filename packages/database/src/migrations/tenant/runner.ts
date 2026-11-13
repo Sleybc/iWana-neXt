@@ -161,6 +161,8 @@ import { CatalogItemVatTreatment2010000000201 } from './201_catalog_item_vat_tre
 import { BillingAdditionalLines2020000000202 } from './202_billing_additional_lines';
 import { BillingCourtesies2030000000203 } from './203_billing_courtesies';
 import { SeedBillingCourtesiesPermission2040000000204 } from './204_seed_billing_courtesies_permission';
+import { BillingInstallationBreakdowns2050000000205 } from './205_billing_installation_breakdowns';
+import { BillingPaymentWithholdings2060000000206 } from './206_billing_payment_withholdings';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -403,6 +405,8 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   BillingAdditionalLines2020000000202,
   BillingCourtesies2030000000203,
   SeedBillingCourtesiesPermission2040000000204,
+  BillingInstallationBreakdowns2050000000205,
+  BillingPaymentWithholdings2060000000206,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

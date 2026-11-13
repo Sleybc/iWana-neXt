@@ -42,6 +42,9 @@ export const SCHEDULE_EVENTS_SWEEP_QUEUE = 'schedule-events-sweep';
 /** Cola firmada para reaccionar al cierre, cancelación y anulación de OT de instalación. */
 export const NETWORK_EXECUTION_EVENTS_QUEUE = 'network-execution-events';
 
+/** Cierre firmado de OT de instalación para MOD14 (consumo al contrato, spec 2026-11-13 A). */
+export const BILLING_INSTALLATION_EVENTS_QUEUE = 'billing-installation-events';
+
 /** Cola de conciliación periódica de aprovisionamientos de red. */
 export const NETWORK_PROVISIONING_RECONCILE_QUEUE = 'network-provisioning-reconcile';
 

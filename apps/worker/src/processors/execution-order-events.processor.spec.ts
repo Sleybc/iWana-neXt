@@ -3,8 +3,12 @@ import { createHmac } from 'node:crypto';
 import { ExecutionOrderEventsProcessor } from './execution-order-events.processor';
 import type { Job, Queue } from 'bullmq';
 import {
+  BILLING_INSTALLATION_CLOSED_JOB_NAME,
+  BILLING_INSTALLATION_EVENTS_QUEUE,
+  canonicalizeBillingInstallationClosedEvent,
   canonicalizeNetworkExecutionEvent,
   NETWORK_EXECUTION_EVENTS_QUEUE,
+  type BillingInstallationClosedEvent,
   type NetworkExecutionEvent,
   type OperationalEventEnvelopeV1,
 } from '@iwana/shared';
@@ -359,6 +363,145 @@ describe('ExecutionOrderEventsProcessor', () => {
         'process-network-execution-event',
       );
       expect(NETWORK_EXECUTION_EVENTS_QUEUE).toBe('network-execution-events');
+    });
+
+    describe('cierre de OT de instalación hacia facturación (MOD14 2026-11-13 A)', () => {
+      const tenantId = '10000000-0000-4000-8000-000000000001';
+      const orderId = 'a0000000-0000-4000-8000-000000000001';
+
+      function buildProcessor(workType: string, signingKey: string, withBillingQueue = true) {
+        const networkQueue = { add: jest.fn().mockResolvedValue(undefined) };
+        const billingQueue = { add: jest.fn().mockResolvedValue(undefined) };
+        const client = {
+          release: jest.fn(),
+          query: jest.fn((sql: string) => {
+            const text = String(sql);
+            if (text.includes('schema_name')) {
+              return Promise.resolve({ rows: [{ schema_name: 'tenant_test001' }] });
+            }
+            if (text.includes('SELECT schedule_event_id, work_type')) {
+              return Promise.resolve({ rows: [{ schedule_event_id: null, work_type: workType }] });
+            }
+            if (text.includes('INSERT INTO execution_order_inbox_events')) {
+              return Promise.resolve({ rows: [{ id: 'inbox-1' }], rowCount: 1 });
+            }
+            if (text.includes('task_id')) {
+              return Promise.resolve({ rows: [{ task_id: 'task-001' }], rowCount: 1 });
+            }
+            return Promise.resolve({ rows: [], rowCount: 1 });
+          }),
+        };
+        const instance = new ExecutionOrderEventsProcessor(
+          makeConfig({ INTERNAL_QUEUE_SIGNING_KEY: signingKey }),
+          dlqQueue as unknown as Queue,
+          inventoryRequestsQueue as unknown as Queue,
+          networkQueue as unknown as Queue,
+          withBillingQueue ? (billingQueue as unknown as Queue) : undefined,
+        );
+        (instance as unknown as { pool: { connect: jest.Mock } }).pool = {
+          connect: jest.fn().mockResolvedValue(client),
+        } as never;
+        return { instance, networkQueue, billingQueue, client };
+      }
+
+      const closedEnvelope = () =>
+        makeEnvelope({
+          tenantId,
+          eventType: 'ExecutionOrderClosedV1',
+          payload: { executionOrderId: orderId, result: 'EXECUTED' } as never,
+        });
+
+      it('reenvía firmado el cierre a la cola de facturación con jobId = eventId', async () => {
+        const signingKey = Buffer.alloc(32, 9).toString('base64');
+        const { instance, networkQueue, billingQueue } = buildProcessor('INSTALLATION', signingKey);
+        const envelope = closedEnvelope();
+
+        await instance.process({
+          data: { tenantId, envelope },
+          attemptsMade: 0,
+        } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>);
+
+        const billingEvent: BillingInstallationClosedEvent = {
+          eventId: envelope.eventId,
+          executionOrderId: orderId,
+          aggregateVersion: envelope.aggregateVersion,
+          occurredAt: envelope.occurredAt,
+        };
+        const signature = createHmac('sha256', Buffer.from(signingKey, 'base64'))
+          .update(canonicalizeBillingInstallationClosedEvent(tenantId, billingEvent))
+          .digest('hex');
+        expect(networkQueue.add).toHaveBeenCalledTimes(1);
+        expect(billingQueue.add).toHaveBeenCalledWith(
+          BILLING_INSTALLATION_CLOSED_JOB_NAME,
+          { tenantId, envelope: billingEvent, signature },
+          {
+            jobId: envelope.eventId,
+            attempts: 8,
+            backoff: { type: 'exponential', delay: 1000 },
+            removeOnComplete: true,
+            removeOnFail: { age: 24 * 60 * 60 },
+          },
+        );
+        expect(BILLING_INSTALLATION_EVENTS_QUEUE).toBe('billing-installation-events');
+      });
+
+      it('no reenvía a facturación el cierre de una OT que no es de instalación', async () => {
+        const { instance, billingQueue } = buildProcessor(
+          'MAINTENANCE',
+          Buffer.alloc(32, 9).toString('base64'),
+        );
+
+        await instance.process({
+          data: { tenantId, envelope: closedEnvelope() },
+          attemptsMade: 0,
+        } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>);
+
+        expect(billingQueue.add).not.toHaveBeenCalled();
+      });
+
+      it('si la cola de facturación falla, revierte y no marca el inbox (el reintento la reenvía)', async () => {
+        const { instance, billingQueue, client } = buildProcessor(
+          'INSTALLATION',
+          Buffer.alloc(32, 9).toString('base64'),
+        );
+        billingQueue.add.mockRejectedValueOnce(new Error('redis caído'));
+
+        await expect(
+          instance.process({
+            data: { tenantId, envelope: closedEnvelope() },
+            attemptsMade: 0,
+          } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>),
+        ).rejects.toThrow();
+
+        const queries = client.query.mock.calls.map(([sql]: [string]) => String(sql));
+        expect(queries).toContain('ROLLBACK');
+        expect(queries).not.toContain('COMMIT');
+        expect(queries.some((sql) => sql.includes('SET processed_at = NOW()'))).toBe(false);
+      });
+
+      it('M5: sin la cola de facturación configurada, el cierre se proyecta igual y deja log', async () => {
+        const { instance, networkQueue, client } = buildProcessor(
+          'INSTALLATION',
+          Buffer.alloc(32, 9).toString('base64'),
+          false,
+        );
+        const logError = jest
+          .spyOn((instance as unknown as { logger: { error: () => void } }).logger, 'error')
+          .mockImplementation(() => undefined);
+
+        await instance.process({
+          data: { tenantId, envelope: closedEnvelope() },
+          attemptsMade: 0,
+        } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>);
+
+        const queries = client.query.mock.calls.map(([sql]: [string]) => String(sql));
+        expect(networkQueue.add).toHaveBeenCalledTimes(1);
+        expect(queries).toContain('COMMIT');
+        expect(queries.some((sql) => sql.includes('SET processed_at = NOW()'))).toBe(true);
+        expect(logError).toHaveBeenCalledWith(
+          expect.stringContaining('billing-installation-events'),
+        );
+      });
     });
 
     it('no reenvía a red eventos de OT que no sean INSTALLATION', async () => {

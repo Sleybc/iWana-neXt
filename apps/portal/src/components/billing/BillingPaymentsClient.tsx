@@ -25,6 +25,8 @@ import {
   PAYMENT_VOID_REASONS,
   PROTECTED_LABEL,
   PROTECTED_NOTICE,
+  WITHHOLDING_TAX_CODES,
+  withholdingAmountOrNull,
 } from './billing-copy';
 import {
   BillingLoadState,
@@ -112,6 +114,8 @@ export function BillingPaymentTable({
   const { hasPermission } = usePermissions();
   const canRegister = hasPermission(AccessPermissionKey.BILLING_PAYMENTS_REGISTER);
   const [voiding, setVoiding] = useState<BillingPaymentResponse>();
+  // La columna solo aparece si algún pago tiene retenciones (spec MOD14 2026-11-13 R8).
+  const showWithholdings = payments.some((payment) => payment.withholdings?.length);
   return (
     <>
       {showSubscriber && payments.some((payment) => payment.subscriberProtected) ? (
@@ -124,6 +128,7 @@ export function BillingPaymentTable({
           'Método',
           'Referencia',
           'Monto recibido',
+          ...(showWithholdings ? ['Retenciones'] : []),
           'Monto aplicado',
           'Remanente',
           'Estado',
@@ -143,6 +148,7 @@ export function BillingPaymentTable({
             PAYMENT_METHODS[payment.method],
             payment.reference ?? '—',
             formatBillingMoney(payment.amount),
+            ...(showWithholdings ? [<PaymentWithholdingsCell payment={payment} />] : []),
             payment.allocatedAmount == null ? '—' : formatBillingMoney(payment.allocatedAmount),
             payment.unallocatedAmount == null ? '—' : formatBillingMoney(payment.unallocatedAmount),
             <Badge variant={payment.status === 'ANULADO' ? 'error' : 'success'}>
@@ -166,7 +172,11 @@ export function BillingPaymentTable({
       {voiding ? (
         <BillingConfirmation
           title="Anular pago"
-          description="Las aplicaciones sobre documentos se revertirán y el saldo de los documentos volverá a estar pendiente o vencido."
+          description={`Las aplicaciones sobre documentos se revertirán y el saldo de los documentos volverá a estar pendiente o vencido.${
+            withholdingAmountOrNull(voiding.withholdingAmount)
+              ? ' Sus retenciones también se anularán.'
+              : ''
+          }`}
           confirm="Confirmar anulación"
           reasons={PAYMENT_VOID_REASONS}
           onClose={() => setVoiding(undefined)}
@@ -181,5 +191,20 @@ export function BillingPaymentTable({
         />
       ) : null}
     </>
+  );
+}
+
+/** Retenciones del pago: valor vigente y tipos; las de un pago anulado se ven como anuladas. */
+function PaymentWithholdingsCell({ payment }: { payment: BillingPaymentResponse }) {
+  const lines = payment.withholdings ?? [];
+  if (!lines.length) return <>—</>;
+  const voided = lines.every((line) => line.voidedAt != null);
+  const total = withholdingAmountOrNull(payment.withholdingAmount);
+  const types = [...new Set(lines.map((line) => WITHHOLDING_TAX_CODES[line.taxCode]))];
+  return (
+    <div className="space-y-0.5">
+      <p>{voided || !total ? 'Anuladas' : formatBillingMoney(total)}</p>
+      <p className="text-xs text-gray-600 dark:text-gray-400">{types.join(' · ')}</p>
+    </div>
   );
 }

@@ -120,6 +120,26 @@ export const BILLING_COURTESY_VOID_REASONS = [
 ] as const;
 export type BillingCourtesyVoidReason = (typeof BILLING_COURTESY_VOID_REASONS)[number];
 
+/**
+ * Tipos de retención que el registro de pago admite (spec MOD14 2026-11-13 R6). Son códigos de los
+ * presets de Tributación (`TAX_COLOMBIA_PRESETS`); la tarifa sugerida sale del catálogo del tenant.
+ */
+export const BILLING_WITHHOLDING_TAX_CODES = ['RETE_FUENTE_SERVICIOS', 'RETE_ICA'] as const;
+export type BillingWithholdingTaxCode = (typeof BILLING_WITHHOLDING_TAX_CODES)[number];
+
+/**
+ * Responsabilidades del RUT que marcan a un titular persona natural como agente retenedor
+ * (spec MOD14 2026-11-13 R7): O-13 gran contribuyente y O-23 agente de retención. La persona
+ * jurídica siempre puede practicar retenciones.
+ */
+export const BILLING_WITHHOLDING_AGENT_RUT_RESPONSIBILITIES = ['O-13', 'O-23'] as const;
+
+/** Diferencia máxima, en pesos, entre el valor de la retención y base × tarifa. */
+export const BILLING_WITHHOLDING_ROUNDING_TOLERANCE_CENTS = 100;
+
+/** Máximo de líneas de retención en un pago. */
+export const BILLING_WITHHOLDING_MAX_LINES = 10;
+
 /** Tabla de códigos de error de Billing (HLD v1.1 §4, RS-6, RS-7). */
 export const BILLING_ERROR_CODES = {
   BILLING_ISSUER_INCOMPLETE: 'BILLING_ISSUER_INCOMPLETE',
@@ -145,5 +165,14 @@ export const BILLING_ERROR_CODES = {
   BILLING_COURTESY_NOT_FOUND: 'BILLING_COURTESY_NOT_FOUND',
   BILLING_COURTESY_ALREADY_VOIDED: 'BILLING_COURTESY_ALREADY_VOIDED',
   BILLING_COURTESY_NOT_VOIDABLE: 'BILLING_COURTESY_NOT_VOIDABLE',
+  /** Retenciones en el pago (spec MOD14 2026-11-13 R6, R7). */
+  BILLING_WITHHOLDING_NOT_ALLOWED: 'BILLING_WITHHOLDING_NOT_ALLOWED',
+  BILLING_WITHHOLDING_NOT_ATTRIBUTABLE: 'BILLING_WITHHOLDING_NOT_ATTRIBUTABLE',
+  /** H-1 (a): ya hay una retención vigente del mismo tipo sobre el documento. */
+  BILLING_WITHHOLDING_DUPLICATE: 'BILLING_WITHHOLDING_DUPLICATE',
+  /** H-1 (b): la base acumulada del tipo supera el subtotal antes de IVA del documento. */
+  BILLING_WITHHOLDING_BASE_EXCEEDS_SUBTOTAL: 'BILLING_WITHHOLDING_BASE_EXCEEDS_SUBTOTAL',
+  /** H-1 (c): la tarifa supera la sugerida más la tolerancia y el usuario no tiene permiso. */
+  BILLING_WITHHOLDING_RATE_ABOVE_CEILING: 'BILLING_WITHHOLDING_RATE_ABOVE_CEILING',
 } as const;
 export type BillingErrorCode = (typeof BILLING_ERROR_CODES)[keyof typeof BILLING_ERROR_CODES];

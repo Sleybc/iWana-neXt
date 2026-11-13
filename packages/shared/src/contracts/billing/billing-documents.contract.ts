@@ -8,6 +8,7 @@ import {
 } from './billing-constants';
 import { billingMoneyStringSchema, billingSignedMoneyStringSchema } from './billing-money.schema';
 import { BillingCourtesyResponseSchema } from './billing-courtesies.contract';
+import { BillingDocumentInstallationBreakdownSchema } from './billing-installation-consumption.contract';
 
 function isCivilDate(value: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
@@ -175,8 +176,19 @@ export const BillingDocumentResponseSchema = z
      */
     courtesyAmount: billingMoneyStringSchema.optional(),
     pendingAmount: billingMoneyStringSchema.optional(),
+    /**
+     * Retenciones vigentes atribuidas al documento (spec MOD14 2026-11-13 R8). Son parte de
+     * `paidAmount`: el pago aplicó valor recibido + retenciones. Solo en el estado de cuenta.
+     */
+    withholdingAmount: billingMoneyStringSchema.optional(),
     /** Cortesías del documento, activas y anuladas; solo en el detalle. */
     courtesies: z.array(BillingCourtesyResponseSchema).optional(),
+    /**
+     * Valor real de la instalación, informativo (spec MOD14 2026-11-13 R3–R5). Solo en el detalle;
+     * null si el documento no lleva línea `INSTALACION` o su contrato no tiene OT de instalación
+     * cerrada con consumo registrado.
+     */
+    installationBreakdown: BillingDocumentInstallationBreakdownSchema.nullable().optional(),
   })
   .strict();
 

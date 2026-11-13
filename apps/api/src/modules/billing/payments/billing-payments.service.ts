@@ -16,6 +16,9 @@ import {
   BillingPaymentResponseSchema,
   RegisterPaymentCommandSchema,
   VoidPaymentCommandSchema,
+  type BillingPaymentWithholdingResponse,
+  type BillingWithholdingTaxCode,
+  type PaymentWithholdingInput,
   redactedBillingBuyer,
   type BillingAccountStatement,
   type BillingPeriodPaymentState,
@@ -31,6 +34,12 @@ import { BillingContractReadPort } from '../ports/billing-contract-read.port';
 import { BillingAccountReadPort } from '../ports/billing-account-read.port';
 import { buildPageMeta, clampPage } from '../../../common/pagination';
 import { suggestFifoAllocations } from './allocation';
+import { attributeWithholdings, WithholdingNotAttributableError } from './withholding-attribution';
+import {
+  BillingWithholdingOptionsService,
+  rateTenThousandths,
+  type WithholdingRateCeiling,
+} from './billing-withholding-options.service';
 import {
   activeCourtesySum,
   appliedCourtesyCents,
@@ -64,6 +73,22 @@ type PaymentRow = {
   created_by: string;
   created_at: Date | string;
   allocated_amount: string;
+  /** Retenciones vigentes del pago (spec MOD14 2026-11-13 R6). */
+  withholding_amount: string;
+};
+
+type WithholdingRow = {
+  id: string;
+  payment_id: string;
+  document_id: string;
+  tax_code: BillingPaymentWithholdingResponse['taxCode'];
+  base: string;
+  rate: string;
+  amount: string;
+  certificate_number: string | null;
+  voided_at: Date | string | null;
+  created_by: string;
+  created_at: Date | string;
 };
 
 type AllocationRow = {
@@ -100,6 +125,26 @@ type BlockedDataReadAccess = {
   grantedBy?: 'PRIVACY_READ' | 'CRM_BLOCKED_DATA_READ';
 };
 
+/**
+ * Acceso del lector a los datos de un titular con DATOS_BLOQUEADOS (H-2). Sin permiso, o sin
+ * indicarlo, el texto libre del pago se redacta: número de certificado, referencia y notas.
+ */
+export type PaymentReadAccess = BlockedDataReadAccess & { actorId?: string };
+
+/** Opciones del registro de pago que dependen del lector (H-1 c, H-2). */
+export type RegisterPaymentOptions = {
+  readAccess?: PaymentReadAccess;
+  /** El actor tiene `BILLING_COURTESIES_MANAGE`: puede superar el tope de tarifa (H-1 c). */
+  canExceedWithholdingRate?: boolean;
+};
+
+type InsertedWithholding = PaymentWithholdingInput & {
+  documentId: string;
+  rate: string;
+  /** Tope vigente cuando la tarifa lo superó con permiso (auditoría, H-1 c). */
+  rateCeiling?: string | null;
+};
+
 type StatementDocumentRow = {
   id: string;
   tenant_id: string;
@@ -132,7 +177,15 @@ type StatementDocumentRow = {
   paid_amount: string;
   courtesy_amount?: string;
   courtesy_line_amount?: string;
+  withholding_amount?: string;
 };
+
+/**
+ * Retenciones vigentes de un pago (spec MOD14 2026-11-13 R6): suman a `amount` (valor recibido)
+ * en la capacidad del pago para saldar documentos.
+ */
+const ACTIVE_WITHHOLDING_SUM_SQL = `COALESCE((SELECT SUM(w.amount) FROM billing_payment_withholdings w
+    WHERE w.payment_id = p.id AND w.tenant_id = p.tenant_id AND w.voided_at IS NULL), 0)`;
 
 const PAYMENT_COLUMNS = `p.id::text, p.tenant_id::text, p.subscriber_id::text, p.method,
   p.amount::text, p.paid_at::text, p.reference, p.note, p.idempotency_key, p.status,
@@ -140,7 +193,8 @@ const PAYMENT_COLUMNS = `p.id::text, p.tenant_id::text, p.subscriber_id::text, p
   p.void_reason_code, p.void_note, p.voided_at, p.voided_by::text, p.created_by::text,
   p.created_at, COALESCE((SELECT SUM(a.amount) FROM billing_payment_allocations a
     WHERE a.payment_id = p.id AND a.tenant_id = p.tenant_id AND a.reversed_at IS NULL), 0)::numeric(14,2)::text
-    AS allocated_amount`;
+    AS allocated_amount,
+  ${ACTIVE_WITHHOLDING_SUM_SQL}::numeric(14,2)::text AS withholding_amount`;
 
 function errorResponse(code: string, message: string): { code: string; message: string } {
   return { code, message };
@@ -194,6 +248,68 @@ function allocationsFingerprint(
   return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
 }
 
+function moneyString(value: string | number): string {
+  return centsMoney(moneyCents(value));
+}
+
+/** Clave canónica de una retención para comparar reintentos idempotentes. */
+function withholdingKey(line: {
+  taxCode: string;
+  base: string | number;
+  rate: string | number;
+  amount: string | number;
+  certificateNumber: string | null;
+}): string {
+  const rate = typeof line.rate === 'number' ? line.rate.toFixed(4) : Number(line.rate).toFixed(4);
+  return [
+    line.taxCode,
+    moneyString(line.base),
+    rate,
+    moneyString(line.amount),
+    line.certificateNumber ?? '',
+  ].join('|');
+}
+
+function mapWithholding(row: WithholdingRow): BillingPaymentWithholdingResponse {
+  return {
+    id: row.id,
+    paymentId: row.payment_id,
+    documentId: row.document_id,
+    taxCode: row.tax_code,
+    base: row.base,
+    rate: row.rate,
+    amount: row.amount,
+    certificateNumber: row.certificate_number,
+    voidedAt: row.voided_at == null ? null : toIso(row.voided_at),
+    createdBy: row.created_by,
+    createdAt: toIso(row.created_at),
+  };
+}
+
+/**
+ * H-2: texto libre del pago ligado al titular (el participante de supresión lo vacía): número de
+ * certificado de cada retención, referencia, nota y nota de anulación. Montos e IDs se conservan.
+ */
+export function redactPaymentFreeText(payment: BillingPaymentResponse): BillingPaymentResponse {
+  return {
+    ...payment,
+    ...(payment.reference !== undefined ? { reference: null } : {}),
+    ...(payment.note !== undefined ? { note: null } : {}),
+    ...(payment.voidNote !== undefined ? { voidNote: null } : {}),
+    ...(payment.withholdings
+      ? {
+          withholdings: payment.withholdings.map((line) => ({ ...line, certificateNumber: null })),
+        }
+      : {}),
+  };
+}
+
+/** TypeORM devuelve `[filas, conteo]` en un UPDATE ... RETURNING; un mock puede dar solo filas. */
+export function returningRows<T>(result: unknown): T[] {
+  if (Array.isArray(result) && Array.isArray(result[0])) return result[0] as T[];
+  return Array.isArray(result) ? (result as T[]) : [];
+}
+
 function mapAllocation(row: AllocationRow) {
   return {
     id: row.id,
@@ -217,6 +333,11 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     private readonly eventEmitter: EventEmitter2,
     private readonly privacyMarksReadPort: IPrivacyMarksReadPort,
     private readonly tenantSettings: SettingsPriorityTenantReadPort,
+    /**
+     * Topes de tarifa de retención (H-1 c). Nest siempre lo inyecta; las pruebas que no registran
+     * retenciones pueden omitirlo. Sin él, un pago con retenciones se rechaza (fail closed).
+     */
+    private readonly withholdingRates?: BillingWithholdingOptionsService,
   ) {
     super();
   }
@@ -225,6 +346,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     body: unknown,
     idempotencyKey: string | undefined,
     actorId: string,
+    options: RegisterPaymentOptions = {},
   ): Promise<BillingPaymentResponse> {
     const parsed = RegisterPaymentCommandSchema.safeParse(body);
     if (!parsed.success) {
@@ -243,6 +365,8 @@ export class BillingPaymentsService extends BillingAccountReadPort {
 
     const command = parsed.data;
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    // H-1 (c): el catálogo de Tributación usa su propia conexión; se lee antes de la transacción.
+    const rateCeilings = await this.resolveRateCeilings(command.withholdings ?? []);
     const committed = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const titular = await this.contractReadPort.lockTitularForBillingWrite(command.subscriberId, {
         manager: qr.manager,
@@ -260,6 +384,17 @@ export class BillingPaymentsService extends BillingAccountReadPort {
           events: [] as PeriodEvent[],
         };
       }
+
+      const withholdingLines = command.withholdings ?? [];
+      // Spec MOD14 2026-11-13 R7: solo persona jurídica o agente retenedor practica retenciones.
+      if (withholdingLines.length > 0 && !titular.withholdingAgent) {
+        throw this.withholdingNotAllowed();
+      }
+      const rateOverrides = this.assertRatesWithinCeiling(
+        withholdingLines,
+        rateCeilings,
+        options.canExceedWithholdingRate === true,
+      );
 
       const rows = (await qr.manager.query(
         `INSERT INTO billing_payments (
@@ -293,12 +428,35 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       }
 
       const paymentId = rows[0].id;
+      const withholdingCents = withholdingLines.reduce(
+        (sum, line) => sum + moneyCents(line.amount),
+        0,
+      );
+      // R6: valor recibido + retenciones es lo que se aplica contra el saldo.
       const allocations = command.allocations
         ? command.allocations.map(({ documentId, amount }) => ({
             documentId,
             amount: typeof amount === 'number' ? amount.toFixed(2) : amount,
           }))
-        : await this.suggestAllocations(qr.manager, tenantId, command.subscriberId, command.amount);
+        : await this.suggestAllocations(
+            qr.manager,
+            tenantId,
+            command.subscriberId,
+            centsMoney(moneyCents(command.amount) + withholdingCents),
+          );
+      const withholdings = await this.insertWithholdings(
+        qr.manager,
+        tenantId,
+        paymentId,
+        command.subscriberId,
+        allocations,
+        withholdingLines,
+        actorId,
+        rateOverrides,
+      );
+      // H-4: las retenciones ya están insertadas en esta misma transacción. Si aplicar falla
+      // (saldo excedido, documento no emitido…), la excepción revierte también las retenciones:
+      // nunca quedan confirmadas sin las aplicaciones que las respaldan.
       const periods = await this.applyAllocations(
         qr.manager,
         tenantId,
@@ -319,6 +477,23 @@ export class BillingPaymentsService extends BillingAccountReadPort {
             amount: typeof command.amount === 'number' ? command.amount.toFixed(2) : command.amount,
             paidAt: command.paidAt,
             allocationCount: allocations.length,
+            // Sin número de certificado: es texto libre del titular.
+            ...(withholdings.length > 0
+              ? {
+                  withholdingAmount: centsMoney(withholdingCents),
+                  withholdings: withholdings.map((line) => ({
+                    taxCode: line.taxCode,
+                    base: moneyString(line.base),
+                    rate: line.rate,
+                    amount: moneyString(line.amount),
+                    documentId: line.documentId,
+                    // H-1 (c): tarifa por encima del tope, admitida con BILLING_COURTESIES_MANAGE.
+                    ...(line.rateCeiling !== undefined
+                      ? { rateAboveCeiling: true, rateCeiling: line.rateCeiling }
+                      : {}),
+                  })),
+                }
+              : {}),
           },
         },
         qr.manager,
@@ -329,13 +504,14 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     });
 
     await this.emitEvents(committed.events);
-    return committed.payment;
+    return this.protectPaymentForReader(committed.payment, options.readAccess, 'write');
   }
 
   async allocateCredit(
     paymentId: string,
     body: unknown,
     actorId: string,
+    readAccess?: PaymentReadAccess,
   ): Promise<BillingPaymentResponse> {
     const parsed = AllocateCreditCommandSchema.safeParse(body);
     if (!parsed.success || parsed.data.allocations.some((item) => item.paymentId !== paymentId)) {
@@ -394,13 +570,14 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       return { payment: await this.toPaymentResponse(qr.manager, after), events };
     });
     await this.emitEvents(committed.events);
-    return committed.payment;
+    return this.protectPaymentForReader(committed.payment, readAccess, 'write');
   }
 
   async voidPayment(
     paymentId: string,
     body: unknown,
     actorId: string,
+    readAccess?: PaymentReadAccess,
   ): Promise<BillingPaymentResponse> {
     const parsed = VoidPaymentCommandSchema.safeParse(body);
     if (!parsed.success) {
@@ -439,6 +616,15 @@ export class BillingPaymentsService extends BillingAccountReadPort {
           WHERE payment_id = $2::uuid AND tenant_id = $3 AND reversed_at IS NULL`,
         [actorId, paymentId, tenantId],
       );
+      // Spec MOD14 2026-11-13 R8: anular el pago anula sus retenciones y reabre el saldo.
+      const voidedWithholdings = (await qr.manager.query(
+        `UPDATE billing_payment_withholdings
+            SET voided_at = now(), voided_by = $1::uuid
+          WHERE payment_id = $2::uuid AND tenant_id = $3 AND voided_at IS NULL
+          RETURNING amount::text`,
+        [actorId, paymentId, tenantId],
+      )) as unknown;
+      const voidedWithholdingRows = returningRows<{ amount: string }>(voidedWithholdings);
       await qr.manager.query(
         `UPDATE billing_payments
             SET status = 'ANULADO', void_reason_code = $1, void_note = $2,
@@ -453,7 +639,18 @@ export class BillingPaymentsService extends BillingAccountReadPort {
           entityId: paymentId,
           userId: actorId,
           oldValue: { status: 'REGISTRADO' },
-          newValue: { status: 'ANULADO', reasonCode: parsed.data.reasonCode },
+          newValue: {
+            status: 'ANULADO',
+            reasonCode: parsed.data.reasonCode,
+            ...(voidedWithholdingRows.length > 0
+              ? {
+                  voidedWithholdingCount: voidedWithholdingRows.length,
+                  voidedWithholdingAmount: centsMoney(
+                    voidedWithholdingRows.reduce((sum, row) => sum + moneyCents(row.amount), 0),
+                  ),
+                }
+              : {}),
+          },
         },
         qr.manager,
       );
@@ -467,19 +664,87 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       return { payment: await this.toPaymentResponse(qr.manager, after), events };
     });
     await this.emitEvents(committed.events);
-    return committed.payment;
+    return this.protectPaymentForReader(committed.payment, readAccess, 'write');
   }
 
-  async getPayment(paymentId: string): Promise<BillingPaymentResponse> {
+  async getPayment(
+    paymentId: string,
+    readAccess?: PaymentReadAccess,
+  ): Promise<BillingPaymentResponse> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const payment = await this.findPaymentById(qr.manager, tenantId, paymentId);
-      if (!payment)
+    const payment = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const row = await this.findPaymentById(qr.manager, tenantId, paymentId);
+      if (!row)
         throw new NotFoundException(
           errorResponse('BILLING_PAYMENT_NOT_FOUND', 'No se encontró el pago.'),
         );
-      return this.toPaymentResponse(qr.manager, payment);
+      return this.toPaymentResponse(qr.manager, row);
     });
+    return this.protectPaymentForReader(payment, readAccess, 'read');
+  }
+
+  /**
+   * H-2: aplica al pago de un solo titular la misma regla del listado. Anonimizado, o con
+   * DATOS_BLOQUEADOS y sin permiso: se redacta el texto libre (certificado, referencia, notas).
+   * Con permiso sobre un bloqueado: se audita el acceso (RECORD_ACCESS).
+   *
+   * Se resuelve después del commit: los puertos usan su propia conexión del pool. En lectura
+   * (`read`), si no se pueden verificar las marcas o auditar el acceso, responde 503 como el
+   * listado. En escritura (`write`) el pago ya quedó confirmado: en esos casos redacta (fail
+   * closed) en lugar de fallar; el reintento idempotente devuelve el mismo pago.
+   */
+  private async protectPaymentForReader(
+    payment: BillingPaymentResponse,
+    readAccess: PaymentReadAccess | undefined,
+    mode: 'read' | 'write',
+  ): Promise<BillingPaymentResponse> {
+    const access: PaymentReadAccess = readAccess ?? { canSeeBlocked: false };
+    const redacted = (): BillingPaymentResponse => ({
+      ...redactPaymentFreeText(payment),
+      subscriberProtected: true,
+    });
+    const fail = (): BillingPaymentResponse => {
+      if (mode === 'read') throw this.privacyUnavailable();
+      return redacted();
+    };
+    let ref: { partyId: string | null; anonymized: boolean } | undefined;
+    try {
+      [ref] = await this.contractReadPort.findTitularRefs([payment.subscriberId]);
+    } catch {
+      return fail();
+    }
+    if (!ref || ref.anonymized) return redacted();
+    let blocked = false;
+    if (ref.partyId) {
+      try {
+        const marks = await this.privacyMarksReadPort.activeMarks([ref.partyId]);
+        blocked = (marks[ref.partyId] ?? []).includes('DATOS_BLOQUEADOS');
+      } catch {
+        return fail();
+      }
+    }
+    if (!blocked) return { ...payment, subscriberProtected: false };
+    if (!access.canSeeBlocked) return redacted();
+    const { actorId, grantedBy } = access;
+    if (!actorId || !grantedBy) return fail();
+    const { schemaName } = TenantContext.getOrThrow();
+    try {
+      await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+        this.audit.logWithin(
+          {
+            action: AuditAction.RECORD_ACCESS,
+            entityType: 'BillingPayment',
+            entityId: payment.id,
+            userId: actorId,
+            newValue: { privacyMark: 'DATOS_BLOQUEADOS', grantedBy },
+          },
+          qr.manager,
+        ),
+      );
+    } catch {
+      return fail();
+    }
+    return { ...payment, subscriberProtected: false };
   }
 
   async listPayments(
@@ -560,7 +825,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       const anonymized = !ref || ref.anonymized;
       const redact = !anonymized && isBlocked(payment.subscriberId) && !canSeeBlocked;
       return {
-        ...payment,
+        ...(anonymized || redact ? redactPaymentFreeText(payment) : payment),
         subscriberDisplayName: anonymized
           ? null
           : redact
@@ -718,7 +983,10 @@ export class BillingPaymentsService extends BillingAccountReadPort {
                            WHERE a.document_id = d.id AND a.tenant_id = d.tenant_id
                              AND a.reversed_at IS NULL), 0)::numeric(14,2)::text AS paid_amount,
                 ${activeCourtesySum('d')}::numeric(14,2)::text AS courtesy_amount,
-                ${courtesyLineSum('d')}::numeric(14,2)::text AS courtesy_line_amount
+                ${courtesyLineSum('d')}::numeric(14,2)::text AS courtesy_line_amount,
+                COALESCE((SELECT SUM(w.amount) FROM billing_payment_withholdings w
+                           WHERE w.document_id = d.id AND w.tenant_id = d.tenant_id
+                             AND w.voided_at IS NULL), 0)::numeric(14,2)::text AS withholding_amount
            FROM billing_documents d
             -- ADR-110 D5: un IMPORTADO no tiene periodo y sí cuenta en el estado de cuenta.
             LEFT JOIN billing_periods p ON p.id = d.period_id AND p.tenant_id = d.tenant_id
@@ -737,9 +1005,19 @@ export class BillingPaymentsService extends BillingAccountReadPort {
                             JOIN billing_payments p ON p.id = a.payment_id AND p.tenant_id = a.tenant_id
                            WHERE p.tenant_id = $1 AND p.subscriber_id = $2::uuid
                              AND a.reversed_at IS NULL), 0)::numeric(14,2)::text
-                  AS allocated_amount`,
+                  AS allocated_amount,
+                COALESCE((SELECT SUM(w.amount)
+                            FROM billing_payment_withholdings w
+                            JOIN billing_payments p ON p.id = w.payment_id AND p.tenant_id = w.tenant_id
+                           WHERE p.tenant_id = $1 AND p.subscriber_id = $2::uuid
+                             AND p.status = 'REGISTRADO' AND w.voided_at IS NULL), 0)::numeric(14,2)::text
+                  AS withholding_amount`,
         [tenantId, subscriberId],
-      )) as Array<{ registered_amount: string; allocated_amount: string }>;
+      )) as Array<{
+        registered_amount: string;
+        allocated_amount: string;
+        withholding_amount: string;
+      }>;
       const payments = (await qr.manager.query(
         `SELECT ${PAYMENT_COLUMNS}
            FROM billing_payments p
@@ -748,7 +1026,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
         [tenantId, subscriberId],
       )) as PaymentRow[];
       const paymentResponses = await Promise.all(
-        payments.map((payment) => this.toPaymentResponse(qr.manager, payment)),
+        payments.map((payment) => this.toPaymentResponse(qr.manager, payment, buyerProtected)),
       );
 
       const courtesyRows = (await qr.manager.query(
@@ -762,6 +1040,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       let totalPaidCents = 0;
       let totalCourtesyCents = 0;
       let totalPendingCents = 0;
+      let totalWithholdingCents = 0;
       const summaryByContract = new Map<
         string,
         { totalInvoiced: number; totalPaid: number; totalCourtesy: number; totalPending: number }
@@ -783,7 +1062,12 @@ export class BillingPaymentsService extends BillingAccountReadPort {
         const grantedCents = isIssued
           ? courtesyCents + moneyCents(row.courtesy_line_amount ?? '0.00')
           : 0;
+        // R8: retenciones vigentes del documento; ya son parte de lo pagado.
+        const withholdingCents = isIssued
+          ? Math.min(paidCents, moneyCents(row.withholding_amount ?? '0.00'))
+          : 0;
         if (isIssued) {
+          totalWithholdingCents += withholdingCents;
           totalInvoicedCents += totalCents;
           totalPaidCents += paidCents;
           totalCourtesyCents += grantedCents;
@@ -833,6 +1117,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
           paidAmount: centsMoney(paidCents),
           courtesyAmount: centsMoney(courtesyCents),
           pendingAmount: centsMoney(pendingCents),
+          withholdingAmount: centsMoney(withholdingCents),
         };
       });
       const periodStates = await this.periodStatesWithin(
@@ -868,6 +1153,9 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       );
       const paymentsRegisteredCents = moneyCents(paymentCountRows[0]?.registered_amount ?? '0.00');
       const allocatedCents = moneyCents(paymentCountRows[0]?.allocated_amount ?? '0.00');
+      const registeredWithholdingCents = moneyCents(
+        paymentCountRows[0]?.withholding_amount ?? '0.00',
+      );
       const statement = BillingAccountStatementSchema.parse({
         subscriberId,
         buyerProtected,
@@ -876,7 +1164,10 @@ export class BillingPaymentsService extends BillingAccountReadPort {
         totalPaid: centsMoney(totalPaidCents),
         totalCourtesy: centsMoney(totalCourtesyCents),
         totalPending: centsMoney(totalPendingCents),
-        creditBalance: centsMoney(Math.max(0, paymentsRegisteredCents - allocatedCents)),
+        totalWithholding: centsMoney(totalWithholdingCents),
+        creditBalance: centsMoney(
+          Math.max(0, paymentsRegisteredCents + registeredWithholdingCents - allocatedCents),
+        ),
         documents,
         payments: paymentResponses,
         // Las notas son texto libre del titular: con DATOS_BLOQUEADOS sin permiso, null.
@@ -993,8 +1284,17 @@ export class BillingPaymentsService extends BillingAccountReadPort {
         WHERE payment_id = $1::uuid AND tenant_id = $2 AND reversed_at IS NULL`,
       [paymentId, tenantId],
     )) as Array<{ allocated_amount: string }>;
+    // Spec MOD14 2026-11-13 R6: la capacidad del pago es valor recibido + retenciones vigentes.
+    const withholdingRows = (await manager.query(
+      `SELECT COALESCE(SUM(amount), 0)::numeric(14,2)::text AS withholding_amount
+         FROM billing_payment_withholdings
+        WHERE payment_id = $1::uuid AND tenant_id = $2 AND voided_at IS NULL`,
+      [paymentId, tenantId],
+    )) as Array<{ withholding_amount: string }> | undefined;
     let paymentRemaining =
-      moneyCents(payment.amount) - moneyCents(usedRows[0]?.allocated_amount ?? '0.00');
+      moneyCents(payment.amount) +
+      moneyCents(withholdingRows?.[0]?.withholding_amount ?? '0.00') -
+      moneyCents(usedRows[0]?.allocated_amount ?? '0.00');
     const ordered = allocations
       .map((item) => ({ ...item, cents: moneyCents(item.amount) }))
       .sort((left, right) => left.documentId.localeCompare(right.documentId));
@@ -1070,7 +1370,8 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     actorId: string | null,
   ): Promise<PeriodEvent[]> {
     const payments = (await manager.query(
-      `SELECT id::text, amount::text FROM billing_payments WHERE tenant_id=$1 AND subscriber_id=$2 AND status='REGISTRADO' ORDER BY paid_at,created_at,id FOR UPDATE`,
+      // Spec MOD14 2026-11-13 R6: el remanente incluye las retenciones vigentes del pago.
+      `SELECT p.id::text, (p.amount + ${ACTIVE_WITHHOLDING_SUM_SQL})::numeric(14,2)::text AS amount FROM billing_payments p WHERE p.tenant_id=$1 AND p.subscriber_id=$2 AND p.status='REGISTRADO' ORDER BY p.paid_at,p.created_at,p.id FOR UPDATE OF p`,
       [tenantId, subscriberId],
     )) as Array<{ id: string; amount: string }>;
     const periods = new Set<string>();
@@ -1207,9 +1508,11 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     return rows[0] ?? null;
   }
 
+  /** `redactFreeText` (estado de cuenta con titular protegido): ver `redactPaymentFreeText`. */
   private async toPaymentResponse(
     manager: Queryable,
     row: PaymentRow,
+    redactFreeText = false,
   ): Promise<BillingPaymentResponse> {
     const allocationRows = (await manager.query(
       `SELECT id::text, tenant_id::text, payment_id::text, document_id::text,
@@ -1218,8 +1521,17 @@ export class BillingPaymentsService extends BillingAccountReadPort {
          ORDER BY created_at ASC, id ASC`,
       [row.id],
     )) as AllocationRow[];
+    const withholdingRows = (await manager.query(
+      `SELECT id::text, payment_id::text, document_id::text, tax_code, base::text,
+              rate::text, amount::text, certificate_number, voided_at, created_by::text, created_at
+         FROM billing_payment_withholdings WHERE payment_id = $1::uuid AND tenant_id = $2
+         ORDER BY created_at ASC, tax_code ASC, id ASC`,
+      [row.id, row.tenant_id],
+    )) as WithholdingRow[] | undefined;
     const allocated = moneyCents(row.allocated_amount);
-    const amount = moneyCents(row.amount);
+    const withholding = moneyCents(row.withholding_amount ?? '0.00');
+    // R6: lo que el pago puede saldar es valor recibido + retenciones vigentes.
+    const amount = moneyCents(row.amount) + withholding;
     const candidate = {
       id: row.id,
       tenantId: row.tenant_id,
@@ -1240,8 +1552,11 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       allocatedAmount: centsMoney(allocated),
       unallocatedAmount: centsMoney(amount - allocated),
       allocations: allocationRows.map(mapAllocation),
+      withholdingAmount: centsMoney(withholding),
+      withholdings: (withholdingRows ?? []).map(mapWithholding),
     };
-    return BillingPaymentResponseSchema.parse(candidate);
+    const parsed = BillingPaymentResponseSchema.parse(candidate);
+    return redactFreeText ? redactPaymentFreeText(parsed) : parsed;
   }
 
   private async assertSameIdempotentRequest(
@@ -1260,6 +1575,217 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     if (!sameFields) throw this.idempotencyConflict();
     if (existing.allocations_fingerprint !== allocationsFingerprint(command.allocations)) {
       throw this.idempotencyConflict();
+    }
+    await this.assertSameWithholdings(
+      manager,
+      existing.tenant_id,
+      existing.id,
+      command.withholdings ?? [],
+    );
+  }
+
+  /**
+   * Spec MOD14 2026-11-13 R6: el reintento con la misma clave debe traer las mismas retenciones.
+   * Un `documentId` explícito debe coincidir con la atribución guardada; sin él, se compara el
+   * resto de la línea. Un pago sin retenciones conserva el comportamiento anterior.
+   */
+  private async assertSameWithholdings(
+    manager: Queryable,
+    tenantId: string,
+    paymentId: string,
+    lines: PaymentWithholdingInput[],
+  ): Promise<void> {
+    const stored = ((await manager.query(
+      `SELECT tax_code, base::text, rate::text, amount::text, certificate_number,
+              document_id::text
+         FROM billing_payment_withholdings WHERE payment_id = $1::uuid AND tenant_id = $2`,
+      [paymentId, tenantId],
+    )) ?? []) as Array<{
+      tax_code: string;
+      base: string;
+      rate: string;
+      amount: string;
+      certificate_number: string | null;
+      document_id: string;
+    }>;
+    if (stored.length !== lines.length) throw this.idempotencyConflict();
+    const remaining = stored.map((row) => ({
+      key: withholdingKey({
+        taxCode: row.tax_code,
+        base: row.base,
+        rate: row.rate,
+        amount: row.amount,
+        certificateNumber: row.certificate_number,
+      }),
+      documentId: row.document_id,
+    }));
+    const ordered = [...lines].sort(
+      (left, right) => Number(!left.documentId) - Number(!right.documentId),
+    );
+    for (const line of ordered) {
+      const key = withholdingKey({ ...line, certificateNumber: line.certificateNumber });
+      const index = remaining.findIndex(
+        (row) => row.key === key && (!line.documentId || row.documentId === line.documentId),
+      );
+      if (index < 0) throw this.idempotencyConflict();
+      remaining.splice(index, 1);
+    }
+  }
+
+  /**
+   * Inserta las retenciones atribuidas a los documentos del pago (spec MOD14 2026-11-13 R6, R8).
+   * Va antes de aplicar: la capacidad del pago que valida `applyAllocations` las incluye.
+   */
+  private async insertWithholdings(
+    manager: Queryable,
+    tenantId: string,
+    paymentId: string,
+    subscriberId: string,
+    allocations: Array<{ documentId: string; amount: string }>,
+    lines: PaymentWithholdingInput[],
+    actorId: string,
+    rateOverrides: ReadonlyMap<PaymentWithholdingInput, string | null> = new Map(),
+  ): Promise<InsertedWithholding[]> {
+    if (lines.length === 0) return [];
+    let attributed: Array<PaymentWithholdingInput & { amountCents: number; documentId: string }>;
+    try {
+      attributed = attributeWithholdings(
+        allocations.map(({ documentId, amount }) => ({
+          documentId,
+          amountCents: moneyCents(amount),
+        })),
+        lines.map((line) => ({ ...line, amountCents: moneyCents(line.amount) })),
+      );
+    } catch (error) {
+      if (error instanceof WithholdingNotAttributableError) throw this.withholdingNotAttributable();
+      throw error;
+    }
+    await this.assertWithholdingCaps(manager, tenantId, attributed);
+    const inserted: InsertedWithholding[] = [];
+    for (const [index, line] of attributed.entries()) {
+      const rate =
+        typeof line.rate === 'number' ? line.rate.toFixed(4) : Number(line.rate).toFixed(4);
+      await manager.query(
+        `INSERT INTO billing_payment_withholdings (
+           tenant_id, payment_id, document_id, subscriber_id, tax_code, base, rate, amount,
+           certificate_number, created_by
+         ) VALUES ($1, $2::uuid, $3::uuid, $4::uuid, $5, $6::numeric, $7::numeric, $8::numeric,
+                   $9, $10::uuid)`,
+        [
+          tenantId,
+          paymentId,
+          line.documentId,
+          subscriberId,
+          line.taxCode,
+          moneyString(line.base),
+          rate,
+          moneyString(line.amount),
+          line.certificateNumber,
+          actorId,
+        ],
+      );
+      const original = lines[index];
+      inserted.push({
+        ...line,
+        rate,
+        ...(original && rateOverrides.has(original)
+          ? { rateCeiling: rateOverrides.get(original) ?? null }
+          : {}),
+      });
+    }
+    return inserted;
+  }
+
+  /**
+   * H-1 (c): topes de tarifa por tipo, resueltos fuera de la transacción. Sin retenciones no lee
+   * el catálogo. Sin el servicio de topes (composición incompleta) rechaza: nunca omite el tope.
+   */
+  private async resolveRateCeilings(
+    lines: readonly PaymentWithholdingInput[],
+  ): Promise<Map<BillingWithholdingTaxCode, WithholdingRateCeiling>> {
+    if (lines.length === 0) return new Map();
+    if (!this.withholdingRates) {
+      throw new ServiceUnavailableException(
+        errorResponse(
+          'BILLING_WITHHOLDING_RATES_UNAVAILABLE',
+          'No fue posible verificar las tarifas de retención.',
+        ),
+      );
+    }
+    return this.withholdingRates.rateCeilings(lines.map((line) => line.taxCode));
+  }
+
+  /**
+   * H-1 (c): la tarifa no puede superar la sugerida de Tributación más la tolerancia
+   * configurada (`BILLING_WITHHOLDING_RATE_TOLERANCE_PP`). Sin tarifa sugerida, cualquier tarifa
+   * supera el tope. Por encima, solo con `BILLING_COURTESIES_MANAGE` (una retención inflada es una
+   * condonación); si no, 422 `BILLING_WITHHOLDING_RATE_ABOVE_CEILING`. Devuelve las líneas
+   * admitidas por encima del tope, con su tope, para auditarlas.
+   */
+  private assertRatesWithinCeiling(
+    lines: readonly PaymentWithholdingInput[],
+    ceilings: ReadonlyMap<BillingWithholdingTaxCode, WithholdingRateCeiling>,
+    canExceed: boolean,
+  ): Map<PaymentWithholdingInput, string | null> {
+    const overrides = new Map<PaymentWithholdingInput, string | null>();
+    for (const line of lines) {
+      const ceiling = ceilings.get(line.taxCode)?.ceiling ?? null;
+      const within =
+        ceiling !== null && rateTenThousandths(line.rate) <= rateTenThousandths(ceiling);
+      if (within) continue;
+      if (!canExceed) throw this.withholdingRateAboveCeiling();
+      overrides.set(line, ceiling);
+    }
+    return overrides;
+  }
+
+  /**
+   * H-1 (a, b), con cada documento bloqueado `FOR UPDATE` (en orden de id, como
+   * `applyAllocations`): una sola retención vigente por (documento, tipo) — también entre pagos;
+   * el índice único parcial de la 206 lo respalda — y la base acumulada del tipo sobre el documento
+   * no supera su subtotal antes de IVA.
+   */
+  private async assertWithholdingCaps(
+    manager: Queryable,
+    tenantId: string,
+    lines: ReadonlyArray<{ documentId: string; taxCode: string; base: string | number }>,
+  ): Promise<void> {
+    const byDocument = new Map<string, Map<string, { count: number; baseCents: number }>>();
+    for (const line of lines) {
+      const perTax = byDocument.get(line.documentId) ?? new Map();
+      const current = perTax.get(line.taxCode) ?? { count: 0, baseCents: 0 };
+      perTax.set(line.taxCode, {
+        count: current.count + 1,
+        baseCents: current.baseCents + moneyCents(line.base),
+      });
+      byDocument.set(line.documentId, perTax);
+    }
+    for (const documentId of [...byDocument.keys()].sort()) {
+      const perTax = byDocument.get(documentId) ?? new Map();
+      const [document] = (await manager.query(
+        `SELECT subtotal::text FROM billing_documents
+          WHERE id = $1::uuid AND tenant_id = $2
+          FOR UPDATE`,
+        [documentId, tenantId],
+      )) as Array<{ subtotal: string }>;
+      // Sin documento lo rechaza `applyAllocations` (404) y la transacción se revierte.
+      if (!document) continue;
+      const existing = (await manager.query(
+        `SELECT tax_code, COUNT(*)::int AS total,
+                COALESCE(SUM(base), 0)::numeric(14,2)::text AS base
+           FROM billing_payment_withholdings
+          WHERE document_id = $1::uuid AND tenant_id = $2 AND voided_at IS NULL
+          GROUP BY tax_code`,
+        [documentId, tenantId],
+      )) as Array<{ tax_code: string; total: number; base: string }>;
+      const existingByTax = new Map(existing.map((row) => [row.tax_code, row]));
+      const subtotalCents = moneyCents(document.subtotal);
+      for (const [taxCode, incoming] of perTax) {
+        const stored = existingByTax.get(taxCode);
+        if (incoming.count > 1 || (stored?.total ?? 0) > 0) throw this.withholdingDuplicate();
+        const cumulative = incoming.baseCents + moneyCents(stored?.base ?? '0.00');
+        if (cumulative > subtotalCents) throw this.withholdingBaseExceedsSubtotal();
+      }
     }
   }
 
@@ -1302,6 +1828,51 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       errorResponse(
         BILLING_ERROR_CODES.BILLING_ALLOCATION_EXCEEDS_BALANCE,
         'La asignación supera el saldo pendiente.',
+      ),
+    );
+  }
+
+  private withholdingNotAllowed(): UnprocessableEntityException {
+    return new UnprocessableEntityException(
+      errorResponse(
+        BILLING_ERROR_CODES.BILLING_WITHHOLDING_NOT_ALLOWED,
+        'Solo un titular persona jurídica o agente retenedor puede registrar retenciones.',
+      ),
+    );
+  }
+
+  private withholdingNotAttributable(): UnprocessableEntityException {
+    return new UnprocessableEntityException(
+      errorResponse(
+        BILLING_ERROR_CODES.BILLING_WITHHOLDING_NOT_ATTRIBUTABLE,
+        'Cada retención debe corresponder a un documento que este pago salda.',
+      ),
+    );
+  }
+
+  private withholdingDuplicate(): UnprocessableEntityException {
+    return new UnprocessableEntityException(
+      errorResponse(
+        BILLING_ERROR_CODES.BILLING_WITHHOLDING_DUPLICATE,
+        'El documento ya tiene una retención vigente de ese tipo.',
+      ),
+    );
+  }
+
+  private withholdingBaseExceedsSubtotal(): UnprocessableEntityException {
+    return new UnprocessableEntityException(
+      errorResponse(
+        BILLING_ERROR_CODES.BILLING_WITHHOLDING_BASE_EXCEEDS_SUBTOTAL,
+        'La base de la retención supera el valor antes de IVA del documento.',
+      ),
+    );
+  }
+
+  private withholdingRateAboveCeiling(): UnprocessableEntityException {
+    return new UnprocessableEntityException(
+      errorResponse(
+        BILLING_ERROR_CODES.BILLING_WITHHOLDING_RATE_ABOVE_CEILING,
+        'La tarifa supera la sugerida por Tributación más la tolerancia permitida.',
       ),
     );
   }

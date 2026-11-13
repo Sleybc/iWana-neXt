@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import type { ListMeta } from '@iwana/shared';
+import type { BillingErrorCode, ListMeta } from '@iwana/shared';
 import { Button } from '@iwana/ui';
 import { ApiError } from '@/lib/api-client';
 import { ensureIdempotencyKey } from '@/lib/idempotency-key';
@@ -35,6 +35,54 @@ const COURTESY_ERRORS: Record<string, string> = {
     'Esta cortesía ya forma parte de un documento emitido y no se puede anular.',
 };
 
+/** Códigos de retención del contrato compartido (`BILLING_ERROR_CODES`). */
+type WithholdingErrorCode = Extract<BillingErrorCode, `BILLING_WITHHOLDING_${string}`>;
+
+const WITHHOLDING_RATE_ERROR =
+  'La tarifa de una retención supera la sugerida por Tributación más el margen permitido. Para registrarla necesitas el permiso de cortesías; si no, usa la tarifa sugerida.';
+const WITHHOLDING_DUPLICATE_ERROR =
+  'Un documento ya tiene una retención vigente de ese tipo. Registra una sola por documento y tipo.';
+const WITHHOLDING_BASE_ERROR =
+  'La base de una retención supera el subtotal antes de IVA de su documento. Revisa la base de cada retención.';
+
+/**
+ * Retenciones del registro de pago (spec MOD14 2026-11-13 R6, R7, H-1; 422). Guarda de
+ * exhaustividad: un código `BILLING_WITHHOLDING_*` nuevo en `@iwana/shared` rompe la compilación
+ * hasta traducirlo aquí.
+ */
+const WITHHOLDING_ERRORS: Readonly<Record<WithholdingErrorCode, string>> = {
+  BILLING_WITHHOLDING_NOT_ALLOWED:
+    'Este titular no puede registrar retenciones: solo una persona jurídica o un agente de retención. Quita las retenciones y registra el valor recibido.',
+  BILLING_WITHHOLDING_NOT_ATTRIBUTABLE:
+    'Cada retención debe corresponder a un documento que este pago salda. Revisa el documento de cada retención o la distribución del pago.',
+  BILLING_WITHHOLDING_DUPLICATE: WITHHOLDING_DUPLICATE_ERROR,
+  BILLING_WITHHOLDING_BASE_EXCEEDS_SUBTOTAL: WITHHOLDING_BASE_ERROR,
+  BILLING_WITHHOLDING_RATE_ABOVE_CEILING: WITHHOLDING_RATE_ERROR,
+};
+
+function isWithholdingErrorCode(code: string): code is WithholdingErrorCode {
+  return Object.hasOwn(WITHHOLDING_ERRORS, code);
+}
+
+/**
+ * Un código `BILLING_WITHHOLDING_*` que la API devuelva antes de llegar al contrato compartido se
+ * traduce por su texto; si no se reconoce, con un mensaje genérico de retenciones.
+ */
+const WITHHOLDING_ERRORS_BY_TEXT: ReadonlyArray<readonly [RegExp, string]> = [
+  [/(?:^|_)(?:RATE|CEILING)(?:_|$)/u, WITHHOLDING_RATE_ERROR],
+  [/(?:^|_)(?:DUPLICATED?|ALREADY|UNIQUE|EXISTS)(?:_|$)/u, WITHHOLDING_DUPLICATE_ERROR],
+  [/(?:^|_)(?:BASE|SUBTOTAL)(?:_|$)/u, WITHHOLDING_BASE_ERROR],
+];
+
+function withholdingError(code: string): string | null {
+  if (isWithholdingErrorCode(code)) return WITHHOLDING_ERRORS[code];
+  if (!code.startsWith('BILLING_WITHHOLDING_')) return null;
+  const match = WITHHOLDING_ERRORS_BY_TEXT.find(([pattern]) => pattern.test(code));
+  return match
+    ? match[1]
+    : 'No pudimos registrar las retenciones de este pago. Revisa el tipo, la base, la tarifa y el documento de cada una.';
+}
+
 export function billingError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.code === 'PRIVACY_TITULAR_ANONYMIZED')
@@ -49,6 +97,8 @@ export function billingError(error: unknown): string {
       return 'El PDF de este documento histórico no se trajo en la importación.';
     const courtesy = COURTESY_ERRORS[error.code];
     if (courtesy) return courtesy;
+    const withholding = withholdingError(error.code);
+    if (withholding) return withholding;
     // Primer cobro (spec 2026-11-11 R3).
     if (error.code === 'CONTRACT_NOT_FOUND')
       return 'No encontramos este contrato. Actualiza la página e inténtalo de nuevo.';

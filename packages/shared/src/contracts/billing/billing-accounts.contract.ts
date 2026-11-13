@@ -50,6 +50,11 @@ export const BillingAccountStatementSchema = z
      */
     totalCourtesy: billingMoneyStringSchema.optional(),
     totalPending: billingMoneyStringSchema,
+    /**
+     * Retenciones vigentes del titular sobre documentos en cartera (spec MOD14 2026-11-13 R8).
+     * Ya están dentro de `totalPaid`. La API siempre lo envía.
+     */
+    totalWithholding: billingMoneyStringSchema.optional(),
     creditBalance: billingMoneyStringSchema,
     documents: z.array(BillingDocumentResponseSchema),
     payments: z.array(BillingPaymentResponseSchema),

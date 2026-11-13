@@ -275,6 +275,7 @@ import type {
   BillingGenerationSummary,
   BillingPaymentResponse,
   BillingPeriodPaymentState,
+  BillingWithholdingOptionsResponse,
   AllocateCreditCommand,
   GenerateDocumentsCommand,
   GenerateFirstChargeCommand,
@@ -7625,6 +7626,11 @@ export const billingApi = {
     }),
   registerPayment: (input: RegisterPaymentCommand, key: string) =>
     billingMutation<BillingPaymentResponse>('/billing/payments', 'POST', input, key),
+  /** Elegibilidad del titular para retenciones y tarifas sugeridas (spec MOD14 2026-11-13 R7). */
+  withholdingOptions: (subscriberId: string) =>
+    request<BillingWithholdingOptionsResponse>(
+      `/billing/subscribers/${encodeURIComponent(subscriberId)}/withholding-options`,
+    ),
   voidPayment: (id: string, input: VoidPaymentCommand, key: string) =>
     billingMutation<BillingPaymentResponse>(
       `/billing/payments/${encodeURIComponent(id)}/void`,

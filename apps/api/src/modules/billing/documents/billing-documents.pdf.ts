@@ -1,11 +1,65 @@
 import PDFDocument from 'pdfkit';
-import { BILLING_BLOCKED_BUYER_DISPLAY_NAME, type BillingDocumentResponse } from '@iwana/shared';
+import {
+  BILLING_BLOCKED_BUYER_DISPLAY_NAME,
+  type BillingDocumentInstallationBreakdown,
+  type BillingDocumentResponse,
+} from '@iwana/shared';
 import {
   drawBrandHeader,
   drawBrandFooter,
   registerBrandFonts,
   PDF_FONT,
 } from '../../../common/pdf/pdf-branding';
+
+const PAGE_TITLE = 'Documento de cobro';
+
+function ensureRoom(pdf: PDFKit.PDFDocument, height: number): void {
+  if (pdf.y + height > pdf.page.height - pdf.page.margins.bottom) {
+    pdf.addPage();
+    pdf.y = drawBrandHeader(pdf, pdf.page.width, 48, PAGE_TITLE);
+    pdf.font(PDF_FONT.regular).fontSize(9);
+  }
+}
+
+/**
+ * Valor real de la instalación (spec MOD14 2026-11-13 R3, R4): informativo, fuera de los totales.
+ * Los equipos en comodato se marcan «en comodato»; sus seriales solo si la vista los entregó.
+ */
+function drawInstallationBreakdown(
+  pdf: PDFKit.PDFDocument,
+  breakdown: BillingDocumentInstallationBreakdown,
+): void {
+  ensureRoom(pdf, 80);
+  pdf.moveDown();
+  pdf.font(PDF_FONT.regular).fontSize(12);
+  pdf.text('Valor real de la instalación (informativo, no se cobra)');
+  pdf.fontSize(9);
+  const orders = breakdown.executionOrders.map((order) => order.executionOrderNumber).join(', ');
+  if (orders) pdf.text(`Orden de trabajo: ${orders}`);
+  pdf.moveDown(0.3);
+  pdf.text('Material o equipo                 Cantidad     V. unitario     V. total');
+  for (const item of breakdown.items) {
+    ensureRoom(pdf, 30);
+    const label = `${item.description}${item.isLoan ? ' (en comodato)' : ''}`;
+    const quantity = `${item.quantity} ${item.unitOfMeasure}`;
+    pdf.text(
+      `${label.slice(0, 32).padEnd(33)} ${quantity.slice(0, 12).padStart(12)} ${(
+        item.unitReferenceValue ?? 'Sin valor'
+      ).padStart(14)} ${(item.referenceValue ?? 'Sin valor').padStart(12)}`,
+    );
+    if (item.isLoan && label.length > 32) pdf.text('  En comodato');
+    if (item.serialNumbers.length) pdf.text(`  Seriales: ${item.serialNumbers.join(', ')}`);
+  }
+  ensureRoom(pdf, 50);
+  pdf.moveDown(0.5);
+  pdf.fontSize(10).text(`Valor real de la instalación: ${breakdown.realValue}`, { align: 'right' });
+  pdf.text(`Valor cobrado por la instalación: ${breakdown.chargedValue}`, { align: 'right' });
+  pdf.fontSize(8);
+  if (breakdown.itemsWithoutValue > 0)
+    pdf.text(`${breakdown.itemsWithoutValue} ítem(s) sin valor de referencia no suman.`);
+  if (breakdown.items.some((item) => item.isLoan))
+    pdf.text('Los equipos en comodato se entregan en préstamo y se devuelven.');
+}
 
 /** Renderiza el documento interno sin enviar ni incluir datos que la vista haya ocultado. */
 export async function renderBillingDocumentPdf(
@@ -78,6 +132,8 @@ export async function renderBillingDocumentPdf(
   pdf.fontSize(10).text(`Subtotal: ${document.subtotal}`, { align: 'right' });
   pdf.text(`IVA: ${document.taxTotal}`, { align: 'right' });
   pdf.fontSize(12).text(`Total: ${document.total}`, { align: 'right' });
+  if (document.installationBreakdown)
+    drawInstallationBreakdown(pdf, document.installationBreakdown);
   pdf.moveDown(2);
   pdf
     .fontSize(9)

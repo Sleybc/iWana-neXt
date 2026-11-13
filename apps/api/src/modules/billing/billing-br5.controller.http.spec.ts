@@ -12,6 +12,7 @@ import { IPrivacyMarksReadPort } from '../privacy/ports/privacy-marks-read.port'
 import { SettingsPriorityTenantReadPort } from '../tenant/ports/settings-priority-tenant-read.port';
 import { BillingPaymentsController } from './payments/billing-payments.controller';
 import { BillingPaymentsService } from './payments/billing-payments.service';
+import { BillingWithholdingOptionsService } from './payments/billing-withholding-options.service';
 import { BillingPolicyController } from './policy/billing-policy.controller';
 import { BillingPolicyService } from './policy/billing-policy.service';
 import { BillingContractReadPort } from './ports/billing-contract-read.port';
@@ -36,6 +37,7 @@ describe('BR-5 HTTP pagos y política de facturación', () => {
           BillingContractReadPort,
           IPrivacyMarksReadPort,
           SettingsPriorityTenantReadPort,
+          BillingWithholdingOptionsService,
         ].map((provide) => ({ provide, useValue: {} })),
         {
           provide: EffectivePermissionsService,

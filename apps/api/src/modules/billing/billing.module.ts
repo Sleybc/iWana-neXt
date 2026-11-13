@@ -33,6 +33,10 @@ import { BillingIssuerReadPort } from './ports/billing-issuer-read.port';
 import { TenantBillingIssuerReadAdapter } from './ports/tenant-billing-issuer-read.adapter';
 import { BillingCourtesiesController } from './courtesies/billing-courtesies.controller';
 import { BillingCourtesiesService } from './courtesies/billing-courtesies.service';
+import { BillingInstallationBreakdownModule } from './installation/billing-installation-breakdown.module';
+import { TaxationModule } from '../taxation/taxation.module';
+import { BillingWithholdingsController } from './payments/billing-withholdings.controller';
+import { BillingWithholdingOptionsService } from './payments/billing-withholding-options.service';
 
 @Module({
   imports: [
@@ -51,20 +55,26 @@ import { BillingCourtesiesService } from './courtesies/billing-courtesies.servic
     PrivacyModule,
     // STORAGE_PORT: PDF histórico de los documentos IMPORTADO (ADR-110 D5).
     MediaModule,
+    // Tarifas sugeridas de retención (spec MOD14 2026-11-13 R7), por TaxCatalogReadPort.
+    TaxationModule,
     BullModule.registerQueue({ name: BILLING_GENERATION_QUEUE }),
     BullModule.registerQueue({ name: CRM_CONTRACT_EVENTS_QUEUE }),
+    // Consumo de la OT de instalación al contrato (spec 2026-11-13, bloque A).
+    BillingInstallationBreakdownModule,
   ],
   controllers: [
     BillingPolicyController,
     BillingPaymentsController,
     BillingDocumentsController,
     BillingCourtesiesController,
+    BillingWithholdingsController,
   ],
   providers: [
     BillingPolicyService,
     BillingPaymentsService,
     BillingDocumentsService,
     BillingCourtesiesService,
+    BillingWithholdingOptionsService,
     BillingImportedPdfService,
     BillingGenerationService,
     BillingFirstChargeService,

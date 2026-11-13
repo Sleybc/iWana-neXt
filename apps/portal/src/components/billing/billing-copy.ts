@@ -8,7 +8,10 @@ import type {
   BillingDocumentLine,
   BillingDocumentLineKind,
   BillingDocumentResponse,
+  BillingInstallationValueSource,
   BillingPeriodPaymentState,
+  BillingWithholdingOptionsResponse,
+  BillingWithholdingTaxCode,
 } from '@iwana/shared';
 import type { BadgeProps } from '@iwana/ui';
 import { formatBillingDate } from '../crm/subscribers/billing-cycle-ui';
@@ -131,6 +134,37 @@ export function courtesyNeedsLine(
   );
   return rates.size > 1;
 }
+
+/** Tipos de retención del registro de pago (spec MOD14 2026-11-13 R6). */
+export const WITHHOLDING_TAX_CODES = {
+  RETE_FUENTE_SERVICIOS: 'Retención en la fuente por servicios',
+  RETE_ICA: 'Retención de ICA',
+} satisfies Record<BillingWithholdingTaxCode, string>;
+
+/** Por qué el titular puede practicar retenciones (R7). */
+export const WITHHOLDING_ELIGIBILITY = {
+  PERSONA_JURIDICA: 'El titular es persona jurídica y puede practicar retenciones.',
+  AGENTE_RETENEDOR: 'El titular es agente de retención según su RUT.',
+} satisfies Record<NonNullable<BillingWithholdingOptionsResponse['eligibility']>, string>;
+
+/** Tarifa en porcentaje sin ceros sobrantes: «4.0000» → «4 %», «0.966» → «0,966 %». */
+export function formatWithholdingRate(rate: string): string {
+  return `${Number(rate).toLocaleString('es-CO', { maximumFractionDigits: 4 })} %`;
+}
+
+/** Retenciones vigentes de un documento o estado de cuenta, o null si no hay. */
+export function withholdingAmountOrNull(value: string | undefined): string | null {
+  return value && moneyCents(value) > 0 ? value : null;
+}
+
+export const WITHHOLDING_INCLUDED_NOTE = 'Ya están incluidas en lo pagado.';
+
+/** Origen del valor de referencia de un ítem de la instalación (spec MOD14 2026-11-13 R2). */
+export const INSTALLATION_VALUE_SOURCES = {
+  PRECIO_COMERCIAL: 'Precio comercial vigente',
+  COSTO_PROMEDIO: 'Costo promedio de inventario',
+  SIN_VALOR: 'Sin valor de referencia',
+} satisfies Record<BillingInstallationValueSource, string>;
 
 export const DOCUMENT_VOID_REASONS = {
   ERROR_DE_VALOR: 'Error en el valor facturado',

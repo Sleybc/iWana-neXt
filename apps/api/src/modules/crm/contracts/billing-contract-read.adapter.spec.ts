@@ -353,8 +353,28 @@ describe('BillingContractReadAdapter', () => {
       exists: true,
       partyId: '00000000-0000-4000-8000-000000000012',
       anonymized: true,
+      // Spec MOD14 2026-11-13 R7: campo nuevo; la fila no trae la marca, entonces no retiene.
+      withholdingAgent: null,
     });
     expect(managerQuery.mock.calls[0]?.[0]).toContain('FOR SHARE');
+  });
+
+  it('marca agente retenedor por persona jurídica o por O-13/O-23 del RUT (spec MOD14 2026-11-13 R7)', async () => {
+    const callerManager = { query: managerQuery } as unknown as EntityManager;
+    for (const withholding_agent of ['PERSONA_JURIDICA', 'AGENTE_RETENEDOR', null]) {
+      managerQuery.mockResolvedValueOnce([
+        { party_id: null, anonymized_at: null, anonymized_request_id: null, withholding_agent },
+      ]);
+      await expect(
+        adapter.lockTitularForBillingWrite('00000000-0000-4000-8000-000000000011', {
+          manager: callerManager,
+        }),
+      ).resolves.toMatchObject({ exists: true, withholdingAgent: withholding_agent });
+    }
+    const [sql, params] = managerQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("person_type::text = 'JURIDICA'");
+    expect(sql).toContain('rut_responsibilities');
+    expect(params[2]).toEqual(['O-13', 'O-23']);
   });
 
   it('falla cerrado si cualquiera de las marcas de anonimización está presente', async () => {

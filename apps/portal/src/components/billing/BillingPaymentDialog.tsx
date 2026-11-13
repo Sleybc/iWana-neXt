@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState, type FormEvent } from 'react';
+import { useCallback, useId, useRef, useState, type FormEvent } from 'react';
 import {
   AccessPermissionKey,
   BILLING_PAYMENT_METHODS,
@@ -8,6 +8,8 @@ import {
   suggestFifoAllocations,
   type BillingAccountStatement,
   type BillingDocumentResponse,
+  type BillingPaymentResponse,
+  type BillingWithholdingOptionsResponse,
 } from '@iwana/shared';
 import {
   Button,
@@ -22,6 +24,7 @@ import { usePermissions } from '@/components/access-control/permissions-context'
 import { billingApi, tenantSelfApi } from '@/lib/api-client';
 import { formatBillingDate } from '@/components/crm/subscribers/billing-cycle-ui';
 import { BillingSubscriberPicker } from './BillingSubscriberPicker';
+import { BillingWithholdingFields } from './BillingWithholdingFields';
 import {
   documentReference,
   formatBillingMoney,
@@ -36,6 +39,24 @@ import {
   useBillingLoad,
   useBillingMutation,
 } from './billing-ui';
+import {
+  attributeWithholdingDrafts,
+  existingWithholdings,
+  newWithholdingDraft,
+  toWithholdingInput,
+  withholdingDocumentErrors,
+  withholdingLineErrors,
+  withholdingTotalCents,
+  type WithholdingDraft,
+  type WithholdingErrors,
+} from './billing-withholdings';
+
+type WithholdingOptionsLoad = {
+  data: BillingWithholdingOptionsResponse | null;
+  error: string | null;
+  loading: boolean;
+  reload: () => void;
+};
 
 export function pendingDocuments(documents: BillingDocumentResponse[]) {
   return documents
@@ -65,12 +86,20 @@ export function BillingPaymentDialog({
   const selectedId = subscriberId ?? subscriber?.id;
   const { hasPermission } = usePermissions();
   const canReadDocuments = hasPermission(AccessPermissionKey.BILLING_INVOICES_READ);
+  const canRegister = hasPermission(AccessPermissionKey.BILLING_PAYMENTS_REGISTER);
+  const canExceedRate = hasPermission(AccessPermissionKey.BILLING_COURTESIES_MANAGE);
   const load = useCallback(async () => {
     if (!selectedId) return null;
     if (statement?.subscriberId === selectedId) return statement;
     return canReadDocuments ? billingApi.statement(selectedId) : null;
   }, [selectedId, statement, canReadDocuments]);
   const account = useBillingLoad(load);
+  // Retenciones (spec MOD14 2026-11-13 R7): solo si el titular puede practicarlas.
+  const loadWithholding = useCallback(
+    async () => (selectedId && canRegister ? billingApi.withholdingOptions(selectedId) : null),
+    [selectedId, canRegister],
+  );
+  const withholding = useBillingLoad(loadWithholding);
   const settings = useBillingLoad(tenantSelfApi.getSettings);
   const mutation = useBillingMutation();
 
@@ -129,7 +158,10 @@ export function BillingPaymentDialog({
                 key={selectedId}
                 subscriberId={selectedId}
                 documents={account.data?.documents ?? []}
+                payments={account.data?.payments ?? []}
+                canExceedRate={canExceedRate}
                 date={localDate}
+                withholding={withholding}
                 mutation={mutation}
                 onSaved={onSaved}
                 onClose={onClose}
@@ -145,14 +177,20 @@ export function BillingPaymentDialog({
 function PaymentForm({
   subscriberId,
   documents,
+  payments,
+  canExceedRate,
   date,
+  withholding,
   mutation,
   onSaved,
   onClose,
 }: {
   subscriberId: string;
   documents: BillingDocumentResponse[];
+  payments: readonly BillingPaymentResponse[];
+  canExceedRate: boolean;
   date: string;
+  withholding: WithholdingOptionsLoad;
   mutation: ReturnType<typeof useBillingMutation>;
   onSaved: () => void;
   onClose: () => void;
@@ -163,13 +201,22 @@ function PaymentForm({
   const [reference, setReference] = useState('');
   const [note, setNote] = useState('');
   const [automatic, setAutomatic] = useState(true);
+  const receivedHintId = useId();
   const [manual, setManual] = useState<Record<string, string>>({});
+  const [withholdings, setWithholdings] = useState<WithholdingDraft[]>([]);
+  const [showWithholdingErrors, setShowWithholdingErrors] = useState(false);
+  const nextWithholdingKey = useRef(0);
   const pending = pendingDocuments(documents);
   const cents = moneyCents(amount);
+  const eligibleOptions = withholding.data?.eligible ? withholding.data : null;
+  const activeWithholdings = eligibleOptions ? withholdings : [];
+  const withholdingCents = withholdingTotalCents(activeWithholdings);
+  // R6: valor recibido + retenciones es lo que se aplica contra el saldo.
+  const capacityCents = (cents > 0 ? cents : 0) + withholdingCents;
   const suggestion =
-    cents > 0
+    capacityCents > 0
       ? suggestFifoAllocations(
-          fromMoneyCents(cents),
+          fromMoneyCents(capacityCents),
           pending.map((document) => ({
             documentId: document.id,
             dueDate: document.dueDate,
@@ -189,6 +236,58 @@ function PaymentForm({
     (sum, document) => sum + (moneyCents(appliedAmounts[document.id] ?? '') || 0),
     0,
   );
+  const appliedCents = Object.fromEntries(
+    pending.map((document) => [document.id, moneyCents(appliedAmounts[document.id] ?? '') || 0]),
+  );
+  // Mismo orden que las aplicaciones enviadas: la API atribuye en ese orden.
+  const allocationOrder = pending.map((document) => ({
+    documentId: document.id,
+    amountCents: appliedCents[document.id] ?? 0,
+  }));
+  const attribution = attributeWithholdingDrafts(activeWithholdings, allocationOrder);
+  const documentErrors = withholdingDocumentErrors(
+    activeWithholdings,
+    attribution.resolved,
+    new Map(
+      pending
+        .map((document) => [document.id, moneyCents(document.subtotal)] as const)
+        .filter(([, subtotal]) => Number.isFinite(subtotal)),
+    ),
+    existingWithholdings(payments),
+  );
+  const withholdingErrors: Record<string, WithholdingErrors> = Object.fromEntries(
+    activeWithholdings.map((line) => {
+      const errors: WithholdingErrors = {
+        ...documentErrors.get(line.key),
+        ...withholdingLineErrors(line),
+      };
+      if (attribution.invalid.has(line.key))
+        errors.documentId = line.documentId
+          ? 'La retención supera lo que este pago aplica a ese documento.'
+          : 'La retención no cabe entera en ninguno de los documentos que salda este pago. Elige el documento o revisa la distribución.';
+      return [line.key, errors];
+    }),
+  );
+  const hasWithholdingErrors = Object.values(withholdingErrors).some(
+    (errors) => Object.keys(errors).length > 0,
+  );
+
+  function addWithholding() {
+    const option = eligibleOptions?.options[0];
+    if (!option) return;
+    nextWithholdingKey.current += 1;
+    // Base prellenada con el saldo que el pago aplica (valor recibido + retenciones); sin valor
+    // recibido todavía, con el saldo pendiente.
+    // La base de un tipo no supera el subtotal antes de IVA del documento al que se atribuye.
+    const saldo = cents > 0 && totalApplied > 0 ? totalApplied : pendingTotalCents;
+    const target = pending.find((document) => (appliedCents[document.id] ?? 0) > 0) ?? pending[0];
+    const subtotal = target ? moneyCents(target.subtotal) : NaN;
+    const base = Number.isFinite(subtotal) ? Math.min(saldo, subtotal) : saldo;
+    setWithholdings((current) => [
+      ...current,
+      newWithholdingDraft(`retencion-${nextWithholdingKey.current}`, option, base),
+    ]);
+  }
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -202,11 +301,16 @@ function PaymentForm({
           !Number.isFinite(moneyCents(input)) ||
           moneyCents(input) > moneyCents(document.pendingAmount ?? '0'),
       ) ||
-      totalApplied > cents
+      totalApplied > capacityCents
     ) {
       mutation.setError(
         'Revisa la distribución. Cada aplicación debe respetar el saldo del documento y el total del pago.',
       );
+      return;
+    }
+    if (hasWithholdingErrors) {
+      setShowWithholdingErrors(true);
+      mutation.setError('Revisa las retenciones marcadas antes de registrar el pago.');
       return;
     }
 
@@ -223,6 +327,9 @@ function PaymentForm({
           documentId: document.id,
           amount: fromMoneyCents(moneyCents(input)),
         })),
+      ...(activeWithholdings.length
+        ? { withholdings: activeWithholdings.map(toWithholdingInput) }
+        : {}),
     });
     if (!parsed.success) {
       mutation.setError('Revisa el método, el monto y la fecha del pago.');
@@ -252,16 +359,24 @@ function PaymentForm({
               ))}
             </select>
           </label>
-          <label className="block space-y-1 text-sm">
-            Monto del pago (COP)
-            <input
-              className={billingInputClass}
-              inputMode="decimal"
-              value={amount}
-              required
-              onChange={(event) => setAmount(event.target.value)}
-            />
-          </label>
+          <div className="space-y-1">
+            <label className="block space-y-1 text-sm">
+              Monto del pago (COP)
+              <input
+                className={billingInputClass}
+                inputMode="decimal"
+                value={amount}
+                required
+                aria-describedby={eligibleOptions ? receivedHintId : undefined}
+                onChange={(event) => setAmount(event.target.value)}
+              />
+            </label>
+            {eligibleOptions ? (
+              <p id={receivedHintId} className="text-xs text-gray-600 dark:text-gray-400">
+                Valor recibido, sin las retenciones.
+              </p>
+            ) : null}
+          </div>
           <label className="block space-y-1 text-sm">
             Fecha del pago
             <input
@@ -288,7 +403,10 @@ function PaymentForm({
             <Button
               type="button"
               className="min-h-11"
-              onClick={() => setAmount(fromMoneyCents(pendingTotalCents))}
+              // Con retenciones, el valor recibido es el saldo menos lo retenido.
+              onClick={() =>
+                setAmount(fromMoneyCents(Math.max(0, pendingTotalCents - withholdingCents)))
+              }
             >
               Pagar el saldo completo
             </Button>
@@ -297,11 +415,46 @@ function PaymentForm({
         {cents > 0 ? (
           <p className="text-sm">{formatBillingMoney(fromMoneyCents(cents))} COP</p>
         ) : null}
-        {cents > 0 && pendingTotalCents > cents && pendingTotalCents - cents < 100 ? (
+        {cents > 0 &&
+        pendingTotalCents > capacityCents &&
+        pendingTotalCents - capacityCents < 100 ? (
           <p role="status" className="text-sm text-amber-700 dark:text-amber-300">
-            Quedan {formatBillingMoneyExact(fromMoneyCents(pendingTotalCents - cents))} sin pagar:
-            un documento quedará con pago parcial.
+            Quedan {formatBillingMoneyExact(fromMoneyCents(pendingTotalCents - capacityCents))} sin
+            pagar: un documento quedará con pago parcial.
           </p>
+        ) : null}
+        {eligibleOptions ? (
+          <BillingWithholdingFields
+            options={eligibleOptions}
+            lines={withholdings}
+            documents={pending}
+            canExceedRate={canExceedRate}
+            errors={withholdingErrors}
+            showErrors={showWithholdingErrors}
+            onAdd={addWithholding}
+            onChange={(key, next) =>
+              setWithholdings((current) => current.map((line) => (line.key === key ? next : line)))
+            }
+            onRemove={(key) =>
+              setWithholdings((current) => current.filter((line) => line.key !== key))
+            }
+          />
+        ) : withholding.error ? (
+          <PortalAlert
+            variant="warning"
+            title="No pudimos consultar si el titular practica retenciones"
+            description="Puedes registrar el pago sin retenciones o volver a intentarlo."
+            action={
+              <Button
+                type="button"
+                className="min-h-11"
+                variant="secondary"
+                onClick={withholding.reload}
+              >
+                Reintentar
+              </Button>
+            }
+          />
         ) : null}
         <label className="block space-y-1 text-sm">
           Notas
@@ -356,9 +509,21 @@ function PaymentForm({
         )}
       </fieldset>
       <p className="text-sm" role="status">
-        Total pago: {formatBillingMoney(fromMoneyCents(cents || 0))} · Total aplicado:{' '}
-        {formatBillingMoney(fromMoneyCents(totalApplied))} · Remanente a saldo a favor:{' '}
-        {formatBillingMoney(fromMoneyCents(Math.max(0, (cents || 0) - totalApplied)))}. Este monto
+        {activeWithholdings.length ? (
+          <>
+            Valor recibido: {formatBillingMoneyExact(fromMoneyCents(cents || 0))} + Retenciones:{' '}
+            {formatBillingMoneyExact(fromMoneyCents(withholdingCents))} = Total del pago:{' '}
+            {formatBillingMoneyExact(fromMoneyCents(capacityCents))} · Total aplicado:{' '}
+            {formatBillingMoneyExact(fromMoneyCents(totalApplied))}
+          </>
+        ) : (
+          <>
+            Total pago: {formatBillingMoney(fromMoneyCents(cents || 0))} · Total aplicado:{' '}
+            {formatBillingMoney(fromMoneyCents(totalApplied))}
+          </>
+        )}{' '}
+        · Remanente a saldo a favor:{' '}
+        {formatBillingMoney(fromMoneyCents(Math.max(0, capacityCents - totalApplied)))}. Este monto
         quedará como saldo a favor en la cuenta del suscriptor y podrá aplicarse a futuros cobros.
       </p>
       {mutation.error ? <PortalAlert variant="error" title={mutation.error} /> : null}

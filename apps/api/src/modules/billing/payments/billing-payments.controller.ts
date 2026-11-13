@@ -35,7 +35,12 @@ import {
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import type { SchemaObject } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
-import { AccessPermissionKey, UserRole } from '@iwana/shared';
+import {
+  AccessPermissionKey,
+  BILLING_WITHHOLDING_MAX_LINES,
+  BILLING_WITHHOLDING_TAX_CODES,
+  UserRole,
+} from '@iwana/shared';
 import { z } from 'zod';
 import { ListMetaDto } from '../../../common/pagination';
 import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
@@ -46,7 +51,7 @@ import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { BillingPaymentsService } from './billing-payments.service';
+import { BillingPaymentsService, type PaymentReadAccess } from './billing-payments.service';
 
 type AuthenticatedRequest = { user?: JwtPayload };
 
@@ -63,6 +68,74 @@ const PaymentListQuerySchema = z
     limit: z.coerce.number().int().min(1).max(100).default(20),
   })
   .strict();
+
+/** Retención del pago (spec MOD14 2026-11-13 R6, R8). */
+const WITHHOLDING_RESPONSE_SCHEMA: SchemaObject = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'id',
+    'paymentId',
+    'documentId',
+    'taxCode',
+    'base',
+    'rate',
+    'amount',
+    'certificateNumber',
+    'voidedAt',
+    'createdBy',
+    'createdAt',
+  ],
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    paymentId: { type: 'string', format: 'uuid' },
+    documentId: { type: 'string', format: 'uuid' },
+    taxCode: { type: 'string', enum: [...BILLING_WITHHOLDING_TAX_CODES] },
+    base: { type: 'string' },
+    rate: { type: 'string', pattern: '^\\d{1,3}\\.\\d{4}$' },
+    amount: { type: 'string' },
+    certificateNumber: { type: 'string', nullable: true },
+    voidedAt: { type: 'string', format: 'date-time', nullable: true },
+    createdBy: { type: 'string', format: 'uuid' },
+    createdAt: { type: 'string', format: 'date-time' },
+  },
+};
+
+const WITHHOLDING_REQUEST_SCHEMA: SchemaObject = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['taxCode', 'base', 'rate', 'amount', 'certificateNumber'],
+  properties: {
+    taxCode: { type: 'string', enum: [...BILLING_WITHHOLDING_TAX_CODES] },
+    base: {
+      oneOf: [
+        { type: 'number', minimum: 0.01 },
+        { type: 'string', pattern: '^\\d{1,12}(\\.\\d{1,2})?$' },
+      ],
+    },
+    rate: {
+      description: 'Porcentaje (4 = 4 %), mayor que 0 y hasta 100, con cuatro decimales máximo.',
+      oneOf: [
+        { type: 'number', minimum: 0.0001, maximum: 100 },
+        { type: 'string', pattern: '^\\d{1,3}(\\.\\d{1,4})?$' },
+      ],
+    },
+    amount: {
+      description: 'Valor retenido; no supera la base y difiere de base × tarifa en 1 peso máximo.',
+      oneOf: [
+        { type: 'number', minimum: 0.01 },
+        { type: 'string', pattern: '^\\d{1,12}(\\.\\d{1,2})?$' },
+      ],
+    },
+    certificateNumber: { type: 'string', minLength: 1, maxLength: 60 },
+    documentId: {
+      type: 'string',
+      format: 'uuid',
+      description:
+        'Documento al que se atribuye; si se omite, el primero que el pago salda con espacio suficiente.',
+    },
+  },
+};
 
 const PAYMENT_RESPONSE_SCHEMA: SchemaObject = {
   type: 'object',
@@ -109,6 +182,8 @@ const PAYMENT_RESPONSE_SCHEMA: SchemaObject = {
         allocatedAmount: { type: 'string' },
         unallocatedAmount: { type: 'string' },
         allocations: { type: 'array', items: { type: 'object' } },
+        withholdingAmount: { type: 'string' },
+        withholdings: { type: 'array', items: WITHHOLDING_RESPONSE_SCHEMA },
       },
     },
   },
@@ -134,6 +209,13 @@ const REGISTER_PAYMENT_REQUEST_SCHEMA: SchemaObject = {
     reference: { type: 'string', maxLength: 80 },
     note: { type: 'string', maxLength: 500 },
     allocations: { type: 'array', items: { type: 'object', required: ['documentId', 'amount'] } },
+    withholdings: {
+      type: 'array',
+      maxItems: BILLING_WITHHOLDING_MAX_LINES,
+      description:
+        'Retenciones del cliente: solo persona jurídica o agente retenedor. amount + retenciones se aplica contra el saldo.',
+      items: WITHHOLDING_REQUEST_SCHEMA,
+    },
   },
 };
 
@@ -185,7 +267,10 @@ export class BillingPaymentsController {
   })
   @ApiBadRequestResponse({ description: 'Falta la cabecera Idempotency-Key.' })
   @ApiConflictResponse({ description: 'Titular anonimizado o clave idempotente reutilizada.' })
-  @ApiUnprocessableEntityResponse({ description: 'El pago o sus asignaciones no son válidos.' })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'El pago, sus asignaciones o sus retenciones no son válidos (BILLING_WITHHOLDING_NOT_ALLOWED, BILLING_WITHHOLDING_NOT_ATTRIBUTABLE, BILLING_WITHHOLDING_DUPLICATE, BILLING_WITHHOLDING_BASE_EXCEEDS_SUBTOTAL, BILLING_WITHHOLDING_RATE_ABOVE_CEILING).',
+  })
   @ApiUnauthorizedResponse({ description: 'La sesión no es válida.' })
   @ApiForbiddenResponse({ description: 'El rol o permiso no permite registrar pagos.' })
   async register(
@@ -198,7 +283,40 @@ export class BillingPaymentsController {
         code: 'IDEMPOTENCY_KEY_REQUIRED',
         message: 'La clave de idempotencia es obligatoria.',
       });
-    return { data: await this.billingPayments.registerPayment(body, key, actorId(request)) };
+    const actor = actorId(request);
+    const { permissions, readAccess } = await this.readAccess(actor);
+    return {
+      data: await this.billingPayments.registerPayment(body, key, actor, {
+        readAccess,
+        // H-1 (c): superar el tope de tarifa equivale a condonar; exige el permiso de cortesías.
+        canExceedWithholdingRate: permissions.has(AccessPermissionKey.BILLING_COURTESIES_MANAGE),
+      }),
+    };
+  }
+
+  /**
+   * H-2: lectura de datos bloqueados del titular, igual que el listado y el estado de cuenta.
+   * Un lector sin PRIVACY_READ ni CRM_BLOCKED_DATA_READ recibe el texto libre redactado.
+   */
+  private async readAccess(
+    actor: string,
+  ): Promise<{ permissions: Set<string>; readAccess: PaymentReadAccess }> {
+    const permissions = new Set<string>(
+      await this.effectivePermissionsService.getEffectivePermissionsForUser(actor),
+    );
+    const grantedBy = permissions.has(AccessPermissionKey.PRIVACY_READ)
+      ? 'PRIVACY_READ'
+      : permissions.has(AccessPermissionKey.CRM_BLOCKED_DATA_READ)
+        ? 'CRM_BLOCKED_DATA_READ'
+        : undefined;
+    return {
+      permissions,
+      readAccess: {
+        actorId: actor,
+        canSeeBlocked: grantedBy !== undefined,
+        ...(grantedBy ? { grantedBy } : {}),
+      },
+    };
   }
 
   @Get('payments')
@@ -250,8 +368,13 @@ export class BillingPaymentsController {
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiOkResponse({ description: 'Detalle del pago.', schema: PAYMENT_RESPONSE_SCHEMA })
   @ApiNotFoundResponse({ description: 'No se encontró el pago.' })
-  async get(@Param('id', new ParseUUIDPipe()) id: string) {
-    return { data: await this.billingPayments.getPayment(id) };
+  @ApiResponse({
+    status: 503,
+    description: 'No fue posible verificar o auditar el acceso a datos protegidos.',
+  })
+  async get(@Param('id', new ParseUUIDPipe()) id: string, @Req() request: AuthenticatedRequest) {
+    const { readAccess } = await this.readAccess(actorId(request));
+    return { data: await this.billingPayments.getPayment(id, readAccess) };
   }
 
   @Post('payments/:id/allocations')
@@ -269,7 +392,9 @@ export class BillingPaymentsController {
     @Body() body: unknown,
     @Req() request: AuthenticatedRequest,
   ) {
-    return { data: await this.billingPayments.allocateCredit(id, body, actorId(request)) };
+    const actor = actorId(request);
+    const { readAccess } = await this.readAccess(actor);
+    return { data: await this.billingPayments.allocateCredit(id, body, actor, readAccess) };
   }
 
   @Post('payments/:id/void')
@@ -285,7 +410,9 @@ export class BillingPaymentsController {
     @Body() body: unknown,
     @Req() request: AuthenticatedRequest,
   ) {
-    return { data: await this.billingPayments.voidPayment(id, body, actorId(request)) };
+    const actor = actorId(request);
+    const { readAccess } = await this.readAccess(actor);
+    return { data: await this.billingPayments.voidPayment(id, body, actor, readAccess) };
   }
 
   @Get('subscribers/:subscriberId/statement')

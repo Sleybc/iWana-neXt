@@ -697,6 +697,114 @@ describe('BillingDocumentsService — emisión, anulación y descarte', () => {
     });
   });
 
+  describe('valor real de la instalación (spec MOD14 2026-11-13 R3–R5)', () => {
+    const installationLine = {
+      id: '00000000-0000-4000-8000-000000000040',
+      document_id: DOCUMENT,
+      kind: 'INSTALACION',
+      description: 'Instalación',
+      quantity: '1.00',
+      unit_price: '100.00',
+      base_amount: '100.00',
+      tax_amount: '19.00',
+      total: '119.00',
+      vat_treatment: 'GRAVADO',
+      vat_rate: '19.00',
+      vat_legal_basis: null,
+      position: 1,
+    };
+    const breakdownRow = {
+      contract_id: CONTRACT,
+      execution_order_id: '00000000-0000-4000-8000-000000000050',
+      execution_order_number: 'OT-0001',
+      execution_order_closed_at: new Date('2026-11-13T15:00:00.000Z'),
+      position: 1,
+      description: 'Router WiFi',
+      unit_of_measure: 'UND',
+      quantity: '1.00',
+      serial_numbers: ['SN-ROUTER-1'],
+      is_loan: true,
+      value_source: 'PRECIO_COMERCIAL',
+      unit_reference_value: '180.00',
+      reference_value: '180.00',
+    };
+
+    it('CA-1/CA-3: expone el desglose sin cambiar base, IVA ni total', async () => {
+      route({
+        billing_document_lines: [installationLine],
+        billing_installation_breakdowns: [breakdownRow],
+      });
+      const result = await service.findOne(DOCUMENT, ACTOR);
+      expect(result.installationBreakdown).toMatchObject({
+        realValue: '180.00',
+        chargedValue: '119.00',
+        serialsProtected: false,
+        items: [{ description: 'Router WiFi', isLoan: true, serialNumbers: ['SN-ROUTER-1'] }],
+      });
+      expect(result).toMatchObject({ subtotal: '100.00', taxTotal: '19.00', total: '119.00' });
+      const breakdownCall = query.mock.calls.find(([sql]) =>
+        String(sql).includes('billing_installation_breakdowns'),
+      );
+      expect(breakdownCall?.[1]).toEqual([TENANT, [CONTRACT]]);
+    });
+
+    it('no consulta el desglose si el documento no lleva línea INSTALACION', async () => {
+      const result = await service.findOne(DOCUMENT, ACTOR);
+      expect(result.installationBreakdown).toBeNull();
+      expect(
+        query.mock.calls.some(([sql]) => String(sql).includes('billing_installation_breakdowns')),
+      ).toBe(false);
+    });
+
+    it('no expone el desglose en el listado', async () => {
+      route({
+        'SELECT count(*)::int AS total': [{ total: 1 }],
+        billing_document_lines: [installationLine],
+        billing_installation_breakdowns: [breakdownRow],
+      });
+      const result = await service.list({ page: 1, limit: 25 }, ACTOR);
+      expect(result.data[0]).not.toHaveProperty('installationBreakdown');
+    });
+
+    it('oculta los seriales del titular bloqueado sin permiso', async () => {
+      route({
+        billing_document_lines: [installationLine],
+        billing_installation_breakdowns: [breakdownRow],
+      });
+      privacyMarks.activeMarks.mockResolvedValueOnce({ [PARTY]: ['DATOS_BLOQUEADOS'] });
+      const result = await service.findOne(DOCUMENT, ACTOR);
+      expect(result.installationBreakdown?.serialsProtected).toBe(true);
+      expect(result.installationBreakdown?.items[0]?.serialNumbers).toEqual([]);
+      expect(result.installationBreakdown?.realValue).toBe('180.00');
+    });
+
+    it('muestra los seriales del bloqueado al lector con permiso', async () => {
+      route({
+        billing_document_lines: [installationLine],
+        billing_installation_breakdowns: [breakdownRow],
+      });
+      privacyMarks.activeMarks.mockResolvedValueOnce({ [PARTY]: ['DATOS_BLOQUEADOS'] });
+      permissions.getEffectivePermissionsForUser.mockResolvedValueOnce([
+        AccessPermissionKey.CRM_BLOCKED_DATA_READ,
+      ]);
+      const result = await service.findOne(DOCUMENT, ACTOR);
+      expect(result.installationBreakdown?.items[0]?.serialNumbers).toEqual(['SN-ROUTER-1']);
+    });
+
+    it('oculta los seriales del titular anonimizado', async () => {
+      route({
+        billing_document_lines: [installationLine],
+        billing_installation_breakdowns: [breakdownRow],
+      });
+      contracts.findTitularRefs.mockResolvedValueOnce([
+        { subscriberId: SUBSCRIBER, partyId: PARTY, anonymized: true },
+      ]);
+      const result = await service.findOne(DOCUMENT, ACTOR);
+      expect(result.installationBreakdown?.serialsProtected).toBe(true);
+      expect(result.installationBreakdown?.items[0]?.serialNumbers).toEqual([]);
+    });
+  });
+
   describe('validación de montos', () => {
     it('falla con un monto almacenado que no es monetario', async () => {
       route({ 'FROM billing_documents d': [{ ...documentRow, status: 'EMITIDO', total: 'x' }] });

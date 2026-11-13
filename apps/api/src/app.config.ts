@@ -175,6 +175,9 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
     // La captura de IP locales permanece cerrada por defecto; solo ACTIVE
     // permite registrar IPs de infraestructura tras el gate operativo.
     NETWORK_IP_PROTECTION: Joi.string().valid('ACTIVE', 'PENDING').default('PENDING'),
+    // MOD14 H-1 (spec 2026-11-13): puntos porcentuales sobre la tarifa sugerida de Tributación que
+    // una retención puede tener sin BILLING_COURTESIES_MANAGE. Por encima, 422 propio.
+    BILLING_WITHHOLDING_RATE_TOLERANCE_PP: Joi.number().min(0).max(100).default(2),
     // Relajación de los límites de ruta solo para E2E (spec de límites de
     // peticiones §5): `true` multiplica solo los límites de `@Throttle`
     // (x100) para que Playwright, que corre desde una IP, no reciba 429

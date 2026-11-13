@@ -144,4 +144,112 @@ describe('BR-2.11 PDF de facturación', () => {
     text.mockRestore();
     addPage.mockRestore();
   });
+
+  it('agrega el valor real de la instalación sin tocar los totales (spec MOD14 2026-11-13 R3, R4)', async () => {
+    const text = jest.spyOn(PDFDocument.prototype, 'text');
+    await renderBillingDocumentPdf({
+      id: 'fixture-5',
+      number: 'FE-000009',
+      issueDate: '2026-11-13',
+      dueDate: '2026-11-28',
+      status: 'EMITIDO',
+      subtotal: '100000.00',
+      taxTotal: '19000.00',
+      total: '119000.00',
+      buyerSnapshot: null,
+      issuerSnapshot: null,
+      lines: [
+        {
+          description: 'Instalación',
+          baseAmount: '100000.00',
+          taxAmount: '19000.00',
+          total: '119000.00',
+        },
+      ],
+      installationBreakdown: {
+        executionOrders: [
+          { executionOrderNumber: 'OT-0001', closedAt: '2026-11-13T15:00:00.000Z' },
+        ],
+        items: [
+          {
+            executionOrderNumber: 'OT-0001',
+            position: 1,
+            description: 'Cable drop',
+            quantity: '60.00',
+            unitOfMeasure: 'M',
+            unitReferenceValue: '1500.00',
+            referenceValue: '90000.00',
+            valueSource: 'PRECIO_COMERCIAL',
+            isLoan: false,
+            serialNumbers: [],
+          },
+          {
+            executionOrderNumber: 'OT-0001',
+            position: 2,
+            description: 'Router WiFi',
+            quantity: '1.00',
+            unitOfMeasure: 'UND',
+            unitReferenceValue: '180000.00',
+            referenceValue: '180000.00',
+            valueSource: 'COSTO_PROMEDIO',
+            isLoan: true,
+            serialNumbers: ['SN-ROUTER-1'],
+          },
+          {
+            executionOrderNumber: 'OT-0001',
+            position: 3,
+            description: 'Herraje',
+            quantity: '2.00',
+            unitOfMeasure: 'UND',
+            unitReferenceValue: null,
+            referenceValue: null,
+            valueSource: 'SIN_VALOR',
+            isLoan: false,
+            serialNumbers: [],
+          },
+        ],
+        realValue: '270000.00',
+        chargedValue: '119000.00',
+        itemsWithoutValue: 1,
+        serialsProtected: false,
+      },
+    } as never);
+    const contents = text.mock.calls.map((args) => String(args[0])).join('\n');
+    for (const value of [
+      'Valor real de la instalación (informativo, no se cobra)',
+      'Orden de trabajo: OT-0001',
+      'Cable drop',
+      '60.00 M',
+      'Router WiFi (en comodato)',
+      'Seriales: SN-ROUTER-1',
+      'Sin valor',
+      'Valor real de la instalación: 270000.00',
+      'Valor cobrado por la instalación: 119000.00',
+      '1 ítem(s) sin valor de referencia no suman.',
+      'Los equipos en comodato se entregan en préstamo y se devuelven.',
+      'Total: 119000.00',
+    ])
+      expect(contents).toContain(value);
+    text.mockRestore();
+  });
+
+  it('omite la sección cuando el documento no trae desglose', async () => {
+    const text = jest.spyOn(PDFDocument.prototype, 'text');
+    await renderBillingDocumentPdf({
+      id: 'fixture-6',
+      number: 'FE-000010',
+      dueDate: '2026-11-28',
+      status: 'EMITIDO',
+      subtotal: '1.00',
+      taxTotal: '0.19',
+      total: '1.19',
+      buyerSnapshot: null,
+      issuerSnapshot: null,
+      lines: [],
+      installationBreakdown: null,
+    } as never);
+    const contents = text.mock.calls.map((args) => String(args[0])).join('\n');
+    expect(contents).not.toContain('Valor real de la instalación');
+    text.mockRestore();
+  });
 });

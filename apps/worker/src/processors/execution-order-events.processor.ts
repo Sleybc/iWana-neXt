@@ -11,6 +11,11 @@ import {
   OPERATIONS_EXECUTION_DLQ,
   INVENTORY_EXECUTION_REQUESTS_QUEUE,
   NETWORK_EXECUTION_EVENTS_QUEUE,
+  BILLING_INSTALLATION_EVENTS_QUEUE,
+  BILLING_INSTALLATION_CLOSED_JOB_NAME,
+  BillingInstallationClosedEventSchema,
+  SignedBillingInstallationClosedEventSchema,
+  canonicalizeBillingInstallationClosedEvent,
   InventoryConsumptionReversalRequestedV1EnvelopeSchema,
   InventoryConsumptionRequestedV2EnvelopeSchema,
   InventoryReversalConfirmedV1Schema,
@@ -171,6 +176,9 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
     @Optional()
     @InjectQueue(NETWORK_EXECUTION_EVENTS_QUEUE)
     private readonly networkExecutionEventsQueue?: Queue,
+    @Optional()
+    @InjectQueue(BILLING_INSTALLATION_EVENTS_QUEUE)
+    private readonly billingInstallationEventsQueue?: Queue,
   ) {
     super();
     this.pool = new Pool({
@@ -500,6 +508,10 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
         }
         if (executionOrderWorkType === 'INSTALLATION') {
           await this.enqueueSignedNetworkEvent(tenantId, envelope);
+          // MOD14 (spec 2026-11-13 A): el cierre lleva el consumo de la instalación al contrato.
+          if (envelope.eventType === 'ExecutionOrderClosedV1') {
+            await this.enqueueSignedBillingInstallationEvent(tenantId, envelope);
+          }
         }
       }
 
@@ -584,6 +596,50 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
     });
     await this.networkExecutionEventsQueue.add('process-network-execution-event', signed, {
       jobId: networkEvent.eventId,
+      attempts: 8,
+      backoff: { type: 'exponential', delay: 1000 },
+      removeOnComplete: true,
+      removeOnFail: { age: SOURCE_JOB_RETENTION_SECONDS },
+    });
+  }
+
+  private async enqueueSignedBillingInstallationEvent(
+    tenantId: string,
+    event: OperationalEventEnvelopeV1,
+  ): Promise<void> {
+    // M5 (spec MOD14 2026-11-13): el desglose es informativo (D1) y no puede tumbar la proyección
+    // de cierre de MOD11. Sin la cola configurada, el cierre se registra igual y queda un log de
+    // error; el desglose de esa OT no se captura (R5 lo agregaría si el evento llegara después).
+    // Un fallo de Redis al encolar sí revierte y reintenta: es transitorio y `jobId` deduplica.
+    if (!this.billingInstallationEventsQueue) {
+      this.logger.error(
+        `Cola ${BILLING_INSTALLATION_EVENTS_QUEUE} no configurada: el cierre de la OT ` +
+          `${String((event.payload as { executionOrderId?: unknown }).executionOrderId)} sigue ` +
+          `sin desglose de instalación (evento ${event.eventId}).`,
+      );
+      return;
+    }
+    const payload = event.payload as { executionOrderId?: unknown };
+    const billingEvent = BillingInstallationClosedEventSchema.parse({
+      eventId: event.eventId,
+      executionOrderId: payload.executionOrderId,
+      aggregateVersion: event.aggregateVersion,
+      occurredAt: event.occurredAt,
+    });
+    const activeKey = this.configValue('INTERNAL_QUEUE_SIGNING_KEY');
+    const secret = Buffer.from(activeKey, 'base64');
+    if (secret.byteLength < 32 || secret.toString('base64') !== activeKey) {
+      throw new UnrecoverableError('INTERNAL_QUEUE_SIGNING_KEY inválida.');
+    }
+    const signed = SignedBillingInstallationClosedEventSchema.parse({
+      tenantId,
+      envelope: billingEvent,
+      signature: createHmac('sha256', secret)
+        .update(canonicalizeBillingInstallationClosedEvent(tenantId, billingEvent))
+        .digest('hex'),
+    });
+    await this.billingInstallationEventsQueue.add(BILLING_INSTALLATION_CLOSED_JOB_NAME, signed, {
+      jobId: billingEvent.eventId,
       attempts: 8,
       backoff: { type: 'exponential', delay: 1000 },
       removeOnComplete: true,

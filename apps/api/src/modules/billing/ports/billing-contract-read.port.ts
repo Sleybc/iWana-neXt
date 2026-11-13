@@ -85,6 +85,9 @@ export interface BillableContract {
   };
 }
 
+/** Por qué un titular puede practicar retenciones al pagar (spec MOD14 2026-11-13 R7). */
+export type BillingWithholdingEligibility = 'PERSONA_JURIDICA' | 'AGENTE_RETENEDOR';
+
 /** Puerto de lectura CRM para Billing. CRM conserva el ownership de sus tablas. */
 export abstract class BillingContractReadPort {
   abstract findBillableForDate(
@@ -134,9 +137,30 @@ export abstract class BillingContractReadPort {
     subscriberIds: string[],
   ): Promise<Array<{ subscriberId: string; displayName: string | null }>>;
 
-  /** Reutiliza el manager de la transacción Billing que protege el alta de pago. */
+  /**
+   * Reutiliza el manager de la transacción Billing que protege el alta de pago.
+   * `withholdingAgent` (spec MOD14 2026-11-13 R7): el titular puede practicar retenciones porque
+   * es persona jurídica (`PERSONA_JURIDICA`) o su RUT trae O-13 u O-23 (`AGENTE_RETENEDOR`);
+   * `null` si no puede. Ausente equivale a `null`.
+   */
+  /**
+   * Elegibilidad de retención del titular, de solo lectura (sin `FOR SHARE` ni transacción de
+   * escritura): la usa la consulta de opciones de retención (H-7). Misma regla que
+   * `lockTitularForBillingWrite.withholdingAgent`.
+   */
+  abstract findTitularWithholdingEligibility(subscriberId: string): Promise<{
+    exists: boolean;
+    anonymized: boolean;
+    withholdingAgent: BillingWithholdingEligibility | null;
+  }>;
+
   abstract lockTitularForBillingWrite(
     subscriberId: string,
     ctx: { manager: EntityManager },
-  ): Promise<{ exists: boolean; partyId: string | null; anonymized: boolean }>;
+  ): Promise<{
+    exists: boolean;
+    partyId: string | null;
+    anonymized: boolean;
+    withholdingAgent?: BillingWithholdingEligibility | null;
+  }>;
 }

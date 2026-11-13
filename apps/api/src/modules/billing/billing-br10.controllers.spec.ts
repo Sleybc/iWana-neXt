@@ -179,7 +179,34 @@ describe('Controladores de facturación — ramas de actor y permisos', () => {
         response: { code: 'IDEMPOTENCY_KEY_REQUIRED' },
       });
       await controller.register({}, 'clave', request as never);
-      expect(payments.registerPayment).toHaveBeenCalledWith({}, 'clave', ACTOR);
+      expect(payments.registerPayment).toHaveBeenCalledWith({}, 'clave', ACTOR, {
+        readAccess: { actorId: ACTOR, canSeeBlocked: false },
+        canExceedWithholdingRate: false,
+      });
+    });
+
+    it('H-1/H-2: el registro propaga el permiso de cortesías y la lectura de bloqueados', async () => {
+      permissions.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.BILLING_COURTESIES_MANAGE,
+        AccessPermissionKey.CRM_BLOCKED_DATA_READ,
+      ]);
+      await controller.register({}, 'clave', request as never);
+      expect(payments.registerPayment).toHaveBeenCalledWith({}, 'clave', ACTOR, {
+        readAccess: { actorId: ACTOR, canSeeBlocked: true, grantedBy: 'CRM_BLOCKED_DATA_READ' },
+        canExceedWithholdingRate: true,
+      });
+    });
+
+    it('H-2: el detalle propaga la lectura de bloqueados', async () => {
+      permissions.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.PRIVACY_READ,
+      ]);
+      await controller.get(DOCUMENT, request as never);
+      expect(payments.getPayment).toHaveBeenCalledWith(DOCUMENT, {
+        actorId: ACTOR,
+        canSeeBlocked: true,
+        grantedBy: 'PRIVACY_READ',
+      });
     });
 
     it('rechaza una petición sin actor autenticado', async () => {
@@ -220,14 +247,21 @@ describe('Controladores de facturación — ramas de actor y permisos', () => {
     });
 
     it('delega la asignación y la anulación con el actor de la sesión', async () => {
+      const noBlockedAccess = { actorId: ACTOR, canSeeBlocked: false };
       await controller.allocate(DOCUMENT, { allocations: [] }, request as never);
-      expect(payments.allocateCredit).toHaveBeenCalledWith(DOCUMENT, { allocations: [] }, ACTOR);
+      expect(payments.allocateCredit).toHaveBeenCalledWith(
+        DOCUMENT,
+        { allocations: [] },
+        ACTOR,
+        noBlockedAccess,
+      );
 
       await controller.void(DOCUMENT, { reasonCode: 'ERROR_DE_REGISTRO' }, request as never);
       expect(payments.voidPayment).toHaveBeenCalledWith(
         DOCUMENT,
         { reasonCode: 'ERROR_DE_REGISTRO' },
         ACTOR,
+        noBlockedAccess,
       );
     });
   });

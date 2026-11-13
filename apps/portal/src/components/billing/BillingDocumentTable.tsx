@@ -15,6 +15,7 @@ import { PortalAlert, PortalSidePeek } from '@/components/shared/portal-ui';
 import { billingApi } from '@/lib/api-client';
 import { BillingConfirmation } from './BillingConfirmation';
 import { BillingCourtesyDialog } from './BillingCourtesyDialog';
+import { BillingInstallationBreakdown } from './BillingInstallationBreakdown';
 import { downloadBillingDocumentPdf } from './billing-document-pdf';
 import {
   additionalNotice,
@@ -342,6 +343,9 @@ function BillingDocumentDetail({
                 ],
               }))}
             />
+          ) : null}
+          {data.installationBreakdown ? (
+            <BillingInstallationBreakdown breakdown={data.installationBreakdown} />
           ) : null}
           {data.courtesies?.length ? (
             <section aria-labelledby={`courtesies-${data.id}`} className="space-y-2">

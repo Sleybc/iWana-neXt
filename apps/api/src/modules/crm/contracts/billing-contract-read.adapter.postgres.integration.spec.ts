@@ -303,7 +303,28 @@ describeWithDb('BillingContractReadAdapter contra PostgreSQL real', () => {
         adapter.lockTitularForBillingWrite(missing, { manager: qr.manager }),
       ),
     );
-    expect(absentLock).toEqual({ exists: false, partyId: null, anonymized: false });
+    // Spec MOD14 2026-11-13 R7: el titular inexistente tampoco puede retener.
+    expect(absentLock).toEqual({
+      exists: false,
+      partyId: null,
+      anonymized: false,
+      withholdingAgent: null,
+    });
+
+    // H-7: la elegibilidad de solo lectura usa la misma regla, sin transacción ni FOR SHARE.
+    const eligibility = await TenantContext.run(tenantContext, () =>
+      Promise.all(
+        [present, anonymized, missing, foreign].map((id) =>
+          adapter.findTitularWithholdingEligibility(id),
+        ),
+      ),
+    );
+    expect(eligibility).toEqual([
+      { exists: true, anonymized: false, withholdingAgent: null },
+      { exists: true, anonymized: true, withholdingAgent: null },
+      { exists: false, anonymized: false, withholdingAgent: null },
+      { exists: false, anonymized: false, withholdingAgent: null },
+    ]);
   });
 
   it('acepta lista vacía y rechaza más de 200 referencias', async () => {

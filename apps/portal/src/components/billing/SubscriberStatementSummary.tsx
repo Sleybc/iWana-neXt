@@ -24,8 +24,11 @@ import {
   COURTESY_PENDING_NOTE,
   statementCourtesyTotal,
   documentCourtesyAmount,
+  WITHHOLDING_INCLUDED_NOTE,
+  withholdingAmountOrNull,
 } from './billing-copy';
 import { StatementCourtesyList } from './StatementCourtesyList';
+import { StatementWithholdingList } from './StatementWithholdingList';
 import { BillingNotStartedNotice } from './BillingNotStartedNotice';
 import { BillingLoadState } from './billing-ui';
 import type { SubscriberStatementLoad } from './use-subscriber-statement';
@@ -83,6 +86,7 @@ function StatementBody({
   const pending = pendingDocuments(statement.documents);
   const overdue = PAYMENT_STATES.VENCIDO;
   const courtesyTotal = statementCourtesyTotal(statement);
+  const withholdingTotal = withholdingAmountOrNull(statement.totalWithholding);
   const hasOverdue = statement.documents.some((document) => document.paymentState === 'VENCIDO');
   return (
     <>
@@ -122,6 +126,14 @@ function StatementBody({
         </p>
       ) : null}
       <StatementCourtesyList statement={statement} limit={VISIBLE_DOCUMENTS} />
+      {withholdingTotal ? (
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          Retenciones del cliente:{' '}
+          <span className="font-semibold tabular-nums">{formatBillingMoney(withholdingTotal)}</span>
+          . {WITHHOLDING_INCLUDED_NOTE}
+        </p>
+      ) : null}
+      <StatementWithholdingList statement={statement} limit={VISIBLE_DOCUMENTS} />
       {pending.length ? (
         <ul className="divide-y divide-gray-200 dark:divide-dark-border">
           {pending.slice(0, VISIBLE_DOCUMENTS).map((document) => (
@@ -142,6 +154,11 @@ function StatementBody({
                 {documentCourtesyAmount(document) ? (
                   <p className="text-xs text-gray-600 dark:text-gray-400">
                     Cortesía −{formatBillingMoney(documentCourtesyAmount(document) ?? '0')}
+                  </p>
+                ) : null}
+                {withholdingAmountOrNull(document.withholdingAmount) ? (
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                    Retenciones {formatBillingMoney(document.withholdingAmount ?? '0')}
                   </p>
                 ) : null}
               </div>

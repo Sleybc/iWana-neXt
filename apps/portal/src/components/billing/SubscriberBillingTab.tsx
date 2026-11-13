@@ -42,12 +42,22 @@ import {
   COURTESY_PENDING_NOTE,
   documentReference,
   statementCourtesyTotal,
+  WITHHOLDING_INCLUDED_NOTE,
+  withholdingAmountOrNull,
 } from './billing-copy';
 import { StatementCourtesyList } from './StatementCourtesyList';
+import { StatementWithholdingList } from './StatementWithholdingList';
 import { BillingLoadState, billingInputClass, useBillingMutation } from './billing-ui';
 import type { SubscriberStatementLoad } from './use-subscriber-statement';
 
 const NOT_STARTED_BADGE = { label: 'Sin cobros emitidos', variant: 'warning' } as const;
+
+/** Columnas de las tarjetas según cuántas haya (cortesías y retenciones son opcionales). */
+const METRIC_GRID_COLUMNS: Record<number, string> = {
+  4: 'xl:grid-cols-4',
+  5: 'xl:grid-cols-5',
+  6: 'xl:grid-cols-3',
+};
 
 export function SubscriberBillingTab({
   subscriberId,
@@ -85,6 +95,8 @@ export function SubscriberBillingTab({
     );
 
   const courtesyTotal = statementCourtesyTotal(data);
+  const withholdingTotal = withholdingAmountOrNull(data.totalWithholding);
+  const metricCount = 4 + (courtesyTotal ? 1 : 0) + (withholdingTotal ? 1 : 0);
   const canApply =
     moneyCents(data.creditBalance) > 0 && pendingDocuments(data.documents).length > 0;
   return (
@@ -100,9 +112,7 @@ export function SubscriberBillingTab({
           description={IMPERSONATION_HOLD_NOTICE}
         />
       ) : null}
-      <div
-        className={`grid gap-3 sm:grid-cols-2 ${courtesyTotal ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`}
-      >
+      <div className={`grid gap-3 sm:grid-cols-2 ${METRIC_GRID_COLUMNS[metricCount]}`}>
         <PortalMetricCard
           eyebrow="Histórico"
           title="Total facturado"
@@ -113,6 +123,14 @@ export function SubscriberBillingTab({
           title="Total pagado"
           value={formatBillingMoney(data.totalPaid)}
         />
+        {withholdingTotal ? (
+          <PortalMetricCard
+            eyebrow="Histórico"
+            title="Retenciones"
+            value={formatBillingMoney(withholdingTotal)}
+            description={WITHHOLDING_INCLUDED_NOTE}
+          />
+        ) : null}
         {courtesyTotal ? (
           <PortalMetricCard
             eyebrow="Histórico"
@@ -169,6 +187,7 @@ export function SubscriberBillingTab({
           />
         ))}
       <StatementCourtesyList statement={data} />
+      <StatementWithholdingList statement={data} />
       <BillingDocumentList
         subscriberId={subscriberId}
         revision={revision}

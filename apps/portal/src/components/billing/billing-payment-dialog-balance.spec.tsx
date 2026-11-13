@@ -12,7 +12,17 @@ jest.mock('@/components/access-control/permissions-context', () => ({
 }));
 
 jest.mock('@/lib/api-client', () => ({
-  billingApi: { statement: jest.fn(), registerPayment: jest.fn() },
+  billingApi: {
+    statement: jest.fn(),
+    registerPayment: jest.fn(),
+    // Titular sin retenciones (spec MOD14 2026-11-13 R7): el diálogo consulta la elegibilidad.
+    withholdingOptions: jest.fn().mockResolvedValue({
+      subscriberId: '55555555-5555-4555-8555-555555555555',
+      eligible: false,
+      eligibility: null,
+      options: [],
+    }),
+  },
   tenantSelfApi: { getSettings: jest.fn().mockResolvedValue({ timezone: 'America/Bogota' }) },
 }));
 

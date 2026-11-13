@@ -59,6 +59,7 @@ import { BillingFirstChargeService } from '../generation/billing-first-charge.se
 import { BillingDocumentsService } from './billing-documents.service';
 import { renderBillingDocumentPdf } from './billing-documents.pdf';
 import { BillingImportedPdfService } from './billing-imported-pdf.service';
+import { DOCUMENT_DETAIL_OPENAPI_SCHEMA } from '../installation/billing-installation-breakdown.openapi';
 
 const generationSummaryFields = BillingGenerationSummarySchema.keyof().options;
 
@@ -292,7 +293,7 @@ export class BillingDocumentsController {
   @Permissions(AccessPermissionKey.BILLING_INVOICES_READ)
   @ApiOperation({ summary: 'Consultar el detalle de un documento de cobro' })
   @ApiParam({ name: 'id', format: 'uuid' })
-  @ApiOkResponse({ description: 'Detalle del documento.' })
+  @ApiOkResponse({ description: 'Detalle del documento.', schema: DOCUMENT_DETAIL_OPENAPI_SCHEMA })
   @ApiNotFoundResponse({ description: 'No se encontró el documento.' })
   async findOne(
     @Param('id', new ParseUUIDPipe()) id: string,

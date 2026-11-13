@@ -6,3 +6,4 @@ export * from './billing-courtesies.contract';
 export * from './billing-accounts.contract';
 export * from './billing-blocked-buyer';
 export * from './allocation';
+export * from './billing-installation-consumption.contract';

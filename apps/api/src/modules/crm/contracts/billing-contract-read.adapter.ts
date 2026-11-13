@@ -4,6 +4,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import {
   BILLING_TERMINATED_LOOKBACK_DAYS,
+  BILLING_WITHHOLDING_AGENT_RUT_RESPONSIBILITIES,
   parseContractAdditionalVatSnapshots,
   parseContractItemVatSnapshot,
 } from '@iwana/shared';
@@ -13,6 +14,7 @@ import type {
   BillableAdditional,
   BillableContract,
   BillableContractStatus,
+  BillingWithholdingEligibility,
   ContractInstallationVat,
   ContractVatSnapshot,
 } from '../../billing/ports/billing-contract-read.port';
@@ -194,6 +196,13 @@ function mapInstallationVat(value: unknown): ContractInstallationVat | null {
       }
     : null;
 }
+
+/** Spec MOD14 2026-11-13 R7 (C1): persona jurídica o RUT con O-13/O-23 ($3). */
+const WITHHOLDING_AGENT_SQL = `CASE
+                WHEN person_type::text = 'JURIDICA' THEN 'PERSONA_JURIDICA'
+                WHEN COALESCE(rut_responsibilities, '{}'::text[]) && $3::text[] THEN 'AGENTE_RETENEDOR'
+                ELSE NULL
+              END`;
 
 @Injectable()
 export class BillingContractReadAdapter extends BillingContractReadPort {
@@ -385,29 +394,64 @@ export class BillingContractReadAdapter extends BillingContractReadPort {
     });
   }
 
+  async findTitularWithholdingEligibility(subscriberId: string): Promise<{
+    exists: boolean;
+    anonymized: boolean;
+    withholdingAgent: BillingWithholdingEligibility | null;
+  }> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return this.withTenant(schemaName, async (manager) => {
+      const rows = (await manager.query(
+        `SELECT anonymized_at, anonymized_request_id,
+                ${WITHHOLDING_AGENT_SQL} AS withholding_agent
+           FROM subscribers
+          WHERE id = $1::uuid AND tenant_id = $2`,
+        [subscriberId, tenantId, [...BILLING_WITHHOLDING_AGENT_RUT_RESPONSIBILITIES]],
+      )) as Array<{
+        anonymized_at: Date | string | null;
+        anonymized_request_id: string | null;
+        withholding_agent: BillingWithholdingEligibility | null;
+      }>;
+      const row = rows[0];
+      return {
+        exists: row !== undefined,
+        anonymized: row !== undefined && this.isAnonymized(row),
+        withholdingAgent: row?.withholding_agent ?? null,
+      };
+    });
+  }
+
   async lockTitularForBillingWrite(
     subscriberId: string,
     ctx: { manager: EntityManager },
-  ): Promise<{ exists: boolean; partyId: string | null; anonymized: boolean }> {
+  ): Promise<{
+    exists: boolean;
+    partyId: string | null;
+    anonymized: boolean;
+    withholdingAgent: BillingWithholdingEligibility | null;
+  }> {
     const { tenantId } = TenantContext.getOrThrow();
     const rows = (await ctx.manager.query(
       `SELECT party_id::text AS party_id,
               anonymized_at,
-              anonymized_request_id
+              anonymized_request_id,
+              ${WITHHOLDING_AGENT_SQL} AS withholding_agent
          FROM subscribers
         WHERE id = $1::uuid AND tenant_id = $2
         FOR SHARE`,
-      [subscriberId, tenantId],
+      [subscriberId, tenantId, [...BILLING_WITHHOLDING_AGENT_RUT_RESPONSIBILITIES]],
     )) as Array<{
       party_id: string | null;
       anonymized_at: Date | string | null;
       anonymized_request_id: string | null;
+      withholding_agent: BillingWithholdingEligibility | null;
     }>;
     const row = rows[0];
     return {
       exists: row !== undefined,
       partyId: row?.party_id ?? null,
       anonymized: row?.anonymized_at != null || row?.anonymized_request_id != null,
+      withholdingAgent: row?.withholding_agent ?? null,
     };
   }
 

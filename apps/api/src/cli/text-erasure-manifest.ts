@@ -34,6 +34,13 @@
  * note y void_note son texto libre CUBIERTO por BillingTitularErasureParticipant; idempotency_key
  * y void_idempotency_key son claves opacas de idempotencia; el resto son dominios cerrados con
  * CHECK.
+ * Las dos de billing_payment_withholdings son de las retenciones en el pago (migración 206, spec
+ * MOD14 2026-11-13 bloque C): certificate_number es texto libre CUBIERTO por
+ * BillingTitularErasureParticipant; tax_code es un dominio cerrado con CHECK.
+ * Las ocho de billing_installation_breakdowns(_items) son del consumo de la instalación (migración
+ * 205, spec MOD14 2026-11-13 bloque A): número de OT, identificadores, nombre y unidad del
+ * catálogo de inventario, seriales del equipo (ocultos al leer si el titular está anonimizado o
+ * bloqueado sin permiso) y dominios con CHECK. Sin texto libre.
  */
 export type TextErasureManifestKind = 'CUBIERTA' | 'EXCLUIDA' | 'PENDIENTE-MOD14';
 
@@ -4228,5 +4235,65 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
     c: 'void_reason_code',
     k: 'EXCLUIDA',
     d: 'CODIGO: motivo de catálogo de la anulación con CHECK, sin texto libre (migración 203)',
+  },
+  {
+    t: 'billing_payment_withholdings',
+    c: 'certificate_number',
+    k: 'CUBIERTA',
+    d: 'apps/api/src/modules/billing/privacy/billing-titular-erasure.participant.ts (número de certificado de retención; se vacía con el titular)',
+  },
+  {
+    t: 'billing_payment_withholdings',
+    c: 'tax_code',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: RETE_FUENTE_SERVICIOS|RETE_ICA, dominio cerrado con CHECK (migración 206)',
+  },
+  {
+    t: 'billing_installation_breakdowns',
+    c: 'execution_order_number',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: número de la OT copiado de MOD11, referencia del sistema (migración 205)',
+  },
+  {
+    t: 'billing_installation_breakdowns',
+    c: 'price_segment',
+    k: 'EXCLUIDA',
+    d: 'ENUM: segmento comercial con CHECK, dominio cerrado (migración 205)',
+  },
+  {
+    t: 'billing_installation_breakdown_items',
+    c: 'inventory_item_id',
+    k: 'EXCLUIDA',
+    d: 'INVENTARIO: identificador del artículo de inventario consumido (migración 205)',
+  },
+  {
+    t: 'billing_installation_breakdown_items',
+    c: 'description',
+    k: 'EXCLUIDA',
+    d: 'CATALOGO: nombre del artículo de inventario del ISP, sin vínculo con un titular (migración 205)',
+  },
+  {
+    t: 'billing_installation_breakdown_items',
+    c: 'unit_of_measure',
+    k: 'EXCLUIDA',
+    d: 'CATALOGO: unidad del artículo de inventario (migración 205)',
+  },
+  {
+    t: 'billing_installation_breakdown_items',
+    c: 'serial_numbers',
+    k: 'EXCLUIDA',
+    d: 'INVENTARIO: seriales del equipo instalado (migración 205), sin texto libre; la lectura los oculta si el titular está anonimizado o con DATOS_BLOQUEADOS sin permiso (buildDocumentInstallationBreakdown)',
+  },
+  {
+    t: 'billing_installation_breakdown_items',
+    c: 'commercial_product_id',
+    k: 'EXCLUIDA',
+    d: 'CATALOGO: identificador del producto comercial vinculado (migración 205), sin texto personal',
+  },
+  {
+    t: 'billing_installation_breakdown_items',
+    c: 'value_source',
+    k: 'EXCLUIDA',
+    d: 'ENUM: PRECIO_COMERCIAL|COSTO_PROMEDIO|SIN_VALOR, dominio cerrado con CHECK (migración 205)',
   },
 ];
