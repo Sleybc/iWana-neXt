@@ -1292,9 +1292,10 @@ test.describe('MOD14 Primer cobro completo — E2E vivo', () => {
     await expect(
       section.getByRole('row').filter({ hasText: `Cable drop QA ${RUN_ID}` }),
     ).toContainText('Costo promedio de inventario');
-    // La UI formatea pesos enteros (`formatBillingMoney`): «$ 262.000», sin decimales.
-    await expect(section).toContainText(/\$\s262\.000(?![\d,])/u);
-    await expect(section).toContainText(/\$\s59\.500(?![\d,])/u);
+    // `formatBillingMoney` usa Intl es-CO: según los datos ICU del runtime sale «$ 262.000»
+    // o «$ 262.000,00»; ambas formas son el mismo valor y ninguna admite otro dígito detrás.
+    await expect(section).toContainText(/\$\s262\.000(?:,00)?(?![\d,])/u);
+    await expect(section).toContainText(/\$\s59\.500(?:,00)?(?![\d,])/u);
     await expect(section).toContainText('No cambia el total del documento.');
     await expectNoSeriousAxeViolations(
       page,
