@@ -61,6 +61,7 @@ export function BillingInstallationBreakdown({
       </div>
       {breakdown.items.length ? (
         <BillingTable
+          label="Materiales y equipos de la instalación"
           columns={['Descripción', 'Cantidad', 'Unidad', 'Valor unitario', 'Total']}
           rows={breakdown.items.map((item) => ({
             id: `${item.executionOrderNumber}-${item.position}`,

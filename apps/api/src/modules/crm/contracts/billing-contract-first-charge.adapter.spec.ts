@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TenantContext } from '@iwana/db';
+import { calculateNitVerificationDigit } from '@iwana/shared';
 import { createFiscalDocumentCrypto } from '../../../common/crypto/fiscal-document.util';
 import { BillingContractFirstChargeAdapter } from './billing-contract-first-charge.adapter';
 
@@ -241,6 +242,73 @@ describe('BillingContractFirstChargeAdapter', () => {
       expect(params[2]).toBe('Empresa Sintética SAS');
       expect(params[3]).toBeNull();
       expect(crypto.decrypt(params[4] as string)).toBe('900000001');
+    });
+
+    describe('persona jurídica: congela su NIT con DV aunque tenga documento cifrado', () => {
+      const SYNTHETIC_NIT = '900000001';
+      const DV = calculateNitVerificationDigit(SYNTHETIC_NIT);
+      const juridica = (overrides: Record<string, unknown> = {}) =>
+        row({
+          person_type: 'JURIDICA',
+          business_name: 'Empresa Sintética SAS',
+          nit: SYNTHETIC_NIT,
+          nit_verification_digit: DV,
+          fiscal_address: 'Ya congelada',
+          ...overrides,
+        });
+      const frozenDocument = async (overrides: Record<string, unknown>) => {
+        query.mockResolvedValueOnce([juridica(overrides)]).mockResolvedValueOnce([[], 1]);
+        const result = await run(() => adapter.freezeFiscalDataIfMissing(contractId, 'u'));
+        const params = query.mock.calls[1]?.[1] as unknown[] | undefined;
+        return {
+          result,
+          plain: params?.[4] ? crypto.decrypt(params[4] as string) : null,
+          hmac: params?.[5],
+        };
+      };
+
+      it('NIT con DV válido → `base-DV`, con HMAC y sin valores en la auditoría', async () => {
+        const { result, plain, hmac } = await frozenDocument({});
+        expect(result.frozenFields).toEqual(['NAME', 'DOCUMENT']);
+        expect(plain).toBe(`${SYNTHETIC_NIT}-${DV}`);
+        expect(hmac).toBe(crypto.encrypt(`${SYNTHETIC_NIT}-${DV}`)!.hmac);
+        expect(JSON.stringify(audit.logWithin.mock.calls)).not.toContain(SYNTHETIC_NIT);
+      });
+
+      it('NIT guardado como `base-DV` sin columna de DV → el mismo `base-DV`', async () => {
+        const { plain } = await frozenDocument({
+          nit: `${SYNTHETIC_NIT}-${DV}`,
+          nit_verification_digit: null,
+        });
+        expect(plain).toBe(`${SYNTHETIC_NIT}-${DV}`);
+      });
+
+      it('NIT sin DV registrado → la base sola', async () => {
+        const { plain } = await frozenDocument({ nit_verification_digit: null });
+        expect(plain).toBe(SYNTHETIC_NIT);
+      });
+
+      it('DV que no corresponde o NIT con formato inválido → no congela el documento', async () => {
+        for (const overrides of [
+          { nit_verification_digit: String((Number(DV) + 1) % 10) },
+          { nit: '1234567890123456', nit_verification_digit: null },
+        ]) {
+          query.mockReset();
+          query.mockResolvedValueOnce([juridica(overrides)]).mockResolvedValueOnce([[], 1]);
+          const result = await run(() => adapter.freezeFiscalDataIfMissing(contractId, 'u'));
+          expect(result).toEqual({
+            outcome: 'FROZEN',
+            frozenFields: ['NAME'],
+            missingFields: ['DOCUMENT'],
+          });
+          expect((query.mock.calls[1]?.[1] as unknown[])[4]).toBeNull();
+        }
+      });
+
+      it('sin NIT cae al documento cifrado del suscriptor', async () => {
+        const { plain } = await frozenDocument({ nit: null, nit_verification_digit: null });
+        expect(plain).toBe(SYNTHETIC_DOCUMENT);
+      });
     });
 
     it('ALREADY_SET sin escribir si el contrato ya tiene los tres campos', async () => {

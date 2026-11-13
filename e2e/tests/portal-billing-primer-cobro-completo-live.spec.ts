@@ -97,6 +97,7 @@ type BillingDoc = {
   taxTotal: string;
   total: string;
   pendingAmount: string | null;
+  blockingReason?: string | null;
   withholdingAmount?: string;
   lines?: DocLine[];
   installationBreakdown?: Breakdown | null;
@@ -590,12 +591,24 @@ async function seedInventory(): Promise<void> {
   ).partyRefId;
   expect(stock.supplierPartyRefId).toMatch(/^[0-9a-f-]{36}$/iu);
 
+  // El tenant desechable nace sin categorías de inventario: el artículo exige una existente y
+  // activa (`categoryId`, o `category` resuelto por código), así que se crean aquí.
+  const category = async (code: string, codePrefix: string, name: string) =>
+    (
+      await expectJson<{ id: string }>('/inventory/categories', 'POST', 201, {
+        headers,
+        data: { code, codePrefix, name },
+      })
+    ).id;
+  const materialsCategoryId = await category('MATERIALS', 'MAT', 'Materiales de instalación');
+  const cpeCategoryId = await category('CPE', 'CPE', 'Equipos del cliente');
+
   const item = async (data: Dict) =>
     (await expectJson<{ id: string }>('/inventory/items', 'POST', 201, { headers, data })).id;
   stock.cableItemId = await item({
     sku: `QA-CAB-${RUN_ID}`,
     name: `Cable drop QA ${RUN_ID}`,
-    category: 'MATERIALS',
+    categoryId: materialsCategoryId,
     itemKind: 'CONSUMABLE',
     trackingMode: 'CONSUMABLE',
     unitOfMeasure: 'METER',
@@ -603,7 +616,7 @@ async function seedInventory(): Promise<void> {
   stock.connectorItemId = await item({
     sku: `QA-CON-${RUN_ID}`,
     name: `Conector QA ${RUN_ID}`,
-    category: 'MATERIALS',
+    categoryId: materialsCategoryId,
     itemKind: 'CONSUMABLE',
     trackingMode: 'CONSUMABLE',
     unitOfMeasure: 'UNIT',
@@ -611,7 +624,7 @@ async function seedInventory(): Promise<void> {
   stock.routerItemId = await item({
     sku: `QA-RTR-${RUN_ID}`,
     name: `Router QA ${RUN_ID}`,
-    category: 'CPE',
+    categoryId: cpeCategoryId,
     itemKind: 'SERIALIZED',
     trackingMode: 'SERIALIZED',
     unitOfMeasure: 'UNIT',
@@ -1036,6 +1049,12 @@ function getDocument(id: string): Promise<BillingDoc> {
 }
 
 async function issueDocument(id: string): Promise<BillingDoc> {
+  // Un borrador bloqueado (SIN_PRECIO, SIN_TRATAMIENTO_IVA, SIN_DATOS_FISCALES) no se emite: se
+  // nombra el motivo en lugar del 422 genérico.
+  expect(
+    (await getDocument(id)).blockingReason ?? null,
+    'Motivo de bloqueo del borrador',
+  ).toBeNull();
   await expectJson('/billing/documents/issue', 'POST', 200, {
     headers: withKey(tenantHeaders()),
     data: { documentIds: [id] },
@@ -1273,8 +1292,9 @@ test.describe('MOD14 Primer cobro completo — E2E vivo', () => {
     await expect(
       section.getByRole('row').filter({ hasText: `Cable drop QA ${RUN_ID}` }),
     ).toContainText('Costo promedio de inventario');
-    await expect(section).toContainText(/262\.000,00/u);
-    await expect(section).toContainText(/59\.500,00/u);
+    // La UI formatea pesos enteros (`formatBillingMoney`): «$ 262.000», sin decimales.
+    await expect(section).toContainText(/\$\s262\.000(?![\d,])/u);
+    await expect(section).toContainText(/\$\s59\.500(?![\d,])/u);
     await expect(section).toContainText('No cambia el total del documento.');
     await expectNoSeriousAxeViolations(
       page,

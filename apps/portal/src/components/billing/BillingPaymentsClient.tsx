@@ -122,6 +122,7 @@ export function BillingPaymentTable({
         <PortalAlert variant="info" title="Datos protegidos" description={PROTECTED_NOTICE} />
       ) : null}
       <BillingTable
+        label="Pagos registrados"
         columns={[
           ...(showSubscriber ? ['Suscriptor'] : []),
           'Fecha',

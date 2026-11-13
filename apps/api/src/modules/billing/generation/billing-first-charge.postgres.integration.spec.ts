@@ -9,7 +9,8 @@ import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource } from 'typeorm';
 import { dataSourceOptions, runInTenantSchema, TenantContext } from '@iwana/db';
-import { CustomerSegment } from '@iwana/shared';
+import { calculateNitVerificationDigit, CustomerSegment } from '@iwana/shared';
+import { decryptAes256Gcm, loadPiiAesGcmKeyPair } from '../../../common/crypto/aes-gcm.util';
 import { createFiscalDocumentCrypto } from '../../../common/crypto/fiscal-document.util';
 import { billingPostgresIntegrationEnabled } from '../../../../../../packages/database/src/migrations/tenant/billing-migration.integration-helpers';
 import { BillingContractFirstChargeAdapter } from '../../crm/contracts/billing-contract-first-charge.adapter';
@@ -67,6 +68,14 @@ describeDb('Contrato activo sin cobros — primer cobro (PostgreSQL real)', () =
   });
   const fiscalCrypto = createFiscalDocumentCrypto(config);
   let generation: BillingGenerationService;
+  let documents: BillingDocumentsService;
+  const issuer = {
+    getIssuerIdentity: jest.fn().mockResolvedValue({
+      legalName: 'Operador sintético',
+      nit: '900000000',
+      verificationDigit: null,
+    }),
+  };
   const run = <T>(fn: () => Promise<T>) =>
     TenantContext.run({ tenantId, schemaName, tenantSlug: 'first-charge-it' }, fn);
   const sql = <T = Record<string, unknown>>(query: string, args: unknown[] = []) =>
@@ -194,7 +203,8 @@ describeDb('Contrato activo sin cobros — primer cobro (PostgreSQL real)', () =
       ALTER TABLE subscribers
         ADD COLUMN document_number_encrypted varchar(500) NULL,
         ADD COLUMN document_number_hmac varchar(64) NULL,
-        ADD COLUMN nit varchar(500) NULL;
+        ADD COLUMN nit varchar(500) NULL,
+        ADD COLUMN nit_verification_digit varchar(1) NULL;
       ALTER TABLE contracts
         ADD COLUMN plan_id varchar(120) NOT NULL DEFAULT 'plan-heredado',
         ADD COLUMN IF NOT EXISTS customer_segment varchar(20) NULL, -- el fixture ya la trae (202)
@@ -237,11 +247,11 @@ describeDb('Contrato activo sin cobros — primer cobro (PostgreSQL real)', () =
       privacy as never,
       settings as never,
     );
-    const documents = new BillingDocumentsService(
+    documents = new BillingDocumentsService(
       ds,
       audit as never,
       reader,
-      { getIssuerIdentity: jest.fn() } as never,
+      issuer as never,
       config,
       { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) } as never,
       settings as never,
@@ -685,5 +695,105 @@ describeDb('Contrato activo sin cobros — primer cobro (PostgreSQL real)', () =
       }),
     ]);
     expect((await contractRow(contractId)).installation_fee).toBeNull();
+  });
+
+  /**
+   * Defecto 2026-11-13: el alta de persona jurídica no captura `document_type` (el enum de
+   * personas naturales no trae NIT), así que el primer cobro quedaba en SIN_DATOS_FISCALES y la
+   * emisión respondía BILLING_DOCUMENT_BLOCKED. Ahora el adquirente jurídico es tipo NIT con su
+   * NIT y DV; la persona natural conserva su tipo y su documento.
+   */
+  describe('primer cobro emitido según el tipo de persona', () => {
+    const SYNTHETIC_NIT = '900000001';
+    const DV = calculateNitVerificationDigit(SYNTHETIC_NIT);
+    const { activeKey } = loadPiiAesGcmKeyPair(config);
+
+    // Otras pruebas marcan documentos EMITIDO con números sintéticos no numéricos ('DC-T-…');
+    // un prefijo propio aísla la numeración real de estas emisiones.
+    beforeAll(() => sql(`UPDATE billing_policy SET document_prefix = 'PC'`));
+
+    async function seedJuridicaWithoutDocumentType(): Promise<string> {
+      const id = randomUUID();
+      await sql(
+        `INSERT INTO subscribers (id,tenant_id,party_id,person_type,document_type,business_name,
+                                  address,nit,nit_verification_digit,customer_segment)
+         VALUES ($1,$2,$3,'JURIDICA',NULL,'Empresa Sintética SAS','Calle sintética 9 # 8-7',
+                 $4,$5,'RESIDENTIAL')`,
+        [id, tenantId, randomUUID(), SYNTHETIC_NIT, DV],
+      );
+      return id;
+    }
+
+    async function chargeAndIssue(subscriberId: string) {
+      // Sin instalación: el desglose de instalación no es parte de este defecto.
+      const { contractId } = await seedContract({
+        subscriberId,
+        fee: '0.00',
+        fiscalDocument: null,
+      });
+      const result = await firstCharge(contractId);
+      const drafts = await sql<{ id: string; blocking_reason: string | null }>(
+        `SELECT d.id::text, d.blocking_reason
+           FROM billing_documents d JOIN billing_periods p ON p.id = d.period_id
+          WHERE d.contract_id = $1 ORDER BY p.period_start`,
+        [contractId],
+      );
+      await run(() => documents.issue([drafts[0]!.id], actorId));
+      const [issued] = await sql<{
+        status: string;
+        buyer_snapshot: Record<string, unknown>;
+        buyer_document_encrypted: string;
+      }>(
+        'SELECT status, buyer_snapshot, buyer_document_encrypted FROM billing_documents WHERE id = $1',
+        [drafts[0]!.id],
+      );
+      return { result, drafts, issued: issued! };
+    }
+
+    it('jurídica sin document_type: congela su NIT con DV y emite el primer cobro como NIT', async () => {
+      const subscriberId = await seedJuridicaWithoutDocumentType();
+
+      const { result, drafts, issued } = await chargeAndIssue(subscriberId);
+
+      expect(result).toMatchObject({
+        fiscalData: {
+          outcome: 'FROZEN',
+          frozenFields: ['NAME', 'DOCUMENT', 'ADDRESS'],
+          missingFields: [],
+        },
+        summary: expect.objectContaining({ generated: 2, blocked: 0, failed: 0 }),
+      });
+      expect(drafts.map(({ blocking_reason }) => blocking_reason)).toEqual([null, null]);
+      expect(issued.status).toBe('EMITIDO');
+      expect(issued.buyer_snapshot).toMatchObject({
+        displayName: 'Empresa Sintética SAS',
+        documentType: 'NIT',
+      });
+      // RS-9: el número va cifrado en el documento y es el NIT con su DV.
+      expect(issued.buyer_document_encrypted).not.toContain(SYNTHETIC_NIT);
+      expect(decryptAes256Gcm(issued.buyer_document_encrypted, activeKey)).toBe(
+        `${SYNTHETIC_NIT}-${DV}`,
+      );
+      const [contract] = await sql<{ fiscal_document_encrypted: string }>(
+        'SELECT fiscal_document_encrypted FROM contracts WHERE subscriber_id = $1',
+        [subscriberId],
+      );
+      expect(fiscalCrypto.decrypt(contract!.fiscal_document_encrypted)).toBe(
+        `${SYNTHETIC_NIT}-${DV}`,
+      );
+      const entries = audit.logWithin.mock.calls.map(([entry]) => entry as Record<string, unknown>);
+      expect(JSON.stringify(entries)).not.toContain(SYNTHETIC_NIT);
+    });
+
+    it('natural sin cambios: emite con su tipo (CC) y su documento', async () => {
+      const subscriberId = await seedNaturalSubscriber();
+
+      const { drafts, issued } = await chargeAndIssue(subscriberId);
+
+      expect(drafts.map(({ blocking_reason }) => blocking_reason)).toEqual([null, null]);
+      expect(issued.status).toBe('EMITIDO');
+      expect(issued.buyer_snapshot).toMatchObject({ documentType: 'CC' });
+      expect(decryptAes256Gcm(issued.buyer_document_encrypted, activeKey)).toBe(SYNTHETIC_DOCUMENT);
+    });
   });
 });

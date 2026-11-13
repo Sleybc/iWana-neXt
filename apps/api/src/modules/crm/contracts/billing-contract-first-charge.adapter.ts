@@ -5,7 +5,9 @@ import { runInTenantSchema, TenantContext } from '@iwana/db';
 import {
   AuditAction,
   type BillingFirstChargeFiscalField,
+  calculateNitVerificationDigit,
   type CustomerSegment,
+  parseExpedienteNit,
 } from '@iwana/shared';
 import { DataSource } from 'typeorm';
 import {
@@ -52,7 +54,9 @@ interface FiscalRow {
   full_name: string | null;
   address: string | null;
   document_number_encrypted: string | null;
+  person_type?: string | null;
   nit: string | null;
+  nit_verification_digit?: string | null;
   anonymized: boolean;
 }
 
@@ -216,7 +220,8 @@ export class BillingContractFirstChargeAdapter extends BillingContractFirstCharg
                  OR NULLIF(c.fiscal_document, '') IS NOT NULL) AS has_document,
                 s.business_name,
                 NULLIF(concat_ws(' ', s.first_name, s.last_name), '') AS full_name,
-                s.address, s.document_number_encrypted, s.nit,
+                s.address, s.document_number_encrypted, s.person_type::text AS person_type,
+                s.nit, s.nit_verification_digit,
                 (s.anonymized_at IS NOT NULL OR s.anonymized_request_id IS NOT NULL) AS anonymized
            FROM contracts c
            JOIN subscribers s ON s.id = c.subscriber_id AND s.tenant_id = c.tenant_id
@@ -303,20 +308,47 @@ export class BillingContractFirstChargeAdapter extends BillingContractFirstCharg
   }
 
   /**
-   * Documento del titular: `document_number_encrypted` (mismo par de llaves PII que el documento
-   * fiscal) o, en su defecto, el NIT de la persona jurídica. Se vuelve a cifrar con su HMAC para
-   * el contrato; nunca se registra ni se devuelve. Un valor ilegible o inválido no se congela.
+   * Documento del titular, recifrado con su HMAC para el contrato; nunca se registra ni se
+   * devuelve. Un valor ilegible o inválido no se congela.
+   *
+   * - Persona jurídica: su NIT con DV (`base-DV`), coherente con el tipo NIT que el adquirente
+   *   lleva en el cobro (`buyerDocumentType`). Sin DV registrado se congela el NIT solo; con un
+   *   DV que no corresponde no se congela. Sin NIT cae al documento cifrado como antes.
+   * - Persona natural: `document_number_encrypted` (mismo par de llaves PII) o, en su defecto,
+   *   el NIT heredado.
    */
   private subscriberDocument(row: FiscalRow): EncryptedFiscalDocument | null {
     try {
-      const plain = present(row.document_number_encrypted)
-        ? this.fiscalDocumentCrypto.decrypt(row.document_number_encrypted)
-        : present(row.nit)
-          ? row.nit
-          : null;
+      const juridicaNit = row.person_type === 'JURIDICA' ? juridicaNitDocument(row) : undefined;
+      const plain =
+        juridicaNit !== undefined
+          ? juridicaNit
+          : present(row.document_number_encrypted)
+            ? this.fiscalDocumentCrypto.decrypt(row.document_number_encrypted)
+            : present(row.nit)
+              ? row.nit
+              : null;
       return present(plain) ? this.fiscalDocumentCrypto.encrypt(plain.trim()) : null;
     } catch {
       return null;
     }
   }
+}
+
+/**
+ * NIT de la persona jurídica como documento del adquirente: `base-DV` si el DV registrado
+ * corresponde, la base sola si no hay DV y null si el NIT o el DV son inválidos. `undefined`
+ * cuando el suscriptor no tiene NIT (se usa entonces el documento cifrado).
+ */
+function juridicaNitDocument(row: FiscalRow): string | null | undefined {
+  if (!present(row.nit)) return undefined;
+  // Acepta la base sola o `base-DV`; un formato inválido lanza NitFormatError y
+  // `subscriberDocument` lo trata como ilegible.
+  const parsed = parseExpedienteNit(row.nit);
+  if (!parsed) return undefined;
+  const stored = row.nit_verification_digit?.trim() || null;
+  if (parsed.verificationDigit && stored && parsed.verificationDigit !== stored) return null;
+  const digit = stored ?? parsed.verificationDigit;
+  if (!digit) return parsed.nit;
+  return calculateNitVerificationDigit(parsed.nit) === digit ? `${parsed.nit}-${digit}` : null;
 }

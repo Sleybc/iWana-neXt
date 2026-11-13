@@ -350,9 +350,13 @@ export const portalModuleTabsDividerClassName =
 export const portalModuleTabsTrackClassName =
   'flex flex-wrap items-center gap-1 rounded-xl bg-gray-100/90 p-1 dark:bg-dark-surface-3';
 
-/** Píldora inset en la pista (`rounded-lg` + `p-1`). Activo = navy, no lima. */
+/**
+ * Píldora inset en la pista (`rounded-lg` + `p-1`). Activo = navy, no lima.
+ * Sin `transition-colors`: entre gris sobre la pista y blanco sobre navy, los colores intermedios
+ * de la transición quedan por debajo de 4.5:1 (WCAG 1.4.3) en la pestaña que entra y en la que sale.
+ */
 export const portalModuleTabTriggerClassName = cn(
-  'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors',
+  'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-medium',
   'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200',
   'data-[state=active]:bg-iwana-primary data-[state=active]:text-white data-[state=active]:shadow-sm',
   'dark:data-[state=active]:bg-iwana-primary dark:data-[state=active]:text-white',

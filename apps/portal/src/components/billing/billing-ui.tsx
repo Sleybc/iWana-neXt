@@ -15,6 +15,7 @@ import {
   portalDataTableCellClassName,
   portalDataTableHeadRowClassName,
   portalDataTableShellClassName,
+  interactiveFocusClassName,
 } from '@/components/shared/portal-ui';
 
 export const billingInputClass =
@@ -214,15 +215,27 @@ export function BillingLoadState({
   return null;
 }
 
+/**
+ * Tabla de facturación. El contenedor desplaza en horizontal cuando las columnas no caben (panel
+ * lateral, móvil): es una región con nombre y enfocable para que se pueda desplazar con teclado
+ * (WCAG 2.1.1; axe `scrollable-region-focusable`).
+ */
 export function BillingTable({
+  label,
   columns,
   rows,
 }: {
+  label: string;
   columns: readonly string[];
   rows: readonly { id: string; cells: ReactNode[] }[];
 }) {
   return (
-    <div className={portalDataTableShellClassName}>
+    <div
+      role="region"
+      aria-label={label}
+      tabIndex={0}
+      className={`${portalDataTableShellClassName} ${interactiveFocusClassName}`}
+    >
       <table className="w-full min-w-max border-collapse text-left">
         <thead className={portalDataTableHeadRowClassName}>
           <tr>

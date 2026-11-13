@@ -5,6 +5,7 @@ import { SettingsPriorityTenantReadPort } from '../../tenant/ports/settings-prio
 import { encryptAes256Gcm } from '../../../common/crypto/aes-gcm.util';
 import {
   BillingContractReadAdapter,
+  buyerDocumentType,
   mapBillableAdditionals,
 } from './billing-contract-read.adapter';
 
@@ -197,6 +198,43 @@ describe('BillingContractReadAdapter', () => {
 
     expect(result?.buyer.documentNumber).toBe('SYNTHETIC-DOCUMENT');
     expect(managerQuery.mock.calls[0]?.[0]).toContain('fiscal_document_encrypted');
+  });
+
+  it('persona jurídica: el adquirente es tipo NIT aunque document_type esté vacío; la natural no cambia', async () => {
+    expect(buyerDocumentType({ person_type: 'JURIDICA', document_type: null })).toBe('NIT');
+    expect(buyerDocumentType({ person_type: 'JURIDICA', document_type: 'CC' })).toBe('NIT');
+    expect(buyerDocumentType({ person_type: 'NATURAL', document_type: 'CC' })).toBe('CC');
+    expect(buyerDocumentType({ person_type: 'NATURAL', document_type: null })).toBeNull();
+    expect(buyerDocumentType({ document_type: 'NIT_PERSONA' })).toBe('NIT_PERSONA');
+
+    managerQuery.mockResolvedValue([
+      {
+        contract_id: '00000000-0000-4000-8000-000000000010',
+        subscriber_id: '00000000-0000-4000-8000-000000000011',
+        party_id: null,
+        status: 'ACTIVE',
+        status_reason_code: null,
+        terminated_at: null,
+        cycle_day: 1,
+        cutoff_day: 15,
+        start_date: '2026-01-01',
+        end_date: null,
+        plan_name: 'Plan de prueba',
+        monthly_price: '85000.00',
+        vat_snapshot: null,
+        display_name: 'Empresa sintética',
+        person_type: 'JURIDICA',
+        document_type: null,
+        address: null,
+        rut_responsibilities: [],
+        has_document_number: true,
+        anonymized_at: null,
+        anonymized_request_id: null,
+      },
+    ]);
+    const [contract] = await adapter.findBillableForDate('2026-11-13', { limit: 10 });
+    expect(contract?.buyer).toMatchObject({ documentType: 'NIT', hasDocumentNumber: true });
+    expect(managerQuery.mock.calls[0]?.[0]).toContain('s.person_type::text AS person_type');
   });
 
   it('BR-9.2 por defecto no descifra: el documento solo se revela bajo demanda', async () => {

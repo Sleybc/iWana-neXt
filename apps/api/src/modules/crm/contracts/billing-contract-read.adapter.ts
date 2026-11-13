@@ -4,6 +4,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import {
   BILLING_TERMINATED_LOOKBACK_DAYS,
+  DocumentTypeParty,
   BILLING_WITHHOLDING_AGENT_RUT_RESPONSIBILITIES,
   parseContractAdditionalVatSnapshots,
   parseContractItemVatSnapshot,
@@ -42,6 +43,7 @@ type BillingContractRow = {
   installation_vat_snapshot?: unknown;
   permanence_discount?: string | null;
   display_name: string | null;
+  person_type?: string | null;
   document_type: string | null;
   address: string | null;
   rut_responsibilities: unknown;
@@ -77,6 +79,7 @@ const BILLABLE_CONTRACT_SELECT = `
            AS permanence_discount,
          COALESCE(NULLIF(c.fiscal_name, ''), NULLIF(s.business_name, ''),
                   NULLIF(concat_ws(' ', s.first_name, s.last_name), '')) AS display_name,
+         s.person_type::text AS person_type,
          s.document_type,
          COALESCE(NULLIF(c.fiscal_address, ''), NULLIF(s.address, '')) AS address,
          s.rut_responsibilities,
@@ -195,6 +198,19 @@ function mapInstallationVat(value: unknown): ContractInstallationVat | null {
         ratePercent: snapshot.ratePercent,
       }
     : null;
+}
+
+/**
+ * Tipo de documento del adquirente. La persona jurídica se identifica siempre por su NIT: su
+ * alta no captura `document_type` (el enum `DocumentType` es de personas naturales y no trae
+ * NIT), así que la columna queda vacía y el cobro se bloqueaba en SIN_DATOS_FISCALES. El número
+ * sigue saliendo del documento fiscal congelado en el contrato (RS-9), que para la jurídica es su
+ * NIT con DV (ver `BillingContractFirstChargeAdapter`). La persona natural no cambia.
+ */
+export function buyerDocumentType(
+  row: Pick<BillingContractRow, 'person_type' | 'document_type'>,
+): string | null {
+  return row.person_type === 'JURIDICA' ? DocumentTypeParty.NIT : row.document_type;
 }
 
 /** Spec MOD14 2026-11-13 R7 (C1): persona jurídica o RUT con O-13/O-23 ($3). */
@@ -504,7 +520,7 @@ export class BillingContractReadAdapter extends BillingContractReadPort {
       permanenceDiscount: row.permanence_discount ?? null,
       buyer: {
         displayName: row.display_name ?? 'Titular',
-        documentType: row.document_type,
+        documentType: buyerDocumentType(row),
         documentNumber,
         hasDocumentNumber: row.has_document_number === true,
         ...(document === 'lazy' ? { revealDocumentNumber: readDocumentNumber } : {}),

@@ -80,6 +80,7 @@ export function BillingDocumentTable({
     <>
       {pdfError ? <PortalAlert variant="error" title={pdfError} /> : null}
       <BillingTable
+        label="Documentos de cobro"
         columns={[
           ...(selection ? ['Selección'] : []),
           'Número',
@@ -332,6 +333,7 @@ function BillingDocumentDetail({
           ) : null}
           {data.lines?.length ? (
             <BillingTable
+              label="Conceptos del documento"
               columns={['Tipo', 'Concepto', 'IVA', 'Total']}
               rows={data.lines.map((line) => ({
                 id: line.id,
@@ -353,6 +355,7 @@ function BillingDocumentDetail({
                 Cortesías
               </h3>
               <BillingTable
+                label="Cortesías del documento"
                 columns={['Fecha', 'Motivo', 'Valor', 'Estado', 'Acciones']}
                 rows={data.courtesies.map((courtesy) => {
                   const status = COURTESY_STATUSES[courtesy.status];
