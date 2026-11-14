@@ -245,6 +245,84 @@ describe('BillingReceiptsService', () => {
     await expect(service.receiptPdf(payment().id, access)).rejects.toMatchObject({ status: 503 });
   });
 
+  describe('ramas de datos incompletos (P-04)', () => {
+    const withholding = (documentId: string, voidedAt: string | null) => ({
+      id: `00000000-0000-4000-8000-0000000003${documentId.slice(-2)}`,
+      paymentId: '00000000-0000-4000-8000-000000000020',
+      documentId,
+      taxCode: 'RETE_ICA' as const,
+      base: '40.00',
+      rate: '1.0000',
+      amount: '1.00',
+      certificateNumber: null,
+      voidedAt,
+      createdBy: actor,
+      createdAt: '2026-11-05T12:00:00.000Z',
+    });
+
+    it('sin aplicaciones ni retenciones no consulta documentos y el saldo a favor cae a 0,00', async () => {
+      payments.getPayment.mockResolvedValue(
+        payment({
+          allocations: undefined,
+          withholdings: undefined,
+          unallocatedAmount: undefined,
+        } as unknown as Partial<BillingPaymentResponse>),
+      );
+      await service.receiptPdf(payment().id, access);
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+      expect(drawn()).toContain(`Saldo a favor: ${formatReceiptMoney('0.00')}`);
+    });
+
+    it('sin nombre del titular pinta vacío y no inventa uno', async () => {
+      contracts.findTitularDisplayNames.mockResolvedValueOnce([]);
+      await service.receiptPdf(payment().id, access);
+      expect(drawn()).not.toContain('Titular sintético');
+    });
+
+    it('un documento sin número propio ni externo, o ausente, se rotula «Documento sin número»', async () => {
+      const documentC = '00000000-0000-4000-8000-0000000000c1';
+      documentQuery.mockResolvedValueOnce([{ id: documentA, number: null, external_number: null }]);
+      payments.getPayment.mockResolvedValue(
+        payment({ allocations: [allocation(documentA), allocation(documentC)] }),
+      );
+      await service.receiptPdf(payment().id, access);
+      const contents = drawn();
+      expect(contents.match(/Documento sin número/gu)?.length).toBeGreaterThanOrEqual(2);
+      expect(documentQuery).toHaveBeenCalledWith(expect.any(String), [
+        '00000000-0000-4000-8000-000000000001',
+        [documentA, documentC],
+      ]);
+    });
+
+    it('en un pago registrado omite la retención anulada; en uno anulado la conserva', async () => {
+      payments.getPayment.mockResolvedValue(
+        payment({
+          withholdings: [withholding(documentB, '2026-11-06T00:00:00.000Z')],
+        } as Partial<BillingPaymentResponse>),
+      );
+      await service.receiptPdf(payment().id, access);
+      expect(drawn()).not.toContain('Retención de ICA');
+      // La retención agrega su documento a la consulta de rótulos aunque no tenga aplicación.
+      expect(documentQuery).toHaveBeenLastCalledWith(expect.any(String), [
+        '00000000-0000-4000-8000-000000000001',
+        [documentA, documentB],
+      ]);
+
+      text.mockClear();
+      payments.getPayment.mockResolvedValue(
+        payment({
+          status: 'ANULADO',
+          allocations: [
+            allocation(documentA, { reversedAt: '2026-11-07T00:00:00.000Z', reversedBy: actor }),
+          ],
+          withholdings: [withholding(documentA, '2026-11-07T00:00:00.000Z')],
+        } as Partial<BillingPaymentResponse>),
+      );
+      await service.receiptPdf(payment().id, access);
+      expect(drawn()).toContain('Retención de ICA (1.0000 %) sobre DC-000001');
+    });
+  });
+
   it('formatea fecha civil y moneda colombiana', () => {
     expect(formatReceiptDate('2026-01-31')).toBe('31/01/2026');
     expect(formatReceiptDate('sin-fecha')).toBe('sin-fecha');

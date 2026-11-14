@@ -1,11 +1,15 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import {
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import type { Queue } from 'bullmq';
 import type { DataSource, EntityManager } from 'typeorm';
@@ -78,6 +82,26 @@ export const BILLING_EMAIL_LOG_COLUMNS = `id::text, subscriber_id::text, kind, d
   reason_code, resend, requested_by::text, created_at, processed_at`;
 
 const EMAIL_LOG_LIMIT = 200;
+
+/** Variable de entorno del tope de envíos por titular y hora (SEC-03, P-01). */
+export const BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR_ENV = 'BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR';
+export const BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR_DEFAULT = 10;
+/** Máximo admitido por Joi (SEC-EM-04). */
+export const BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR_LIMIT = 100;
+
+/**
+ * Tope vigente: entero entre 1 y 100. Joi lo valida al arrancar; un valor inválido que llegue aquí
+ * (p. ej. en pruebas sin el esquema) cae al defecto, nunca a «sin tope».
+ */
+export function resolveBillingEmailHourlyLimit(raw: unknown): number {
+  const value =
+    raw === undefined || raw === null || raw === '' ? Number.NaN : Number(raw as string | number);
+  return Number.isInteger(value) &&
+    value > 0 &&
+    value <= BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR_LIMIT
+    ? value
+    : BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR_DEFAULT;
+}
 
 function toIso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
@@ -171,20 +195,28 @@ export class BillingEmailsService {
     private readonly payments: BillingPaymentsService,
     private readonly issuers: BillingIssuerReadPort,
     private readonly audit: AuditService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
+
+  /** Envíos por titular y hora (`EN_COLA` + `ENVIADO`) antes de responder 429. */
+  hourlyLimit(): number {
+    return resolveBillingEmailHourlyLimit(
+      this.config?.get<string | number>(BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR_ENV),
+    );
+  }
 
   /** Documento de cobro: solo EMITIDO. Un IMPORTADO no tiene PDF de iWana que enviar. */
   async requestDocumentEmail(documentId: string, actorId: string): Promise<BillingEmailLogEntry> {
     const document = await this.documents.findOne(documentId, actorId);
     if (document.status === 'IMPORTADO') {
       throw new ConflictException({
-        code: 'BILLING_EMAIL_IMPORTED_NOT_SENDABLE',
+        code: BILLING_ERROR_CODES.BILLING_EMAIL_IMPORTED_NOT_SENDABLE,
         message: 'Una factura importada de otro sistema no se envía por correo.',
       });
     }
     if (document.status !== 'EMITIDO') {
       throw new ConflictException({
-        code: 'BILLING_DOCUMENT_NOT_ISSUED',
+        code: BILLING_ERROR_CODES.BILLING_DOCUMENT_NOT_ISSUED,
         message: 'Solo se puede enviar una factura emitida.',
       });
     }
@@ -211,7 +243,7 @@ export class BillingEmailsService {
     const payment = await this.payments.getPayment(paymentId, readAccess);
     if (payment.status !== 'REGISTRADO') {
       throw new ConflictException({
-        code: 'BILLING_PAYMENT_VOIDED',
+        code: BILLING_ERROR_CODES.BILLING_PAYMENT_VOIDED,
         message: 'El recibo de un pago anulado no se envía.',
       });
     }
@@ -312,7 +344,17 @@ export class BillingEmailsService {
     };
   }
 
-  // atajo: sin tope de envíos por titular (solo idempotencia EN_COLA y throttler global), subir antes de G7 (SEC-03, P-01).
+  /**
+   * Tope por titular (SEC-03, revisión sec-eng SEC-EM-01 a 03). Toda solicitud intenta el advisory
+   * lock del titular con `pg_try_advisory_xact_lock`: si otra solicitud del mismo titular lo tiene,
+   * responde 429 sin esperar ni crear fila. Con el lock:
+   * - titular restringido o sin correo: si ya hay un `RECHAZADO` del mismo destino y motivo en la
+   *   última hora se devuelve ese, sin insertar ni auditar (SEC-EM-02, deduplicación); si no, se
+   *   registra uno nuevo. No consume cupo: no se envía nada;
+   * - ya hay `EN_COLA` del mismo destino: se devuelve esa fila sin consumir cupo (idempotencia);
+   * - si no, cuenta `EN_COLA`, `ENVIADO` y `ERROR` del titular en la última hora y, al alcanzar el
+   *   tope, responde 429 sin crear fila.
+   */
   private async request(
     target: BillingEmailTarget,
     actorId: string,
@@ -338,7 +380,17 @@ export class BillingEmailsService {
     let created: { row: BillingEmailLogRow; enqueue: boolean };
     try {
       created = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+        const [lock] = (await qr.manager.query(
+          'SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS locked',
+          [`billing-email:${tenantId}:${target.subscriberId}`],
+        )) as Array<{ locked: boolean }>;
+        if (lock?.locked !== true) throw this.sendInProgress();
         if (restriction) {
+          const rejected = await this.findByTarget(qr.manager, tenantId, target, 'RECHAZADO', {
+            reasonCode: restriction,
+            withinLastHour: true,
+          });
+          if (rejected) return { row: rejected, enqueue: false };
           const row = await this.insert(qr.manager, tenantId, target, actorId, {
             status: 'RECHAZADO',
             reasonCode: restriction,
@@ -350,6 +402,10 @@ export class BillingEmailsService {
         }
         const queued = await this.findByTarget(qr.manager, tenantId, target, 'EN_COLA');
         if (queued) return { row: queued, enqueue: false };
+        const limit = this.hourlyLimit();
+        if ((await this.recentSends(qr.manager, tenantId, target.subscriberId)) >= limit) {
+          throw this.rateLimited(limit);
+        }
         const sent = await this.findByTarget(qr.manager, tenantId, target, 'ENVIADO');
         const row = await this.insert(qr.manager, tenantId, target, actorId, {
           status: 'EN_COLA',
@@ -399,7 +455,7 @@ export class BillingEmailsService {
           ),
         );
         throw new ServiceUnavailableException({
-          code: 'BILLING_EMAIL_QUEUE_UNAVAILABLE',
+          code: BILLING_ERROR_CODES.BILLING_EMAIL_QUEUE_UNAVAILABLE,
           message: 'No fue posible programar el envío. Intenta de nuevo.',
         });
       }
@@ -410,19 +466,44 @@ export class BillingEmailsService {
     return toBillingEmailLogEntry(created.row);
   }
 
+  /** `EN_COLA` + `ENVIADO` + `ERROR` del titular en la última hora (índice `idx_billing_email_log_subscriber`). */
+  private async recentSends(
+    manager: EntityManager,
+    tenantId: string,
+    subscriberId: string,
+  ): Promise<number> {
+    const rows = (await manager.query(
+      `SELECT COUNT(*)::int AS total
+         FROM billing_email_log
+        WHERE tenant_id = $1 AND subscriber_id = $2::uuid
+          AND status IN ('EN_COLA', 'ENVIADO', 'ERROR')
+          AND created_at > now() - interval '1 hour'`,
+      [tenantId, subscriberId],
+    )) as Array<{ total: number | string }>;
+    return Number(rows[0]?.total ?? 0);
+  }
+
   private async findByTarget(
     manager: EntityManager,
     tenantId: string,
     target: BillingEmailTarget,
     status: BillingEmailStatus,
+    filter: { reasonCode?: BillingEmailReasonCode; withinLastHour?: boolean } = {},
   ): Promise<BillingEmailLogRow | null> {
+    const params: unknown[] = [...targetParams(tenantId, target), status];
+    let extra = '';
+    if (filter.reasonCode) {
+      params.push(filter.reasonCode);
+      extra += ` AND reason_code = $${params.length}`;
+    }
+    if (filter.withinLastHour) extra += ` AND created_at > now() - interval '1 hour'`;
     const rows = (await manager.query(
       `SELECT ${BILLING_EMAIL_LOG_COLUMNS}
          FROM billing_email_log
-        WHERE ${SAME_TARGET} AND status = $8
+        WHERE ${SAME_TARGET} AND status = $8${extra}
         ORDER BY created_at DESC, id DESC
         LIMIT 1`,
-      [...targetParams(tenantId, target), status],
+      params,
     )) as BillingEmailLogRow[];
     return rows[0] ?? null;
   }
@@ -480,16 +561,36 @@ export class BillingEmailsService {
     return row;
   }
 
+  private rateLimited(limit: number): HttpException {
+    return new HttpException(
+      {
+        code: BILLING_ERROR_CODES.BILLING_EMAIL_RATE_LIMITED,
+        message: `Se alcanzó el máximo de ${limit} envíos por hora para este cliente. Intenta más tarde.`,
+      },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+
+  private sendInProgress(): HttpException {
+    return new HttpException(
+      {
+        code: BILLING_ERROR_CODES.BILLING_EMAIL_RATE_LIMITED,
+        message: 'Hay un envío en curso para este cliente. Intenta en unos segundos.',
+      },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+
   private subscriberNotFound(): NotFoundException {
     return new NotFoundException({
-      code: 'BILLING_SUBSCRIBER_NOT_FOUND',
+      code: BILLING_ERROR_CODES.BILLING_SUBSCRIBER_NOT_FOUND,
       message: 'No se encontró el suscriptor.',
     });
   }
 
   private privacyUnavailable(): ServiceUnavailableException {
     return new ServiceUnavailableException({
-      code: 'BILLING_PRIVACY_UNAVAILABLE',
+      code: BILLING_ERROR_CODES.BILLING_PRIVACY_UNAVAILABLE,
       message: 'No fue posible verificar la privacidad del titular.',
     });
   }

@@ -1,4 +1,5 @@
 import { ConflictException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Queue } from 'bullmq';
 import type { DataSource } from 'typeorm';
 import { AuditService } from '../../audit/audit.service';
@@ -7,7 +8,12 @@ import { BillingDocumentsService } from '../documents/billing-documents.service'
 import { BillingPaymentsService } from '../payments/billing-payments.service';
 import { BillingIssuerReadPort } from '../ports/billing-issuer-read.port';
 import { BillingTitularContactReadPort } from '../ports/billing-titular-contact-read.port';
-import { BillingEmailsService, type BillingEmailLogRow } from './billing-emails.service';
+import {
+  BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR_DEFAULT,
+  BillingEmailsService,
+  resolveBillingEmailHourlyLimit,
+  type BillingEmailLogRow,
+} from './billing-emails.service';
 
 const TENANT = '00000000-0000-4000-8000-000000000001';
 const SUBSCRIBER = '00000000-0000-4000-8000-000000000010';
@@ -61,11 +67,15 @@ describe('BillingEmailsService', () => {
   let audit: { logWithin: jest.Mock };
   let service: BillingEmailsService;
   /** Filas existentes por estado que devuelve la búsqueda por destino. */
-  let existing: Partial<Record<'EN_COLA' | 'ENVIADO', BillingEmailLogRow>>;
+  let existing: Partial<Record<'EN_COLA' | 'ENVIADO' | 'RECHAZADO', BillingEmailLogRow>>;
+  /** Resultado de `pg_try_advisory_xact_lock` (SEC-EM-01). */
+  let lockAcquired: boolean;
 
   beforeEach(() => {
     existing = {};
+    lockAcquired = true;
     query = jest.fn(async (sql: string, params: unknown[]) => {
+      if (sql.includes('pg_try_advisory_xact_lock')) return [{ locked: lockAcquired }];
       if (sql.includes('INSERT INTO billing_email_log')) {
         return [
           logRow({
@@ -83,7 +93,7 @@ describe('BillingEmailsService', () => {
         ];
       }
       if (sql.includes('FROM billing_email_log') && sql.includes('status = $8')) {
-        const row = existing[params[7] as 'EN_COLA' | 'ENVIADO'];
+        const row = existing[params[7] as 'EN_COLA' | 'ENVIADO' | 'RECHAZADO'];
         return row ? [row] : [];
       }
       return [];
@@ -383,6 +393,180 @@ describe('BillingEmailsService', () => {
           readAccess: { canSeeBlocked: false },
         }),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('tope de envíos por titular y hora (SEC-03, P-01)', () => {
+    let recent: number;
+
+    beforeEach(() => {
+      recent = 0;
+      const base = query.getMockImplementation()!;
+      query.mockImplementation(async (sql: string, params: unknown[]) => {
+        if (sql.includes('COUNT(*)::int AS total')) return [{ total: String(recent) }];
+        return base(sql, params);
+      });
+    });
+
+    const calls = (fragment: string) =>
+      query.mock.calls.filter(([sql]) => String(sql).includes(fragment));
+
+    it('cuenta EN_COLA y ENVIADO del titular en la última hora con el lock del titular', async () => {
+      recent = 9;
+      await service.requestDocumentEmail(DOCUMENT, ACTOR);
+      const [lock] = calls('pg_try_advisory_xact_lock');
+      expect(lock?.[1]).toEqual([`billing-email:${TENANT}:${SUBSCRIBER}`]);
+      const [count] = calls('COUNT(*)::int AS total');
+      expect(String(count?.[0])).toContain("status IN ('EN_COLA', 'ENVIADO', 'ERROR')");
+      expect(String(count?.[0])).toContain("interval '1 hour'");
+      expect(count?.[1]).toEqual([TENANT, SUBSCRIBER]);
+      const order = query.mock.calls.map(([sql]) => String(sql));
+      const lockAt = order.findIndex((sql) => sql.includes('pg_try_advisory_xact_lock'));
+      const countAt = order.findIndex((sql) => sql.includes('COUNT(*)::int AS total'));
+      const insertAt = order.findIndex((sql) => sql.includes('INSERT INTO billing_email_log'));
+      expect(lockAt).toBeLessThan(countAt);
+      expect(countAt).toBeLessThan(insertAt);
+      expect(queue.add).toHaveBeenCalledTimes(1);
+    });
+
+    it('al alcanzar el tope responde 429 BILLING_EMAIL_RATE_LIMITED sin crear fila ni encolar', async () => {
+      recent = 10;
+      await expect(service.requestDocumentEmail(DOCUMENT, ACTOR)).rejects.toMatchObject({
+        status: 429,
+        response: { code: 'BILLING_EMAIL_RATE_LIMITED' },
+      });
+      expect(calls('INSERT INTO billing_email_log')).toHaveLength(0);
+      expect(queue.add).not.toHaveBeenCalled();
+      expect(audit.logWithin).not.toHaveBeenCalled();
+    });
+
+    it('una solicitud idempotente (EN_COLA del mismo destino) no consume cupo', async () => {
+      recent = 50;
+      existing.EN_COLA = logRow();
+      const entry = await service.requestDocumentEmail(DOCUMENT, ACTOR);
+      expect(entry.id).toBe(LOG);
+      expect(calls('COUNT(*)::int AS total')).toHaveLength(0);
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+
+    it('SEC-EM-01: sin el lock del titular responde 429 sin esperar ni crear fila', async () => {
+      lockAcquired = false;
+      await expect(service.requestDocumentEmail(DOCUMENT, ACTOR)).rejects.toMatchObject({
+        status: 429,
+        response: {
+          code: 'BILLING_EMAIL_RATE_LIMITED',
+          message: 'Hay un envío en curso para este cliente. Intenta en unos segundos.',
+        },
+      });
+      expect(calls('pg_advisory_xact_lock(')).toHaveLength(0);
+      expect(calls('INSERT INTO billing_email_log')).toHaveLength(0);
+      expect(calls('COUNT(*)::int AS total')).toHaveLength(0);
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+
+    it('SEC-EM-01: un titular restringido también exige el lock', async () => {
+      lockAcquired = false;
+      titulars.findTitularEmail.mockResolvedValueOnce({
+        exists: true,
+        anonymized: true,
+        partyId: PARTY,
+        email: EMAIL,
+      });
+      await expect(service.requestDocumentEmail(DOCUMENT, ACTOR)).rejects.toMatchObject({
+        status: 429,
+      });
+      expect(calls('INSERT INTO billing_email_log')).toHaveLength(0);
+    });
+
+    it('SEC-EM-02: un RECHAZADO del mismo destino y motivo en la última hora se reutiliza sin auditar', async () => {
+      const previous = logRow({
+        status: 'RECHAZADO',
+        reason_code: 'TITULAR_RESTRINGIDO',
+        recipient_masked: null,
+      });
+      existing.RECHAZADO = previous;
+      titulars.findTitularEmail.mockResolvedValueOnce({
+        exists: true,
+        anonymized: true,
+        partyId: PARTY,
+        email: EMAIL,
+      });
+      const entry = await service.requestDocumentEmail(DOCUMENT, ACTOR);
+      expect(entry).toMatchObject({
+        id: LOG,
+        status: 'RECHAZADO',
+        reasonCode: 'TITULAR_RESTRINGIDO',
+      });
+      const [lookup] = calls("interval '1 hour'").filter(([sql]) =>
+        String(sql).includes('status = $8'),
+      );
+      expect(String(lookup?.[0])).toContain('reason_code = $9');
+      expect((lookup?.[1] as unknown[]).slice(7)).toEqual(['RECHAZADO', 'TITULAR_RESTRINGIDO']);
+      expect(calls('INSERT INTO billing_email_log')).toHaveLength(0);
+      expect(audit.logWithin).not.toHaveBeenCalled();
+    });
+
+    it('un rechazo por titular restringido no pasa por el tope', async () => {
+      recent = 50;
+      titulars.findTitularEmail.mockResolvedValueOnce({
+        exists: true,
+        anonymized: true,
+        partyId: PARTY,
+        email: EMAIL,
+      });
+      const entry = await service.requestDocumentEmail(DOCUMENT, ACTOR);
+      expect(entry.status).toBe('RECHAZADO');
+      expect(calls('COUNT(*)::int AS total')).toHaveLength(0);
+    });
+
+    it('el tope sale de BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR; un valor inválido cae al defecto', () => {
+      const withConfig = (value: unknown) =>
+        new BillingEmailsService(
+          {} as DataSource,
+          queue as unknown as Queue,
+          titulars as unknown as BillingTitularContactReadPort,
+          marks as unknown as IPrivacyMarksReadPort,
+          documents as unknown as BillingDocumentsService,
+          payments as unknown as BillingPaymentsService,
+          {} as BillingIssuerReadPort,
+          audit as unknown as AuditService,
+          new ConfigService({ BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR: value }),
+        ).hourlyLimit();
+      expect(service.hourlyLimit()).toBe(BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR_DEFAULT);
+      expect(BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR_DEFAULT).toBe(10);
+      expect(withConfig('3')).toBe(3);
+      expect(withConfig(25)).toBe(25);
+      expect(withConfig(100)).toBe(100);
+      for (const invalid of ['0', '-2', '2.5', 'diez', '', null, undefined, 101, '500']) {
+        expect(withConfig(invalid)).toBe(10);
+      }
+      expect(resolveBillingEmailHourlyLimit(7)).toBe(7);
+    });
+
+    it('con tope configurado en 2, el tercer envío de la hora responde 429', async () => {
+      const limited = new BillingEmailsService(
+        {} as DataSource,
+        queue as unknown as Queue,
+        titulars as unknown as BillingTitularContactReadPort,
+        marks as unknown as IPrivacyMarksReadPort,
+        documents as unknown as BillingDocumentsService,
+        payments as unknown as BillingPaymentsService,
+        {
+          getIssuerIdentity: jest
+            .fn()
+            .mockResolvedValue({ legalName: 'ISP', nit: null, verificationDigit: null }),
+        } as unknown as BillingIssuerReadPort,
+        audit as unknown as AuditService,
+        new ConfigService({ BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR: 2 }),
+      );
+      recent = 1;
+      await expect(limited.requestStatementEmail(SUBSCRIBER, {}, ACTOR)).resolves.toMatchObject({
+        status: 'EN_COLA',
+      });
+      recent = 2;
+      await expect(limited.requestStatementEmail(SUBSCRIBER, {}, ACTOR)).rejects.toMatchObject({
+        status: 429,
+      });
     });
   });
 });

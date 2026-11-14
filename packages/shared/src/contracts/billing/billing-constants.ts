@@ -190,5 +190,17 @@ export const BILLING_ERROR_CODES = {
   BILLING_ALLOCATION_HAS_WITHHOLDING: 'BILLING_ALLOCATION_HAS_WITHHOLDING',
   /** Un pago importado no tiene recibo numerado de iWana. */
   BILLING_RECEIPT_NOT_AVAILABLE: 'BILLING_RECEIPT_NOT_AVAILABLE',
+  /** El pago no existe en el tenant (404). */
+  BILLING_PAYMENT_NOT_FOUND: 'BILLING_PAYMENT_NOT_FOUND',
+  /** El generador del recibo no está disponible (503). */
+  BILLING_RECEIPT_UNAVAILABLE: 'BILLING_RECEIPT_UNAVAILABLE',
+  /** Correos (spec MOD05↔MOD14 2026-11-13 D9–D11). Una factura IMPORTADO no se envía (409). */
+  BILLING_EMAIL_IMPORTED_NOT_SENDABLE: 'BILLING_EMAIL_IMPORTED_NOT_SENDABLE',
+  /** No fue posible encolar el envío; la fila queda en ERROR (503). */
+  BILLING_EMAIL_QUEUE_UNAVAILABLE: 'BILLING_EMAIL_QUEUE_UNAVAILABLE',
+  /** Tope de envíos por titular y hora alcanzado (429, SEC-03). */
+  BILLING_EMAIL_RATE_LIMITED: 'BILLING_EMAIL_RATE_LIMITED',
+  /** No se pudieron leer las marcas de privacidad del titular: nunca se envía a ciegas (503). */
+  BILLING_PRIVACY_UNAVAILABLE: 'BILLING_PRIVACY_UNAVAILABLE',
 } as const;
 export type BillingErrorCode = (typeof BILLING_ERROR_CODES)[keyof typeof BILLING_ERROR_CODES];

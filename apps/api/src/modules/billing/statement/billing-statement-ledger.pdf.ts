@@ -10,6 +10,37 @@ import type { BillingIssuerIdentity } from '../ports/billing-issuer-read.port';
 
 const PAGE_TITLE = 'Estado de cuenta';
 
+/**
+ * Tope de filas del libro en el PDF (SEC-07, P-03): con historiales importados de miles de
+ * movimientos el PDF se trunca a las filas más recientes. El saldo de cada fila y el saldo final
+ * siguen siendo los reales: se muestra el saldo acumulado antes de la primera fila visible.
+ */
+export const LEDGER_PDF_MAX_ROWS = 5000;
+
+export function ledgerTruncationNotice(maxRows: number): string {
+  return `Se muestran las ${maxRows} filas más recientes; filtra un periodo más corto.`;
+}
+
+/** Filas visibles del PDF: las `maxRows` más recientes y el saldo acumulado antes de ellas. */
+export function ledgerRowsForPdf(
+  ledger: BillingStatementLedger,
+  maxRows: number = LEDGER_PDF_MAX_ROWS,
+): {
+  rows: BillingStatementLedger['rows'];
+  truncated: boolean;
+  balanceBefore: string | null;
+} {
+  if (ledger.rows.length <= maxRows) {
+    return { rows: ledger.rows, truncated: false, balanceBefore: null };
+  }
+  const start = ledger.rows.length - maxRows;
+  return {
+    rows: ledger.rows.slice(start),
+    truncated: true,
+    balanceBefore: ledger.rows[start - 1]?.balance ?? ledger.openingBalance,
+  };
+}
+
 /** Concepto visible de cada fila (vocabulario del usuario, sin códigos internos). */
 export const LEDGER_ROW_LABELS: Record<BillingStatementLedgerRowKind, string> = {
   SALDO_ANTERIOR: 'Saldo anterior',
@@ -46,6 +77,8 @@ export interface StatementLedgerPdfInput {
   titularName?: string | null;
   /** Fecha de generación (AAAA-MM-DD, zona del tenant). */
   generatedOn: string;
+  /** Tope de filas; por defecto `LEDGER_PDF_MAX_ROWS` (las pruebas lo bajan). */
+  maxRows?: number;
 }
 
 const COLUMNS = [
@@ -117,6 +150,15 @@ export async function renderStatementLedgerPdf(input: StatementLedgerPdfInput): 
       : `Movimientos hasta el ${formatLedgerDate(ledger.to)}`,
   );
   pdf.text(`Generado el ${formatLedgerDate(input.generatedOn)}`);
+  const visible = ledgerRowsForPdf(ledger, input.maxRows ?? LEDGER_PDF_MAX_ROWS);
+  if (visible.truncated) {
+    pdf.moveDown(0.5);
+    pdf.font(PDF_FONT.bold).fontSize(9).text(ledgerTruncationNotice(visible.rows.length));
+    pdf
+      .font(PDF_FONT.regular)
+      .fontSize(9)
+      .text(`Saldo antes de las filas mostradas: ${formatLedgerMoney(visible.balanceBefore!)}`);
+  }
   pdf.moveDown();
 
   drawRow(
@@ -127,7 +169,7 @@ export async function renderStatementLedgerPdf(input: StatementLedgerPdfInput): 
   if (!ledger.rows.length) {
     pdf.font(PDF_FONT.regular).fontSize(9).text('Sin movimientos en el periodo.');
   }
-  for (const row of ledger.rows) {
+  for (const row of visible.rows) {
     ensureRoom(pdf, 28);
     const concept =
       row.kind === 'DOCUMENTO' && row.late

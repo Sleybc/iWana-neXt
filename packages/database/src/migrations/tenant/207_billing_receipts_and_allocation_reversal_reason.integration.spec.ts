@@ -9,6 +9,7 @@ import {
   type BillingTenantFixture,
 } from './billing-migration.integration-helpers';
 import { BillingReceiptsAndAllocationReversalReason2070000000207 } from './207_billing_receipts_and_allocation_reversal_reason';
+import { BillingReceiptAndUnlinkGuards2090000000209 } from './209_billing_receipt_and_unlink_guards';
 import { applyTenantMigrationsInOrder, createTenantDataSource } from './runner';
 
 const DESTRUCTIVE = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
@@ -97,6 +98,9 @@ describeWithDb('Migración 207 — recibo numerado y motivo de desasociación', 
     } finally {
       await tenantDataSource.destroy();
     }
+    // La 207 se prueba en su propio estado: los triggers de la 209 dependen de sus columnas
+    // (UPDATE OF) y rechazan el desasociar sobre IMPORTADO que esta suite ejercita en crudo.
+    await new BillingReceiptAndUnlinkGuards2090000000209().down(qr());
   }, 600_000);
 
   afterAll(async () => {

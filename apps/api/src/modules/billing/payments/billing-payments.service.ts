@@ -608,20 +608,22 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     }
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const committed = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const payment = await this.findPaymentById(qr.manager, tenantId, paymentId, true);
-      if (!payment)
-        throw new NotFoundException(
-          errorResponse('BILLING_PAYMENT_NOT_FOUND', 'No se encontró el pago.'),
-        );
-      if (payment.status !== 'REGISTRADO') throw this.paymentVoidedConflict();
+      // SEC-209-03: mismo orden de bloqueos que unlinkAllocation y allocateCredit (titular,
+      // crédito del titular, pago). Lectura sin bloqueo para conocer el titular y revalidación
+      // del estado con el pago bloqueado.
+      const found = await this.findPaymentById(qr.manager, tenantId, paymentId);
+      if (!found) throw this.paymentNotFound();
+      if (found.status !== 'REGISTRADO') throw this.paymentVoidedConflict();
 
-      const titular = await this.contractReadPort.lockTitularForBillingWrite(
-        payment.subscriber_id,
-        {
-          manager: qr.manager,
-        },
-      );
+      const titular = await this.contractReadPort.lockTitularForBillingWrite(found.subscriber_id, {
+        manager: qr.manager,
+      });
       if (!titular.exists || titular.anonymized) throw this.anonymizedConflict();
+      await this.lockSubscriber(qr.manager, found.subscriber_id);
+
+      const payment = await this.findPaymentById(qr.manager, tenantId, paymentId, true);
+      if (!payment) throw this.paymentNotFound();
+      if (payment.status !== 'REGISTRADO') throw this.paymentVoidedConflict();
 
       const allocations = (await qr.manager.query(
         `SELECT DISTINCT d.period_id::text AS period_id
@@ -631,6 +633,16 @@ export class BillingPaymentsService extends BillingAccountReadPort {
             AND d.status <> 'IMPORTADO' AND d.period_id IS NOT NULL`,
         [paymentId, tenantId],
       )) as Array<{ period_id: string }>;
+      // Migración 209: el pago queda ANULADO antes de revertir sus aplicaciones. El trigger
+      // `billing_payment_allocations_reversal_guard` solo admite revertir una aplicación a un
+      // documento IMPORTADO cuando su pago ya está ANULADO en la misma transacción.
+      await qr.manager.query(
+        `UPDATE billing_payments
+            SET status = 'ANULADO', void_reason_code = $1, void_note = $2,
+                voided_at = now(), voided_by = $3::uuid
+          WHERE id = $4::uuid AND tenant_id = $5`,
+        [parsed.data.reasonCode, parsed.data.note ?? null, actorId, paymentId, tenantId],
+      );
       await qr.manager.query(
         `UPDATE billing_payment_allocations
             SET reversed_at = now(), reversed_by = $1::uuid
@@ -646,13 +658,6 @@ export class BillingPaymentsService extends BillingAccountReadPort {
         [actorId, paymentId, tenantId],
       )) as unknown;
       const voidedWithholdingRows = returningRows<{ amount: string }>(voidedWithholdings);
-      await qr.manager.query(
-        `UPDATE billing_payments
-            SET status = 'ANULADO', void_reason_code = $1, void_note = $2,
-                voided_at = now(), voided_by = $3::uuid
-          WHERE id = $4::uuid AND tenant_id = $5`,
-        [parsed.data.reasonCode, parsed.data.note ?? null, actorId, paymentId, tenantId],
-      );
       await this.audit.logWithin(
         {
           action: AuditAction.UPDATE,
@@ -739,7 +744,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
           FOR UPDATE`,
         [allocation.document_id, tenantId],
       )) as Array<{ id: string; status: string; period_id: string | null }>;
-      // CA-7: la guarda de la 199 no cubre el UPDATE de reversed_at; se valida aquí.
+      // CA-7: se valida aquí y, en base, el trigger de la migración 209.
       if (!document || document.status === 'ANULADO' || document.status === 'IMPORTADO') {
         throw this.allocationNotUnlinkable();
       }

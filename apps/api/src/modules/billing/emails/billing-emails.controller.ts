@@ -27,11 +27,13 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import type { SchemaObject } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
+import { z } from 'zod';
 import {
   AccessPermissionKey,
   BILLING_EMAIL_KINDS,
   BILLING_EMAIL_REASON_CODES,
   BILLING_EMAIL_STATUSES,
+  BILLING_ERROR_CODES,
   BillingStatementLedgerQuerySchema,
   UserRole,
   type BillingStatementLedgerQuery,
@@ -140,6 +142,18 @@ const STATEMENT_SEND_REQUEST_SCHEMA: SchemaObject = {
   },
 };
 
+/** P-07: un POST sin cuerpo equivale a `{}` (Swagger lo declara opcional). */
+export const STATEMENT_SEND_BODY_SCHEMA = z.preprocess(
+  (value) => value ?? {},
+  BillingStatementLedgerQuerySchema,
+);
+
+/** SEC-03: tope de envíos por titular y hora (`BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR`). */
+const RATE_LIMITED_RESPONSE = {
+  status: HttpStatus.TOO_MANY_REQUESTS,
+  description: `${BILLING_ERROR_CODES.BILLING_EMAIL_RATE_LIMITED}: el cliente alcanzó el máximo de envíos por hora (EN_COLA + ENVIADO + ERROR en la última hora; por defecto 10, de 1 a 100 con BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR), o hay otra solicitud de envío en curso para el mismo cliente. Una solicitud idempotente que devuelve el envío EN_COLA existente no consume cupo; un rechazo repetido (mismo destino y motivo en la última hora) devuelve el RECHAZADO existente.`,
+} as const;
+
 const SEND_DESCRIPTION =
   'Se envía al correo registrado del titular, nunca a uno libre. Con el titular anonimizado o con datos bloqueados la fila queda RECHAZADO / TITULAR_RESTRINGIDO; sin correo, RECHAZADO / SIN_CORREO; en ambos casos no se envía nada. Si ya hay un envío EN_COLA para el mismo destino se devuelve ese (idempotente). Reenviar crea otra fila con resend=true.';
 
@@ -184,6 +198,7 @@ export class BillingEmailsController {
   @ApiConflictResponse({
     description: 'BILLING_DOCUMENT_NOT_ISSUED o BILLING_EMAIL_IMPORTED_NOT_SENDABLE.',
   })
+  @ApiResponse(RATE_LIMITED_RESPONSE)
   @ApiResponse({
     status: 503,
     description: 'BILLING_PRIVACY_UNAVAILABLE o BILLING_EMAIL_QUEUE_UNAVAILABLE.',
@@ -209,6 +224,7 @@ export class BillingEmailsController {
   @ApiForbiddenResponse({ description: 'El rol o permiso no permite enviar recibos.' })
   @ApiNotFoundResponse({ description: 'No se encontró el pago o el suscriptor.' })
   @ApiConflictResponse({ description: 'BILLING_PAYMENT_VOIDED: el pago está anulado.' })
+  @ApiResponse(RATE_LIMITED_RESPONSE)
   @ApiResponse({
     status: 503,
     description: 'BILLING_PRIVACY_UNAVAILABLE o BILLING_EMAIL_QUEUE_UNAVAILABLE.',
@@ -234,13 +250,14 @@ export class BillingEmailsController {
   @ApiUnauthorizedResponse({ description: 'La sesión no es válida.' })
   @ApiForbiddenResponse({ description: 'El rol o permiso no permite enviar el estado de cuenta.' })
   @ApiNotFoundResponse({ description: 'No se encontró el suscriptor.' })
+  @ApiResponse(RATE_LIMITED_RESPONSE)
   @ApiResponse({
     status: 503,
     description: 'BILLING_PRIVACY_UNAVAILABLE o BILLING_EMAIL_QUEUE_UNAVAILABLE.',
   })
   async sendStatement(
     @Param('subscriberId', new ParseUUIDPipe()) subscriberId: string,
-    @Body(new ZodValidationPipe(BillingStatementLedgerQuerySchema))
+    @Body(new ZodValidationPipe(STATEMENT_SEND_BODY_SCHEMA))
     body: BillingStatementLedgerQuery,
     @Req() request: AuthenticatedRequest,
   ) {

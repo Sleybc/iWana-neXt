@@ -60,7 +60,10 @@ export class BillingStatementLedgerService {
     return { filename: `estado-de-cuenta-${ledger.to}.pdf`, content, ledger };
   }
 
-  // atajo: libro sin tope de filas, subir con historiales importados de miles de movimientos (SEC-07, P-03).
+  /**
+   * El JSON devuelve el libro completo del periodo; el PDF (descarga y correo) lo trunca a
+   * `LEDGER_PDF_MAX_ROWS` filas con aviso y saldo final real (SEC-07).
+   */
   private async compose(
     subscriberId: string,
     query: BillingStatementLedgerQuery,

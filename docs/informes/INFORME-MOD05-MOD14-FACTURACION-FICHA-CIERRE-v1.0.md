@@ -11,7 +11,7 @@
 | G1–G4 | Sin registro propio: el encargo es el plan §2 (launcher v1.1) | — | Cubierto por las revisiones de cumplimiento por bloque y por `gate-verifier` |
 | G6 | ✅ | 2026-11-13 | `gate-verifier` (§Gates) y aprovisionador E2E (§QA y E2E) |
 | Revisión `docs-governance` | ✅ tras corregir H1–H12 (atajos, línea final, fuente de G0 y de las decisiones, D4 «año», coherencia del spec y del plan, pendientes) | 2026-11-13 | AI-DOCS-GOV |
-| G6.5 | Pendiente del CI de `main` | — | — |
+| G6.5 | ✅ | 2026-11-14 | Commit `58a6184e` (más `88ae46da`), CI run 43542112071: intento 2 en `success` en todos los jobs, E2E Web Admin Smoke 43542112051 `success`. El intento 1 falló en dos pruebas de temporización ajenas a la fase: `titular-anonymized-concurrency` CA-RER-10, que pasa 10/10 dos veces en local con `DB_NAME=test`, y `portal-network-provisioning-live:924` (MOD13, `PENDING` frente a `DONE`); el E2E portal dio 355/356 |
 
 ## Decisiones de ejecución aprobadas con el plan
 
@@ -220,28 +220,43 @@ SHA-256 al cierre de la ola 1. F no los modifica.
 
 OpenAPI: code-first, cubierta por `billing-payments.openapi.spec.ts` y `billing-emails-ledger.openapi.spec.ts`.
 
+### Pendientes de seguridad, segunda ronda (`sec-eng` sobre P-01 y P-02)
+
+Sin críticos ni altos. Todo corregido el 2026-11-14:
+- **SEC-209-01:** una reversión ya escrita es inmutable en base.
+- **SEC-209-02:** trigger `billing_payments_void_guard`; un pago ANULADO no se reactiva.
+- **SEC-209-03:** `voidPayment` toma los locks en el mismo orden que `allocateCredit` y `unlinkAllocation` (titular, crédito, pago).
+- **SEC-EM-01:** `pg_try_advisory_xact_lock`; si no obtiene el lock responde 429, sin esperar.
+- **SEC-EM-02:** un RECHAZADO repetido del mismo destino y motivo en la hora se deduplica.
+- **SEC-EM-03:** las filas en ERROR cuentan para el tope.
+- **SEC-EM-04:** el tope tiene un máximo de 100.
+
+Evidencia:
+- Integración 207+209: 15/15.
+- Integración de billing (`billing-emails` y `billing-payments*`): 39/39. Rutas que llaman a `voidPayment`: 66/66.
+- api: 565 suites y 7563 tests.
+
+`test-change-reviewer`: los ajustes de specs están justificados. Se tocaron la spec de la 207, que ahora corre `209.down()` en su `beforeAll`; `billing-payments.errors`, que cuenta tres lecturas del pago; y CA-4 de `billing-emails.postgres`, porque una carrera ahora puede dar 429.
+
 ## Atajos
 
-| Límite | Marcador | Cuándo subir |
-|---|---|---|
-| Sin tope de envíos por titular (SEC-03) | `// atajo:` en `apps/api/src/modules/billing/emails/billing-emails.service.ts` | Antes de G7, o si aparece uso masivo |
-| Libro sin tope de filas (SEC-07) | `// atajo:` en `apps/api/src/modules/billing/statement/billing-statement-ledger.service.ts` | Con historiales importados de miles de movimientos |
+Ninguno vigente: los dos de la primera ronda (SEC-03 y SEC-07) se cerraron con P-01 y P-03.
 
 ## Pendientes
 
 | ID | Pendiente | Disposición | Dueño | Cierra cuando |
 |---|---|---|---|---|
-| P-01 | SEC-03, tope de envíos por titular | Pendiente | `sr-backend` | Hay un 429 por titular y hora, con prueba |
-| P-02 | SEC-05, trigger de inmutabilidad de `receipt_number` y del desasociar sobre IMPORTADO/ANULADO | Pendiente; bloquea G7 | `sr-backend` | Existe una migración con trigger y su prueba (la reversión por anulación del pago queda excluida) |
-| P-03 | SEC-07, tope de filas del libro | Pendiente | `sr-backend` | El PDF trunca con aviso |
-| P-04 | Ramas bajo 80 % en `billing-emails.controller.ts`, `billing-statement-ledger.controller.ts` y `billing-receipts.service.ts` | Aceptado: el módulo cumple con la suma (87,43 %) y lo sin cubrir son ramas de decoradores y validación. Se cubren al tocar esos archivos | `sr-backend` | Los tres archivos llegan a ≥80 % de ramas |
+| P-01 | SEC-03, tope de envíos por titular | Cerrado 2026-11-14: hasta `BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR` envíos (por defecto 10, validado con Joi), lock consultivo por titular y 429 `BILLING_EMAIL_RATE_LIMITED`. Una solicitud idempotente no consume cupo. Integración: tope alcanzado y concurrencia por el último cupo | — | — |
+| P-02 | SEC-05, trigger de inmutabilidad de `receipt_number` y del desasociar sobre IMPORTADO/ANULADO | Cerrado 2026-11-14: migración 209 `209_billing_receipt_and_unlink_guards.ts`. La excepción depende del estado persistido, no de una GUC. `voidPayment` marca ANULADO antes de revertir. La reversión de lotes usa DELETE y no la toca. Integración 207+209: 13/13 | — | — |
+| P-03 | SEC-07, tope de filas del libro | Cerrado 2026-11-14: el PDF (descarga y correo) muestra 5000 filas, con aviso y el saldo final real. El JSON conserva el periodo completo | — | — |
+| P-04 | Ramas bajo 80 % en `billing-emails.controller.ts`, `billing-statement-ledger.controller.ts` y `billing-receipts.service.ts` | Cerrado 2026-11-14: los tres llegan a 100 % de ramas (antes 44,44 %, 71,42 % y 76,47 %) | — | — |
 | P-05 | El 503 `BILLING_RECEIPT_UNAVAILABLE` (inyección `@Optional`) no es alcanzable en producción | Aceptado | — | — |
-| P-06 | Códigos de error nuevos fuera de `BILLING_ERROR_CODES` | Pendiente | `sr-backend` | La lista del contrato los incluye |
-| P-07 | `statement/send` sin cuerpo responde 400 aunque Swagger lo marca opcional | Pendiente; el portal siempre envía `{}` | `sr-backend` | Se acepta cuerpo ausente |
-| P-08 | El texto de `PRIVACY_TITULAR_ANONYMIZED` habla de registrar pagos y también se muestra al desasociar | Pendiente | `fe-platform` | El texto es genérico |
-| P-09 | El spec del contrato no cubre `UnlinkAllocationCommandSchema` ni los campos nuevos del pago | Pendiente | `sr-backend` | Hay casos en `billing-emails-ledger.contract.spec.ts` |
-| P-10 | Tenant huérfano `srqa-bf-49e2f08b18cc` en `dbiw` | Pendiente operativo | usuario | Se borra por la API de plataforma |
-| P-11 | 10 suites de integración sin tenant en la base `test` (incluida `billing-installation-breakdown`) | Deuda previa | `plat-ops` | El tenant de integración está aprovisionado |
+| P-06 | Códigos de error nuevos fuera de `BILLING_ERROR_CODES` | Cerrado 2026-11-14: la lista incluye los códigos que lanza la API, más `BILLING_EMAIL_RATE_LIMITED` | — | — |
+| P-07 | `statement/send` sin cuerpo responde 400 aunque Swagger lo marca opcional | Cerrado 2026-11-14: un cuerpo ausente se trata como `{}` | — | — |
+| P-08 | El texto de `PRIVACY_TITULAR_ANONYMIZED` habla de registrar pagos y también se muestra al desasociar | Cerrado 2026-11-14: el texto es genérico y vale para emitir, pagar, cortesías, desasociar y envíos. También hay texto para el 429 `BILLING_EMAIL_RATE_LIMITED`. Spec `billing-ui-errors.spec.tsx`, 8 casos | — | — |
+| P-09 | El spec del contrato no cubre `UnlinkAllocationCommandSchema` ni los campos nuevos del pago | Cerrado 2026-11-14: `billing-unlink-receipt.contract.spec.ts`, 6 casos | — | — |
+| P-10 | Tenant huérfano `srqa-bf-49e2f08b18cc` en `dbiw` | Cerrado 2026-11-14: por la API de plataforma, `PATCH` a INACTIVE (200) y `DELETE` (204); quedó en `MARKED_FOR_DELETION` y lo purga el worker | — | — |
+| P-11 | 10 suites de integración sin tenant en la base `test` (incluida `billing-installation-breakdown`) | Cerrado 2026-11-14: CI usa `E2E_TENANT_SLUG=test`, y en local se leía el slug de `.env.development.local`. Además se realineó el id del tenant `test` con un UPDATE con guardas (`scripts/db/realign-local-integration-tenant.sh`; procedimiento en `RUNBOOK-DB-MIGRATIONS-v1.1.md` §4). Integración local: 104 pasan, 6 skip, 0 rojas (764 tests) | — | — |
 | P-12 | «Registrar → Pago» abre Facturación sin forzar `sub` | Aceptado: «Registrar pago» está sobre las subpestañas | — | — |
 
-Omitido: P-01 a P-03 y P-06 a P-09. No verificado: CI de la fase (G6.5); que los 5 fallos E2E locales no se repitan en CI; las 10 suites de integración sin tenant. Riesgo: SEC-05, la inmutabilidad del recibo depende solo del código hasta P-02.
+Omitido: nada de P-01 a P-12; P-05 y P-12 quedan aceptados sin acción. No verificado: la estabilidad en CI de las dos pruebas de temporización que fallaron en el primer intento. Riesgo: ninguno abierto de la fase; las invariantes del recibo y del desasociar están protegidas en base por la migración 209.

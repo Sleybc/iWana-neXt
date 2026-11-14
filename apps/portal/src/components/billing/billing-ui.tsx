@@ -36,6 +36,9 @@ const COURTESY_ERRORS: Record<string, string> = {
     'Esta cortesía ya forma parte de una factura emitida y no se puede anular.',
 };
 
+const ANONYMIZED_CLIENT_ERROR =
+  'Los datos de este cliente fueron anonimizados: su facturación ya no admite cambios ni envíos por correo.';
+
 /** Recibos, desasociar y envíos por correo (spec MOD05↔MOD14 2026-11-13 D3–D6, CA-6, CA-7). */
 const RECEIPT_AND_EMAIL_ERRORS: Record<string, string> = {
   BILLING_ALLOCATION_NOT_UNLINKABLE:
@@ -52,6 +55,8 @@ const RECEIPT_AND_EMAIL_ERRORS: Record<string, string> = {
   BILLING_EMAIL_IMPORTED_NOT_SENDABLE: 'Una factura histórica de UISP no se envía por correo.',
   BILLING_EMAIL_QUEUE_UNAVAILABLE:
     'El envío de correos no está disponible en este momento. Intenta en unos minutos.',
+  BILLING_EMAIL_RATE_LIMITED:
+    'Se alcanzó el máximo de envíos por correo por hora para este cliente. Intenta más tarde.',
   BILLING_PRIVACY_UNAVAILABLE:
     'No fue posible verificar los datos protegidos del titular. Intenta en unos minutos.',
 };
@@ -125,8 +130,8 @@ function withholdingError(code: string): string | null {
 
 export function billingError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.code === 'PRIVACY_TITULAR_ANONYMIZED')
-      return 'Los datos del titular fueron anonimizados: no se pueden emitir facturas ni registrar pagos.';
+    // Lo devuelven emitir, pagar, cortesías, desasociar y los envíos por correo (P-08).
+    if (error.code === 'PRIVACY_TITULAR_ANONYMIZED') return ANONYMIZED_CLIENT_ERROR;
     if (error.code === 'PRIVACY_AUDIT_UNAVAILABLE')
       return 'No fue posible auditar la consulta de datos protegidos. Por seguridad, la información permanece oculta.';
     if (error.code === 'BILLING_SUBSCRIBER_NOT_FOUND')

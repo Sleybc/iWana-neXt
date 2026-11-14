@@ -8,6 +8,7 @@ import { BillingCourtesies2030000000203 } from '../../../../../packages/database
 import { BillingPaymentWithholdings2060000000206 } from '../../../../../packages/database/src/migrations/tenant/206_billing_payment_withholdings';
 import { BillingReceiptsAndAllocationReversalReason2070000000207 } from '../../../../../packages/database/src/migrations/tenant/207_billing_receipts_and_allocation_reversal_reason';
 import { BillingEmailLog2080000000208 } from '../../../../../packages/database/src/migrations/tenant/208_billing_email_log';
+import { BillingReceiptAndUnlinkGuards2090000000209 } from '../../../../../packages/database/src/migrations/tenant/209_billing_receipt_and_unlink_guards';
 
 /** Billing siempre se crea con la 173 real (más 193 y 197); las tablas mínimas de CRM son del fixture del adaptador. */
 export async function createBillingSchema(dataSource: DataSource) {
@@ -94,6 +95,7 @@ export async function createBillingSchema(dataSource: DataSource) {
     await new BillingPaymentWithholdings2060000000206().up(qr);
     await new BillingReceiptsAndAllocationReversalReason2070000000207().up(qr);
     await new BillingEmailLog2080000000208().up(qr);
+    await new BillingReceiptAndUnlinkGuards2090000000209().up(qr);
     await qr.commitTransaction();
   } catch (error) {
     await qr.rollbackTransaction();

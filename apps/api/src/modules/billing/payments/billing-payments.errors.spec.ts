@@ -406,13 +406,37 @@ describe('BillingPaymentsService — rechazos y acceso a datos protegidos', () =
     it('falla si el pago deja de estar disponible durante la anulación', async () => {
       let lookups = 0;
       query.mockImplementation(async (sql: string) => {
-        if (sql.includes('FROM billing_payments p')) return lookups++ === 0 ? [paymentRow] : [];
+        // SEC-209-03: lectura sin bloqueo, revalidación con FOR UPDATE y lectura final.
+        if (sql.includes('FROM billing_payments p')) return lookups++ < 2 ? [paymentRow] : [];
         if (sql.includes('SELECT DISTINCT d.period_id')) return [];
         return [];
       });
       await expect(
         service.voidPayment(PAYMENT, { reasonCode: 'ERROR_DE_REGISTRO' }, ACTOR),
       ).rejects.toThrow('El pago dejó de estar disponible durante la anulación.');
+    });
+
+    it('bloquea titular y crédito antes del pago y revalida REGISTRADO con el pago bloqueado', async () => {
+      let lookups = 0;
+      query.mockImplementation(async (sql: string) => {
+        if (sql.includes('FROM billing_payments p')) {
+          return lookups++ === 0 ? [paymentRow] : [{ ...paymentRow, status: 'ANULADO' }];
+        }
+        return [];
+      });
+      await expect(
+        service.voidPayment(PAYMENT, { reasonCode: 'ERROR_DE_REGISTRO' }, ACTOR),
+      ).rejects.toMatchObject({ status: 409 });
+      const sqls = query.mock.calls.map(([sql]) => String(sql));
+      const creditLock = sqls.findIndex((sql) => sql.includes('pg_advisory_xact_lock'));
+      const lockedRead = sqls.findIndex(
+        (sql, index) => index > 0 && sql.includes('FROM billing_payments p'),
+      );
+      expect(contracts.lockTitularForBillingWrite).toHaveBeenCalled();
+      expect(creditLock).toBeGreaterThan(-1);
+      expect(creditLock).toBeLessThan(lockedRead);
+      expect(sqls[lockedRead]).toContain('FOR UPDATE');
+      expect(sqls.some((sql) => sql.includes("SET status = 'ANULADO'"))).toBe(false);
     });
   });
 

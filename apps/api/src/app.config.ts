@@ -178,6 +178,9 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
     // MOD14 H-1 (spec 2026-11-13): puntos porcentuales sobre la tarifa sugerida de Tributación que
     // una retención puede tener sin BILLING_COURTESIES_MANAGE. Por encima, 422 propio.
     BILLING_WITHHOLDING_RATE_TOLERANCE_PP: Joi.number().min(0).max(100).default(2),
+    // SEC-03 (informe MOD05↔MOD14 v1.0, P-01): envíos de correo de Facturación por titular y hora
+    // (EN_COLA + ENVIADO + ERROR) antes de responder 429 BILLING_EMAIL_RATE_LIMITED. Entre 1 y 100.
+    BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR: Joi.number().integer().min(1).max(100).default(10),
     // Relajación de los límites de ruta solo para E2E (spec de límites de
     // peticiones §5): `true` multiplica solo los límites de `@Throttle`
     // (x100) para que Playwright, que corre desde una IP, no reciba 429

@@ -165,6 +165,7 @@ import { BillingInstallationBreakdowns2050000000205 } from './205_billing_instal
 import { BillingPaymentWithholdings2060000000206 } from './206_billing_payment_withholdings';
 import { BillingReceiptsAndAllocationReversalReason2070000000207 } from './207_billing_receipts_and_allocation_reversal_reason';
 import { BillingEmailLog2080000000208 } from './208_billing_email_log';
+import { BillingReceiptAndUnlinkGuards2090000000209 } from './209_billing_receipt_and_unlink_guards';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -411,6 +412,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   BillingPaymentWithholdings2060000000206,
   BillingReceiptsAndAllocationReversalReason2070000000207,
   BillingEmailLog2080000000208,
+  BillingReceiptAndUnlinkGuards2090000000209,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

@@ -414,11 +414,26 @@ describeDb(
           issueDate: '2026-11-01',
           dueDate: '2026-11-15',
         });
-        const [first, second] = await Promise.all([
+        // SEC-EM-01: la solicitud concurrente que no obtiene el lock del titular responde 429;
+        // la que llega después devuelve la misma fila EN_COLA (idempotente).
+        const settled = await Promise.allSettled([
           run(() => emails.requestDocumentEmail(document, actorId)),
           run(() => emails.requestDocumentEmail(document, actorId)),
         ]);
-        expect(first.id).toBe(second.id);
+        const accepted = settled.flatMap((result) =>
+          result.status === 'fulfilled' ? [result.value] : [],
+        );
+        for (const result of settled) {
+          if (result.status === 'rejected') {
+            expect(result.reason).toMatchObject({
+              status: 429,
+              response: { code: 'BILLING_EMAIL_RATE_LIMITED' },
+            });
+          }
+        }
+        expect(accepted.length).toBeGreaterThanOrEqual(1);
+        const first = accepted[0]!;
+        for (const entry of accepted) expect(entry.id).toBe(first.id);
         expect(first).toMatchObject({ status: 'EN_COLA', recipientMasked: 't***@e***.test' });
         expect(queue.add).toHaveBeenCalledTimes(1);
         expect(queued[0]).toEqual({
@@ -715,6 +730,183 @@ describeDb(
       expect(await logRows(titular.subscriber)).toHaveLength(1);
       await sql(`DELETE FROM billing_documents WHERE id = $1`, [document]);
       expect(await logRows(titular.subscriber)).toHaveLength(0);
+    });
+    describe('SEC-03 tope de envíos por titular y hora', () => {
+      function limitedEmails(limit: number): BillingEmailsService {
+        return new BillingEmailsService(
+          ds,
+          queue as unknown as Queue,
+          new BillingTitularContactReadAdapter(ds, config),
+          privacy as never,
+          documents,
+          payments,
+          issuer as never,
+          audit as never,
+          new ConfigService({ BILLING_EMAIL_MAX_PER_SUBSCRIBER_HOUR: limit }),
+        );
+      }
+
+      const issued = (titular: { subscriber: string; contract: string }, day: number) =>
+        seedDocument(titular, {
+          total: '10.00',
+          issueDate: `2026-11-${String(day).padStart(2, '0')}`,
+          dueDate: '2026-11-28',
+        });
+
+      it('al alcanzar el tope responde 429 sin crear fila; la solicitud idempotente no consume cupo', async () => {
+        const limited = limitedEmails(2);
+        const titular = await seedTitular();
+        const [first, second, third] = [
+          await issued(titular, 1),
+          await issued(titular, 2),
+          await issued(titular, 3),
+        ];
+        const queuedFirst = await run(() => limited.requestDocumentEmail(first, actorId));
+        // Repetir el mismo destino devuelve la fila EN_COLA existente y no cuenta.
+        const repeated = await run(() => limited.requestDocumentEmail(first, actorId));
+        expect(repeated.id).toBe(queuedFirst.id);
+        await run(() => limited.requestDocumentEmail(second, actorId));
+        expect(await logRows(titular.subscriber)).toHaveLength(2);
+        // En el tope, la repetición idempotente sigue respondiendo la fila existente.
+        const atLimit = await run(() => limited.requestDocumentEmail(first, actorId));
+        expect(atLimit.id).toBe(queuedFirst.id);
+
+        await expect(run(() => limited.requestDocumentEmail(third, actorId))).rejects.toMatchObject(
+          {
+            status: 429,
+            response: { code: 'BILLING_EMAIL_RATE_LIMITED' },
+          },
+        );
+        expect(await logRows(titular.subscriber)).toHaveLength(2);
+        expect(queue.add).toHaveBeenCalledTimes(2);
+
+        // Lo enviado hace más de una hora deja de contar.
+        await sql(
+          `UPDATE billing_email_log SET status = 'ENVIADO', processed_at = now(),
+             created_at = now() - interval '2 hours' WHERE subscriber_id = $1`,
+          [titular.subscriber],
+        );
+        await expect(
+          run(() => limited.requestDocumentEmail(third, actorId)),
+        ).resolves.toMatchObject({ status: 'EN_COLA' });
+      });
+
+      it('SEC-EM-03: las filas ERROR de la última hora cuentan para el tope', async () => {
+        const limited = limitedEmails(2);
+        const titular = await seedTitular();
+        const first = await issued(titular, 6);
+        const second = await issued(titular, 7);
+        await run(() => limited.requestDocumentEmail(first, actorId));
+        await run(() => limited.requestDocumentEmail(second, actorId));
+        await sql(
+          `UPDATE billing_email_log SET status = 'ERROR', reason_code = 'FALLO_DE_ENVIO',
+             processed_at = now() WHERE subscriber_id = $1`,
+          [titular.subscriber],
+        );
+        await expect(run(() => limited.requestDocumentEmail(first, actorId))).rejects.toMatchObject(
+          { status: 429, response: { code: 'BILLING_EMAIL_RATE_LIMITED' } },
+        );
+        expect(await logRows(titular.subscriber)).toHaveLength(2);
+      });
+
+      it('SEC-EM-02: un rechazo repetido del mismo destino y motivo devuelve el existente sin fila ni auditoría nuevas', async () => {
+        const withoutEmail = await seedTitular(null);
+        const first = await run(() =>
+          emails.requestStatementEmail(withoutEmail.subscriber, {}, actorId),
+        );
+        const audits = await sql<{ total: number }>(
+          `SELECT COUNT(*)::int AS total FROM test_emails_audit WHERE entity_id = $1`,
+          [first.id],
+        );
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          const again = await run(() =>
+            emails.requestStatementEmail(withoutEmail.subscriber, {}, actorId),
+          );
+          expect(again).toMatchObject({
+            id: first.id,
+            status: 'RECHAZADO',
+            reasonCode: 'SIN_CORREO',
+          });
+        }
+        expect(await logRows(withoutEmail.subscriber)).toHaveLength(1);
+        expect(
+          await sql<{ total: number }>(
+            `SELECT COUNT(*)::int AS total FROM test_emails_audit WHERE entity_id = $1`,
+            [first.id],
+          ),
+        ).toEqual(audits);
+        // Otro destino (otro periodo) sí registra su propio rechazo.
+        const other = await run(() =>
+          emails.requestStatementEmail(withoutEmail.subscriber, { from: '2026-10-01' }, actorId),
+        );
+        expect(other.id).not.toBe(first.id);
+        // Pasada la hora, el rechazo se registra de nuevo.
+        await sql(
+          `UPDATE billing_email_log SET created_at = now() - interval '2 hours' WHERE id = $1`,
+          [first.id],
+        );
+        const later = await run(() =>
+          emails.requestStatementEmail(withoutEmail.subscriber, {}, actorId),
+        );
+        expect(later.id).not.toBe(first.id);
+        expect(await logRows(withoutEmail.subscriber)).toHaveLength(3);
+      });
+
+      it('SEC-EM-01: N solicitudes concurrentes al mismo titular terminan sin esperar; a lo sumo un EN_COLA por destino', async () => {
+        const titular = await seedTitular();
+        const documentsByTarget = [await issued(titular, 8), await issued(titular, 9)];
+        const requests = Array.from({ length: 8 }, (_, index) =>
+          run(() => emails.requestDocumentEmail(documentsByTarget[index % 2]!, actorId)),
+        );
+        const started = Date.now();
+        const settled = await Promise.allSettled(requests);
+        expect(Date.now() - started).toBeLessThan(15_000);
+        for (const result of settled) {
+          if (result.status === 'rejected') {
+            expect(result.reason).toMatchObject({
+              status: 429,
+              response: { code: 'BILLING_EMAIL_RATE_LIMITED' },
+            });
+          }
+        }
+        const rows = await logRows(titular.subscriber);
+        const queuedRows = await sql<{ document_id: string; id: string }>(
+          `SELECT document_id::text, id::text FROM billing_email_log
+            WHERE subscriber_id = $1 AND status = 'EN_COLA'`,
+          [titular.subscriber],
+        );
+        expect(rows.length).toBe(queuedRows.length);
+        expect(new Set(queuedRows.map((row) => row.document_id)).size).toBe(queuedRows.length);
+        const idsByDocument = new Map(queuedRows.map((row) => [row.document_id, row.id]));
+        for (const result of settled) {
+          if (result.status === 'fulfilled') {
+            expect(result.value.status).toBe('EN_COLA');
+            expect(idsByDocument.get(result.value.documentId!)).toBe(result.value.id);
+          }
+        }
+        expect(settled.some((result) => result.status === 'fulfilled')).toBe(true);
+      });
+
+      it('dos solicitudes concurrentes en el último cupo: una se encola y la otra recibe 429', async () => {
+        const limited = limitedEmails(1);
+        const titular = await seedTitular();
+        const first = await issued(titular, 4);
+        const second = await issued(titular, 5);
+        const results = await Promise.allSettled([
+          run(() => limited.requestDocumentEmail(first, actorId)),
+          run(() => limited.requestDocumentEmail(second, actorId)),
+        ]);
+        expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+        const rejected = results.filter(
+          (result): result is PromiseRejectedResult => result.status === 'rejected',
+        );
+        expect(rejected).toHaveLength(1);
+        expect(rejected[0]!.reason).toMatchObject({
+          status: 429,
+          response: { code: 'BILLING_EMAIL_RATE_LIMITED' },
+        });
+        expect(await logRows(titular.subscriber)).toHaveLength(1);
+      });
     });
   },
 );

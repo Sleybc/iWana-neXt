@@ -163,6 +163,18 @@ WHERE table_schema = 'tenant_<slug>'
 ORDER BY ordinal_position;
 ```
 
+### Integración local de la API contra la base `test`
+
+Las suites `*.postgres.integration.spec.ts` que necesitan un tenant real lo eligen con `E2E_TENANT_SLUG`. CI la fija en `test` (tenant ACTIVE `test` / `tenant_test`, que siembra el paso «Run tenant migrations»). En local, si no se exporta, `@iwana/db` la toma de `.env.development.local`, que apunta a un tenant de `dbiw` inexistente en `test`, y esas suites fallan con «No existe el tenant…». Usar las mismas variables que CI:
+
+```bash
+bash scripts/db/realign-local-integration-tenant.sh   # informa; --apply corrige
+cd apps/api && DB_NAME=test IWANA_DB_INTEGRATION_AVAILABLE=true \
+  E2E_TENANT_SLUG=test pnpm exec jest --config jest.integration.config.js --forceExit
+```
+
+El script comprueba que `public.tenants.id` del tenant `test` coincida con el `tenant_id` sembrado en `tenant_test`. Si la fila se recreó con otro id, las suites que leen por `tenant_id` no ven las semillas (p. ej. la plantilla INSTALACION_ESTANDAR v3), y `--apply` devuelve a la fila el id de la siembra sin borrar nada. Si el tenant `test` falta, crearlo como CI (paso «Run tenant migrations» de `ci.yml`), nunca contra `dbiw`. No exportar `IWANA_K2_REENCRYPT_INTEGRATION` en local: su guarda solo acepta bases `iwana_it_g7_*` o el runner de CI.
+
 ---
 
 ## 5. Criterios de Reintento Seguro
