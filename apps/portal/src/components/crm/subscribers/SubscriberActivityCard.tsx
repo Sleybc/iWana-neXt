@@ -317,7 +317,7 @@ export function SubscriberActivityCard({
                 }
                 description={
                   filter === 'todas'
-                    ? 'Aquí verás cambios de estado, notas, tickets, visitas y cobros.'
+                    ? 'Aquí verás cambios de estado, notas, tickets, visitas, facturas y pagos.'
                     : 'Elige «Todas» para ver el resto de la actividad.'
                 }
               />

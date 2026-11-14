@@ -11,7 +11,10 @@ let searchParams = new URLSearchParams();
 jest.mock('next/navigation', () => ({
   useSearchParams: () => searchParams,
   usePathname: () => '/dashboard/billing/documents',
-  useRouter: () => ({ replace: mockReplace, push: mockPush }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { replace: mockReplace, push: mockPush });
+  })(),
 }));
 
 jest.mock('@/lib/api-client', () => {
@@ -25,7 +28,10 @@ jest.mock('@/lib/api-client', () => {
 });
 
 jest.mock('@/components/access-control/permissions-context', () => ({
-  usePermissions: () => ({ hasPermission: () => true }),
+  usePermissions: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () => (ctx ??= { hasPermission: () => true });
+  })(),
 }));
 
 const mockedDocuments = billingApi.documents as jest.Mock;
@@ -96,9 +102,9 @@ describe('BillingDocumentList — filtros en URL y estados vacíos (CA-UX-FAC-04
   it('muestra primera visita con acción de generar cuando no hay filtros', async () => {
     mockedDocuments.mockResolvedValue(EMPTY_PAGE);
     render(<BillingDocumentList />);
-    expect(await screen.findByText('Aún no hay documentos de cobro')).toBeInTheDocument();
+    expect(await screen.findByText('Aún no hay facturas')).toBeInTheDocument();
     expect(
-      screen.getAllByRole('button', { name: 'Generar documentos' }).length,
+      screen.getAllByRole('button', { name: 'Generar facturas' }).length,
     ).toBeGreaterThanOrEqual(1);
   });
 
@@ -108,7 +114,7 @@ describe('BillingDocumentList — filtros en URL y estados vacíos (CA-UX-FAC-04
     mockedDocuments.mockResolvedValue(EMPTY_PAGE);
     render(<BillingDocumentList />);
     expect(
-      await screen.findByText('No encontramos documentos con estos filtros'),
+      await screen.findByText('No encontramos facturas con estos filtros'),
     ).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: 'Limpiar filtros' })[0]!);
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
@@ -134,14 +140,12 @@ describe('BillingDocumentList — diálogo de emisión en lote (spec UX §3)', (
     };
     mockedDocuments.mockResolvedValue(pageWith([validA, validB, blocked]));
     render(<BillingDocumentList />);
-    fireEvent.click(await screen.findByLabelText('Seleccionar documento DC-000001'));
-    fireEvent.click(await screen.findByLabelText('Seleccionar documento DC-000002'));
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Emitir 2 documentos seleccionados' }),
-    );
+    fireEvent.click(await screen.findByLabelText('Seleccionar factura DC-000001'));
+    fireEvent.click(await screen.findByLabelText('Seleccionar factura DC-000002'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Emitir 2 facturas seleccionadas' }));
     expect(await screen.findByText(/Se emitirán 2 borradores válidos/)).toBeInTheDocument();
     expect(
-      screen.getByText(/1 borradores tienen datos incompletos y deben corregirse/),
+      screen.getByText(/1 borrador tiene datos incompletos y debe corregirse/),
     ).toBeInTheDocument();
   });
 
@@ -153,11 +157,9 @@ describe('BillingDocumentList — diálogo de emisión en lote (spec UX §3)', (
       ]),
     );
     render(<BillingDocumentList />);
-    fireEvent.click(await screen.findByLabelText('Seleccionar documento DC-000001'));
-    fireEvent.click(await screen.findByLabelText('Seleccionar documento DC-000002'));
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Emitir 2 documentos seleccionados' }),
-    );
+    fireEvent.click(await screen.findByLabelText('Seleccionar factura DC-000001'));
+    fireEvent.click(await screen.findByLabelText('Seleccionar factura DC-000002'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Emitir 2 facturas seleccionadas' }));
     expect(await screen.findByText(/Se emitirán 2 borradores válidos/)).toBeInTheDocument();
     expect(screen.queryByText(/datos incompletos/)).not.toBeInTheDocument();
   });
@@ -180,7 +182,7 @@ describe('BillingDocumentTable — tope de selección en lote (CA-UX-FAC-06)', (
         onSelectionChange={() => undefined}
       />,
     );
-    const extra = screen.getByLabelText('Seleccionar documento DC-000101');
+    const extra = screen.getByLabelText('Seleccionar factura DC-000101');
     expect(extra).toBeDisabled();
     expect(
       within(screen.getByRole('table')).getAllByRole('checkbox', { checked: true }),

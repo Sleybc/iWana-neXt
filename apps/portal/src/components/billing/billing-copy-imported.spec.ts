@@ -7,10 +7,10 @@ import {
   formatOptionalBillingDate,
 } from './billing-copy';
 
-/** ADR-110 D5: el documento IMPORTADO se rotula «Histórico importado» y no tiene periodo. */
+/** ADR-110 D5: la factura IMPORTADO se rotula «Importada de UISP» y no tiene periodo. */
 describe('billing-copy — documentos importados de UISP', () => {
   it('rotula el estado IMPORTADO sin vocabulario técnico', () => {
-    expect(DOCUMENT_STATES.IMPORTADO).toEqual({ label: 'Histórico importado', variant: 'neutral' });
+    expect(DOCUMENT_STATES.IMPORTADO).toEqual({ label: 'Importada de UISP', variant: 'neutral' });
   });
 
   it('sin periodo muestra «Sin periodo» y usa el número de origen como referencia', () => {
@@ -54,7 +54,7 @@ describe('canReceiveCourtesy (spec MOD14 2026-11-12 R5)', () => {
 describe('additionalNotice', () => {
   it('explica que los adicionales no tienen precio guardado y no se cobraron', () => {
     expect(additionalNotice(1)).toBe(
-      'Este contrato tiene 1 adicional sin precio guardado en el contrato; por eso no se cobró en este documento',
+      'Este contrato tiene 1 adicional sin precio guardado en el contrato; por eso no se cobró en esta factura',
     );
     expect(additionalNotice(2)).toContain('2 adicionales sin precio guardado');
   });

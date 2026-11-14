@@ -127,7 +127,7 @@ describe('SubscriberDocumentsPanel', () => {
     renderPanel();
     const items = await rows();
     expect(items).toHaveLength(3);
-    expect(screen.queryByText(/Documento de cobro/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Documento de cobro|\bFactura\b/u)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Descargar PDF/ })).not.toBeInTheDocument();
     expect(pdfSpy).not.toHaveBeenCalled();
   });

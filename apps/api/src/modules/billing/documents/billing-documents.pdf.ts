@@ -3,6 +3,7 @@ import {
   BILLING_BLOCKED_BUYER_DISPLAY_NAME,
   type BillingDocumentInstallationBreakdown,
   type BillingDocumentResponse,
+  type BillingDocumentStatus,
 } from '@iwana/shared';
 import {
   drawBrandHeader,
@@ -11,12 +12,31 @@ import {
   PDF_FONT,
 } from '../../../common/pdf/pdf-branding';
 
-const PAGE_TITLE = 'Documento de cobro';
+const PAGE_TITLE = 'Factura';
+
+/** Leyenda visible mientras no exista facturación electrónica (decisión del 2026-11-14). */
+export const BILLING_INVOICE_NOT_DIAN_LEGEND =
+  'Documento sin validez como factura electrónica DIAN';
+
+/** Estado visible de la factura, en femenino y sin claves internas. */
+export const BILLING_INVOICE_STATUS_LABELS: Record<BillingDocumentStatus, string> = {
+  BORRADOR: 'Borrador',
+  EMITIDO: 'Emitida',
+  ANULADO: 'Anulada',
+  IMPORTADO: 'Importada de otro sistema',
+};
+
+/** Encabezado de marca con la leyenda DIAN debajo, en cada página. */
+function drawInvoiceHeader(pdf: PDFKit.PDFDocument): void {
+  pdf.y = drawBrandHeader(pdf, pdf.page.width, 48, PAGE_TITLE);
+  pdf.font(PDF_FONT.regular).fontSize(8).text(BILLING_INVOICE_NOT_DIAN_LEGEND, { align: 'right' });
+  pdf.moveDown(0.5);
+}
 
 function ensureRoom(pdf: PDFKit.PDFDocument, height: number): void {
   if (pdf.y + height > pdf.page.height - pdf.page.margins.bottom) {
     pdf.addPage();
-    pdf.y = drawBrandHeader(pdf, pdf.page.width, 48, PAGE_TITLE);
+    drawInvoiceHeader(pdf);
     pdf.font(PDF_FONT.regular).fontSize(9);
   }
 }
@@ -61,7 +81,7 @@ function drawInstallationBreakdown(
     pdf.text('Los equipos en comodato se entregan en préstamo y se devuelven.');
 }
 
-/** Renderiza el documento interno sin enviar ni incluir datos que la vista haya ocultado. */
+/** Renderiza la factura interna sin enviar ni incluir datos que la vista haya ocultado. */
 export async function renderBillingDocumentPdf(
   document: BillingDocumentResponse & {
     periodStart?: string | null;
@@ -81,20 +101,20 @@ export async function renderBillingDocumentPdf(
     pdf.once('error', reject);
   });
 
-  pdf.info.Title = `Documento de cobro ${document.number ?? document.id}`;
+  pdf.info.Title = `Factura ${document.number ?? document.id}`;
   registerBrandFonts(pdf);
-  pdf.y = drawBrandHeader(pdf, pdf.page.width, 48, 'Documento de cobro');
+  drawInvoiceHeader(pdf);
   pdf.font(PDF_FONT.regular);
   pdf.fontSize(11).text(`Número: ${document.number ?? 'Sin número'}`);
   pdf.text(`Fecha de emisión: ${document.issueDate ?? 'Pendiente'}`);
   pdf.text(`Vencimiento: ${document.dueDate}`);
-  pdf.text(`Estado: ${document.status}`);
+  pdf.text(`Estado: ${BILLING_INVOICE_STATUS_LABELS[document.status] ?? 'Sin estado'}`);
   pdf.text(
     `Periodo: ${document.periodStart ?? 'Pendiente'} a ${document.periodEnd ?? 'Pendiente'}`,
   );
   if (document.coveredStart) pdf.text(`Inicio de cobertura: ${document.coveredStart}`);
   pdf.moveDown();
-  pdf.fontSize(12).text('Adquirente');
+  pdf.fontSize(12).text('Cliente');
   pdf.fontSize(10).text(document.buyerSnapshot?.displayName ?? BILLING_BLOCKED_BUYER_DISPLAY_NAME);
   if (document.buyerSnapshot?.documentType)
     pdf.text(`Tipo de documento: ${document.buyerSnapshot.documentType}`);
@@ -116,7 +136,7 @@ export async function renderBillingDocumentPdf(
   for (const line of document.lines ?? []) {
     if (pdf.y + 30 > pdf.page.height - pdf.page.margins.bottom) {
       pdf.addPage();
-      pdf.y = drawBrandHeader(pdf, pdf.page.width, 48, 'Documento de cobro');
+      drawInvoiceHeader(pdf);
       pdf.font(PDF_FONT.regular).fontSize(9);
       pdf.text('Concepto                         Base          IVA          Total');
     }
@@ -126,7 +146,7 @@ export async function renderBillingDocumentPdf(
   }
   if (pdf.y + 110 > pdf.page.height - pdf.page.margins.bottom) {
     pdf.addPage();
-    pdf.y = drawBrandHeader(pdf, pdf.page.width, 48, 'Documento de cobro');
+    drawInvoiceHeader(pdf);
   }
   pdf.moveDown();
   pdf.fontSize(10).text(`Subtotal: ${document.subtotal}`, { align: 'right' });
@@ -135,9 +155,7 @@ export async function renderBillingDocumentPdf(
   if (document.installationBreakdown)
     drawInstallationBreakdown(pdf, document.installationBreakdown);
   pdf.moveDown(2);
-  pdf
-    .fontSize(9)
-    .text('Documento interno: no es factura electrónica de venta.', { align: 'center' });
+  pdf.fontSize(9).text(`${BILLING_INVOICE_NOT_DIAN_LEGEND}.`, { align: 'center' });
   drawBrandFooter(pdf, document.number ?? document.id);
   pdf.end();
   return complete;

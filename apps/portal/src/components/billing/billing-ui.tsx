@@ -24,36 +24,55 @@ export const billingInputClass =
 /** Errores de cortesías (spec MOD14 2026-11-12 R4, R5). */
 const COURTESY_ERRORS: Record<string, string> = {
   BILLING_COURTESY_EXCEEDS_BALANCE:
-    'La cortesía supera el saldo pendiente del documento. Usa un valor menor o igual al saldo.',
+    'La cortesía supera el saldo pendiente de la factura. Usa un valor menor o igual al saldo.',
   BILLING_COURTESY_MIXED_VAT:
-    'Este documento tiene conceptos con IVA distinto. Otorga la cortesía con «Regalar una línea».',
+    'Esta factura tiene conceptos con IVA distinto. Otorga la cortesía con «Regalar una línea».',
   BILLING_COURTESY_LINE_NOT_ELIGIBLE:
-    'Esa línea ya no se puede regalar: no tiene valor o ya tiene una cortesía. Actualiza el documento.',
-  BILLING_COURTESY_DOCUMENT_NOT_ELIGIBLE: 'Un documento anulado no admite cortesías.',
-  BILLING_COURTESY_NOT_FOUND: 'No encontramos esta cortesía. Actualiza el documento.',
+    'Esa línea ya no se puede regalar: no tiene valor o ya tiene una cortesía. Actualiza la factura.',
+  BILLING_COURTESY_DOCUMENT_NOT_ELIGIBLE: 'Una factura anulada no admite cortesías.',
+  BILLING_COURTESY_NOT_FOUND: 'No encontramos esta cortesía. Actualiza la factura.',
   BILLING_COURTESY_ALREADY_VOIDED: 'Esta cortesía ya estaba anulada.',
   BILLING_COURTESY_NOT_VOIDABLE:
-    'Esta cortesía ya forma parte de un documento emitido y no se puede anular.',
+    'Esta cortesía ya forma parte de una factura emitida y no se puede anular.',
 };
 
 /** Recibos, desasociar y envíos por correo (spec MOD05↔MOD14 2026-11-13 D3–D6, CA-6, CA-7). */
 const RECEIPT_AND_EMAIL_ERRORS: Record<string, string> = {
   BILLING_ALLOCATION_NOT_UNLINKABLE:
-    'No se puede desasociar: el documento está anulado o es un histórico importado.',
+    'No se puede desasociar: la factura está anulada o es una factura histórica de UISP.',
   BILLING_ALLOCATION_HAS_WITHHOLDING:
-    'Este pago tiene una retención sobre el documento. Para corregirlo, anula el pago.',
+    'Este pago tiene una retención sobre la factura. Para corregirlo, anula el pago.',
   BILLING_ALLOCATION_NOT_FOUND:
     'Esta aplicación ya no está vigente. Actualiza el detalle del pago.',
   BILLING_PAYMENT_VOIDED: 'El pago está anulado.',
   BILLING_PAYMENT_NOT_FOUND: 'No se encontró el pago. Actualiza la información de facturación.',
   BILLING_RECEIPT_NOT_AVAILABLE: 'Este pago se importó de otro sistema y no tiene recibo de iWana.',
   BILLING_RECEIPT_UNAVAILABLE: 'El recibo no está disponible en este momento. Intenta más tarde.',
-  BILLING_DOCUMENT_NOT_ISSUED: 'Solo se pueden enviar documentos emitidos.',
-  BILLING_EMAIL_IMPORTED_NOT_SENDABLE: 'Un histórico importado no se envía por correo.',
+  BILLING_DOCUMENT_NOT_ISSUED: 'Solo se pueden enviar facturas emitidas.',
+  BILLING_EMAIL_IMPORTED_NOT_SENDABLE: 'Una factura histórica de UISP no se envía por correo.',
   BILLING_EMAIL_QUEUE_UNAVAILABLE:
     'El envío de correos no está disponible en este momento. Intenta en unos minutos.',
   BILLING_PRIVACY_UNAVAILABLE:
     'No fue posible verificar los datos protegidos del titular. Intenta en unos minutos.',
+};
+
+/** Emisión, aplicación de pagos, PDF histórico y reintentos: nunca el código crudo. */
+const DOCUMENT_ERRORS: Record<string, string> = {
+  BILLING_ISSUER_INCOMPLETE:
+    'Faltan la razón social o el NIT de la empresa. Complétalos en la configuración de la empresa antes de emitir.',
+  BILLING_DOCUMENT_BLOCKED:
+    'Esta factura tiene datos pendientes y no se puede emitir. Completa los datos del cliente e inténtalo de nuevo.',
+  BILLING_DOCUMENT_NOT_DRAFT: 'Esta factura ya no está en borrador. Actualiza la lista.',
+  BILLING_POLICY_INCOMPATIBLE:
+    'El momento del cobro y el modo de corte elegidos no son compatibles. Revisa la política.',
+  BILLING_ALLOCATION_EXCEEDS_BALANCE:
+    'El valor aplicado supera el saldo pendiente de la factura. Revisa la distribución del pago.',
+  BILLING_IMPORTED_PDF_RESTRICTED:
+    'El PDF de esta factura histórica no se muestra porque los datos del titular están protegidos.',
+  BILLING_IMPORTED_PDF_UNREADABLE:
+    'No pudimos abrir el PDF de esta factura histórica. Intenta de nuevo más tarde.',
+  IDEMPOTENCY_KEY_REUSED:
+    'Esta operación ya se envió con otros datos. Actualiza la página e inténtalo de nuevo.',
 };
 
 /** Códigos de retención del contrato compartido (`BILLING_ERROR_CODES`). */
@@ -62,9 +81,9 @@ type WithholdingErrorCode = Extract<BillingErrorCode, `BILLING_WITHHOLDING_${str
 const WITHHOLDING_RATE_ERROR =
   'La tarifa de una retención supera la sugerida por Tributación más el margen permitido. Para registrarla necesitas el permiso de cortesías; si no, usa la tarifa sugerida.';
 const WITHHOLDING_DUPLICATE_ERROR =
-  'Un documento ya tiene una retención vigente de ese tipo. Registra una sola por documento y tipo.';
+  'Una factura ya tiene una retención vigente de ese tipo. Registra una sola por factura y tipo.';
 const WITHHOLDING_BASE_ERROR =
-  'La base de una retención supera el subtotal antes de IVA de su documento. Revisa la base de cada retención.';
+  'La base de una retención supera el subtotal antes de IVA de su factura. Revisa la base de cada retención.';
 
 /**
  * Retenciones del registro de pago (spec MOD14 2026-11-13 R6, R7, H-1; 422). Guarda de
@@ -73,9 +92,9 @@ const WITHHOLDING_BASE_ERROR =
  */
 const WITHHOLDING_ERRORS: Readonly<Record<WithholdingErrorCode, string>> = {
   BILLING_WITHHOLDING_NOT_ALLOWED:
-    'Este titular no puede registrar retenciones: solo un agente de retención según su RUT. Quita las retenciones y registra el valor recibido.',
+    'Este cliente no puede practicar retenciones: solo puede hacerlo un agente de retención según su RUT. Quita las retenciones y registra el valor recibido.',
   BILLING_WITHHOLDING_NOT_ATTRIBUTABLE:
-    'Cada retención debe corresponder a un documento que este pago salda. Revisa el documento de cada retención o la distribución del pago.',
+    'Cada retención debe corresponder a una factura que este pago salda. Revisa la factura de cada retención o la distribución del pago.',
   BILLING_WITHHOLDING_DUPLICATE: WITHHOLDING_DUPLICATE_ERROR,
   BILLING_WITHHOLDING_BASE_EXCEEDS_SUBTOTAL: WITHHOLDING_BASE_ERROR,
   BILLING_WITHHOLDING_RATE_ABOVE_CEILING: WITHHOLDING_RATE_ERROR,
@@ -101,23 +120,25 @@ function withholdingError(code: string): string | null {
   const match = WITHHOLDING_ERRORS_BY_TEXT.find(([pattern]) => pattern.test(code));
   return match
     ? match[1]
-    : 'No pudimos registrar las retenciones de este pago. Revisa el tipo, la base, la tarifa y el documento de cada una.';
+    : 'No pudimos registrar las retenciones de este pago. Revisa el tipo, la base, la tarifa y la factura de cada una.';
 }
 
 export function billingError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.code === 'PRIVACY_TITULAR_ANONYMIZED')
-      return 'No es posible registrar pagos para una cuenta anonimizada.';
+      return 'Los datos del titular fueron anonimizados: no se pueden emitir facturas ni registrar pagos.';
     if (error.code === 'PRIVACY_AUDIT_UNAVAILABLE')
       return 'No fue posible auditar la consulta de datos protegidos. Por seguridad, la información permanece oculta.';
     if (error.code === 'BILLING_SUBSCRIBER_NOT_FOUND')
-      return 'No se encontró el estado de cuenta de este titular.';
+      return 'No se encontró el estado de cuenta de este cliente.';
     if (error.code === 'BILLING_POLICY_CHANGED')
       return 'La política fue modificada recientemente. Vuelve a abrirla para consultar los valores vigentes.';
     if (error.code === 'BILLING_IMPORTED_PDF_NOT_AVAILABLE')
-      return 'El PDF de este documento histórico no se trajo en la importación.';
+      return 'El PDF de esta factura histórica no se trajo en la importación.';
     const receiptOrEmail = RECEIPT_AND_EMAIL_ERRORS[error.code];
     if (receiptOrEmail) return receiptOrEmail;
+    const documentError = DOCUMENT_ERRORS[error.code];
+    if (documentError) return documentError;
     const courtesy = COURTESY_ERRORS[error.code];
     if (courtesy) return courtesy;
     const withholding = withholdingError(error.code);

@@ -607,7 +607,7 @@ function documentRow(page: Page, number: string) {
 
 async function openCourtesyDialog(page: Page, number: string) {
   await page.goto(DOCUMENTS_URL);
-  await page.getByRole('button', { name: `Otorgar cortesía en el documento ${number}` }).click();
+  await page.getByRole('button', { name: `Otorgar cortesía en la factura ${number}` }).click();
   const dialog = page.getByRole('dialog', { name: 'Otorgar cortesía' });
   await expect(dialog.getByRole('group', { name: 'Tipo de cortesía' })).toBeVisible();
   await expect(dialog.getByLabel('Motivo')).toBeVisible();
@@ -786,7 +786,7 @@ test.describe('MOD14 IVA por concepto y cortesías — E2E vivo', () => {
     expect(active[0]).toMatchObject({ amount: gifted.total, reasonCode: 'PRORRATEO_INICIAL' });
     await expect(
       documentRow(page, issued.number!).getByRole('button', {
-        name: `Otorgar cortesía en el documento ${issued.number!}`,
+        name: `Otorgar cortesía en la factura ${issued.number!}`,
       }),
     ).toHaveCount(0);
 

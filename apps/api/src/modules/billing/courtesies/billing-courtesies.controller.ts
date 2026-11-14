@@ -132,7 +132,7 @@ export class BillingCourtesiesController {
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
   @Permissions(AccessPermissionKey.BILLING_COURTESIES_MANAGE)
   @ApiOperation({
-    summary: 'Otorgar una cortesía sobre un documento de cobro',
+    summary: 'Otorgar una cortesía sobre una factura',
     description:
       'Sobre un BORRADOR agrega la línea negativa «Cortesía» (por valor o regalando una línea). ' +
       'Sobre un EMITIDO o IMPORTADO registra un ajuste no monetario que baja el saldo pendiente ' +
@@ -177,7 +177,7 @@ export class BillingCourtesiesController {
   @ApiBadRequestResponse({ description: 'La solicitud no es válida.' })
   @ApiUnauthorizedResponse({ description: 'La sesión no es válida.' })
   @ApiForbiddenResponse({ description: 'El rol o permiso no permite esta acción.' })
-  @ApiNotFoundResponse({ description: 'No se encontró el documento.' })
+  @ApiNotFoundResponse({ description: 'No se encontró la factura.' })
   @ApiConflictResponse({
     description:
       'Documento anulado, línea no elegible o ya regalada, titular anonimizado, la cortesía ' +

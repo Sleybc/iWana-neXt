@@ -42,7 +42,7 @@ const TENANT_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
 export function parseBillingEmailPayload(value: unknown): BillingEmailJobPayload {
   const invalid = () =>
-    new UnrecoverableError('El payload del correo de facturación no es válido.');
+    new UnrecoverableError('Los datos del envío del correo de facturación no son válidos.');
   if (!value || typeof value !== 'object') throw invalid();
   const payload = value as Partial<BillingEmailJobPayload>;
   if (

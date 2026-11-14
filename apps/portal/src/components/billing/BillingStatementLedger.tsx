@@ -57,10 +57,10 @@ function ledgerReference(row: BillingStatementLedgerRow): string {
 export function lateLabel(
   row: Pick<BillingStatementLedgerRow, 'late' | 'documentId'>,
   documents: readonly DocumentRef[],
-): 'Vencido' | 'Pagó tarde' | null {
+): 'Vencida' | 'Pagó tarde' | null {
   if (!row.late) return null;
   const pending = documents.find((document) => document.id === row.documentId)?.pendingAmount;
-  return pending != null && moneyCents(pending) > 0 ? 'Vencido' : 'Pagó tarde';
+  return pending != null && moneyCents(pending) > 0 ? 'Vencida' : 'Pagó tarde';
 }
 
 /** Con filtro, el libro abre con «Saldo anterior»; si la API no la trae, se arma con el saldo inicial. */
@@ -101,7 +101,7 @@ function ConceptCell({
       {details.length ? (
         <p className="text-xs text-gray-600 dark:text-gray-400">{details.join(' · ')}</p>
       ) : null}
-      {late ? <Badge variant={late === 'Vencido' ? 'warning' : 'info'}>{late}</Badge> : null}
+      {late ? <Badge variant={late === 'Vencida' ? 'warning' : 'info'}>{late}</Badge> : null}
     </div>
   );
 }
@@ -308,7 +308,7 @@ export function BillingStatementLedger({
           ) : (
             <PortalEmptyState
               title="No hay movimientos en este periodo"
-              description="Elige un periodo más amplio para ver documentos y pagos."
+              description="Elige un periodo más amplio para ver facturas y pagos."
             />
           )}
           <p className="text-sm font-semibold text-gray-900 dark:text-white">

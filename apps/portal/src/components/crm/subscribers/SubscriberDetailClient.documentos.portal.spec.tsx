@@ -166,7 +166,9 @@ describe('Ficha del suscriptor — pestaña Documentos', () => {
     const items = await documentRows();
     expect(items).toHaveLength(1);
     expect(items[0]).toHaveTextContent('Soporte de estrato · Sede Norte');
-    expect(screen.queryByText(/Documento de cobro/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Documento de cobro|Factura (?:FE-|en borrador|histórica)/u),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Descargar PDF/ })).not.toBeInTheDocument();
     expect(statementSpy).not.toHaveBeenCalled();
     // Sin oportunidad de origen no hay soportes que consultar.
@@ -186,9 +188,13 @@ describe('Ficha del suscriptor — pestaña Documentos', () => {
     });
     await waitFor(async () => expect(await documentRows()).toHaveLength(1));
     expect((await documentRows())[0]).toHaveTextContent('Soporte de estrato · Sede Norte');
-    expect(screen.queryByText(/Documento de cobro/)).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Descargar PDF de Documento de cobro FE-10' }),
+      screen.queryByText(/Documento de cobro|Factura (?:FE-|en borrador|histórica)/u),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', {
+        name: /Descargar PDF de (?:Documento de cobro|Factura) FE-10/u,
+      }),
     ).not.toBeInTheDocument();
   });
 

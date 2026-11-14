@@ -59,7 +59,12 @@ const EMPTY_QUERY = {
   to: '',
   page: '',
 };
-const RESOURCE = { singular: 'documento', plural: 'documentos' };
+const RESOURCE = { singular: 'factura', plural: 'facturas' };
+
+/** «1 factura» o «N facturas»: la cantidad concuerda con el sustantivo. */
+function countLabel(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
 const LIMIT_OPTIONS = [10, 20, 50] as const;
 
 export function BillingDocumentsClient() {
@@ -145,7 +150,7 @@ export function BillingDocumentList({
   const generateAction =
     canManage && !subscriberId ? (
       <Button className="min-h-11" onClick={() => setGenerate(true)}>
-        Generar documentos
+        Generar facturas
       </Button>
     ) : undefined;
 
@@ -164,7 +169,7 @@ export function BillingDocumentList({
             filterSubscriberId
               ? subscriberOption?.id === filterSubscriberId
                 ? subscriberOption
-                : { id: filterSubscriberId, label: 'Suscriptor seleccionado' }
+                : { id: filterSubscriberId, label: 'Cliente seleccionado' }
               : null
           }
           onSubscriber={(option) => {
@@ -178,8 +183,8 @@ export function BillingDocumentList({
       {summary ? (
         <PortalAlert
           variant={summary.failed || summary.blocked ? 'warning' : 'success'}
-          title={`Documentos generados: ${summary.generated}`}
-          description={`Ya existían: ${summary.existing}. Con datos incompletos: ${summary.blocked}. Con errores: ${summary.failed}. Fuera de fecha: ${summary.notDue}. Sin ciclo: ${summary.withoutCycle}. Omitidos por suplantación: ${summary.omittedImpersonation}. Omitidos por terminación: ${summary.omittedTermination}.`}
+          title={`Facturas generadas: ${summary.generated}`}
+          description={`Ya existían: ${summary.existing}. Con datos incompletos: ${summary.blocked}. Con errores: ${summary.failed}. Aún no tocaba generarlas: ${summary.notDue}. Sin ciclo de facturación: ${summary.withoutCycle}. Omitidas por suplantación: ${summary.omittedImpersonation}. Omitidas por terminación del contrato: ${summary.omittedTermination}.`}
         />
       ) : null}
       <BillingLoadState loading={loading} error={error} onRetry={reload} />
@@ -188,7 +193,7 @@ export function BillingDocumentList({
           <div className="flex flex-wrap items-center justify-between gap-3">
             {selected.size ? (
               <Button className="min-h-11" onClick={() => setConfirm(true)}>
-                Emitir {selected.size} documentos seleccionados
+                Emitir {countLabel(selected.size, 'factura seleccionada', 'facturas seleccionadas')}
               </Button>
             ) : (
               <span />
@@ -224,15 +229,11 @@ export function BillingDocumentList({
         </>
       ) : data ? (
         <PortalEmptyState
-          title={
-            filtered
-              ? 'No encontramos documentos con estos filtros'
-              : 'Aún no hay documentos de cobro'
-          }
+          title={filtered ? 'No encontramos facturas con estos filtros' : 'Aún no hay facturas'}
           description={
             filtered
               ? 'Ajusta los filtros para ampliar la búsqueda.'
-              : 'Los documentos aparecerán aquí cuando generes el primero o se ejecute el proceso diario.'
+              : 'Las facturas aparecerán aquí cuando generes la primera o se ejecute el proceso diario.'
           }
           action={
             filtered ? (
@@ -247,8 +248,8 @@ export function BillingDocumentList({
       ) : null}
       {confirm && selected.size ? (
         <BillingConfirmation
-          title={`Emitir ${selected.size} documentos`}
-          description={`Se emitirán ${selected.size} borradores válidos${blockedInList > 0 ? `. ${blockedInList} borradores tienen datos incompletos y deben corregirse` : ''}. Total: ${formatBillingMoney(fromMoneyCents([...selected.values()].reduce((sum, document) => sum + moneyCents(document.total), 0)))}. Los documentos adquirirán consecutivos definitivos e inmutables.`}
+          title={`Emitir ${countLabel(selected.size, 'factura', 'facturas')}`}
+          description={`${selected.size === 1 ? 'Se emitirá 1 borrador válido' : `Se emitirán ${selected.size} borradores válidos`}${blockedInList > 0 ? `. ${blockedInList === 1 ? '1 borrador tiene datos incompletos y debe corregirse' : `${blockedInList} borradores tienen datos incompletos y deben corregirse`}` : ''}. Total: ${formatBillingMoney(fromMoneyCents([...selected.values()].reduce((sum, document) => sum + moneyCents(document.total), 0)))}. Las facturas recibirán un número consecutivo definitivo que no se puede cambiar.`}
           confirm="Confirmar emisión"
           onClose={() => setConfirm(false)}
           onConfirm={async (key) => {
@@ -272,7 +273,7 @@ export function BillingDocumentList({
 
   if (subscriberId) {
     return (
-      <PortalPanel title="Documentos de cobro" contentClassName="space-y-4" busy={loading}>
+      <PortalPanel title="Facturas" contentClassName="space-y-4" busy={loading}>
         {table}
       </PortalPanel>
     );
@@ -281,15 +282,13 @@ export function BillingDocumentList({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Documentos de cobro"
+        title="Facturas"
         subtitle={
-          data
-            ? `Total: ${data.meta.total}`
-            : 'Consulta y gestiona los documentos de cobro de la empresa.'
+          data ? `Total: ${data.meta.total}` : 'Consulta y gestiona las facturas de la empresa.'
         }
         actions={generateAction}
       />
-      <PortalPanel title="Documentos" contentClassName="space-y-4" busy={loading}>
+      <PortalPanel title="Facturas" contentClassName="space-y-4" busy={loading}>
         {table}
       </PortalPanel>
     </div>
@@ -330,7 +329,7 @@ function DocumentFilters({
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <FilterSelect
           id={`${id}-status`}
-          label="Estado del documento"
+          label="Estado de la factura"
           value={status}
           onChange={(value) => onFilter('status', value)}
           options={Object.entries(DOCUMENT_STATES).map(([key, item]) => [key, item.label])}
@@ -458,7 +457,7 @@ function GenerateDocumentsDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Generar documentos</DialogTitle>
+          <DialogTitle>Generar facturas</DialogTitle>
           <DialogDescription>
             Selecciona una fecha o deja el campo vacío para usar la fecha de la empresa.
           </DialogDescription>
@@ -475,7 +474,7 @@ function GenerateDocumentsDialog({
             />
           </label>
           <BillingSubscriberPicker
-            label="Buscar suscriptor para elegir un contrato (opcional)"
+            label="Buscar cliente para elegir un contrato (opcional)"
             selected={subscriber}
             onChange={(option) => {
               setSubscriber(option);
@@ -539,7 +538,7 @@ function GenerateDocumentsDialog({
               loading={mutation.busy}
               disabled={mutation.busy || (!!subscriber && !contractId)}
             >
-              Generar documentos
+              Generar facturas
             </Button>
           </div>
         </form>

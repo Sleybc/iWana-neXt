@@ -91,7 +91,7 @@ describe('BillingContractPolicy: valores heredados (spec 2026-11-09 §4)', () =>
       screen.getByRole('option', { name: 'Heredar de la empresa: Habilitado' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('option', { name: 'Heredar de la empresa: Documento inicial separado' }),
+      screen.getByRole('option', { name: 'Heredar de la empresa: Factura inicial separada' }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Plazo para pagar (días)')).toHaveAccessibleDescription(
       'Vacío: se usa el valor de la empresa (14 días).',

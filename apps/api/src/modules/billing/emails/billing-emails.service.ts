@@ -179,13 +179,13 @@ export class BillingEmailsService {
     if (document.status === 'IMPORTADO') {
       throw new ConflictException({
         code: 'BILLING_EMAIL_IMPORTED_NOT_SENDABLE',
-        message: 'Un histórico importado no se envía por correo.',
+        message: 'Una factura importada de otro sistema no se envía por correo.',
       });
     }
     if (document.status !== 'EMITIDO') {
       throw new ConflictException({
         code: 'BILLING_DOCUMENT_NOT_ISSUED',
-        message: 'Solo se envía un documento emitido.',
+        message: 'Solo se puede enviar una factura emitida.',
       });
     }
     return this.request(

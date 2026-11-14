@@ -1303,7 +1303,7 @@ test.describe('MOD14 Primer cobro completo — E2E vivo', () => {
     // o «$ 262.000,00»; ambas formas son el mismo valor y ninguna admite otro dígito detrás.
     await expect(section).toContainText(/\$\s262\.000(?:,00)?(?![\d,])/u);
     await expect(section).toContainText(/\$\s59\.500(?:,00)?(?![\d,])/u);
-    await expect(section).toContainText('No cambia el total del documento.');
+    await expect(section).toContainText('No cambia el total de la factura.');
     await expectNoSeriousAxeViolations(
       page,
       await sectionSelector(page, section),
@@ -1436,7 +1436,7 @@ test.describe('MOD14 Primer cobro completo — E2E vivo', () => {
     await page.emulateMedia({ colorScheme: 'light' });
 
     const dialog = await openPaymentDialog(page, billingTab);
-    await expect(dialog).toContainText('El titular es agente de retención según su RUT.');
+    await expect(dialog).toContainText('El cliente es agente de retención según su RUT.');
     await dialog.getByLabel('Método de pago').selectOption('TRANSFERENCIA');
     await dialog.getByLabel('Referencia').fill(`QA-PC-${RUN_ID}`);
     const retefuente = await fillWithholding(dialog, 1, {

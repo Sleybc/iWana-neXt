@@ -193,7 +193,7 @@ describe('SubscriberDetailClient — enlaces a Facturación → Facturas', () =>
     window.history.replaceState({}, '', '/');
   });
 
-  it.each(['Ver facturación', 'Ver los 4 documentos pendientes'])(
+  it.each(['Ver facturación', 'Ver las 4 facturas pendientes'])(
     '«%s» abre Facturación en la subpestaña Facturas',
     async (label) => {
       const user = userEvent.setup();

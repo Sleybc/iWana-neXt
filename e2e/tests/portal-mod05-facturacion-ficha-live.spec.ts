@@ -886,8 +886,8 @@ test.describe('MOD05↔MOD14 Facturación en la ficha estilo UISP — E2E vivo',
       timeout: 45_000,
     });
     await expect(documents.getByText(number)).toHaveCount(0);
-    await expect(documents.getByText(/Documento de cobro/u)).toHaveCount(0);
-    await expect(documents.getByText(/documentos de cobro/u)).toHaveCount(0);
+    await expect(documents.getByText(/Documento de cobro|\bFactura\b/u)).toHaveCount(0);
+    await expect(documents.getByText(/documentos de cobro|\bfacturas\b/u)).toHaveCount(0);
 
     // W0 obligación 5: «Ver facturación» de la Vista general abre Facturación → Facturas.
     await page.goto(`/dashboard/crm/subscribers/${seed.subscriberId}`);
@@ -919,15 +919,15 @@ test.describe('MOD05↔MOD14 Facturación en la ficha estilo UISP — E2E vivo',
 
     const row = facturas.getByRole('row').filter({ hasText: number });
     await expect(row).toBeVisible({ timeout: 30_000 });
-    await expect(row).toContainText('Emitido');
+    await expect(row).toContainText('Emitida');
     await expect(
-      row.getByRole('button', { name: `Enviar por correo el documento ${number}` }),
+      row.getByRole('button', { name: `Enviar por correo la factura ${number}` }),
     ).toBeVisible();
-    await expect(row.getByRole('button', { name: 'Anular documento' })).toBeVisible();
+    await expect(row.getByRole('button', { name: 'Anular factura' })).toBeVisible();
 
     const pdf = page.waitForEvent('download');
     await row.getByRole('button', { name: 'Descargar PDF' }).click();
-    await expectPdfDownload(await pdf, `${number}.pdf`);
+    await expectPdfDownload(await pdf, `factura-${number}.pdf`);
     await expectPdfRoute(`/billing/documents/${issued.id}/pdf`);
 
     // W0 obligación 1: la fecha de emisión ahora se ve en el detalle de Facturas.
@@ -1020,7 +1020,7 @@ test.describe('MOD05↔MOD14 Facturación en la ficha estilo UISP — E2E vivo',
     await expect(metric(page, 'Saldo a favor disponible')).toContainText(moneyPattern('50000'));
     const ledgerTable = estado.getByRole('region', { name: 'Movimientos del estado de cuenta' });
     await expect(ledgerTable).toBeVisible({ timeout: 30_000 });
-    for (const concept of ['Documento de cobro', 'Cortesía', 'Pago', 'Retención'])
+    for (const concept of ['Factura', 'Cortesía', 'Pago', 'Retención'])
       await expect(ledgerTable.getByText(concept, { exact: true }).first()).toBeVisible();
     const finalLine = estado.getByText(/^Saldo final:/u);
     await expect(finalLine).toContainText(moneyPattern(ledger.closingBalance));
@@ -1110,7 +1110,7 @@ test.describe('MOD05↔MOD14 Facturación en la ficha estilo UISP — E2E vivo',
     await loginInPortal(page);
     let facturas = await openBilling(page, seed.subscriberId, 'facturas');
     await facturas
-      .getByRole('button', { name: `Enviar por correo el documento ${issued.number}` })
+      .getByRole('button', { name: `Enviar por correo la factura ${issued.number}` })
       .click();
     await expect(facturas.getByText(/^(?:Envío en cola|Correo enviado)$/u)).toBeVisible({
       timeout: 30_000,
@@ -1135,7 +1135,7 @@ test.describe('MOD05↔MOD14 Facturación en la ficha estilo UISP — E2E vivo',
     // Error visible. Sustitución documentada: sin correo registrado → RECHAZADO / SIN_CORREO.
     facturas = await openBilling(page, noEmail.subscriberId, 'facturas');
     await facturas
-      .getByRole('button', { name: `Enviar por correo el documento ${issuedNoEmail.number}` })
+      .getByRole('button', { name: `Enviar por correo la factura ${issuedNoEmail.number}` })
       .click();
     await expect(facturas.getByText('No se envió el correo', { exact: true })).toBeVisible({
       timeout: 30_000,
@@ -1186,8 +1186,8 @@ test.describe('MOD05↔MOD14 Facturación en la ficha estilo UISP — E2E vivo',
       .click();
     const detail = page.getByRole('dialog', { name: /^Recibo N\.º \d+$/u });
     await expect(detail).toBeVisible({ timeout: 30_000 });
-    await detail.getByRole('button', { name: `Desasociar del documento ${issued.number}` }).click();
-    const confirm = page.getByRole('dialog', { name: `Desasociar del documento ${issued.number}` });
+    await detail.getByRole('button', { name: `Desasociar de la factura ${issued.number}` }).click();
+    const confirm = page.getByRole('dialog', { name: `Desasociar de la factura ${issued.number}` });
     await expect(confirm).toContainText('vuelve al saldo a favor');
     await confirm.getByLabel('Motivo').selectOption('REASIGNACION');
     await confirm.getByRole('button', { name: 'Desasociar', exact: true }).click();
@@ -1219,7 +1219,7 @@ test.describe('MOD05↔MOD14 Facturación en la ficha estilo UISP — E2E vivo',
       .getByRole('row')
       .filter({ hasText: issued.number! });
     await expect(coveredRow).toContainText('Desasociada', { timeout: 30_000 });
-    await expect(coveredRow).toContainText('Se va a aplicar a otro documento');
+    await expect(coveredRow).toContainText('Se va a aplicar a otra factura');
     await expect(metric(page, 'Saldo a favor disponible')).toContainText(
       moneyPattern(issued.total),
     );
@@ -1350,21 +1350,21 @@ test.describe('MOD05↔MOD14 Facturación en la ficha estilo UISP — E2E vivo',
     await expect(detail).toBeVisible({ timeout: 30_000 });
     await expect(detail.getByRole('button', { name: 'Descargar recibo' })).toHaveCount(0);
     const blockedButton = detail.getByRole('button', {
-      name: `Desasociar del documento ${externalNumber}`,
+      name: `Desasociar de la factura ${externalNumber}`,
     });
     await expect(blockedButton).toBeDisabled();
     await expect(blockedButton).toHaveAccessibleDescription(
-      'No se puede desasociar: es un histórico importado.',
+      'No se puede desasociar: es una factura histórica de UISP.',
     );
 
     // R6 / W0 2-3: Facturas lista los IMPORTADO y su PDF se nombra con el número de origen.
     const facturas = await openBilling(page, importedSubscriberId, 'facturas');
     const withPdf = facturas.getByRole('row').filter({ hasText: 'SINT-2023-1' });
-    await expect(withPdf).toContainText('Histórico importado', { timeout: 30_000 });
+    await expect(withPdf).toContainText('Importada de UISP', { timeout: 30_000 });
     await expect(withPdf.getByRole('button', { name: /^Enviar por correo/u })).toHaveCount(0);
     const pdf = page.waitForEvent('download');
     await withPdf.getByRole('button', { name: 'Descargar PDF' }).click();
-    await expectPdfDownload(await pdf, 'SINT-2023-1.pdf');
+    await expectPdfDownload(await pdf, 'factura-importada-SINT-2023-1.pdf');
     for (const n of [2, 3])
       await expect(facturas.getByRole('row').filter({ hasText: `SINT-2023-${n}` })).toHaveCount(1);
     // D1 / R6: Documentos conserva los soportes importados y ya no los históricos de cobro.
@@ -1373,7 +1373,9 @@ test.describe('MOD05↔MOD14 Facturación en la ficha estilo UISP — E2E vivo',
     await expect(documents.getByText('Soporte importado (PDF)', { exact: true })).toBeVisible({
       timeout: 45_000,
     });
-    await expect(documents.getByText(/Histórico importado SINT-2023-/u)).toHaveCount(0);
+    await expect(
+      documents.getByText(/(?:Histórico importado|Factura histórica de UISP) SINT-2023-/u),
+    ).toHaveCount(0);
 
     // ANULADO: anular el documento revierte la aplicación; queda sin acción y la API da 404.
     const seed = await seedResidential('ca7');

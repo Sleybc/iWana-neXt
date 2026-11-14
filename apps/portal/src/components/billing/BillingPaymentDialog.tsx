@@ -123,14 +123,14 @@ export function BillingPaymentDialog({
         <DialogHeader>
           <DialogTitle>Registrar pago</DialogTitle>
           <DialogDescription>
-            Registra el pago y distribúyelo entre los documentos pendientes del suscriptor.
+            Registra el pago y distribúyelo entre las facturas pendientes del cliente.
           </DialogDescription>
         </DialogHeader>
         {!subscriberId ? (
           <BillingSubscriberPicker
             selected={subscriber}
             onChange={setSubscriber}
-            label="Suscriptor"
+            label="Cliente"
             disabled={mutation.busy}
           />
         ) : null}
@@ -150,7 +150,7 @@ export function BillingPaymentDialog({
               <PortalAlert
                 variant="info"
                 title="Registro sin aplicaciones"
-                description="Tu perfil no puede consultar los documentos de cobro. El pago quedará como saldo a favor."
+                description="Tu perfil no puede consultar las facturas. El pago quedará como saldo a favor."
               />
             ) : null}
             {localDate && !account.loading && !account.error ? (
@@ -263,8 +263,8 @@ function PaymentForm({
       };
       if (attribution.invalid.has(line.key))
         errors.documentId = line.documentId
-          ? 'La retención supera lo que este pago aplica a ese documento.'
-          : 'La retención no cabe entera en ninguno de los documentos que salda este pago. Elige el documento o revisa la distribución.';
+          ? 'La retención supera lo que este pago aplica a esa factura.'
+          : 'La retención no cabe entera en ninguna de las facturas que salda este pago. Elige la factura o revisa la distribución.';
       return [line.key, errors];
     }),
   );
@@ -304,7 +304,7 @@ function PaymentForm({
       totalApplied > capacityCents
     ) {
       mutation.setError(
-        'Revisa la distribución. Cada aplicación debe respetar el saldo del documento y el total del pago.',
+        'Revisa la distribución. Cada aplicación debe respetar el saldo de la factura y el total del pago.',
       );
       return;
     }
@@ -420,7 +420,7 @@ function PaymentForm({
         pendingTotalCents - capacityCents < 100 ? (
           <p role="status" className="text-sm text-amber-700 dark:text-amber-300">
             Quedan {formatBillingMoneyExact(fromMoneyCents(pendingTotalCents - capacityCents))} sin
-            pagar: un documento quedará con pago parcial.
+            pagar: una factura quedará con pago parcial.
           </p>
         ) : null}
         {eligibleOptions ? (
@@ -442,7 +442,7 @@ function PaymentForm({
         ) : withholding.error ? (
           <PortalAlert
             variant="warning"
-            title="No pudimos consultar si el titular practica retenciones"
+            title="No pudimos consultar si el cliente practica retenciones"
             description="Puedes registrar el pago sin retenciones o volver a intentarlo."
             action={
               <Button
@@ -465,7 +465,7 @@ function PaymentForm({
             onChange={(event) => setNote(event.target.value)}
           />
         </label>
-        <h3 className="text-sm font-semibold">Aplicación a documentos</h3>
+        <h3 className="text-sm font-semibold">Aplicación a facturas</h3>
         {pending.length ? (
           <>
             <label className="flex min-h-11 items-center gap-2 text-sm">
@@ -503,9 +503,7 @@ function PaymentForm({
             </ul>
           </>
         ) : (
-          <p className="text-sm">
-            No hay documentos pendientes disponibles para aplicar este pago.
-          </p>
+          <p className="text-sm">No hay facturas pendientes para aplicar este pago.</p>
         )}
       </fieldset>
       <p className="text-sm" role="status">
@@ -524,7 +522,7 @@ function PaymentForm({
         )}{' '}
         · Remanente a saldo a favor:{' '}
         {formatBillingMoney(fromMoneyCents(Math.max(0, capacityCents - totalApplied)))}. Este monto
-        quedará como saldo a favor en la cuenta del suscriptor y podrá aplicarse a futuros cobros.
+        quedará como saldo a favor en la cuenta del cliente y podrá aplicarse a futuras facturas.
       </p>
       {mutation.error ? <PortalAlert variant="error" title={mutation.error} /> : null}
       <div className="flex flex-wrap justify-end gap-2">

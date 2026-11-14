@@ -166,7 +166,7 @@ describe('Detalle del documento con desglose de instalación', () => {
     mockDocument.mockResolvedValue({ ...DOCUMENT, installationBreakdown: null });
     render(<BillingDocumentTable documents={[DOCUMENT]} onChanged={jest.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
-    expect(await screen.findByText('Adquirente')).toBeInTheDocument();
+    expect(await screen.findByText('Cliente', { selector: 'dt' })).toBeInTheDocument();
     expect(screen.queryByText(/Valor real de la instalación/u)).not.toBeInTheDocument();
   });
 });

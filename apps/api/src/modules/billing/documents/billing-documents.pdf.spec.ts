@@ -1,5 +1,5 @@
 import PDFDocument from 'pdfkit';
-import { renderBillingDocumentPdf } from './billing-documents.pdf';
+import { BILLING_INVOICE_STATUS_LABELS, renderBillingDocumentPdf } from './billing-documents.pdf';
 
 describe('BR-2.11 PDF de facturación', () => {
   it('incluye número, periodo, líneas, IVA, total, leyenda y pagina sin desbordar', async () => {
@@ -35,7 +35,8 @@ describe('BR-2.11 PDF de facturación', () => {
       'Concepto 99',
       'IVA',
       '119.00',
-      'Documento interno: no es factura electrónica de venta.',
+      'Documento sin validez como factura electrónica DIAN.',
+      'Estado: Emitida',
       'Documento generado por iWana neXt',
     ])
       expect(contents).toContain(value);
@@ -57,7 +58,7 @@ describe('BR-2.11 PDF de facturación', () => {
       periodStart: '2026-10-05',
       periodEnd: '2026-11-04',
       buyerSnapshot: {
-        displayName: 'Adquirente S.A.S.',
+        displayName: 'Cliente S.A.S.',
         documentType: 'NIT',
         documentNumber: '900123456',
         address: 'Calle 1 # 2-3',
@@ -72,7 +73,7 @@ describe('BR-2.11 PDF de facturación', () => {
     } as never);
     const contents = text.mock.calls.map((args) => String(args[0])).join('\n');
     for (const value of [
-      'Adquirente S.A.S.',
+      'Cliente S.A.S.',
       'Tipo de documento: NIT',
       'Documento: 900123456',
       'Calle 1 # 2-3',
@@ -104,6 +105,7 @@ describe('BR-2.11 PDF de facturación', () => {
     expect(contents).toContain('Número: Sin número');
     expect(contents).toContain('Fecha de emisión: Pendiente');
     expect(contents).toContain('Periodo: Pendiente a Pendiente');
+    expect(contents).toContain('Estado: Borrador');
     expect(contents).toContain('NIT: 900654321');
     expect(contents).not.toContain('NIT: 900654321-');
     text.mockRestore();
@@ -251,5 +253,49 @@ describe('BR-2.11 PDF de facturación', () => {
     const contents = text.mock.calls.map((args) => String(args[0])).join('\n');
     expect(contents).not.toContain('Valor real de la instalación');
     text.mockRestore();
+  });
+
+  it('se titula «Factura», lleva la leyenda DIAN en cada página y no muestra vocabulario interno', async () => {
+    const text = jest.spyOn(PDFDocument.prototype, 'text');
+    const buffer = await renderBillingDocumentPdf({
+      id: 'fixture-vocab',
+      number: 'FE-000010',
+      issueDate: '2026-11-05',
+      dueDate: '2026-11-19',
+      status: 'ANULADO',
+      subtotal: '100.00',
+      taxTotal: '0.00',
+      total: '100.00',
+      buyerSnapshot: { displayName: 'Cliente Uno' },
+      issuerSnapshot: null,
+      lines: Array.from({ length: 100 }, (_, i) => ({
+        description: `Concepto ${i}`,
+        baseAmount: '1.00',
+        taxAmount: '0.00',
+        total: '1.00',
+      })),
+    } as never);
+    const calls = text.mock.calls.map((args) => String(args[0]));
+    const contents = calls.join('\n');
+    const pages = (buffer.toString('latin1').match(/\/Type \/Page\b/gu) ?? []).length;
+    expect(pages).toBeGreaterThan(1);
+    expect(calls.filter((value) => value === 'Factura')).toHaveLength(pages);
+    expect(
+      calls.filter((value) => value === 'Documento sin validez como factura electrónica DIAN'),
+    ).toHaveLength(pages);
+    expect(contents).toContain('Estado: Anulada');
+    expect(calls).toContain('Cliente');
+    for (const legacy of ['Documento de cobro', 'Adquirente', 'ANULADO', 'Documento interno'])
+      expect(contents).not.toContain(legacy);
+    text.mockRestore();
+  });
+
+  it('nombra cada estado de la factura en femenino y sin claves internas', () => {
+    expect(BILLING_INVOICE_STATUS_LABELS).toEqual({
+      BORRADOR: 'Borrador',
+      EMITIDO: 'Emitida',
+      ANULADO: 'Anulada',
+      IMPORTADO: 'Importada de otro sistema',
+    });
   });
 });

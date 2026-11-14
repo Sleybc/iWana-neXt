@@ -15,7 +15,7 @@ import { billingApi } from '@/lib/api-client';
 import { BillingConfirmation } from './BillingConfirmation';
 import { formatBillingMoney, moneyCents } from './billing-copy';
 
-export const BILLING_NOT_STARTED_TITLE = 'Contrato activo sin cobros emitidos';
+export const BILLING_NOT_STARTED_TITLE = 'Contrato activo sin facturas emitidas';
 export const BILLING_NOT_STARTED_NOTICE = 'El saldo en cero no significa que esté al día.';
 export const BILLING_NOT_STARTED_ASK = 'Pide a facturación que genere el primer cobro.';
 export const FIRST_CHARGE_ACTION = 'Generar primer cobro';
@@ -30,14 +30,14 @@ export function firstChargeResultMessage(result: BillingFirstChargeResult): Resu
   const incomplete = stillBlocked + summary.failed > 0;
   const title =
     summary.generated > 1
-      ? `Se generaron ${summary.generated} documentos de cobro`
+      ? `Se generaron ${summary.generated} facturas`
       : summary.generated === 1
         ? 'Se generó el primer cobro'
         : regularizedDrafts.unblocked > 0
-          ? 'Se regularizaron los cobros en borrador'
+          ? 'Se regularizaron las facturas en borrador'
           : summary.existing > 0
-            ? 'El contrato ya tenía cobros generados'
-            : 'No se generaron documentos de cobro';
+            ? 'El contrato ya tenía facturas generadas'
+            : 'No se generaron facturas';
   const parts: string[] = [];
   if (anchorDate) parts.push(`Se cobra desde el ${formatBillingDate(anchorDate)}.`);
   const amount = installationFee.amount;
@@ -57,7 +57,7 @@ export function firstChargeResultMessage(result: BillingFirstChargeResult): Resu
   if (fiscalData.outcome === 'FROZEN') {
     parts.push('Se tomaron de la ficha los datos fiscales que le faltaban al contrato.');
   } else if (fiscalData.outcome === 'UNRESOLVED') {
-    parts.push('Faltan datos fiscales del titular: complétalos en la ficha.');
+    parts.push('Faltan datos fiscales del cliente: complétalos en la ficha.');
   }
   if (regularizedDrafts.unblocked > 0) {
     parts.push(
@@ -70,7 +70,7 @@ export function firstChargeResultMessage(result: BillingFirstChargeResult): Resu
     parts.push('Los periodos cobrados tarde vencen ahora según el plazo de pago desde hoy.');
   }
   if (incomplete) {
-    parts.push('Algunos documentos tienen datos incompletos o errores: revísalos en Facturación.');
+    parts.push('Algunas facturas tienen datos incompletos o errores: revísalas en Facturación.');
   }
   return {
     variant:

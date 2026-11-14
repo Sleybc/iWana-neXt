@@ -435,9 +435,7 @@ describeDb(
           attachments: Array<{ filename: string; content: Buffer }>;
         };
         expect(mail.to).toBe('titular.sintetico@ejemplo.test');
-        expect(mail.subject).toBe(
-          `Documento de cobro DC-${document.slice(0, 8)} · Operador sintético`,
-        );
+        expect(mail.subject).toBe(`Factura N.º DC-${document.slice(0, 8)} · Operador sintético`);
         expect(mail.attachments[0]!.content.subarray(0, 5).toString('latin1')).toBe('%PDF-');
 
         const log = await run(() =>

@@ -263,7 +263,7 @@ export class BillingDocumentsService {
     if (!rows[0])
       throw new NotFoundException({
         code: 'BILLING_DOCUMENT_NOT_FOUND',
-        message: 'No se encontró el documento.',
+        message: 'No se encontró la factura.',
       });
     const [result] = await this.hydrate(rows, 'detail', actorId);
     if (!result) throw new NotFoundException();
@@ -344,7 +344,7 @@ export class BillingDocumentsService {
     if (!prepared)
       throw new NotFoundException({
         code: 'BILLING_DOCUMENT_NOT_FOUND',
-        message: 'No se encontró el documento.',
+        message: 'No se encontró la factura.',
       });
     const { issueDate, contract, cycle, issuer } = prepared;
     const issued: BillingDocumentResponse[] = [];
@@ -397,7 +397,7 @@ export class BillingDocumentsService {
       if (!buyerDocumentNumber) {
         throw new UnprocessableEntityException({
           code: BILLING_ERROR_CODES.BILLING_DOCUMENT_BLOCKED,
-          message: 'Faltan datos fiscales del adquirente.',
+          message: 'Faltan datos fiscales del cliente.',
         });
       }
 
@@ -503,7 +503,9 @@ export class BillingDocumentsService {
           await manager.query('ROLLBACK TO SAVEPOINT billing_document_number_attempt');
           nextNumber = await this.nextNumber(manager, tenantId, prefix);
           if (attempt === 2)
-            throw new ConflictException('No fue posible asignar un consecutivo único.');
+            throw new ConflictException(
+              'No fue posible asignar el número de la factura. Intenta de nuevo.',
+            );
         }
       }
       if (!saved) throw new Error('No se pudo emitir el documento.');
@@ -549,12 +551,12 @@ export class BillingDocumentsService {
       if (!rows[0])
         throw new NotFoundException({
           code: 'BILLING_DOCUMENT_NOT_FOUND',
-          message: 'No se encontró el documento.',
+          message: 'No se encontró la factura.',
         });
       if (rows[0].status !== 'EMITIDO')
         throw new ConflictException({
           code: BILLING_ERROR_CODES.BILLING_DOCUMENT_NOT_ISSUED,
-          message: 'Solo se pueden anular documentos emitidos.',
+          message: 'Solo se pueden anular facturas emitidas.',
         });
       const titular = await this.contracts.lockTitularForBillingWrite(rows[0].subscriber_id, {
         manager: qr.manager,
@@ -646,7 +648,7 @@ export class BillingDocumentsService {
       if (!rows[0])
         throw new NotFoundException({
           code: 'BILLING_DOCUMENT_NOT_FOUND',
-          message: 'No se encontró el documento.',
+          message: 'No se encontró la factura.',
         });
       if (rows[0].status !== 'BORRADOR')
         throw new ConflictException({
@@ -762,7 +764,8 @@ export class BillingDocumentsService {
         } catch {
           throw new ServiceUnavailableException({
             code: 'PRIVACY_AUDIT_UNAVAILABLE',
-            message: 'No fue posible auditar el acceso a los datos.',
+            message:
+              'No fue posible registrar la consulta de los datos restringidos. Intenta de nuevo.',
           });
         }
       }

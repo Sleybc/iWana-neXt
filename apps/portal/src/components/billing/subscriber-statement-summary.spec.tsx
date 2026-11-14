@@ -107,14 +107,14 @@ describe('SubscriberStatementSummary (spec 2026-11-09 §3)', () => {
     const { region } = renderSummary(
       loaded({ ...STATEMENT, documents: [buildDocument({ paymentState: 'VENCIDO' })] }),
     );
-    expect(within(region).getByText('Tiene documentos vencidos')).toBeInTheDocument();
-    expect(within(within(region).getByRole('listitem')).getByText('Vencido')).toBeInTheDocument();
+    expect(within(region).getByText('Tiene facturas vencidas')).toBeInTheDocument();
+    expect(within(within(region).getByRole('listitem')).getByText('Vencida')).toBeInTheDocument();
   });
 
   it('CA-3: sin vencidos no muestra el aviso', () => {
     const { region } = renderSummary(loaded({ ...STATEMENT, documents: [buildDocument({})] }));
-    expect(within(region).queryByText('Tiene documentos vencidos')).not.toBeInTheDocument();
-    expect(within(region).queryByText('Vencido')).not.toBeInTheDocument();
+    expect(within(region).queryByText('Tiene facturas vencidas')).not.toBeInTheDocument();
+    expect(within(region).queryByText('Vencida')).not.toBeInTheDocument();
   });
 
   it('CA-4: enlaza a Facturación desde el encabezado y desde «Ver los N documentos»', async () => {
@@ -129,16 +129,14 @@ describe('SubscriberStatementSummary (spec 2026-11-09 §3)', () => {
     );
     const { onOpenBilling, region } = renderSummary(loaded({ ...STATEMENT, documents }));
 
-    await user.click(
-      within(region).getByRole('button', { name: 'Ver los 5 documentos pendientes' }),
-    );
+    await user.click(within(region).getByRole('button', { name: 'Ver las 5 facturas pendientes' }));
     await user.click(within(region).getByRole('button', { name: 'Ver facturación' }));
     expect(onOpenBilling).toHaveBeenCalledTimes(2);
   });
 
   it('CA-5: sin pendientes lo dice y mantiene las métricas', () => {
     const { region } = renderSummary(loaded({ ...STATEMENT, totalPending: '0.00' }));
-    expect(within(region).getByText('No hay documentos de cobro pendientes')).toBeInTheDocument();
+    expect(within(region).getByText('No hay facturas pendientes')).toBeInTheDocument();
     expect(within(region).getByText('Deuda pendiente')).toBeInTheDocument();
   });
 

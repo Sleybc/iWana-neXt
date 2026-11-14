@@ -394,8 +394,8 @@ describe('Sidebar', () => {
     });
 
     it.each([
-      [AccessPermissionKey.BILLING_INVOICES_READ, 'Documentos de cobro', 'Pagos'],
-      [AccessPermissionKey.BILLING_PAYMENTS_READ, 'Pagos', 'Documentos de cobro'],
+      [AccessPermissionKey.BILLING_INVOICES_READ, 'Facturas', 'Pagos'],
+      [AccessPermissionKey.BILLING_PAYMENTS_READ, 'Pagos', 'Facturas'],
     ])('muestra solo la ruta de facturación autorizada por %s', (permission, allowed, denied) => {
       mockPermissionsReady([permission]);
       renderSidebar();

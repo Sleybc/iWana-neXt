@@ -97,7 +97,7 @@ describe('BillingPaymentDialog — saldo exacto', () => {
     );
     await userEvent.type(await screen.findByLabelText('Monto del pago (COP)'), '108548');
     expect(
-      screen.getByText(`Quedan ${money('0.39')} sin pagar: un documento quedará con pago parcial.`),
+      screen.getByText(`Quedan ${money('0.39')} sin pagar: una factura quedará con pago parcial.`),
     ).toBeInTheDocument();
   });
 });

@@ -40,7 +40,7 @@ function logRow(overrides: Partial<BillingEmailLogRow> = {}): BillingEmailLogRow
     period_from: null,
     period_to: null,
     recipient_masked: 't***@e***.test',
-    subject: 'Documento de cobro DC-1 · ISP',
+    subject: 'Factura N.º DC-1 · ISP',
     status: 'EN_COLA',
     reason_code: null,
     resend: false,
@@ -146,7 +146,7 @@ describe('BillingEmailsService', () => {
       documentId: DOCUMENT,
       recipientMasked: 't***@e***.test',
       resend: false,
-      subject: 'Documento de cobro DC-1 · ISP',
+      subject: 'Factura N.º DC-1 · ISP',
     });
     expect(queue.add).toHaveBeenCalledWith(
       'billing-email-send',

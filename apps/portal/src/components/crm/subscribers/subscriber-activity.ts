@@ -32,7 +32,7 @@ export const ACTIVITY_KIND_LABELS: Record<ActivityKind, string> = {
   servicio: 'Estados',
   ticket: 'Tickets',
   visita: 'Visitas',
-  cobro: 'Cobros y pagos',
+  cobro: 'Facturas y pagos',
 };
 
 const LIFECYCLE_SOURCE_LABELS: Record<LifecycleChangeRecord['source'], string> = {
@@ -120,10 +120,10 @@ export function statementToActivity(statement: BillingAccountStatement): Activit
     kind: 'cobro',
     at: document.issueDate ?? document.createdAt,
     title: document.number
-      ? `Documento de cobro ${document.number}`
+      ? `Factura ${document.number}`
       : document.status === 'IMPORTADO'
-        ? `Histórico importado${document.externalNumber ? ` ${document.externalNumber}` : ''}`
-        : 'Documento de cobro en borrador',
+        ? `Factura histórica de UISP${document.externalNumber ? ` ${document.externalNumber}` : ''}`
+        : 'Factura en borrador',
     detail: joinDetail(DOCUMENT_STATES[document.status]?.label, document.total),
   }));
   const payments = statement.payments.map<ActivityItem>((payment) => ({

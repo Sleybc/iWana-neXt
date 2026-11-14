@@ -12,7 +12,10 @@ import {
 } from './billing-copy';
 
 jest.mock('@/components/access-control/permissions-context', () => ({
-  usePermissions: () => ({ hasPermission: () => true }),
+  usePermissions: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () => (ctx ??= { hasPermission: () => true });
+  })(),
 }));
 
 const PAYMENT: BillingPaymentResponse = {

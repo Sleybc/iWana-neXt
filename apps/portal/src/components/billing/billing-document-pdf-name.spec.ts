@@ -1,6 +1,6 @@
 /**
  * Nombre del PDF de cobro (inventario W0 de la spec MOD05↔MOD14 2026-11-13, obligación 2): un
- * histórico importado se descarga con su número de origen, no como `documento-de-cobro.pdf`.
+ * histórico importado se descarga con su número de origen. Prefijo «factura-» como la API.
  */
 import { billingApi } from '@/lib/api-client';
 import { billingPdfFilename, downloadBillingDocumentPdf } from './billing-document-pdf';
@@ -10,10 +10,10 @@ describe('billingPdfFilename', () => {
   it.each([
     ['DC-000101', 'DC-000101.pdf'],
     ['UISP/2024:0042', 'UISP-2024-0042.pdf'],
-    [null, 'documento-de-cobro.pdf'],
-    ['  ', 'documento-de-cobro.pdf'],
+    [null, 'factura.pdf'],
+    ['  ', 'factura.pdf'],
   ])('%p → %p', (name, expected) => {
-    expect(billingPdfFilename(name, 'documento-de-cobro')).toBe(expected);
+    expect(billingPdfFilename(name, 'factura')).toBe(expected);
   });
 });
 
@@ -21,10 +21,15 @@ describe('downloadBillingDocumentPdf', () => {
   afterEach(() => jest.restoreAllMocks());
 
   it.each([
-    [{ number: 'DC-1', externalNumber: null }, 'DC-1.pdf'],
-    [{ number: null, externalNumber: 'UISP-2024-0042' }, 'UISP-2024-0042.pdf'],
-    [{ number: null, externalNumber: null }, 'documento-de-cobro.pdf'],
-  ])('%p se descarga como %p', async (numbers, expected) => {
+    [{ status: 'EMITIDO', number: 'DC-1', externalNumber: null }, 'factura-DC-1.pdf'],
+    [{ status: 'EMITIDO', number: 'DC/1', externalNumber: null }, 'factura-DC-1.pdf'],
+    [
+      { status: 'IMPORTADO', number: null, externalNumber: 'UISP-2024-0042' },
+      'factura-importada-UISP-2024-0042.pdf',
+    ],
+    [{ status: 'IMPORTADO', number: null, externalNumber: null }, 'factura-importada.pdf'],
+    [{ status: 'EMITIDO', number: null, externalNumber: null }, 'factura.pdf'],
+  ] as const)('%p se descarga como %p', async (numbers, expected) => {
     jest.spyOn(billingApi, 'documentPdf').mockResolvedValue(new Blob(['%PDF']));
     URL.createObjectURL = jest.fn(() => 'blob:pdf');
     URL.revokeObjectURL = jest.fn();

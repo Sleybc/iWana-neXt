@@ -94,11 +94,11 @@ export function BillingDocumentTable({
       {pdfError ? <PortalAlert variant="error" title={pdfError} /> : null}
       <BillingEmailSendResult outcome={email.outcome} />
       <BillingTable
-        label="Documentos de cobro"
+        label="Facturas"
         columns={[
           ...(selection ? ['Selección'] : []),
           'Número',
-          'Titular',
+          'Cliente',
           'Periodo cubierto',
           'Fecha de vencimiento',
           'Total',
@@ -121,7 +121,7 @@ export function BillingDocumentTable({
                 ? [
                     <label className="inline-flex min-h-11 min-w-11 items-center justify-center">
                       <input
-                        aria-label={`Seleccionar documento ${documentReference(document)}`}
+                        aria-label={`Seleccionar factura ${documentReference(document)}`}
                         type="checkbox"
                         className="h-5 w-5 accent-iwana-primary"
                         checked={selection.has(document.id)}
@@ -176,7 +176,7 @@ export function BillingDocumentTable({
                     className="min-h-11"
                     type="button"
                     variant="ghost"
-                    aria-label={`Otorgar cortesía en el documento ${documentReference(document)}`}
+                    aria-label={`Otorgar cortesía en la factura ${documentReference(document)}`}
                     onClick={() => setCourtesyFor(document.id)}
                   >
                     Otorgar cortesía
@@ -199,7 +199,7 @@ export function BillingDocumentTable({
                     className="min-h-11"
                     type="button"
                     variant="ghost"
-                    aria-label={`Enviar por correo el documento ${documentReference(document)}`}
+                    aria-label={`Enviar por correo la factura ${documentReference(document)}`}
                     disabled={email.busy !== null}
                     loading={email.busy === document.id}
                     onClick={() =>
@@ -218,7 +218,7 @@ export function BillingDocumentTable({
                         variant="ghost"
                         onClick={() => setAction({ kind: 'void', document })}
                       >
-                        Anular documento
+                        Anular factura
                       </Button>
                     ) : null}
                   </>
@@ -254,13 +254,13 @@ export function BillingDocumentTable({
           key={`${action.kind}-${action.document.id}`}
           title={
             action.kind === 'issue'
-              ? 'Emitir documento de cobro'
-              : `Anular documento de cobro ${action.document.number ?? ''}`
+              ? 'Emitir factura'
+              : `Anular factura ${action.document.number ?? ''}`
           }
           description={
             action.kind === 'issue'
-              ? `Se asignará un consecutivo definitivo al documento de ${formatBillingMoney(action.document.total)}.`
-              : 'El consecutivo quedará en el historial contable. Cualquier pago aplicado volverá al saldo a favor del suscriptor.'
+              ? `Se asignará un número consecutivo definitivo a la factura de ${formatBillingMoney(action.document.total)}.`
+              : 'El número consecutivo quedará en el historial contable. Cualquier pago aplicado volverá al saldo a favor del cliente.'
           }
           confirm={action.kind === 'issue' ? 'Confirmar emisión' : 'Confirmar anulación'}
           {...(action.kind === 'void' ? { reasons: DOCUMENT_VOID_REASONS } : {})}
@@ -312,7 +312,7 @@ function BillingDocumentDetail({
     onChanged();
   }
   return (
-    <PortalSidePeek open onClose={onClose} title={data?.number ?? 'Documento de cobro'}>
+    <PortalSidePeek open onClose={onClose} title={data?.number ?? 'Factura'}>
       <BillingLoadState loading={loading} error={error} onRetry={reload} />
       {data ? (
         <div className="space-y-4">
@@ -324,7 +324,7 @@ function BillingDocumentDetail({
           ) : null}
           <dl className="space-y-2 text-sm">
             <div>
-              <dt className="font-medium">Adquirente</dt>
+              <dt className="font-medium">Cliente</dt>
               <dd>
                 {data.buyerProtected ? PROTECTED_LABEL : (buyer?.displayName ?? 'No disponible')}
               </dd>
@@ -395,7 +395,7 @@ function BillingDocumentDetail({
           ) : null}
           {data.lines?.length ? (
             <BillingTable
-              label="Conceptos del documento"
+              label="Conceptos de la factura"
               columns={['Tipo', 'Concepto', 'IVA', 'Total']}
               rows={data.lines.map((line) => ({
                 id: line.id,
@@ -417,7 +417,7 @@ function BillingDocumentDetail({
                 Cortesías
               </h3>
               <BillingTable
-                label="Cortesías del documento"
+                label="Cortesías de la factura"
                 columns={['Fecha', 'Motivo', 'Valor', 'Estado', 'Acciones']}
                 rows={data.courtesies.map((courtesy) => {
                   const status = COURTESY_STATUSES[courtesy.status];
@@ -486,7 +486,7 @@ function BillingDocumentDetail({
         <BillingConfirmation
           key={voiding.id}
           title="Anular cortesía"
-          description={`El valor de ${formatBillingMoneyExact(voiding.amount)} vuelve al saldo del documento.`}
+          description={`El valor de ${formatBillingMoneyExact(voiding.amount)} vuelve al saldo de la factura.`}
           confirm="Confirmar anulación"
           reasons={COURTESY_VOID_REASONS}
           onClose={() => setVoiding(undefined)}

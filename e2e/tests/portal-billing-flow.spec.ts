@@ -597,7 +597,7 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
     await expect(fixedOption).toBeDisabled();
     await expect(
       page.getByText(
-        'El corte en día fijo solo es compatible con cobro anticipado, porque en cobro vencido el corte ocurriría antes de emitir el cobro. Utilice corte por plazo de pago más gracia.',
+        'El corte en día fijo solo es compatible con cobro anticipado, porque en cobro vencido el corte ocurriría antes de emitir la factura. Usa el corte por plazo de pago más gracia.',
       ),
     ).toBeVisible();
     // Punto 4: guardar un cambio desde el portal y comprobar que persiste.
@@ -620,31 +620,31 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
     // `billing-documents-client.spec.tsx`.
     await page.goto(`/dashboard/billing/documents?subscriberId=${subscriberId}`);
     await expect(page.getByText('Sin número')).toBeVisible();
-    await page.getByRole('button', { name: 'Generar documentos' }).first().click();
-    const dialog = page.getByRole('dialog', { name: 'Generar documentos' });
+    await page.getByRole('button', { name: 'Generar facturas' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'Generar facturas' });
     await expect(dialog).toBeVisible();
     // Generación acotada al contrato de la prueba (el tenant tiene dos).
     // El buscador cruza por columnas (nombre o apellido), no por nombre completo.
-    await dialog.getByLabel(/suscriptor/i).fill('Titular');
-    await expect(dialog.getByRole('list', { name: 'Resultados de suscriptores' })).toBeVisible();
+    await dialog.getByLabel(/cliente/i).fill('Titular');
+    await expect(dialog.getByRole('list', { name: 'Resultados de clientes' })).toBeVisible();
     await dialog
       .getByRole('button', { name: /Titular Sintético/u })
       .first()
       .click();
     await dialog.getByLabel('Contrato').selectOption({ index: 1 });
-    await dialog.getByRole('button', { name: 'Generar documentos' }).click();
+    await dialog.getByRole('button', { name: 'Generar facturas' }).click();
     // CA-FAC-03: el lote no duplica el documento que generó la activación.
-    await expect(page.getByText('Documentos generados: 0')).toBeVisible();
+    await expect(page.getByText('Facturas generadas: 0')).toBeVisible();
     await expect(page.getByText(/Ya existían: 1\./u)).toBeVisible();
     // CA-FAC-05: sin motivo de bloqueo, el borrador es emisible (uno solo).
     await expect(page.getByText('Sin número')).toHaveCount(1);
     await page
       .getByRole('checkbox', {
-        name: new RegExp(`Seleccionar documento ${formatBillingDateEs(periodStart)}`, 'u'),
+        name: new RegExp(`Seleccionar factura ${formatBillingDateEs(periodStart)}`, 'u'),
       })
       .check();
-    await page.getByRole('button', { name: 'Emitir 1 documentos seleccionados' }).click();
-    await expect(page.getByRole('dialog', { name: 'Emitir 1 documentos' })).toBeVisible();
+    await page.getByRole('button', { name: 'Emitir 1 factura seleccionada' }).click();
+    await expect(page.getByRole('dialog', { name: 'Emitir 1 factura' })).toBeVisible();
     await page.getByRole('button', { name: 'Confirmar emisión' }).click();
     // CA-FAC-04: consecutivo único asignado.
     await expect(page.getByText('DC-000001')).toBeVisible();
@@ -680,8 +680,8 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
     await page.getByRole('button', { name: 'Registrar pago' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'Registrar pago' });
     await expect(dialog).toBeVisible();
-    await dialog.getByLabel('Suscriptor').fill('Titular');
-    await expect(dialog.getByRole('list', { name: 'Resultados de suscriptores' })).toBeVisible();
+    await dialog.getByLabel('Cliente', { exact: true }).fill('Titular');
+    await expect(dialog.getByRole('list', { name: 'Resultados de clientes' })).toBeVisible();
     await dialog
       .getByRole('button', { name: /Titular Sintético/u })
       .first()
@@ -720,7 +720,7 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
     // congelado; el sembrado por SQL no lo tiene, así que sigue contándose y avisándose.
     await expect(
       page.getByText(
-        'Este contrato tiene 1 adicional sin precio guardado en el contrato; por eso no se cobró en este documento',
+        'Este contrato tiene 1 adicional sin precio guardado en el contrato; por eso no se cobró en esta factura',
         { exact: true },
       ),
     ).toBeVisible();
@@ -735,7 +735,7 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
     await page.goto(`/dashboard/crm/subscribers/${subscriberId}?tab=vista-general`);
     const summary = page.getByRole('region', { name: 'Estado de cuenta' });
     await expect(summary.getByText(await copInBrowser(page, 31))).toBeVisible();
-    await expect(summary.getByText('No hay documentos de cobro pendientes')).toBeVisible();
+    await expect(summary.getByText('No hay facturas pendientes')).toBeVisible();
     const requestsBeforeTab = statementRequests.length;
     expect(requestsBeforeTab).toBeGreaterThan(0);
     await summary.getByRole('button', { name: 'Ver facturación' }).click();
@@ -748,7 +748,7 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
 
     await page.goto(`/dashboard/crm/subscribers/agenda-corte?date=${agendaDate}`);
     const row = page.getByRole('row', { name: /Titular Sintético/u });
-    await expect(row.getByText('Pagado').first()).toBeVisible();
+    await expect(row.getByText('Pagada').first()).toBeVisible();
   });
 
   test('invariantes de API: 409, 422, política inmutable, estados y auditoría (CA-FAC-02, 09, 13; RS-9)', async ({

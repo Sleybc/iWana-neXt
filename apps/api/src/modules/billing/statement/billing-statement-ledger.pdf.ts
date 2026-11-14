@@ -13,8 +13,8 @@ const PAGE_TITLE = 'Estado de cuenta';
 /** Concepto visible de cada fila (vocabulario del usuario, sin códigos internos). */
 export const LEDGER_ROW_LABELS: Record<BillingStatementLedgerRowKind, string> = {
   SALDO_ANTERIOR: 'Saldo anterior',
-  DOCUMENTO: 'Documento de cobro',
-  DOCUMENTO_ANULADO: 'Documento anulado',
+  DOCUMENTO: 'Factura',
+  DOCUMENTO_ANULADO: 'Factura anulada',
   CORTESIA: 'Cortesía',
   PAGO: 'Pago',
   RETENCION: 'Retención',
@@ -110,7 +110,7 @@ export async function renderStatementLedgerPdf(input: StatementLedgerPdfInput): 
     pdf.text(`NIT: ${issuer.nit}${issuer.verificationDigit ? `-${issuer.verificationDigit}` : ''}`);
   }
   pdf.moveDown(0.5);
-  if (!ledger.buyerProtected && input.titularName) pdf.text(`Titular: ${input.titularName}`);
+  if (!ledger.buyerProtected && input.titularName) pdf.text(`Cliente: ${input.titularName}`);
   pdf.text(
     ledger.from
       ? `Periodo: ${formatLedgerDate(ledger.from)} a ${formatLedgerDate(ledger.to)}`
@@ -156,7 +156,7 @@ export async function renderStatementLedgerPdf(input: StatementLedgerPdfInput): 
   pdf.font(PDF_FONT.bold).fontSize(11);
   pdf.text(`Saldo final: ${formatLedgerMoney(closing)}`, { align: 'right' });
   pdf.font(PDF_FONT.regular).fontSize(8);
-  if (closing.startsWith('-')) pdf.text('Saldo a favor del titular.', { align: 'right' });
+  if (closing.startsWith('-')) pdf.text('Saldo a favor del cliente.', { align: 'right' });
   pdf.moveDown(2);
   pdf.fontSize(8).text('Documento informativo: no es factura electrónica de venta.', {
     align: 'center',

@@ -187,7 +187,7 @@ describe('ledgerRows y lateLabel', () => {
     expect(ledgerRows({ ...LEDGER, from: null, rows: [] })).toEqual([]);
   });
   it('distingue «Vencido» de «Pagó tarde» por el saldo del documento', () => {
-    expect(lateLabel({ late: true, documentId: DOC_LATE_OPEN }, DOCUMENTS)).toBe('Vencido');
+    expect(lateLabel({ late: true, documentId: DOC_LATE_OPEN }, DOCUMENTS)).toBe('Vencida');
     expect(lateLabel({ late: true, documentId: DOC_LATE_PAID }, DOCUMENTS)).toBe('Pagó tarde');
     expect(lateLabel({ late: false, documentId: DOC_LATE_OPEN }, DOCUMENTS)).toBeNull();
   });
@@ -298,14 +298,14 @@ describe('BillingStatementLedger', () => {
     const rows = within(table).getAllByRole('row').slice(1);
     expect(rows).toHaveLength(6);
     expect(rows[0]).toHaveTextContent('Saldo anterior');
-    expect(rows[1]).toHaveTextContent('Documento de cobro');
+    expect(rows[1]).toHaveTextContent('Factura');
     expect(rows[1]).toHaveTextContent('Vence el 15 de septiembre de 2026');
     expect(rows[1]).toHaveTextContent('Pagó tarde');
     expect(rows[1]).toHaveTextContent('DC-1');
     expect(rows[2]).toHaveTextContent('Transferencia bancaria · Recibo N.º 12');
     expect(rows[3]).toHaveTextContent('Retención de ICA');
     expect(rows[3]).not.toHaveTextContent('RETE_ICA');
-    expect(rows[4]).toHaveTextContent('Vencido');
+    expect(rows[4]).toHaveTextContent('Vencida');
     expect(rows[5]).toHaveTextContent(`${money('30')} a favor`);
     expect(
       screen.getByText('Del 13 de agosto de 2026 al 13 de noviembre de 2026'),

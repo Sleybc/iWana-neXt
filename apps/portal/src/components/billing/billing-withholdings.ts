@@ -227,9 +227,9 @@ export function withholdingDocumentErrors(
       const lineErrors: WithholdingErrors = {};
       if (current.count > 1)
         lineErrors.documentId =
-          'Ese documento ya tiene una retención de este tipo. Registra una sola por documento y tipo, o elige otro documento.';
+          'Esa factura ya tiene una retención de este tipo. Registra una sola por factura y tipo, o elige otra factura.';
       if (subtotal !== undefined && current.baseCents > subtotal)
-        lineErrors.base = `La base de este tipo de retención supera el subtotal antes de IVA del documento (${formatBillingMoneyExact(
+        lineErrors.base = `La base de este tipo de retención supera el subtotal antes de IVA de la factura (${formatBillingMoneyExact(
           fromMoneyCents(subtotal),
         )}).`;
       if (Object.keys(lineErrors).length) errors.set(lineKey, lineErrors);

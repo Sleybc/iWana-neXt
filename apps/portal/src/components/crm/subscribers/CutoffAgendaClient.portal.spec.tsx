@@ -119,7 +119,7 @@ describe('CutoffAgendaClient', () => {
 
     render(<CutoffAgendaClient />);
 
-    const pills = await screen.findAllByText('Sin documento');
+    const pills = await screen.findAllByText('Sin factura');
     expect(pills.length).toBeGreaterThanOrEqual(1);
   });
 });

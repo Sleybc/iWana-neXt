@@ -108,7 +108,7 @@ function StatementBody({
           accent={hasOverdue ? 'warning' : 'neutral'}
           description={
             hasOverdue ? (
-              <Badge variant={overdue.variant}>Tiene documentos vencidos</Badge>
+              <Badge variant={overdue.variant}>Tiene facturas vencidas</Badge>
             ) : undefined
           }
         />
@@ -143,7 +143,7 @@ function StatementBody({
             >
               <div>
                 <p className="text-sm font-semibold">
-                  {document.number ?? document.externalNumber ?? 'Documento sin número'}
+                  {document.number ?? document.externalNumber ?? 'Factura sin número'}
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-300">
                   {document.periodStart && document.periodEnd
@@ -174,13 +174,11 @@ function StatementBody({
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-gray-600 dark:text-gray-300">
-          No hay documentos de cobro pendientes
-        </p>
+        <p className="text-sm text-gray-600 dark:text-gray-300">No hay facturas pendientes</p>
       )}
       {pending.length > VISIBLE_DOCUMENTS ? (
         <OpenBillingLink
-          label={`Ver los ${pending.length} documentos pendientes`}
+          label={`Ver las ${pending.length} facturas pendientes`}
           onClick={onOpenBilling}
         />
       ) : null}

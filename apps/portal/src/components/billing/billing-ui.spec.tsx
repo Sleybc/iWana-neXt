@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { act, renderHook } from '@testing-library/react';
+import { BILLING_ERROR_CODES } from '@iwana/shared';
 import { ApiError } from '@/lib/api-client';
 import { billingError, useBillingMutation } from './billing-ui';
 
@@ -60,6 +61,16 @@ describe('billingError', () => {
       billingError(
         new ApiError(404, 'BILLING_SUBSCRIBER_NOT_FOUND', 'No se encontró el suscriptor.'),
       ),
-    ).toBe('No se encontró el estado de cuenta de este titular.');
+    ).toBe('No se encontró el estado de cuenta de este cliente.');
   });
+
+  it.each(Object.values(BILLING_ERROR_CODES))(
+    'traduce %s sin el mensaje genérico ni el código crudo',
+    (code) => {
+      const message = billingError(new ApiError(422, code, 'mensaje del servidor'));
+      expect(message).not.toBe('No pudimos completar la operación de facturación.');
+      expect(message).not.toContain(code);
+      expect(message).not.toMatch(/documento de cobro|adquir/iu);
+    },
+  );
 });

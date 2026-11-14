@@ -20,9 +20,13 @@ jest.mock('@/lib/api-client', () => {
 });
 
 jest.mock('@/components/access-control/permissions-context', () => ({
-  usePermissions: () => ({
-    hasPermission: () => true,
-  }),
+  usePermissions: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () =>
+      (ctx ??= {
+        hasPermission: () => true,
+      });
+  })(),
 }));
 
 const POLICY: BillingPolicy = {
@@ -139,7 +143,7 @@ describe('BillingPolicySettingsClient', () => {
     render(<BillingPolicySettingsClient />);
 
     await screen.findByText('Ciclo día 1 · corte día 10');
-    const prefix = screen.getByLabelText('Prefijo de documentos de cobro');
+    const prefix = screen.getByLabelText('Prefijo de las facturas');
     await user.clear(prefix);
     await user.type(prefix, 'OLD');
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
@@ -147,7 +151,7 @@ describe('BillingPolicySettingsClient', () => {
     expect(
       await screen.findByText(/La política fue modificada recientemente por otro usuario/),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText('Prefijo de documentos de cobro')).toHaveValue('NW');
+    expect(screen.getByLabelText('Prefijo de las facturas')).toHaveValue('NW');
     expect(mockUpdatePolicy).toHaveBeenCalledWith(
       expect.objectContaining({
         documentPrefix: 'OLD',

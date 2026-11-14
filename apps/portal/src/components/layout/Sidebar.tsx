@@ -189,7 +189,7 @@ const navGroups: NavGroup[] = [
     items: [
       {
         href: '/dashboard/billing/documents',
-        label: 'Documentos de cobro',
+        label: 'Facturas',
         icon: ReceiptText,
         permission: AccessPermissionKey.BILLING_INVOICES_READ,
       },

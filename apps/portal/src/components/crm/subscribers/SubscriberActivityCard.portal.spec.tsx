@@ -147,7 +147,7 @@ describe('SubscriberActivityCard', () => {
     expect(screen.getByRole('button', { name: 'Tickets' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(await findList()).getAllByRole('listitem')).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Visitas' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Cobros y pagos' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Facturas y pagos' })).not.toBeInTheDocument();
   });
 
   it('incluye documentos de cobro y pagos del estado de cuenta ya cargado', async () => {
@@ -175,7 +175,7 @@ describe('SubscriberActivityCard', () => {
     renderCard({ statement, canReadBilling: true });
     const list = await findList();
     expect(within(list).getByText('Pago registrado')).toBeInTheDocument();
-    expect(within(list).getByText('Documento de cobro FE-10')).toBeInTheDocument();
+    expect(within(list).getByText('Factura FE-10')).toBeInTheDocument();
   });
 
   it('«Ver más» muestra el resto y pide la página siguiente cuando la fuente tiene más', async () => {

@@ -372,7 +372,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       throw new UnprocessableEntityException(
         errorResponse(
           'IDEMPOTENCY_KEY_REQUIRED',
-          'La clave de idempotencia es obligatoria y admite hasta 80 caracteres.',
+          'Falta el identificador de la operación. Recarga la página e intenta de nuevo.',
         ),
       );
     }
@@ -560,7 +560,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
 
       if (payment.subscriber_id !== command.subscriberId) {
         throw new UnprocessableEntityException(
-          errorResponse('VALIDATION_ERROR', 'El titular del pago no coincide.'),
+          errorResponse('VALIDATION_ERROR', 'El pago no corresponde a este cliente.'),
         );
       }
       const allocations = command.allocations.map(({ documentId, amount }) => ({
@@ -1445,12 +1445,12 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       const document = docs[0];
       if (!document || document.subscriber_id !== subscriberId) {
         throw new NotFoundException(
-          errorResponse('BILLING_DOCUMENT_NOT_FOUND', 'No se encontró el documento.'),
+          errorResponse('BILLING_DOCUMENT_NOT_FOUND', 'No se encontró la factura.'),
         );
       }
       if (document.status !== 'EMITIDO' && document.status !== 'IMPORTADO') {
         throw new ConflictException(
-          errorResponse('BILLING_DOCUMENT_NOT_ISSUED', 'El documento no está emitido.'),
+          errorResponse('BILLING_DOCUMENT_NOT_ISSUED', 'La factura no está emitida.'),
         );
       }
       const paidRows = (await manager.query(
@@ -1945,7 +1945,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     return new ConflictException(
       errorResponse(
         BILLING_ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
-        'La clave de idempotencia ya se usó con otro contenido.',
+        'Esta operación ya se registró con otros datos. Recarga la página e intenta de nuevo.',
       ),
     );
   }
@@ -1966,7 +1966,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     return new NotFoundException(
       errorResponse(
         BILLING_ERROR_CODES.BILLING_ALLOCATION_NOT_FOUND,
-        'No se encontró una aplicación vigente de este pago.',
+        'Este pago no está aplicado a esa factura.',
       ),
     );
   }
@@ -1975,7 +1975,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     return new ConflictException(
       errorResponse(
         BILLING_ERROR_CODES.BILLING_ALLOCATION_NOT_UNLINKABLE,
-        'No se puede desasociar un pago de un documento anulado o importado.',
+        'No se puede desasociar un pago de una factura anulada o importada.',
       ),
     );
   }
@@ -1984,7 +1984,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     return new UnprocessableEntityException(
       errorResponse(
         BILLING_ERROR_CODES.BILLING_ALLOCATION_HAS_WITHHOLDING,
-        'El pago tiene una retención sobre ese documento: anula el pago para corregirlo.',
+        'El pago tiene una retención sobre esa factura: anula el pago para corregirlo.',
       ),
     );
   }
@@ -2002,7 +2002,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     return new UnprocessableEntityException(
       errorResponse(
         BILLING_ERROR_CODES.BILLING_WITHHOLDING_NOT_ALLOWED,
-        'Solo un titular agente de retención (O-23 en su RUT) puede registrar retenciones.',
+        'Solo un cliente agente de retención (responsabilidad O-23 en su RUT) puede registrar retenciones.',
       ),
     );
   }
@@ -2011,7 +2011,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     return new UnprocessableEntityException(
       errorResponse(
         BILLING_ERROR_CODES.BILLING_WITHHOLDING_NOT_ATTRIBUTABLE,
-        'Cada retención debe corresponder a un documento que este pago salda.',
+        'Cada retención debe corresponder a una factura que este pago salda.',
       ),
     );
   }
@@ -2020,7 +2020,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     return new UnprocessableEntityException(
       errorResponse(
         BILLING_ERROR_CODES.BILLING_WITHHOLDING_DUPLICATE,
-        'El documento ya tiene una retención vigente de ese tipo.',
+        'La factura ya tiene una retención vigente de ese tipo.',
       ),
     );
   }
@@ -2029,7 +2029,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     return new UnprocessableEntityException(
       errorResponse(
         BILLING_ERROR_CODES.BILLING_WITHHOLDING_BASE_EXCEEDS_SUBTOTAL,
-        'La base de la retención supera el valor antes de IVA del documento.',
+        'La base de la retención supera el valor antes de IVA de la factura.',
       ),
     );
   }
@@ -2047,7 +2047,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
     return new ServiceUnavailableException(
       errorResponse(
         'PRIVACY_AUDIT_UNAVAILABLE',
-        'No fue posible auditar el acceso a los datos restringidos.',
+        'No fue posible registrar la consulta de los datos restringidos. Intenta de nuevo.',
       ),
     );
   }

@@ -56,7 +56,7 @@ export function BillingInstallationBreakdown({
         <p className={captionClass}>
           Materiales y equipos registrados en{' '}
           {breakdown.executionOrders.length === 1 ? 'la orden' : 'las órdenes'} {orders}. No cambia
-          el total del documento.
+          el total de la factura.
         </p>
       </div>
       {breakdown.items.length ? (

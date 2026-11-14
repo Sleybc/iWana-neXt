@@ -479,14 +479,14 @@ test.describe('Importación desde UISP — ADR-110 contra Portal, API y worker r
     await expect(
       page
         .getByRole('tabpanel', { name: 'Documentos' })
-        .getByText(/^Histórico importado SINT-2023-/u),
+        .getByText(/^(?:Histórico importado|Factura histórica de UISP) SINT-2023-/u),
     ).toHaveCount(0);
     await expectNoSeriousAxeViolations(page, 'ficha · Documentos importados');
     await page.goto(`/dashboard/crm/subscribers/${subscriberId}?tab=facturacion&sub=facturas`);
     const invoices = page.getByRole('tabpanel', { name: 'Facturas', exact: true });
     for (const n of [1, 2, 3]) {
       await expect(invoices.getByRole('row').filter({ hasText: `SINT-2023-${n}` })).toContainText(
-        'Histórico importado',
+        'Importada de UISP',
         { timeout: 30_000 },
       );
     }

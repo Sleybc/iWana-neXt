@@ -283,7 +283,7 @@ const CONFIRM_COPY: Record<ConfirmKind, { title: string; description: string; ac
   promote: {
     title: 'Promover el lote',
     description:
-      'Los registros válidos pasan a iWana: suscriptores, servicios, cobros históricos, pagos, tickets y soportes. Los rechazados se quedan fuera. Al terminar se concilia contra UISP.',
+      'Los registros válidos pasan a iWana: suscriptores, servicios, facturas históricas, pagos, tickets y soportes. Los rechazados se quedan fuera. Al terminar se concilia contra UISP.',
     action: 'Promover',
   },
   revert: {

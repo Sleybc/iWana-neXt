@@ -66,7 +66,7 @@ export class BillingImportedPdfService {
     if (!key) {
       throw new NotFoundException({
         code: 'BILLING_IMPORTED_PDF_NOT_AVAILABLE',
-        message: 'El documento importado no trae PDF.',
+        message: 'La factura importada no trae PDF.',
       });
     }
     // H6: solo claves del schema del tenant.

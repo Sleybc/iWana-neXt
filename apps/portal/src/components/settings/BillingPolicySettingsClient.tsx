@@ -24,9 +24,9 @@ import { ApiError, billingApi } from '@/lib/api-client';
 import { AccessPermissionKey } from '@iwana/shared';
 
 const PAGE_SUBTITLE =
-  'Define las reglas de emisión de cobro, plazos de vencimiento y cálculo de cortes para la cartera de tus suscriptores';
+  'Define las reglas de emisión de facturas, plazos de vencimiento y cálculo de cortes para la cartera de tus clientes';
 const INCOMPATIBLE_CUTOFF_COPY =
-  'El corte en día fijo solo es compatible con cobro anticipado, porque en cobro vencido el corte ocurriría antes de emitir el cobro. Utilice corte por plazo de pago más gracia.';
+  'El corte en día fijo solo es compatible con cobro anticipado, porque en cobro vencido el corte ocurriría antes de emitir la factura. Usa el corte por plazo de pago más gracia.';
 const CONFLICT_COPY =
   'La política fue modificada recientemente por otro usuario. Se recargaron los valores más recientes para evitar sobrescrituras';
 
@@ -585,7 +585,7 @@ export function BillingPolicySettingsClient() {
                         )
                       }
                     >
-                      <option value="SEPARADO">Documento inicial separado</option>
+                      <option value="SEPARADO">Factura inicial separada</option>
                       <option value="JUNTO_AL_SIGUIENTE">Unir al siguiente periodo</option>
                     </SelectField>
                   </div>
@@ -685,12 +685,12 @@ export function BillingPolicySettingsClient() {
                         disabled={controlDisabled()}
                         onChange={(checked) => updateDraft('automaticGeneration', checked)}
                         label="Generación automática diaria"
-                        description="Cuando está activa, el proceso diario prepara los documentos según esta política."
+                        description="Cuando está activa, el proceso diario prepara las facturas según esta política."
                       />
                     </div>
                     <SelectField
                       id="billing-approval-mode"
-                      label="Aprobación de documentos generados"
+                      label="Aprobación de facturas generadas"
                       value={draft.approvalMode}
                       disabled={controlDisabled()}
                       onChange={(value) =>
@@ -723,12 +723,12 @@ export function BillingPolicySettingsClient() {
                         disabled={controlDisabled()}
                         onChange={(checked) => updateDraft('autoApplyCredit', checked)}
                         label="Aplicación automática de saldo a favor"
-                        description="Aplica el saldo remanente del suscriptor a nuevos documentos al emitirlos."
+                        description="Aplica el saldo a favor del cliente a las nuevas facturas al emitirlas."
                       />
                     </div>
                     <Field
                       id="billing-document-prefix"
-                      label="Prefijo de documentos de cobro"
+                      label="Prefijo de las facturas"
                       description="De 1 a 10 caracteres."
                     >
                       <input

@@ -24,17 +24,31 @@ export function saveBillingPdf(blob: Blob, filename: string): void {
 }
 
 /**
- * Descarga el PDF de un documento de cobro con el nombre de su número; un histórico importado
- * usa el número de su sistema de origen (inventario W0, obligación 2).
+ * Nombre del PDF de una factura, con el mismo prefijo que la API: «factura-<número>.pdf»; una
+ * factura histórica de UISP conserva su número de origen (inventario W0, obligación 2) como
+ * «factura-importada-<número de origen>.pdf», o «factura-importada.pdf» si no lo trae.
  */
+export function billingDocumentPdfFilename(
+  document: Pick<BillingDocumentResponse, 'status' | 'number'> & {
+    externalNumber?: string | null | undefined;
+  },
+): string {
+  if (document.status === 'IMPORTADO') {
+    const origin = document.externalNumber?.trim();
+    return billingPdfFilename(origin ? `factura-importada-${origin}` : null, 'factura-importada');
+  }
+  return billingPdfFilename(
+    document.number?.trim() ? `factura-${document.number.trim()}` : null,
+    'factura',
+  );
+}
+
+/** Descarga el PDF de una factura con el nombre de `billingDocumentPdfFilename`. */
 export async function downloadBillingDocumentPdf(
-  document: Pick<BillingDocumentResponse, 'id' | 'number'> & {
+  document: Pick<BillingDocumentResponse, 'id' | 'status' | 'number'> & {
     externalNumber?: string | null | undefined;
   },
 ): Promise<void> {
   const blob = await billingApi.documentPdf(document.id);
-  saveBillingPdf(
-    blob,
-    billingPdfFilename(document.number ?? document.externalNumber, 'documento-de-cobro'),
-  );
+  saveBillingPdf(blob, billingDocumentPdfFilename(document));
 }

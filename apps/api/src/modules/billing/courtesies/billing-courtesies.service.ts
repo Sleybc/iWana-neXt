@@ -119,7 +119,7 @@ export class BillingCourtesiesService {
           throw new ConflictException(
             error(
               BILLING_ERROR_CODES.BILLING_COURTESY_DOCUMENT_NOT_ELIGIBLE,
-              'Un documento anulado no admite cortesías.',
+              'Una factura anulada no admite cortesías.',
             ),
           );
         await this.assertTitularWritable(manager, document.subscriber_id);
@@ -260,7 +260,7 @@ export class BillingCourtesiesService {
           throw new ConflictException(
             error(
               BILLING_ERROR_CODES.BILLING_COURTESY_DOCUMENT_NOT_ELIGIBLE,
-              'Un documento anulado no admite cambios de cortesías.',
+              'Una factura anulada no admite cambios de cortesías.',
             ),
           );
         // La línea de un borrador ya emitido es parte del documento fiscal: no se retira.
@@ -268,7 +268,7 @@ export class BillingCourtesiesService {
           throw new ConflictException(
             error(
               BILLING_ERROR_CODES.BILLING_COURTESY_NOT_VOIDABLE,
-              'La cortesía quedó dentro de un documento emitido y no se puede anular.',
+              'La cortesía quedó dentro de una factura emitida y no se puede anular.',
             ),
           );
         await this.assertTitularWritable(manager, document.subscriber_id);
@@ -346,7 +346,7 @@ export class BillingCourtesiesService {
     )) as Array<{ subscriber_id: string }>;
     if (!peek[0])
       throw new NotFoundException(
-        error('BILLING_DOCUMENT_NOT_FOUND', 'No se encontró el documento.'),
+        error('BILLING_DOCUMENT_NOT_FOUND', 'No se encontró la factura.'),
       );
     await this.payments.lockSubscriber(manager, peek[0].subscriber_id);
     const rows = (await manager.query(
@@ -357,7 +357,7 @@ export class BillingCourtesiesService {
     const document = rows[0];
     if (!document)
       throw new NotFoundException(
-        error('BILLING_DOCUMENT_NOT_FOUND', 'No se encontró el documento.'),
+        error('BILLING_DOCUMENT_NOT_FOUND', 'No se encontró la factura.'),
       );
     return document;
   }
@@ -422,7 +422,7 @@ export class BillingCourtesiesService {
         throw new UnprocessableEntityException(
           error(
             BILLING_ERROR_CODES.BILLING_COURTESY_MIXED_VAT,
-            'El borrador tiene conceptos con IVA distinto: otorga la cortesía por línea.',
+            'El borrador tiene conceptos con IVA distinto: otorga la cortesía línea por línea.',
           ),
         );
       const only = treatments[0]!;
@@ -510,7 +510,7 @@ export class BillingCourtesiesService {
       throw new UnprocessableEntityException(
         error(
           'IDEMPOTENCY_KEY_REQUIRED',
-          'La clave de idempotencia es obligatoria y admite hasta 80 caracteres.',
+          'Falta el identificador de la operación. Recarga la página e intenta de nuevo.',
         ),
       );
     return key;
@@ -550,7 +550,7 @@ export class BillingCourtesiesService {
     return new ConflictException(
       error(
         BILLING_ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
-        'La clave de idempotencia ya se usó con otro contenido.',
+        'Esta operación ya se registró con otros datos. Recarga la página e intenta de nuevo.',
       ),
     );
   }
@@ -559,7 +559,7 @@ export class BillingCourtesiesService {
     return new ConflictException(
       error(
         BILLING_ERROR_CODES.BILLING_COURTESY_EXCEEDS_BALANCE,
-        'La cortesía supera el saldo del documento.',
+        'La cortesía supera el saldo de la factura.',
       ),
     );
   }
@@ -568,7 +568,7 @@ export class BillingCourtesiesService {
     return new ConflictException(
       error(
         BILLING_ERROR_CODES.BILLING_COURTESY_LINE_NOT_ELIGIBLE,
-        'La línea no existe en el documento, no tiene valor o ya fue regalada.',
+        'La línea no existe en la factura, no tiene valor o ya fue regalada.',
       ),
     );
   }

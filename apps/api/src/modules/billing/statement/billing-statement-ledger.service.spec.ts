@@ -96,7 +96,7 @@ describe('BillingStatementLedgerService', () => {
     for (const value of [
       'Redes ISP S.A.S.',
       'NIT: 900123456-7',
-      'Titular: Titular Sintético',
+      'Cliente: Titular Sintético',
       'DC-000001',
       'Vence el 15/10/2026',
       `Saldo final: ${formatLedgerMoney('119000.00')}`,
@@ -110,7 +110,7 @@ describe('BillingStatementLedgerService', () => {
     const text = jest.spyOn(PDFDocument.prototype, 'text');
     await service.ledgerPdf(SUBSCRIBER, {}, ACTOR, { canSeeBlocked: false });
     const contents = text.mock.calls.map((args) => String(args[0])).join('\n');
-    expect(contents).not.toContain('Titular:');
+    expect(contents).not.toContain('Cliente:');
     expect(contents).not.toContain('Titular protegido');
   });
 
@@ -127,9 +127,7 @@ describe('BillingStatementLedgerService', () => {
     const text = jest.spyOn(PDFDocument.prototype, 'text');
     await service.ledgerPdf(SUBSCRIBER, {}, ACTOR, { canSeeBlocked: false });
     expect(addPage).toHaveBeenCalled();
-    expect(text.mock.calls.map((args) => String(args[0]))).toContain(
-      'Documento de cobro (pago tardío)',
-    );
+    expect(text.mock.calls.map((args) => String(args[0]))).toContain('Factura (pago tardío)');
   });
 });
 

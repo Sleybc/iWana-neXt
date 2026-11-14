@@ -61,7 +61,7 @@ export function BillingPaymentsClient() {
     <div className="space-y-6">
       <PageHeader
         title="Pagos"
-        subtitle="Consulta los pagos registrados y su aplicación a documentos de cobro."
+        subtitle="Consulta los pagos registrados y su aplicación a facturas."
         actions={registerAction}
       />
       <PortalPanel title="Pagos registrados" contentClassName="space-y-4" busy={loading}>
@@ -131,7 +131,7 @@ export function BillingPaymentTable({
       <BillingTable
         label="Pagos registrados"
         columns={[
-          ...(showSubscriber ? ['Suscriptor'] : []),
+          ...(showSubscriber ? ['Cliente'] : []),
           ...(showReceipt ? ['Recibo'] : []),
           'Fecha',
           'Método',
@@ -176,7 +176,7 @@ export function BillingPaymentTable({
       {voiding ? (
         <BillingConfirmation
           title="Anular pago"
-          description={`Las aplicaciones sobre documentos se revertirán y el saldo de los documentos volverá a estar pendiente o vencido.${
+          description={`Las aplicaciones sobre facturas se revertirán y el saldo de esas facturas volverá a quedar pendiente o vencido.${
             withholdingAmountOrNull(voiding.withholdingAmount)
               ? ' Sus retenciones también se anularán.'
               : ''

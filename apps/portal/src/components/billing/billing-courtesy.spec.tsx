@@ -234,7 +234,7 @@ describe('BillingCourtesyDialog', () => {
     fireEvent.change(screen.getByLabelText('Valor de la cortesía (IVA incluido)'), {
       target: { value: '99999999' },
     });
-    expect(screen.getByText('La cortesía supera el saldo del documento')).toBeInTheDocument();
+    expect(screen.getByText('La cortesía supera el saldo de la factura')).toBeInTheDocument();
     expect(submit).toBeDisabled();
   });
 
@@ -259,7 +259,7 @@ describe('BillingCourtesyDialog', () => {
     await screen.findByLabelText('Línea a regalar');
     fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'FALLA_DEL_SERVICIO' } });
     fireEvent.click(screen.getByRole('button', { name: 'Otorgar cortesía' }));
-    expect(await screen.findByText(/supera el saldo pendiente del documento/u)).toBeInTheDocument();
+    expect(await screen.findByText(/supera el saldo pendiente de la factura/u)).toBeInTheDocument();
   });
 });
 

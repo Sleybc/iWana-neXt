@@ -26,7 +26,7 @@ const TIMING_LABELS = {
 } satisfies Record<BillingPeriodTiming, string>;
 
 const FIRST_PERIOD_LABELS = {
-  SEPARADO: 'Documento inicial separado',
+  SEPARADO: 'Factura inicial separada',
   JUNTO_AL_SIGUIENTE: 'Unir al siguiente periodo',
 } satisfies Record<BillingFirstPeriodMode, string>;
 

@@ -48,7 +48,7 @@ function logRow(overrides: Partial<BillingEmailLogRow> = {}): BillingEmailLogRow
     period_from: null,
     period_to: null,
     recipient_masked: 't***@e***.test',
-    subject: 'Documento de cobro DC-1 · ISP',
+    subject: 'Factura N.º DC-1 · ISP',
     status: 'EN_COLA',
     reason_code: null,
     resend: false,
@@ -172,10 +172,10 @@ describe('BillingEmailProcessor', () => {
     expect(mailer.sendMail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: EMAIL,
-        subject: 'Documento de cobro DC-1 · Redes ISP',
+        subject: 'Factura N.º DC-1 · Redes ISP',
         attachments: [
           expect.objectContaining({
-            filename: 'documento-de-cobro-DC-1.pdf',
+            filename: 'factura-DC-1.pdf',
             contentType: 'application/pdf',
           }),
         ],
@@ -183,12 +183,7 @@ describe('BillingEmailProcessor', () => {
     );
     const [update] = updates();
     expect(update?.[0]).toContain("SET status = 'ENVIADO'");
-    expect(update?.[1]).toEqual([
-      TENANT,
-      LOG,
-      't***@e***.test',
-      'Documento de cobro DC-1 · Redes ISP',
-    ]);
+    expect(update?.[1]).toEqual([TENANT, LOG, 't***@e***.test', 'Factura N.º DC-1 · Redes ISP']);
     expect(JSON.stringify(query.mock.calls)).not.toContain(EMAIL);
     expect(JSON.stringify(audit.logWithin.mock.calls)).not.toContain(EMAIL);
   });

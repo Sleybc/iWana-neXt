@@ -291,10 +291,10 @@ export class BillingDocumentsController {
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SUPPORT, UserRole.SALES, UserRole.AUDITOR)
   @Permissions(AccessPermissionKey.BILLING_INVOICES_READ)
-  @ApiOperation({ summary: 'Consultar el detalle de un documento de cobro' })
+  @ApiOperation({ summary: 'Consultar el detalle de una factura' })
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiOkResponse({ description: 'Detalle del documento.', schema: DOCUMENT_DETAIL_OPENAPI_SCHEMA })
-  @ApiNotFoundResponse({ description: 'No se encontró el documento.' })
+  @ApiNotFoundResponse({ description: 'No se encontró la factura.' })
   async findOne(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Req() request: AuthenticatedRequest,
@@ -378,7 +378,7 @@ export class BillingDocumentsController {
   })
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiProduces('application/pdf')
-  @ApiOkResponse({ description: 'Documento de cobro PDF.' })
+  @ApiOkResponse({ description: 'Factura en PDF.' })
   @ApiResponse({ status: 404, description: 'BILLING_IMPORTED_PDF_NOT_AVAILABLE' })
   @ApiResponse({
     status: 409,
@@ -399,21 +399,21 @@ export class BillingDocumentsController {
       response.setHeader('Content-Type', 'application/pdf');
       response.setHeader('Cache-Control', 'no-store');
       response.setHeader('X-Content-Type-Options', 'nosniff');
-      response.setHeader('Content-Disposition', 'attachment; filename="historico-importado.pdf"');
+      response.setHeader('Content-Disposition', 'attachment; filename="factura-importada.pdf"');
       response.send(imported);
       return;
     }
     if (document.status !== 'EMITIDO') {
       throw new ConflictException({
         code: 'BILLING_DOCUMENT_NOT_ISSUED',
-        message: 'El PDF está disponible después de emitir.',
+        message: 'El PDF está disponible cuando la factura se emite.',
       });
     }
     const buffer = await renderBillingDocumentPdf(document);
     response.setHeader('Content-Type', 'application/pdf');
     response.setHeader(
       'Content-Disposition',
-      `attachment; filename="${document.number ?? document.id}.pdf"`,
+      `attachment; filename="factura-${document.number ?? document.id}.pdf"`,
     );
     response.send(buffer);
   }

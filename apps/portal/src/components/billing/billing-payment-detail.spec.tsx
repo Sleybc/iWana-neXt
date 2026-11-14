@@ -175,8 +175,8 @@ describe('unlinkBlockReason (R5, P3, CA-7)', () => {
     expect(unlinkBlockReason(payment(), vigente, { status: 'EMITIDO' })).toBeNull();
   });
   it.each([
-    ['ANULADO', /anulado/u],
-    ['IMPORTADO', /histórico importado/u],
+    ['ANULADO', /anulada/u],
+    ['IMPORTADO', /factura histórica de UISP/u],
   ] as const)('bloquea un documento %s', (status, message) => {
     expect(unlinkBlockReason(payment(), vigente, { status })).toMatch(message);
   });
@@ -218,18 +218,16 @@ describe('BillingPaymentDetail — facturas cubiertas y desasociar', () => {
 
   it('deshabilita Desasociar con explicación en anulado, importado y con retención vigente', async () => {
     renderDetail();
-    const voided = screen.getByRole('button', { name: 'Desasociar del documento DC-2' });
-    const imported = screen.getByRole('button', { name: 'Desasociar del documento UISP-7' });
-    const withheld = screen.getByRole('button', { name: 'Desasociar del documento DC-4' });
+    const voided = screen.getByRole('button', { name: 'Desasociar de la factura DC-2' });
+    const imported = screen.getByRole('button', { name: 'Desasociar de la factura UISP-7' });
+    const withheld = screen.getByRole('button', { name: 'Desasociar de la factura DC-4' });
     expect(voided).toBeDisabled();
-    expect(voided).toHaveAccessibleDescription(
-      'No se puede desasociar: el documento está anulado.',
-    );
+    expect(voided).toHaveAccessibleDescription('No se puede desasociar: la factura está anulada.');
     expect(imported).toBeDisabled();
-    expect(imported).toHaveAccessibleDescription(/histórico importado/u);
+    expect(imported).toHaveAccessibleDescription(/factura histórica de UISP/u);
     expect(withheld).toBeDisabled();
     expect(withheld).toHaveAccessibleDescription(/Para corregirlo, anula el pago\./u);
-    expect(screen.getByRole('button', { name: 'Desasociar del documento DC-1' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Desasociar de la factura DC-1' })).toBeEnabled();
     await screen.findByText('Aún no hay envíos por correo.');
   });
 
@@ -237,8 +235,8 @@ describe('BillingPaymentDetail — facturas cubiertas y desasociar', () => {
     const user = userEvent.setup();
     mockUnlink.mockResolvedValue(payment());
     renderDetail();
-    await user.click(screen.getByRole('button', { name: 'Desasociar del documento DC-1' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Desasociar del documento DC-1' });
+    await user.click(screen.getByRole('button', { name: 'Desasociar de la factura DC-1' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Desasociar de la factura DC-1' });
     const confirm = within(dialog).getByRole('button', { name: 'Desasociar' });
     expect(confirm).toBeDisabled();
     expect(within(dialog).queryByLabelText('Observación o nota adicional')).not.toBeInTheDocument();
@@ -249,11 +247,11 @@ describe('BillingPaymentDetail — facturas cubiertas y desasociar', () => {
         .map((option) => option.textContent),
     ).toEqual([
       'Selecciona un motivo',
-      'Se aplicó al documento equivocado',
+      'Se aplicó a la factura equivocada',
       'El valor aplicado es incorrecto',
-      'Se va a aplicar a otro documento',
+      'Se va a aplicar a otra factura',
     ]);
-    await user.selectOptions(reason, 'Se va a aplicar a otro documento');
+    await user.selectOptions(reason, 'Se va a aplicar a otra factura');
     expect(confirm).toBeEnabled();
     await user.click(confirm);
     await waitFor(() =>
@@ -268,8 +266,8 @@ describe('BillingPaymentDetail — facturas cubiertas y desasociar', () => {
       new ApiError(422, 'BILLING_ALLOCATION_HAS_WITHHOLDING', 'Mensaje del servidor'),
     );
     renderDetail();
-    await user.click(screen.getByRole('button', { name: 'Desasociar del documento DC-1' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Desasociar del documento DC-1' });
+    await user.click(screen.getByRole('button', { name: 'Desasociar de la factura DC-1' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Desasociar de la factura DC-1' });
     await user.selectOptions(
       within(dialog).getByLabelText('Motivo'),
       'El valor aplicado es incorrecto',
@@ -277,7 +275,7 @@ describe('BillingPaymentDetail — facturas cubiertas y desasociar', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Desasociar' }));
     expect(
       await within(dialog).findByText(
-        'Este pago tiene una retención sobre el documento. Para corregirlo, anula el pago.',
+        'Este pago tiene una retención sobre la factura. Para corregirlo, anula el pago.',
       ),
     ).toBeInTheDocument();
     expect(onChanged).not.toHaveBeenCalled();

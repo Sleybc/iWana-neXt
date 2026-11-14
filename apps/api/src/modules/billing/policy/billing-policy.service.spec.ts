@@ -276,7 +276,7 @@ describe('BillingPolicyService', () => {
       ),
     ).rejects.toMatchObject({
       status: 404,
-      response: { code: 'BILLING_CONTRACT_NOT_FOUND', message: 'Contrato no encontrado.' },
+      response: { code: 'BILLING_CONTRACT_NOT_FOUND', message: 'No se encontró el contrato.' },
     });
     expect(runner.rollbackTransaction).toHaveBeenCalledTimes(1);
     expect(audit.logWithin).not.toHaveBeenCalled();

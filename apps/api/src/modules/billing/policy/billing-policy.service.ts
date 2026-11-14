@@ -404,7 +404,7 @@ export class BillingPolicyService {
       if (isForeignKeyViolation(error)) {
         throw new NotFoundException({
           code: 'BILLING_CONTRACT_NOT_FOUND',
-          message: 'Contrato no encontrado.',
+          message: 'No se encontró el contrato.',
         });
       }
       throw error;
@@ -423,7 +423,7 @@ export class BillingPolicyService {
     if (request.contractId && !contractCycle) {
       throw new NotFoundException({
         code: 'BILLING_CONTRACT_NOT_FOUND',
-        message: 'Contrato no encontrado.',
+        message: 'No se encontró el contrato.',
       });
     }
 
@@ -474,7 +474,8 @@ export class BillingPolicyService {
   private policyChanged(): ConflictException {
     return new ConflictException({
       code: BILLING_ERROR_CODES.BILLING_POLICY_CHANGED,
-      message: 'La política fue modificada recientemente por otro usuario.',
+      message:
+        'Otra persona modificó la política hace un momento. Recarga la página e intenta de nuevo.',
     });
   }
 }

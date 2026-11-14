@@ -56,7 +56,7 @@ export function BillingCourtesyDialog({
         <DialogHeader>
           <DialogTitle>Otorgar cortesía</DialogTitle>
           <DialogDescription>
-            La cortesía baja el saldo del documento sin registrar un pago. Queda en el historial con
+            La cortesía baja el saldo de la factura sin registrar un pago. Queda en el historial con
             su motivo.
           </DialogDescription>
         </DialogHeader>
@@ -117,7 +117,7 @@ function CourtesyForm({
   return (
     <form className="space-y-4" onSubmit={submit} noValidate>
       <p className="text-sm text-gray-700 dark:text-gray-300">
-        Documento {documentReference(document)} · Saldo actual{' '}
+        Factura {documentReference(document)} · Saldo actual{' '}
         <span className="font-semibold tabular-nums">
           {formatBillingMoneyExact(fromMoneyCents(baseCents))}
         </span>
@@ -253,7 +253,7 @@ function CourtesyForm({
       {exceeds ? (
         <PortalAlert
           variant="warning"
-          title="La cortesía supera el saldo del documento"
+          title="La cortesía supera el saldo de la factura"
           description="Usa un valor menor o igual al saldo actual."
           live="off"
         />

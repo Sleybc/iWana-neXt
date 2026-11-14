@@ -137,7 +137,7 @@ describe('Controladores de facturación — ramas de actor y permisos', () => {
       expect(response.setHeader).toHaveBeenCalledWith('Content-Type', 'application/pdf');
       expect(response.setHeader).toHaveBeenCalledWith(
         'Content-Disposition',
-        'attachment; filename="FE-000001.pdf"',
+        'attachment; filename="factura-FE-000001.pdf"',
       );
       expect(response.send).toHaveBeenCalled();
     });

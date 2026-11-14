@@ -54,7 +54,7 @@ function entry(overrides: Partial<BillingEmailLogEntry>): BillingEmailLogEntry {
     periodFrom: null,
     periodTo: null,
     recipientMasked: 'j***@d***.co',
-    subject: 'Documento de cobro DC-1 · Empresa de prueba',
+    subject: 'Factura DC-1 · Empresa de prueba',
     status: 'ENVIADO',
     reasonCode: null,
     resend: false,
@@ -137,7 +137,7 @@ describe('BillingEmailLog', () => {
     expect(rows).toHaveLength(5);
     expect(rows[0]).toHaveTextContent('Enviado');
     expect(rows[0]).toHaveTextContent('j***@d***.co');
-    expect(rows[0]).toHaveTextContent('Documento de cobro DC-1 · Empresa de prueba');
+    expect(rows[0]).toHaveTextContent('Factura DC-1 · Empresa de prueba');
     expect(rows[1]).toHaveTextContent('En cola');
     expect(rows[1]).toHaveTextContent('Reenviado');
     expect(rows[2]).toHaveTextContent('Error');
@@ -251,12 +251,12 @@ describe('BillingDocumentTable — envío por correo (CA-4, CA-6)', () => {
         subscriberId={SUBSCRIBER_ID}
       />,
     );
-    await user.click(screen.getByRole('button', { name: 'Enviar por correo el documento DC-1' }));
+    await user.click(screen.getByRole('button', { name: 'Enviar por correo la factura DC-1' }));
     expect(mockSendDocument).toHaveBeenCalledWith(DOCUMENT_ID);
     expect(await screen.findByText('No se envió el correo')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'El titular no tiene correo registrado. Regístralo en sus datos y vuelve a enviarlo.',
+        'El cliente no tiene correo registrado. Regístralo en sus datos y vuelve a enviarlo.',
       ),
     ).toBeInTheDocument();
   });
@@ -271,7 +271,7 @@ describe('BillingDocumentTable — envío por correo (CA-4, CA-6)', () => {
         subscriberId={SUBSCRIBER_ID}
       />,
     );
-    await user.click(screen.getByRole('button', { name: 'Enviar por correo el documento DC-1' }));
+    await user.click(screen.getByRole('button', { name: 'Enviar por correo la factura DC-1' }));
     expect(
       await screen.findByText(
         'El envío de correos no está disponible en este momento. Intenta en unos minutos.',

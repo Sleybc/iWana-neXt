@@ -66,7 +66,7 @@ export function BillingWithholdingFields({
         <p className={hintTextClass}>
           {options.eligibility ? `${WITHHOLDING_ELIGIBILITY[options.eligibility]} ` : ''}
           Registra lo que el cliente retuvo con su certificado: el valor recibido más las
-          retenciones salda los documentos.
+          retenciones salda las facturas.
         </p>
       </div>
       {options.options.length ? (
@@ -177,7 +177,7 @@ function WithholdingLine({
             ))}
           </select>
         </Field>
-        <Field id={fieldId('documentId')} label="Documento (opcional)" error={errors.documentId}>
+        <Field id={fieldId('documentId')} label="Factura (opcional)" error={errors.documentId}>
           <select
             id={fieldId('documentId')}
             className={billingInputClass}
@@ -186,7 +186,7 @@ function WithholdingLine({
             aria-describedby={describedBy('documentId')}
             onChange={(event) => onChange({ ...line, documentId: event.target.value })}
           >
-            <option value="">El primero que salda el pago</option>
+            <option value="">La primera que salda el pago</option>
             {documents.map((document) => (
               <option key={document.id} value={document.id}>
                 {documentReference(document)}

@@ -21,19 +21,19 @@ import type { BadgeProps } from '@iwana/ui';
 import { formatBillingDate } from '../crm/subscribers/billing-cycle-ui';
 
 export const PAYMENT_STATES = {
-  PAGADO: { label: 'Pagado', variant: 'success' },
+  PAGADO: { label: 'Pagada', variant: 'success' },
   PARCIAL: { label: 'Pago parcial', variant: 'info' },
   PENDIENTE: { label: 'Pendiente', variant: 'neutral' },
-  VENCIDO: { label: 'Vencido', variant: 'warning' },
-  SIN_DOCUMENTO: { label: 'Sin documento', variant: 'neutral' },
+  VENCIDO: { label: 'Vencida', variant: 'warning' },
+  SIN_DOCUMENTO: { label: 'Sin factura', variant: 'neutral' },
 } satisfies Record<BillingPeriodPaymentState, { label: string; variant: BadgeProps['variant'] }>;
 
 export const DOCUMENT_STATES = {
   BORRADOR: { label: 'Borrador', variant: 'neutral' },
-  EMITIDO: { label: 'Emitido', variant: 'info' },
-  ANULADO: { label: 'Anulado', variant: 'error' },
+  EMITIDO: { label: 'Emitida', variant: 'info' },
+  ANULADO: { label: 'Anulada', variant: 'error' },
   /** ADR-110 D5: historial traído de UISP; no es documento fiscal ni se emite o anula. */
-  IMPORTADO: { label: 'Histórico importado', variant: 'neutral' },
+  IMPORTADO: { label: 'Importada de UISP', variant: 'neutral' },
 } as const;
 
 export const PAYMENT_METHODS = {
@@ -75,7 +75,7 @@ export const COURTESY_REASONS = {
 export const COURTESY_VOID_REASONS = {
   ERROR_DE_REGISTRO: 'Error al registrar la cortesía',
   VALOR_INCORRECTO: 'Valor incorrecto',
-  DOCUMENTO_EQUIVOCADO: 'Documento equivocado',
+  DOCUMENTO_EQUIVOCADO: 'Factura equivocada',
   DECISION_REVERTIDA: 'Se revirtió la decisión',
 } satisfies Record<BillingCourtesyVoidReason, string>;
 
@@ -86,7 +86,7 @@ export const COURTESY_STATUSES = {
 
 export const COURTESY_APPLICATIONS = {
   LINEA_EN_BORRADOR: 'Línea en el borrador',
-  AJUSTE_SOBRE_EMITIDO: 'Ajuste sobre el documento emitido',
+  AJUSTE_SOBRE_EMITIDO: 'Ajuste sobre la factura emitida',
 } satisfies Record<BillingCourtesyApplication, string>;
 
 /**
@@ -147,7 +147,7 @@ export const WITHHOLDING_TAX_CODES = {
 
 /** Por qué el titular puede practicar retenciones (R7, decisión D3: solo O-23 en el RUT). */
 export const WITHHOLDING_ELIGIBILITY = {
-  AGENTE_RETENEDOR: 'El titular es agente de retención según su RUT.',
+  AGENTE_RETENEDOR: 'El cliente es agente de retención según su RUT.',
 } satisfies Record<NonNullable<BillingWithholdingOptionsResponse['eligibility']>, string>;
 
 /** Tarifa en porcentaje sin ceros sobrantes: «4.0000» → «4 %», «0.966» → «0,966 %». */
@@ -171,8 +171,8 @@ export const INSTALLATION_VALUE_SOURCES = {
 
 export const DOCUMENT_VOID_REASONS = {
   ERROR_DE_VALOR: 'Error en el valor facturado',
-  ERROR_DE_ADQUIRENTE: 'Error en los datos del adquirente',
-  DUPLICADO: 'Documento duplicado',
+  ERROR_DE_ADQUIRENTE: 'Error en los datos del cliente',
+  DUPLICADO: 'Factura duplicada',
   SERVICIO_NO_PRESTADO: 'Servicio no prestado',
   SUPLANTACION: 'Suplantación de identidad (falsedad personal - Ley 2573)',
 } as const;
@@ -185,8 +185,8 @@ export const PAYMENT_VOID_REASONS = {
 
 export const BLOCKING_REASONS = {
   SIN_PRECIO: 'Falta tarifa vigente en el catálogo comercial',
-  SIN_TRATAMIENTO_IVA: 'El punto de servicio no tiene régimen de IVA resoluble',
-  SIN_DATOS_FISCALES: 'Datos del suscriptor incompletos para facturar',
+  SIN_TRATAMIENTO_IVA: 'No se pudo determinar el IVA del punto de servicio',
+  SIN_DATOS_FISCALES: 'Faltan datos del cliente para facturar',
 } as const;
 
 export const PROTECTED_LABEL = BILLING_BLOCKED_BUYER_DISPLAY_NAME;
@@ -239,13 +239,13 @@ export function fromMoneyCents(value: number): string {
 /** Adicionales del contrato sin precio congelado: no se cobran hasta que el contrato lo tenga. */
 export function additionalNotice(count: number): string {
   if (count === 1)
-    return 'Este contrato tiene 1 adicional sin precio guardado en el contrato; por eso no se cobró en este documento';
-  return `Este contrato tiene ${count} adicionales sin precio guardado en el contrato; por eso no se cobraron en este documento`;
+    return 'Este contrato tiene 1 adicional sin precio guardado en el contrato; por eso no se cobró en esta factura';
+  return `Este contrato tiene ${count} adicionales sin precio guardado en el contrato; por eso no se cobraron en esta factura`;
 }
 
 export const IMPERSONATION_HOLD_TITLE =
   'Cobro suspendido preventivamente por investigación de suplantación de identidad (Ley 2573 de 2022).';
-export const IMPERSONATION_HOLD_NOTICE = 'No se generarán nuevos cobros hasta resolución.';
+export const IMPERSONATION_HOLD_NOTICE = 'No se generarán nuevas facturas hasta que se resuelva.';
 export const ANONYMIZED_STATEMENT_TITLE = 'Titular anonimizado';
 export const ANONYMIZED_STATEMENT_NOTICE =
   'El estado de cuenta ya no se consulta porque los datos del titular fueron anonimizados.';
@@ -277,9 +277,9 @@ export function documentReference(document: {
 
 /** Motivo de desasociar un pago de un documento (spec MOD05↔MOD14 2026-11-13 D6, P2). */
 export const ALLOCATION_UNLINK_REASONS = {
-  APLICADO_A_DOCUMENTO_EQUIVOCADO: 'Se aplicó al documento equivocado',
+  APLICADO_A_DOCUMENTO_EQUIVOCADO: 'Se aplicó a la factura equivocada',
   VALOR_EQUIVOCADO: 'El valor aplicado es incorrecto',
-  REASIGNACION: 'Se va a aplicar a otro documento',
+  REASIGNACION: 'Se va a aplicar a otra factura',
 } satisfies Record<BillingAllocationUnlinkReason, string>;
 
 /** Estado de un envío por correo (R4). */
@@ -300,8 +300,8 @@ export const EMAIL_REASONS = {
 /** Concepto visible de cada fila del libro del estado de cuenta (D4, R2). */
 export const LEDGER_ROW_KINDS = {
   SALDO_ANTERIOR: 'Saldo anterior',
-  DOCUMENTO: 'Documento de cobro',
-  DOCUMENTO_ANULADO: 'Documento de cobro anulado',
+  DOCUMENTO: 'Factura',
+  DOCUMENTO_ANULADO: 'Factura anulada',
   CORTESIA: 'Cortesía',
   PAGO: 'Pago',
   RETENCION: 'Retención',

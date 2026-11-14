@@ -335,7 +335,7 @@ describe('Pestaña Facturación — contrato activo sin cobros', () => {
     expect(screen.getByText('Se generó el primer cobro')).toBeInTheDocument();
   });
 
-  it('marca el servicio como «Sin cobros emitidos» en vez de su estado de pago', async () => {
+  it('marca el servicio como «Sin facturas emitidas» en vez de su estado de pago', async () => {
     mockStatement.mockResolvedValue(STATEMENT);
     render(
       <SubscriberBillingTab
@@ -352,8 +352,8 @@ describe('Pestaña Facturación — contrato activo sin cobros', () => {
     );
     const services = await screen.findByText('Facturación por servicio');
     const panel = services.closest('section') ?? document.body;
-    expect(within(panel as HTMLElement).getByText('Sin cobros emitidos')).toBeInTheDocument();
-    expect(within(panel as HTMLElement).queryByText('Sin documento')).not.toBeInTheDocument();
+    expect(within(panel as HTMLElement).getByText('Sin facturas emitidas')).toBeInTheDocument();
+    expect(within(panel as HTMLElement).queryByText('Sin factura')).not.toBeInTheDocument();
   });
 });
 
@@ -383,9 +383,9 @@ describe('firstChargeResultMessage', () => {
       }),
     );
     expect(message.variant).toBe('warning');
-    expect(message.title).toBe('Se generaron 2 documentos de cobro');
+    expect(message.title).toBe('Se generaron 2 facturas');
     expect(message.description).toContain('no se incluyó');
-    expect(message.description).toContain('revísalos en Facturación');
+    expect(message.description).toContain('revísalas en Facturación');
   });
 
   it('repetida sobre un contrato con periodos: no duplica y lo dice', () => {
@@ -399,7 +399,7 @@ describe('firstChargeResultMessage', () => {
     );
     expect(message).toEqual({
       variant: 'warning',
-      title: 'El contrato ya tenía cobros generados',
+      title: 'El contrato ya tenía facturas generadas',
       description: '',
     });
   });
@@ -420,7 +420,7 @@ describe('firstChargeResultMessage', () => {
       }),
     );
     expect(message.variant).toBe('success');
-    expect(message.title).toBe('Se regularizaron los cobros en borrador');
+    expect(message.title).toBe('Se regularizaron las facturas en borrador');
     expect(message.description).toContain('datos fiscales que le faltaban');
     expect(message.description).toContain('2 borradores quedaron listos para emitir.');
     expect(message.description).toContain('vencen ahora según el plazo de pago');
@@ -435,6 +435,6 @@ describe('firstChargeResultMessage', () => {
       }),
     );
     expect(message.variant).toBe('warning');
-    expect(message.description).toContain('Faltan datos fiscales del titular');
+    expect(message.description).toContain('Faltan datos fiscales del cliente');
   });
 });

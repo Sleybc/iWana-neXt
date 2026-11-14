@@ -14,14 +14,14 @@ function subscriberLabel(subscriber: SubscriberListItem): string {
   return (
     subscriber.businessName ||
     [subscriber.firstName, subscriber.lastName].filter(Boolean).join(' ') ||
-    'Suscriptor sin nombre disponible'
+    'Cliente sin nombre disponible'
   );
 }
 
 export function BillingSubscriberPicker({
   selected,
   onChange,
-  label = 'Buscar suscriptor',
+  label = 'Buscar cliente',
   disabled,
 }: {
   selected: SubscriberOption | null;
@@ -48,7 +48,7 @@ export function BillingSubscriberPicker({
           }
         })
         .catch(() => {
-          if (!controller.signal.aborted) setError('No pudimos buscar suscriptores.');
+          if (!controller.signal.aborted) setError('No pudimos buscar clientes.');
         });
     }, 250);
     return () => {
@@ -71,7 +71,7 @@ export function BillingSubscriberPicker({
             onChange(null);
           }}
         >
-          Cambiar suscriptor
+          Cambiar cliente
         </Button>
       </div>
     );
@@ -96,11 +96,11 @@ export function BillingSubscriberPicker({
         error ? (
           <p role="alert">{error}</p>
         ) : result?.query !== search ? (
-          <p role="status">Buscando suscriptores…</p>
+          <p role="status">Buscando clientes…</p>
         ) : result.items.length === 0 ? (
-          <p role="status">No encontramos suscriptores.</p>
+          <p role="status">No encontramos clientes.</p>
         ) : (
-          <ul aria-label="Resultados de suscriptores" className="space-y-1">
+          <ul aria-label="Resultados de clientes" className="space-y-1">
             {result.items.map((subscriber) => (
               <li key={subscriber.id}>
                 <Button

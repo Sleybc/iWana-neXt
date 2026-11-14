@@ -138,7 +138,7 @@ describe('BillingPaymentDialog — retenciones (spec MOD14 2026-11-13 R6, R7)', 
     mockRegisterPayment.mockResolvedValue({});
     renderDialog();
     expect(await screen.findByRole('heading', { name: 'Retenciones' })).toBeInTheDocument();
-    expect(screen.getByText(/El titular es agente de retención según su RUT/u)).toBeInTheDocument();
+    expect(screen.getByText(/El cliente es agente de retención según su RUT/u)).toBeInTheDocument();
 
     const first = await addLine(1);
     expect(within(first).getByLabelText('Tipo de retención')).toHaveValue('RETE_FUENTE_SERVICIOS');
@@ -236,7 +236,7 @@ describe('BillingPaymentDialog — retenciones (spec MOD14 2026-11-13 R6, R7)', 
     renderDialog();
     const line = await addLine(1);
     await userEvent.type(within(line).getByLabelText('Número de certificado'), 'RF-1');
-    await userEvent.selectOptions(within(line).getByLabelText('Documento (opcional)'), DOCUMENT_ID);
+    await userEvent.selectOptions(within(line).getByLabelText('Factura (opcional)'), DOCUMENT_ID);
     await userEvent.type(screen.getByLabelText('Monto del pago (COP)'), '100');
     await userEvent.click(screen.getByLabelText(/Distribuir automáticamente/u));
     const applied = screen.getByLabelText('Monto aplicado a DC-000201');
@@ -246,8 +246,8 @@ describe('BillingPaymentDialog — retenciones (spec MOD14 2026-11-13 R6, R7)', 
     await userEvent.click(screen.getByRole('button', { name: 'Registrar pago' }));
 
     expect(mockRegisterPayment).not.toHaveBeenCalled();
-    expect(within(line).getByLabelText('Documento (opcional)')).toHaveAccessibleDescription(
-      'La retención supera lo que este pago aplica a ese documento.',
+    expect(within(line).getByLabelText('Factura (opcional)')).toHaveAccessibleDescription(
+      'La retención supera lo que este pago aplica a esa factura.',
     );
   });
 
@@ -263,7 +263,7 @@ describe('BillingPaymentDialog — retenciones (spec MOD14 2026-11-13 R6, R7)', 
     await userEvent.selectOptions(screen.getByLabelText('Método de pago'), 'EFECTIVO');
     await userEvent.click(screen.getByRole('button', { name: 'Registrar pago' }));
     expect(
-      await screen.findByText(/Este titular no puede registrar retenciones/u),
+      await screen.findByText(/Este cliente no puede practicar retenciones/u),
     ).toBeInTheDocument();
   });
 
@@ -280,7 +280,7 @@ describe('BillingPaymentDialog — retenciones (spec MOD14 2026-11-13 R6, R7)', 
     await userEvent.click(screen.getByRole('button', { name: 'Registrar pago' }));
     expect(
       await screen.findByText(
-        /Cada retención debe corresponder a un documento que este pago salda/u,
+        /Cada retención debe corresponder a una factura que este pago salda/u,
       ),
     ).toBeInTheDocument();
   });
@@ -309,7 +309,7 @@ describe('BillingPaymentDialog — retenciones (spec MOD14 2026-11-13 R6, R7)', 
     mockWithholdingOptions.mockRejectedValueOnce(new Error('red')).mockResolvedValue(ELIGIBLE);
     renderDialog();
     expect(
-      await screen.findByText('No pudimos consultar si el titular practica retenciones'),
+      await screen.findByText('No pudimos consultar si el cliente practica retenciones'),
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Monto del pago (COP)')).toBeEnabled();
     await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
@@ -356,7 +356,7 @@ describe('BillingPaymentDialog — reglas por documento y tipo, y tarifa sugerid
     expect(mockRegisterPayment).not.toHaveBeenCalled();
     expect(base).toHaveAttribute('aria-invalid', 'true');
     expect(base).toHaveAccessibleDescription(
-      /^La base de este tipo de retención supera el subtotal antes de IVA del documento/u,
+      /^La base de este tipo de retención supera el subtotal antes de IVA de la factura/u,
     );
   });
 
@@ -377,8 +377,8 @@ describe('BillingPaymentDialog — reglas por documento y tipo, y tarifa sugerid
     await submitWithFullBalance();
 
     expect(mockRegisterPayment).not.toHaveBeenCalled();
-    expect(within(second).getByLabelText('Documento (opcional)')).toHaveAccessibleDescription(
-      /^Ese documento ya tiene una retención de este tipo/u,
+    expect(within(second).getByLabelText('Factura (opcional)')).toHaveAccessibleDescription(
+      /^Esa factura ya tiene una retención de este tipo/u,
     );
   });
 
@@ -412,8 +412,8 @@ describe('BillingPaymentDialog — reglas por documento y tipo, y tarifa sugerid
     await submitWithFullBalance();
 
     expect(mockRegisterPayment).not.toHaveBeenCalled();
-    expect(within(line).getByLabelText('Documento (opcional)')).toHaveAccessibleDescription(
-      /^Ese documento ya tiene una retención de este tipo/u,
+    expect(within(line).getByLabelText('Factura (opcional)')).toHaveAccessibleDescription(
+      /^Esa factura ya tiene una retención de este tipo/u,
     );
   });
 
@@ -439,7 +439,7 @@ describe('BillingPaymentDialog — reglas por documento y tipo, y tarifa sugerid
       'BILLING_WITHHOLDING_RATE_ABOVE_CEILING',
       /La tarifa de una retención supera la sugerida por Tributación/u,
     ],
-    ['BILLING_WITHHOLDING_DUPLICATE', /Un documento ya tiene una retención vigente/u],
+    ['BILLING_WITHHOLDING_DUPLICATE', /Una factura ya tiene una retención vigente/u],
     ['BILLING_WITHHOLDING_BASE_EXCEEDS_SUBTOTAL', /La base de una retención supera el subtotal/u],
     // Fuera del contrato compartido: mapeo tolerante por el texto del código.
     ['BILLING_WITHHOLDING_RATE_TOO_HIGH', /La tarifa de una retención supera la sugerida/u],

@@ -80,11 +80,11 @@ describe('BillingDocumentTable (CA-UX-FAC-05, 07, 13)', () => {
   });
 
   it.each([
-    ['PAGADO', 'Pagado'],
+    ['PAGADO', 'Pagada'],
     ['PARCIAL', 'Pago parcial'],
     ['PENDIENTE', 'Pendiente'],
-    ['VENCIDO', 'Vencido'],
-    ['SIN_DOCUMENTO', 'Sin documento'],
+    ['VENCIDO', 'Vencida'],
+    ['SIN_DOCUMENTO', 'Sin factura'],
   ] as const)('muestra la píldora de estado de pago %s', (state, label) => {
     renderTable([{ ...BASE, paymentState: state }]);
     expect(screen.getByText(label)).toBeInTheDocument();
@@ -181,6 +181,6 @@ describe('BillingDocumentTable — línea de instalación (fase 2, CA-4/CA-5)', 
     ]);
     expect(screen.getByText('UISP-778')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Descargar PDF' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Anular documento' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Anular factura' })).not.toBeInTheDocument();
   });
 });

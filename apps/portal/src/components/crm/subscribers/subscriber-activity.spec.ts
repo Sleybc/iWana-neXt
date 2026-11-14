@@ -22,7 +22,7 @@ describe('subscriber-activity — importados', () => {
         },
       ]),
     );
-    expect(item?.title).toBe('Histórico importado UISP-778');
+    expect(item?.title).toBe('Factura histórica de UISP UISP-778');
   });
 
   it('un borrador propio sigue siendo «Documento de cobro en borrador»', () => {
@@ -31,7 +31,7 @@ describe('subscriber-activity — importados', () => {
         { id: 'd2', number: null, status: 'BORRADOR', createdAt: '2026-11-12T10:00:00.000Z' },
       ]),
     );
-    expect(item?.title).toBe('Documento de cobro en borrador');
+    expect(item?.title).toBe('Factura en borrador');
   });
 
   it('el cambio de estado importado muestra su origen y motivo en español', () => {

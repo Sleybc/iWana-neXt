@@ -334,7 +334,7 @@ export class BillingPaymentsController {
     if (!key || !key.trim())
       throw new BadRequestException({
         code: 'IDEMPOTENCY_KEY_REQUIRED',
-        message: 'La clave de idempotencia es obligatoria.',
+        message: 'Falta el identificador de la operación. Recarga la página e intenta de nuevo.',
       });
     const actor = actorId(request);
     const { permissions, readAccess } = await this.readAccess(actor);

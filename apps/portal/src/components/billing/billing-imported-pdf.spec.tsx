@@ -73,7 +73,7 @@ describe('Facturas — PDF del histórico importado', () => {
     expect(screen.getByText('UISP-2024-0042')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Descargar PDF' }));
     await waitFor(() => expect(mockDocumentPdf).toHaveBeenCalledWith(IMPORTED.id));
-    await waitFor(() => expect(names).toEqual(['UISP-2024-0042.pdf']));
+    await waitFor(() => expect(names).toEqual(['factura-importada-UISP-2024-0042.pdf']));
   });
 
   it('explica cuando el PDF no se trajo en la importación', async () => {
@@ -82,7 +82,7 @@ describe('Facturas — PDF del histórico importado', () => {
     render(<BillingDocumentTable documents={[IMPORTED]} onChanged={jest.fn()} />);
     await user.click(screen.getByRole('button', { name: 'Descargar PDF' }));
     expect(
-      await screen.findByText('El PDF de este documento histórico no se trajo en la importación.'),
+      await screen.findByText('El PDF de esta factura histórica no se trajo en la importación.'),
     ).toBeInTheDocument();
   });
 });

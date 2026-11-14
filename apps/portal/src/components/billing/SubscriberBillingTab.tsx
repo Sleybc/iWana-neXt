@@ -99,7 +99,7 @@ function moveTabFocus(
   tabs[next]?.focus();
 }
 
-const NOT_STARTED_BADGE = { label: 'Sin cobros emitidos', variant: 'warning' } as const;
+const NOT_STARTED_BADGE = { label: 'Sin facturas emitidas', variant: 'warning' } as const;
 
 /** Columnas de las tarjetas según cuántas haya (cortesías y retenciones son opcionales). */
 const METRIC_GRID_COLUMNS: Record<number, string> = {
@@ -199,7 +199,7 @@ export function SubscriberBillingTab({
             eyebrow="Histórico"
             title="Cortesías otorgadas"
             value={formatBillingMoney(courtesyTotal)}
-            description="No son pagos: bajan el saldo de los documentos."
+            description="No son pagos: bajan el saldo de las facturas."
           />
         ) : null}
         <PortalMetricCard
@@ -439,7 +439,7 @@ function ApplyCreditDialog({
         <DialogHeader>
           <DialogTitle>Aplicar saldo a favor</DialogTitle>
           <DialogDescription>
-            El saldo del pago seleccionado se aplicará a los documentos pendientes más antiguos.
+            El saldo del pago seleccionado se aplicará a las facturas pendientes más antiguas.
           </DialogDescription>
         </DialogHeader>
         <form className="space-y-4" onSubmit={submit}>
@@ -463,7 +463,7 @@ function ApplyCreditDialog({
             {suggested.map((item) => (
               <li key={item.documentId}>
                 {statement.documents.find((document) => document.id === item.documentId)?.number ??
-                  'Documento de cobro'}{' '}
+                  'Factura'}{' '}
                 · {formatBillingMoney(item.amount)}
               </li>
             ))}

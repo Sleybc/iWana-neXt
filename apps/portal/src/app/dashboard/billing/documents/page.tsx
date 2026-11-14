@@ -3,7 +3,7 @@ import { AccessPermissionKey } from '@iwana/shared';
 import { PagePermissionGate } from '@/components/access-control/PagePermissionGate';
 import { BillingDocumentsClient } from '@/components/billing/BillingDocumentsClient';
 
-export const metadata = { title: 'Documentos de cobro' };
+export const metadata = { title: 'Facturas' };
 
 export default function BillingDocumentsPage() {
   return (

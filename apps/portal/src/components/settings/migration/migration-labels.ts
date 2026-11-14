@@ -30,7 +30,7 @@ export function migrationBatchHref(batchId: string): string {
 export const MIGRATION_COPY = {
   pageTitle: 'Importaciones',
   pageSubtitle:
-    'Trae suscriptores, servicios, cobros, pagos, tickets y soportes desde UISP. Cada lote se simula primero; nada pasa a iWana hasta que lo promuevas.',
+    'Trae suscriptores, servicios, facturas, pagos, tickets y soportes desde UISP. Cada lote se simula primero; nada pasa a iWana hasta que lo promuevas.',
   forbiddenTitle: 'No tienes acceso a las importaciones',
   forbiddenDescription:
     'Solo un administrador con el permiso de importación de datos puede subir y promover lotes.',
@@ -78,7 +78,7 @@ export function isBatchInProgress(
 export const MIGRATION_ENTITY_LABELS: Record<MigrationEntity, string> = {
   SUSCRIPTOR: 'Suscriptores',
   CONTRATO: 'Servicios',
-  DOCUMENTO_COBRO: 'Documentos de cobro',
+  DOCUMENTO_COBRO: 'Facturas',
   PAGO: 'Pagos',
   TICKET: 'Tickets',
   SOPORTE_DOCUMENTAL: 'Soportes documentales',
@@ -142,7 +142,7 @@ export function mappingActionsFor(kind: MigrationMappingKind): MigrationMappingA
 export const MIGRATION_REVERT_BLOCK_LABELS: Record<MigrationRevertBlockReason, string> = {
   PAGO_POSTERIOR: 'Pagos registrados después de la importación',
   APLICACION_POSTERIOR: 'Pagos aplicados después de la importación',
-  DOCUMENTO_POSTERIOR: 'Documentos de cobro emitidos después de la importación',
+  DOCUMENTO_POSTERIOR: 'Facturas emitidas después de la importación',
   CONTRATO_POSTERIOR: 'Servicios creados después de la importación',
   ORDEN_DE_TRABAJO: 'Órdenes de trabajo asociadas',
   TICKET_POSTERIOR: 'Tickets creados después de la importación',

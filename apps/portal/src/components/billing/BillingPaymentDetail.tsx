@@ -44,13 +44,14 @@ export function unlinkBlockReason(
 ): string | null {
   if (payment.status !== 'REGISTRADO' || allocation.reversedAt)
     return 'Esta aplicación ya no está vigente.';
-  if (document?.status === 'ANULADO') return 'No se puede desasociar: el documento está anulado.';
-  if (document?.status === 'IMPORTADO') return 'No se puede desasociar: es un histórico importado.';
+  if (document?.status === 'ANULADO') return 'No se puede desasociar: la factura está anulada.';
+  if (document?.status === 'IMPORTADO')
+    return 'No se puede desasociar: es una factura histórica de UISP.';
   const withholding = (payment.withholdings ?? []).some(
     (line) => line.documentId === allocation.documentId && line.voidedAt == null,
   );
   if (withholding)
-    return 'No se puede desasociar: este pago tiene una retención sobre el documento. Para corregirlo, anula el pago.';
+    return 'No se puede desasociar: este pago tiene una retención sobre la factura. Para corregirlo, anula el pago.';
   return null;
 }
 
@@ -65,7 +66,7 @@ function allocationState(allocation: BillingPaymentAllocationResponse) {
   return {
     label: 'Revertida',
     variant: 'neutral' as const,
-    note: 'Al anular el pago o el documento',
+    note: 'Al anular el pago o la factura',
   };
 }
 
@@ -102,7 +103,7 @@ export function BillingPaymentDetail({
   const documentFor = (id: string) => documents.find((document) => document.id === id);
   const documentLabel = (id: string) => {
     const document = documentFor(id);
-    return document ? documentReference(document) : 'Documento de cobro';
+    return document ? documentReference(document) : 'Factura';
   };
 
   async function downloadReceipt() {
@@ -157,7 +158,7 @@ export function BillingPaymentDetail({
             <Field label="Retenciones" value={formatBillingMoneyExact(withholdingTotal)} />
           ) : null}
           <Field
-            label="Aplicado a documentos"
+            label="Aplicado a facturas"
             value={
               payment.allocatedAmount == null
                 ? '—'
@@ -214,7 +215,7 @@ export function BillingPaymentDetail({
           {allocations.length ? (
             <BillingTable
               label="Facturas cubiertas por el pago"
-              columns={['Documento', 'Valor aplicado', 'Estado', 'Acciones']}
+              columns={['Factura', 'Valor aplicado', 'Estado', 'Acciones']}
               rows={allocations.map((allocation) => {
                 const state = allocationState(allocation);
                 const blocked = unlinkBlockReason(
@@ -242,7 +243,7 @@ export function BillingPaymentDetail({
                           type="button"
                           variant="ghost"
                           disabled={blocked !== null}
-                          aria-label={`Desasociar del documento ${documentLabel(allocation.documentId)}`}
+                          aria-label={`Desasociar de la factura ${documentLabel(allocation.documentId)}`}
                           {...(blocked ? { 'aria-describedby': noteId } : {})}
                           onClick={() => setUnlinking(allocation)}
                         >
@@ -266,7 +267,7 @@ export function BillingPaymentDetail({
             />
           ) : (
             <p className="text-sm text-gray-600 dark:text-gray-300">
-              Este pago no está aplicado a ningún documento.
+              Este pago no está aplicado a ninguna factura.
             </p>
           )}
         </section>
@@ -275,7 +276,7 @@ export function BillingPaymentDetail({
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Retenciones</h3>
             <BillingTable
               label="Retenciones del pago"
-              columns={['Tipo', 'Documento', 'Valor', 'Estado']}
+              columns={['Tipo', 'Factura', 'Valor', 'Estado']}
               rows={withholdings.map((line) => ({
                 id: line.id,
                 cells: [
@@ -301,8 +302,8 @@ export function BillingPaymentDetail({
       {unlinking ? (
         <BillingConfirmation
           key={unlinking.id}
-          title={`Desasociar del documento ${documentLabel(unlinking.documentId)}`}
-          description={`El valor de ${formatBillingMoney(unlinking.amount)} vuelve al saldo a favor del pago y el documento queda con ese saldo pendiente. Puedes aplicarlo de nuevo con «Aplicar saldo a favor».`}
+          title={`Desasociar de la factura ${documentLabel(unlinking.documentId)}`}
+          description={`El valor de ${formatBillingMoney(unlinking.amount)} vuelve al saldo a favor del pago y la factura queda con ese saldo pendiente. Puedes aplicarlo de nuevo con «Aplicar saldo a favor».`}
           confirm="Desasociar"
           reasons={ALLOCATION_UNLINK_REASONS}
           reasonLabel="Motivo"

@@ -173,7 +173,7 @@ export class BillingEmailsController {
   @Roles(...INVOICE_SEND_ROLES)
   @Permissions(AccessPermissionKey.BILLING_INVOICES_MANAGE)
   @ApiOperation({
-    summary: 'Enviar un documento de cobro emitido al titular',
+    summary: 'Enviar una factura emitida al cliente',
     description: SEND_DESCRIPTION,
   })
   @ApiParam({ name: 'id', format: 'uuid' })

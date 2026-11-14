@@ -182,10 +182,8 @@ describe('billing-withholdings', () => {
       subtotal,
       [],
     );
-    expect(same.get('l1')?.documentId).toMatch(
-      /^Ese documento ya tiene una retención de este tipo/u,
-    );
-    expect(same.get('l2')?.documentId).toMatch(/^Ese documento ya tiene/u);
+    expect(same.get('l1')?.documentId).toMatch(/^Esa factura ya tiene una retención de este tipo/u);
+    expect(same.get('l2')?.documentId).toMatch(/^Esa factura ya tiene/u);
     // Tipos distintos en el mismo documento: válido.
     expect(
       withholdingDocumentErrors(
@@ -242,7 +240,7 @@ describe('billing-withholdings', () => {
       subtotal,
       previous,
     );
-    expect(withPrevious.get('l1')?.documentId).toMatch(/^Ese documento ya tiene/u);
+    expect(withPrevious.get('l1')?.documentId).toMatch(/^Esa factura ya tiene/u);
     expect(withPrevious.has('l2')).toBe(false);
   });
 
@@ -264,7 +262,7 @@ describe('billing-withholdings', () => {
       [],
     );
     expect(errors.get('l1')?.base).toMatch(
-      /^La base de este tipo de retención supera el subtotal antes de IVA del documento/u,
+      /^La base de este tipo de retención supera el subtotal antes de IVA de la factura/u,
     );
     // Acumulada con una vigente de un pago anterior del mismo tipo.
     expect(

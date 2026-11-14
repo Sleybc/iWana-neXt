@@ -103,7 +103,9 @@ describe('SubscriberBillingTab (CA-UX-FAC-12, 13; RS-21, RS-22)', () => {
         ),
       ).toBeInTheDocument(),
     );
-    expect(screen.getByText('No se generarán nuevos cobros hasta resolución.')).toBeInTheDocument();
+    expect(
+      screen.getByText('No se generarán nuevas facturas hasta que se resuelva.'),
+    ).toBeInTheDocument();
   });
 
   it('muestra el estado redactado del titular bloqueado con el aviso institucional', async () => {

@@ -7,7 +7,10 @@ import { BillingPaymentTable } from './BillingPaymentsClient';
 import { DOCUMENT_VOID_REASONS } from './billing-copy';
 
 jest.mock('@/components/access-control/permissions-context', () => ({
-  usePermissions: () => ({ hasPermission: () => true }),
+  usePermissions: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () => (ctx ??= { hasPermission: () => true });
+  })(),
 }));
 
 jest.mock('@/lib/api-client', () => {

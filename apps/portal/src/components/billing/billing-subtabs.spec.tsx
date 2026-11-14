@@ -218,7 +218,7 @@ describe('SubscriberBillingTab — subpestañas', () => {
     const panel = screen.getByRole('tabpanel');
     expect(panel).toHaveAttribute('aria-labelledby', facturas!.id);
     expect(facturas).toHaveAttribute('aria-controls', panel.id);
-    expect(within(panel).getByText('Documentos de cobro')).toBeInTheDocument();
+    expect(within(panel).getByText('Facturas')).toBeInTheDocument();
     expect(screen.getByText('Total facturado')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Registrar pago' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Aplicar saldo a favor' })).toBeInTheDocument();
@@ -228,7 +228,7 @@ describe('SubscriberBillingTab — subpestañas', () => {
   it('un valor desconocido de sub abre Facturas', async () => {
     renderTab('tab=facturacion&sub=desconocida');
     expect(tabs()[0]).toHaveAttribute('aria-selected', 'true');
-    expect(await screen.findByText('Aún no hay documentos de cobro')).toBeInTheDocument();
+    expect(await screen.findByText('Aún no hay facturas')).toBeInTheDocument();
   });
 
   it('sub=pagos abre Pagos con la columna Recibo y el número del recibo', () => {

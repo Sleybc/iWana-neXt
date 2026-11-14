@@ -100,7 +100,7 @@ export function BillingEmailLog({
 }
 
 const REJECTION_DETAIL = {
-  SIN_CORREO: 'El titular no tiene correo registrado. Regístralo en sus datos y vuelve a enviarlo.',
+  SIN_CORREO: 'El cliente no tiene correo registrado. Regístralo en sus datos y vuelve a enviarlo.',
   TITULAR_RESTRINGIDO: 'Los datos del titular están restringidos: no se le envían correos.',
   FALLO_DE_ENVIO: 'El servidor de correo no aceptó el envío. Intenta de nuevo más tarde.',
 } as const;
