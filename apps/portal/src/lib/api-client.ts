@@ -276,6 +276,12 @@ import type {
   BillingPaymentResponse,
   BillingPeriodPaymentState,
   BillingWithholdingOptionsResponse,
+  BillingEmailLogEntry,
+  BillingEmailLogResponse,
+  BillingStatementLedger,
+  BillingStatementLedgerQuery,
+  SendStatementEmailCommand,
+  UnlinkAllocationCommand,
   AllocateCreditCommand,
   GenerateDocumentsCommand,
   GenerateFirstChargeCommand,
@@ -7553,7 +7559,7 @@ export type BillingDocumentsQuery = {
   to?: string;
 };
 
-function billingListQuery(query: BillingDocumentsQuery): string {
+function billingListQuery(query: Readonly<Record<string, string | number | undefined>>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     if (value !== undefined) search.set(key, String(value));
@@ -7645,9 +7651,56 @@ export const billingApi = {
       input,
       key,
     ),
+  /**
+   * Desasocia una aplicación vigente del pago sin anularlo (spec MOD05↔MOD14 2026-11-13 D6). El
+   * valor queda como saldo a favor del pago. La API no usa llave de idempotencia en esta ruta.
+   */
+  unlinkAllocation: (paymentId: string, allocationId: string, input: UnlinkAllocationCommand) =>
+    request<BillingPaymentResponse>(
+      `/billing/payments/${encodeURIComponent(paymentId)}/allocations/${encodeURIComponent(allocationId)}/unlink`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
+  /** Recibo numerado del pago en PDF (D3); 409 BILLING_RECEIPT_NOT_AVAILABLE si es importado. */
+  receiptPdf: (paymentId: string) =>
+    request<Blob>(`/billing/payments/${encodeURIComponent(paymentId)}/receipt/pdf`, {
+      responseType: 'blob',
+      cache: 'no-store',
+    }),
   statement: (subscriberId: string) =>
     request<BillingAccountStatement>(
       `/billing/subscribers/${encodeURIComponent(subscriberId)}/statement`,
+    ),
+  /** Libro del estado de cuenta con saldo corrido (D4, D7); `from`/`to` opcionales. */
+  statementLedger: (subscriberId: string, query: BillingStatementLedgerQuery = {}) =>
+    request<BillingStatementLedger>(
+      `/billing/subscribers/${encodeURIComponent(subscriberId)}/statement/ledger${billingListQuery(query)}`,
+    ),
+  statementLedgerPdf: (subscriberId: string, query: BillingStatementLedgerQuery = {}) =>
+    request<Blob>(
+      `/billing/subscribers/${encodeURIComponent(subscriberId)}/statement/ledger/pdf${billingListQuery(query)}`,
+      { responseType: 'blob', cache: 'no-store' },
+    ),
+  /** Envía al titular un documento EMITIDO (D5). 202 con la fila del registro. */
+  sendDocumentEmail: (documentId: string) =>
+    request<BillingEmailLogEntry>(`/billing/documents/${encodeURIComponent(documentId)}/send`, {
+      method: 'POST',
+    }),
+  /** Envía al titular el recibo de un pago nativo no anulado (D3). */
+  sendReceiptEmail: (paymentId: string) =>
+    request<BillingEmailLogEntry>(
+      `/billing/payments/${encodeURIComponent(paymentId)}/receipt/send`,
+      { method: 'POST' },
+    ),
+  /** Envía al titular el estado de cuenta del periodo (D4). */
+  sendStatementEmail: (subscriberId: string, input: SendStatementEmailCommand = {}) =>
+    request<BillingEmailLogEntry>(
+      `/billing/subscribers/${encodeURIComponent(subscriberId)}/statement/send`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
+  /** Registro de correos del titular, del más reciente al más antiguo (R4). */
+  emailLog: (subscriberId: string) =>
+    request<BillingEmailLogResponse>(
+      `/billing/subscribers/${encodeURIComponent(subscriberId)}/email-log`,
     ),
   contractPolicy: (contractId: string) =>
     request<BillingContractPolicyResponse['data']>(

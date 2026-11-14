@@ -38,6 +38,8 @@
  * MOD14 2026-11-13 bloque C): certificate_number queda EXCLUIDA por la decisión D5 (soporte
  * contable y tributario del ISP; se oculta en lecturas con DATOS_BLOQUEADOS o titular
  * anonimizado); tax_code es un dominio cerrado con CHECK.
+ * billing_payment_allocations.reversal_reason_code es el motivo de desasociar (migración 207): CODIGO.
+ * Las cinco de billing_email_log son del registro de correos (migración 208, spec MOD05↔MOD14 2026-11-13 bloque B): recipient_masked CUBIERTA por BillingTitularErasureParticipant; subject EXCLUIDA (plantilla); kind, status y reason_code son dominios con CHECK.
  * Las ocho de billing_installation_breakdowns(_items) son del consumo de la instalación (migración
  * 205, spec MOD14 2026-11-13 bloque A): número de OT, identificadores, nombre y unidad del
  * catálogo de inventario, seriales del equipo (ocultos al leer si el titular está anonimizado o
@@ -4250,6 +4252,12 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
     d: 'CODIGO: RETE_FUENTE_SERVICIOS|RETE_ICA, dominio cerrado con CHECK (migración 206)',
   },
   {
+    t: 'billing_payment_allocations',
+    c: 'reversal_reason_code',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: dominio cerrado con CHECK, sin texto libre (migración 207)',
+  },
+  {
     t: 'billing_installation_breakdowns',
     c: 'execution_order_number',
     k: 'EXCLUIDA',
@@ -4296,5 +4304,35 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
     c: 'value_source',
     k: 'EXCLUIDA',
     d: 'ENUM: PRECIO_COMERCIAL|COSTO_PROMEDIO|SIN_VALOR, dominio cerrado con CHECK (migración 205)',
+  },
+  {
+    t: 'billing_email_log',
+    c: 'kind',
+    k: 'EXCLUIDA',
+    d: 'ENUM: FACTURA|RECIBO|ESTADO_CUENTA, dominio cerrado con CHECK (migración 208)',
+  },
+  {
+    t: 'billing_email_log',
+    c: 'recipient_masked',
+    k: 'CUBIERTA',
+    d: 'apps/api/src/modules/billing/privacy/billing-titular-erasure.participant.ts (destinatario enmascarado del titular; se vacía con el titular)',
+  },
+  {
+    t: 'billing_email_log',
+    c: 'subject',
+    k: 'EXCLUIDA',
+    d: 'PLANTILLA: asunto generado por billingDocumentEmailTemplate con el tipo, el número del documento o recibo y la razón social del tenant; sin datos del titular ni texto libre (migración 208)',
+  },
+  {
+    t: 'billing_email_log',
+    c: 'status',
+    k: 'EXCLUIDA',
+    d: 'ENUM: EN_COLA|ENVIADO|ERROR|RECHAZADO, dominio cerrado con CHECK (migración 208)',
+  },
+  {
+    t: 'billing_email_log',
+    c: 'reason_code',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: SIN_CORREO|TITULAR_RESTRINGIDO|FALLO_DE_ENVIO con CHECK; nunca el mensaje del servidor de correo (migración 208)',
   },
 ];

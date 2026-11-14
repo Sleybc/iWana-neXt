@@ -23,8 +23,8 @@ if (integrationEnabled && !supportedDatabaseName) {
 
 jest.setTimeout(900_000);
 
-const EXPECTED_MANIFEST_SIZE = 803; // +6 IVA por ítem del catálogo (201), +1 adicionales (202), +9 cortesías (203), +8 consumo de instalación (205), +2 retenciones (206)
-const EXPECTED_CLASSIFIED_MOD14 = 61; // +billing_documents.external_pdf_key (199), +1 adicionales (202), +9 cortesías (203), +8 consumo de instalación (205), +2 retenciones (206)
+const EXPECTED_MANIFEST_SIZE = 809; // +6 IVA por ítem del catálogo (201), +1 adicionales (202), +9 cortesías (203), +8 consumo de instalación (205), +2 retenciones (206), +1 motivo de desasociar (207), +5 registro de correos (208)
+const EXPECTED_CLASSIFIED_MOD14 = 67; // +billing_documents.external_pdf_key (199), +1 adicionales (202), +9 cortesías (203), +8 consumo de instalación (205), +2 retenciones (206), +1 motivo de desasociar (207), +5 registro de correos (208)
 
 /**
  * Predicado textual D-BT-10: el mismo que produjo el manifiesto desde
@@ -61,7 +61,7 @@ export function assertTextErasureManifestCovers(
 }
 
 describe('D-BT-10 — manifiesto de columnas textuales (puro)', () => {
-  it('el manifiesto declara 803 entradas únicas con motivo no vacío', () => {
+  it('el manifiesto declara 809 entradas únicas con motivo no vacío', () => {
     expect(TEXT_ERASURE_MANIFEST).toHaveLength(EXPECTED_MANIFEST_SIZE);
     const keys = TEXT_ERASURE_MANIFEST.map((entry) => `${entry.t}.${entry.c}`);
     expect(new Set(keys).size).toBe(EXPECTED_MANIFEST_SIZE);
@@ -70,7 +70,7 @@ describe('D-BT-10 — manifiesto de columnas textuales (puro)', () => {
     }
   });
 
-  it('MOD14 clasifica sus 61 columnas con nueve reglas de supresión y cero pendientes', () => {
+  it('MOD14 clasifica sus 67 columnas con diez reglas de supresión y cero pendientes', () => {
     const pending = TEXT_ERASURE_MANIFEST.filter((entry) => entry.k === 'PENDIENTE-MOD14');
     expect(pending).toHaveLength(0);
     const classified = TEXT_ERASURE_MANIFEST.filter(
@@ -78,7 +78,8 @@ describe('D-BT-10 — manifiesto de columnas textuales (puro)', () => {
     );
     expect(classified).toHaveLength(EXPECTED_CLASSIFIED_MOD14);
     // Nueve: billing_payment_withholdings.certificate_number pasó a EXCLUIDA (decisión D5, 2026-11-13).
-    expect(classified.filter((entry) => entry.k === 'CUBIERTA')).toHaveLength(9);
+    // Diez: billing_email_log.recipient_masked (migración 208, spec MOD05↔MOD14 2026-11-13 R4).
+    expect(classified.filter((entry) => entry.k === 'CUBIERTA')).toHaveLength(10);
   });
 
   it('CA-BT-12 detecta en rojo una columna nueva sin clasificar', () => {

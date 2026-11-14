@@ -71,4 +71,62 @@ describe('BillingPaymentsController OpenAPI (BR-9.3)', () => {
       }),
     );
   });
+
+  it('declara desasociar y el recibo PDF con permisos, cuerpos y respuestas (spec 2026-11-13 D6, D8)', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Billing API').setVersion('1.0').build(),
+    );
+    const unlink = document.paths['/billing/payments/{id}/allocations/{allocationId}/unlink']
+      ?.post as unknown as Record<string, unknown> | undefined;
+    expect(unlink).toBeDefined();
+    const body = (
+      (unlink?.['requestBody'] as Record<string, unknown>)?.['content'] as Record<
+        string,
+        { schema: Record<string, unknown> }
+      >
+    )['application/json']?.schema;
+    expect(body).toEqual(
+      expect.objectContaining({
+        required: ['reasonCode'],
+        additionalProperties: false,
+        properties: {
+          reasonCode: {
+            type: 'string',
+            enum: ['APLICADO_A_DOCUMENTO_EQUIVOCADO', 'VALOR_EQUIVOCADO', 'REASIGNACION'],
+          },
+        },
+      }),
+    );
+    expect(Object.keys(unlink?.['responses'] as object)).toEqual(
+      expect.arrayContaining(['200', '401', '403', '404', '409', '422']),
+    );
+    const data = (
+      getResponseSchema(unlink, '200')?.['properties'] as Record<string, Record<string, unknown>>
+    )?.['data'];
+    const properties = data?.['properties'] as Record<string, Record<string, unknown>>;
+    expect(properties['receiptNumber']).toEqual(
+      expect.objectContaining({ type: 'integer', nullable: true }),
+    );
+    expect(properties['imported']).toEqual(expect.objectContaining({ type: 'boolean' }));
+    expect(properties['externalId']).toEqual(
+      expect.objectContaining({ type: 'string', nullable: true }),
+    );
+    const allocation = (properties['allocations']?.['items'] as Record<string, unknown>)?.[
+      'properties'
+    ] as Record<string, Record<string, unknown>>;
+    expect(allocation['reversalReasonCode']).toEqual(
+      expect.objectContaining({ nullable: true, enum: expect.arrayContaining(['REASIGNACION']) }),
+    );
+
+    const receipt = document.paths['/billing/payments/{id}/receipt/pdf']?.get as unknown as
+      | Record<string, unknown>
+      | undefined;
+    expect(receipt).toBeDefined();
+    const responses = receipt?.['responses'] as Record<string, Record<string, unknown>>;
+    expect(Object.keys(responses)).toEqual(
+      expect.arrayContaining(['200', '401', '403', '404', '409', '503']),
+    );
+    expect(Object.keys(responses['200']?.['content'] as object)).toContain('application/pdf');
+  });
 });

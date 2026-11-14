@@ -1496,7 +1496,8 @@ test.describe('MOD14 Primer cobro completo — E2E vivo', () => {
       ),
     ).toBe('0');
 
-    await page.reload();
+    // Spec MOD05↔MOD14 2026-11-13 R1: retenciones y «Pagos recibidos» viven en la subpestaña Pagos.
+    await page.goto(`/dashboard/crm/subscribers/${seed.subscriberId}?tab=facturacion&sub=pagos`);
     const withholdingList = billingTab.getByRole('region', { name: 'Detalle de retenciones' });
     await expect(withholdingList).toBeVisible({ timeout: 30_000 });
     await expect(withholdingList).toContainText('Retención en la fuente por servicios');
@@ -1531,7 +1532,7 @@ test.describe('MOD14 Primer cobro completo — E2E vivo', () => {
       ),
     ).toBe('2');
 
-    await page.reload();
+    await page.goto(`/dashboard/crm/subscribers/${seed.subscriberId}?tab=facturacion&sub=pagos`);
     const voidedList = billingTab.getByRole('region', { name: 'Detalle de retenciones' });
     await expect(voidedList.getByText('Anulada', { exact: true })).toHaveCount(2, {
       timeout: 30_000,

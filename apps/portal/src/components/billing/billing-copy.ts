@@ -1,5 +1,9 @@
 import { BILLING_BLOCKED_BUYER_DISPLAY_NAME } from '@iwana/shared';
 import type {
+  BillingAllocationUnlinkReason,
+  BillingEmailReasonCode,
+  BillingEmailStatus,
+  BillingStatementLedgerRowKind,
   BillingCourtesyApplication,
   BillingCourtesyReason,
   BillingCourtesyResponse,
@@ -269,4 +273,74 @@ export function documentReference(document: {
   return (
     document.number ?? document.externalNumber ?? formatOptionalBillingDate(document.periodStart)
   );
+}
+
+/** Motivo de desasociar un pago de un documento (spec MOD05↔MOD14 2026-11-13 D6, P2). */
+export const ALLOCATION_UNLINK_REASONS = {
+  APLICADO_A_DOCUMENTO_EQUIVOCADO: 'Se aplicó al documento equivocado',
+  VALOR_EQUIVOCADO: 'El valor aplicado es incorrecto',
+  REASIGNACION: 'Se va a aplicar a otro documento',
+} satisfies Record<BillingAllocationUnlinkReason, string>;
+
+/** Estado de un envío por correo (R4). */
+export const EMAIL_STATUSES = {
+  EN_COLA: { label: 'En cola', variant: 'neutral' },
+  ENVIADO: { label: 'Enviado', variant: 'success' },
+  ERROR: { label: 'Error', variant: 'error' },
+  RECHAZADO: { label: 'Rechazado', variant: 'warning' },
+} satisfies Record<BillingEmailStatus, { label: string; variant: BadgeProps['variant'] }>;
+
+/** Por qué no salió un correo (R4, CA-6); nunca el texto del servidor de correo. */
+export const EMAIL_REASONS = {
+  SIN_CORREO: 'Sin correo registrado',
+  TITULAR_RESTRINGIDO: 'Datos del titular restringidos',
+  FALLO_DE_ENVIO: 'Falló el envío',
+} satisfies Record<BillingEmailReasonCode, string>;
+
+/** Concepto visible de cada fila del libro del estado de cuenta (D4, R2). */
+export const LEDGER_ROW_KINDS = {
+  SALDO_ANTERIOR: 'Saldo anterior',
+  DOCUMENTO: 'Documento de cobro',
+  DOCUMENTO_ANULADO: 'Documento de cobro anulado',
+  CORTESIA: 'Cortesía',
+  PAGO: 'Pago',
+  RETENCION: 'Retención',
+  PAGO_ANULADO: 'Pago anulado',
+} satisfies Record<BillingStatementLedgerRowKind, string>;
+
+const CIVIL_DATE = /^\d{4}-\d{2}-\d{2}$/u;
+const dateTime = new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
+
+/** Fecha civil (`YYYY-MM-DD`) sin corrimiento horario, o fecha y hora de un instante ISO. */
+export function formatBillingInstant(value: string): string {
+  if (CIVIL_DATE.test(value)) return formatBillingDate(value);
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : dateTime.format(date);
+}
+
+/** Fecha de emisión visible de un documento: la fiscal o, si no la tiene, la de creación. */
+export function documentIssueDate(document: {
+  issueDate?: string | null | undefined;
+  createdAt: string;
+}): string {
+  const value = document.issueDate ?? document.createdAt;
+  return CIVIL_DATE.test(value) ? formatBillingDate(value) : formatBillingInstant(value);
+}
+
+/** Número de recibo visible: consecutivo propio o la referencia de origen de un importado (D8). */
+export function paymentReceiptLabel(payment: {
+  receiptNumber?: number | null | undefined;
+  imported?: boolean | undefined;
+  externalId?: string | null | undefined;
+}): string {
+  if (payment.imported)
+    return payment.externalId ? `Importado · ${payment.externalId}` : 'Importado';
+  return payment.receiptNumber ? `N.º ${payment.receiptNumber}` : 'Sin recibo';
+}
+
+/** Monto con signo del libro: negativo es saldo a favor del titular. */
+export function formatLedgerBalance(value: string): string {
+  const amount = Number(value);
+  if (amount < 0) return `${formatBillingMoney(-amount)} a favor`;
+  return formatBillingMoney(amount);
 }

@@ -1,6 +1,6 @@
 # MOD05 ↔ MOD14 · Facturación en la ficha estilo UISP
 
-**Fecha:** 2026-11-13 · **Versión:** 1.1 · **Estado:** G0 aprobado por el usuario el 2026-11-13 sobre la v1.0; la v1.1 incorpora la revisión AI-EM-ARCH del mismo día (D7–D11, R2–R5 precisadas, fuera de alcance, CA-6 y CA-7) y requiere reafirmar G0; ejecución en otra sesión
+**Fecha:** 2026-11-13 · **Versión:** 1.1 · **Estado:** G0 aprobado por el usuario el 2026-11-13 sobre la v1.0; la v1.1 incorpora la revisión AI-EM-ARCH del mismo día (D7–D11, R2–R5 precisadas, fuera de alcance, CA-6 y CA-7); G0 reafirmado sobre la v1.1 por el usuario el 2026-11-13 al aprobar el plan de ejecución (`/orquestar aprobar`); ejecutada, ver [informe de cierre](../informes/INFORME-MOD05-MOD14-FACTURACION-FICHA-CIERRE-v1.0.md)
 **Relacionados:** [ficha estilo UISP](2026-11-10-mod05-ficha-suscriptor-estilo-uisp-ux.md), [REFERENCIA-UISP-CRM-MOD05](../referencias/REFERENCIA-UISP-CRM-MOD05-v1.1.md), [ADR-103](../adrs/ADR-103-Modulo-Facturacion-MOD14.md)
 
 ## Cómo lo hace UISP (instancia real, cliente 22, 2026-11-13)
@@ -29,7 +29,7 @@
 | D1 | Documentos solo muestra archivos: soportes, contratos firmados, evidencias e importados. Los documentos de cobro salen de ahí. |
 | D2 | Facturación se divide en subpestañas **Facturas**, **Pagos** y **Estado de cuenta**, conservando métricas arriba y todo lo que ya existe (cortesías, retenciones, valor real de la instalación, facturación por servicio). |
 | D3 | Recibo de pago con consecutivo propio, PDF y envío por correo. |
-| D4 | Estado de cuenta como libro cronológico con saldo corrido, filtros (3 y 6 meses, año, rango, todo), PDF y envío al cliente. |
+| D4 | Estado de cuenta como libro cronológico con saldo corrido, filtros (3 y 6 meses, año, rango, todo), PDF y envío al cliente. «Año» son los últimos 12 meses móviles (usuario, 2026-11-13). |
 | D5 | Envío de la factura por correo con registro (enviado, error, reenviado). |
 | D6 | Desasociar un pago de una factura sin anularlo: el valor queda como saldo a favor, auditado. |
 | D7 | El libro **extiende** el estado de cuenta existente de forma aditiva; no se crea un endpoint paralelo. |

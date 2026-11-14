@@ -8,6 +8,8 @@ import { ContractActivationEventReadPort } from '../../billing/ports/contract-ac
 import { ContractActivationEventReadAdapter } from './contract-activation-event-read.adapter';
 import { BillingContractFirstChargePort } from '../../billing/ports/billing-contract-first-charge.port';
 import { BillingContractFirstChargeAdapter } from './billing-contract-first-charge.adapter';
+import { BillingTitularContactReadPort } from '../../billing/ports/billing-titular-contact-read.port';
+import { BillingTitularContactReadAdapter } from './billing-titular-contact-read.adapter';
 
 /**
  * Módulo de lectura CRM consumido por Billing; no importa el módulo CRM completo.
@@ -22,11 +24,15 @@ import { BillingContractFirstChargeAdapter } from './billing-contract-first-char
     { provide: ContractActivationEventReadPort, useExisting: ContractActivationEventReadAdapter },
     BillingContractFirstChargeAdapter,
     { provide: BillingContractFirstChargePort, useExisting: BillingContractFirstChargeAdapter },
+    // Correo registrado del titular para los envíos de Facturación (spec 2026-11-13 bloque B).
+    BillingTitularContactReadAdapter,
+    { provide: BillingTitularContactReadPort, useExisting: BillingTitularContactReadAdapter },
   ],
   exports: [
     BillingContractReadPort,
     ContractActivationEventReadPort,
     BillingContractFirstChargePort,
+    BillingTitularContactReadPort,
   ],
 })
 export class BillingContractReadModule {}

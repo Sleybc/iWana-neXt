@@ -223,6 +223,9 @@ describe('MailerService', () => {
         expect.objectContaining({
           host: 'smtp.prueba.local',
           port: 587,
+          connectionTimeout: 10_000,
+          greetingTimeout: 10_000,
+          socketTimeout: 30_000,
         }),
       );
     });

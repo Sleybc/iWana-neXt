@@ -19,6 +19,8 @@ export function BillingConfirmation({
   onClose,
   onConfirm,
   reasons,
+  reasonLabel = 'Motivo de anulación',
+  withNote = true,
 }: {
   title: string;
   description: string;
@@ -26,6 +28,10 @@ export function BillingConfirmation({
   onClose: () => void;
   onConfirm: (key: string, reason: string, note: string) => Promise<unknown>;
   reasons?: Record<string, string>;
+  /** Etiqueta del selector de motivo (p. ej. «Motivo» al desasociar un pago). */
+  reasonLabel?: string;
+  /** Sin nota libre cuando el contrato solo admite un código cerrado (desasociar, P2). */
+  withNote?: boolean;
 }) {
   const mutation = useBillingMutation();
   const id = useId();
@@ -51,7 +57,7 @@ export function BillingConfirmation({
           {reasons ? (
             <>
               <label className="block space-y-1 text-sm" htmlFor={`${id}-reason`}>
-                <span>Motivo de anulación</span>
+                <span>{reasonLabel}</span>
                 <select
                   id={`${id}-reason`}
                   className={billingInputClass}
@@ -68,17 +74,19 @@ export function BillingConfirmation({
                   ))}
                 </select>
               </label>
-              <label className="block space-y-1 text-sm" htmlFor={`${id}-note`}>
-                <span>Observación o nota adicional</span>
-                <textarea
-                  id={`${id}-note`}
-                  className={billingInputClass}
-                  maxLength={500}
-                  disabled={mutation.busy}
-                  value={note}
-                  onChange={(event) => setNote(event.target.value)}
-                />
-              </label>
+              {withNote ? (
+                <label className="block space-y-1 text-sm" htmlFor={`${id}-note`}>
+                  <span>Observación o nota adicional</span>
+                  <textarea
+                    id={`${id}-note`}
+                    className={billingInputClass}
+                    maxLength={500}
+                    disabled={mutation.busy}
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
+                  />
+                </label>
+              ) : null}
             </>
           ) : null}
           {mutation.error ? <PortalAlert variant="error" title={mutation.error} /> : null}

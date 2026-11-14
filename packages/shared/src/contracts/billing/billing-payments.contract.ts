@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  BILLING_ALLOCATION_UNLINK_REASONS,
   BILLING_PAYMENT_METHODS,
   BILLING_PAYMENT_STATUSES,
   BILLING_PAYMENT_VOID_REASONS,
@@ -147,6 +148,18 @@ export const VoidPaymentCommandSchema = z
 
 export type VoidPaymentCommand = z.infer<typeof VoidPaymentCommandSchema>;
 
+/**
+ * Comando para desasociar una aplicación vigente de un pago (spec MOD05↔MOD14 2026-11-13 D6). El
+ * valor queda como saldo a favor del pago y puede re-aplicarse. Sin texto libre.
+ */
+export const UnlinkAllocationCommandSchema = z
+  .object({
+    reasonCode: z.enum(BILLING_ALLOCATION_UNLINK_REASONS),
+  })
+  .strict();
+
+export type UnlinkAllocationCommand = z.infer<typeof UnlinkAllocationCommandSchema>;
+
 export const CreditAllocationItemSchema = z
   .object({
     paymentId: z.string().uuid(),
@@ -177,6 +190,8 @@ export const BillingPaymentAllocationResponseSchema = z
     amount: billingMoneyStringSchema,
     reversedAt: z.string().nullable().optional(),
     reversedBy: z.string().uuid().nullable().optional(),
+    /** Motivo de una desasociación manual; nulo en las reversiones por anulación del pago. */
+    reversalReasonCode: z.enum(BILLING_ALLOCATION_UNLINK_REASONS).nullable().optional(),
     createdBy: z.string().uuid().nullable(),
     createdAt: z.string(),
   })
@@ -277,6 +292,15 @@ export const BillingPaymentResponseSchema = z
     withholdingAmount: billingMoneyStringSchema.optional(),
     /** Retenciones del pago, vigentes y anuladas (spec MOD14 2026-11-13 R8). */
     withholdings: z.array(BillingPaymentWithholdingResponseSchema).optional(),
+    /**
+     * Número consecutivo del recibo por tenant (spec MOD05↔MOD14 2026-11-13 D8). Inmutable; un pago
+     * anulado lo conserva. Nulo en un pago importado.
+     */
+    receiptNumber: z.number().int().positive().nullable().optional(),
+    /** El pago proviene de una importación (ADR-110); no tiene recibo de iWana. */
+    imported: z.boolean().optional(),
+    /** Referencia del sistema de origen de un pago importado (`uisp:…`); nulo en los nativos. */
+    externalId: z.string().nullable().optional(),
   })
   .strict();
 

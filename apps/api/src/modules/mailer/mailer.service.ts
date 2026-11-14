@@ -75,6 +75,10 @@ export class MailerService {
           user: this.configService.get<string>('SMTP_USER'),
           pass: this.configService.get<string>('SMTP_PASS'),
         },
+        // Hay envíos que corren con una fila bloqueada (Facturación): un SMTP colgado no la retiene.
+        connectionTimeout: 10_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 30_000,
       });
     } else {
       // Modo dev: sin transporter real

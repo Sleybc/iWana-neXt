@@ -1,11 +1,12 @@
 /**
  * Panel «Documentos» del suscriptor (spec 2026-11-10 §3 F, D4). Desde la decisión del usuario
  * del 2026-11-10 vive en la pestaña propia «Documentos» de la ficha, como en UISP, y no al final
- * de Facturación; la ficha solo le pasa el estado de cuenta con la lectura de facturación.
+ * de Facturación. Desde la spec MOD05↔MOD14 2026-11-13 (D1, CA-1) solo lista archivos: los
+ * documentos de cobro viven en Facturación → Facturas.
  */
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { AccessPermissionKey, type BillingAccountStatement } from '@iwana/shared';
+import { AccessPermissionKey } from '@iwana/shared';
 import { ApiError, billingApi, crmApi } from '@/lib/api-client';
 import type { Contract, ExpedienteDocumentSupportResponse } from '@/lib/api-client';
 import { SubscriberDocumentsPanel, safeDocumentHref } from './SubscriberDocumentsPanel';
@@ -67,20 +68,6 @@ const CONTRACT = {
   stratumEvidenceMediaId: '00000000-0000-4000-8000-0000000000d1',
 } as unknown as Contract;
 
-const STATEMENT = {
-  documents: [
-    {
-      id: 'doc-emitido',
-      number: 'FE-10',
-      status: 'EMITIDO',
-      issueDate: '2026-11-07T00:00:00.000Z',
-      createdAt: '2026-11-07T00:00:00.000Z',
-    },
-    { id: 'doc-borrador', number: null, status: 'BORRADOR', createdAt: '2026-11-08T00:00:00.000Z' },
-  ],
-  payments: [],
-} as unknown as BillingAccountStatement;
-
 let supportsSpy: jest.SpyInstance;
 
 beforeEach(() => {
@@ -97,7 +84,6 @@ function renderPanel(props: Partial<Parameters<typeof SubscriberDocumentsPanel>[
       contracts={[CONTRACT]}
       anonymized={false}
       restricted={false}
-      statement={STATEMENT}
       {...props}
     />,
   );
@@ -109,10 +95,10 @@ async function rows() {
 }
 
 describe('SubscriberDocumentsPanel', () => {
-  it('reúne soportes del expediente, estrato y cobros emitidos con tipo, fecha, autor, versión y visibilidad', async () => {
+  it('reúne soportes del expediente y estrato con tipo, fecha, autor, versión y visibilidad', async () => {
     renderPanel();
     const items = await rows();
-    expect(items).toHaveLength(4);
+    expect(items).toHaveLength(3);
     expect(items[0]).toHaveTextContent('Documento de identidad');
     expect(items[0]).toHaveTextContent('Autor:Asesora comercial');
     expect(items[0]).toHaveTextContent('Versión:Versión 2 (vigente)');
@@ -120,7 +106,6 @@ describe('SubscriberDocumentsPanel', () => {
     // Un identificador interno no se muestra como autor.
     expect(items[1]).toHaveTextContent('Autor:Sin dato');
     expect(items[2]).toHaveTextContent('Soporte de estrato · Sede Norte');
-    expect(items[3]).toHaveTextContent('Documento de cobro FE-10');
     expect(screen.queryByText(/borrador/i)).not.toBeInTheDocument();
   });
 
@@ -137,24 +122,20 @@ describe('SubscriberDocumentsPanel', () => {
     expect(safeDocumentHref('https://cdn.example.test/x')).toBe('https://cdn.example.test/x');
   });
 
-  it('descarga el PDF del documento de cobro emitido', async () => {
-    const user = userEvent.setup();
-    const pdfSpy = jest.spyOn(billingApi, 'documentPdf').mockRejectedValueOnce(new Error('x'));
+  it('D1, CA-1: no lista documentos de cobro ni ofrece su PDF', async () => {
+    const pdfSpy = jest.spyOn(billingApi, 'documentPdf');
     renderPanel();
-    await rows();
-    await user.click(
-      screen.getByRole('button', { name: 'Descargar PDF de Documento de cobro FE-10' }),
-    );
-    expect(pdfSpy).toHaveBeenCalledWith('doc-emitido');
-    expect(
-      await screen.findByText('No pudimos descargar el PDF. Intenta de nuevo.'),
-    ).toBeInTheDocument();
+    const items = await rows();
+    expect(items).toHaveLength(3);
+    expect(screen.queryByText(/Documento de cobro/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Descargar PDF/ })).not.toBeInTheDocument();
+    expect(pdfSpy).not.toHaveBeenCalled();
   });
 
   it('sin permiso de oportunidades no consulta soportes y lista lo demás', async () => {
     mockGranted.current = new Set();
     renderPanel();
-    expect(await rows()).toHaveLength(2);
+    expect(await rows()).toHaveLength(1);
     expect(supportsSpy).not.toHaveBeenCalled();
   });
 
@@ -164,7 +145,7 @@ describe('SubscriberDocumentsPanel', () => {
     expect(
       await screen.findByText('No tienes acceso a los soportes de la oportunidad de origen'),
     ).toBeInTheDocument();
-    expect(await rows()).toHaveLength(2);
+    expect(await rows()).toHaveLength(1);
   });
 
   it('titular anonimizado: sin nombre del servicio ni documentos de cobro', async () => {
@@ -175,16 +156,8 @@ describe('SubscriberDocumentsPanel', () => {
     expect(items[0]).not.toHaveTextContent('Sede Norte');
   });
 
-  it('sin estado de cuenta (sin lectura de facturación) no lista PDF de cobro', async () => {
-    renderPanel({ statement: null });
-    const items = await rows();
-    expect(items).toHaveLength(3);
-    expect(screen.queryByText(/Documento de cobro/)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Descargar PDF/ })).not.toBeInTheDocument();
-  });
-
   it('sin documentos muestra el estado vacío', async () => {
-    renderPanel({ expedienteId: null, contracts: [], statement: null });
+    renderPanel({ expedienteId: null, contracts: [] });
     expect(await screen.findByText('Aún no hay documentos')).toBeInTheDocument();
   });
 
@@ -194,7 +167,7 @@ describe('SubscriberDocumentsPanel', () => {
     renderPanel();
     expect(await screen.findByText('No pudimos cargar los documentos')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Reintentar' }));
-    expect(await rows()).toHaveLength(4);
+    expect(await rows()).toHaveLength(3);
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Documentos' })).toHaveFocus());
   });
 
@@ -264,7 +237,6 @@ describe('SubscriberDocumentsPanel', () => {
         contracts={[CONTRACT]}
         anonymized={false}
         restricted={false}
-        statement={STATEMENT}
         focusRequest={1}
       />,
     );

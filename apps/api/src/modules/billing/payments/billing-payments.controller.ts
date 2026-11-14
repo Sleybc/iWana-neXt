@@ -6,11 +6,14 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Optional,
   Param,
   ParseUUIDPipe,
   Post,
   Query,
   Req,
+  Res,
+  ServiceUnavailableException,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
@@ -28,6 +31,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiProduces,
   ApiQuery,
   ApiResponse,
   ApiTags,
@@ -35,8 +39,10 @@ import {
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import type { SchemaObject } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
+import type { Response } from 'express';
 import {
   AccessPermissionKey,
+  BILLING_ALLOCATION_UNLINK_REASONS,
   BILLING_WITHHOLDING_MAX_LINES,
   BILLING_WITHHOLDING_TAX_CODES,
   UserRole,
@@ -52,6 +58,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { BillingPaymentsService, type PaymentReadAccess } from './billing-payments.service';
+import { BillingReceiptsService } from './billing-receipts.service';
 
 type AuthenticatedRequest = { user?: JwtPayload };
 
@@ -137,6 +144,38 @@ const WITHHOLDING_REQUEST_SCHEMA: SchemaObject = {
   },
 };
 
+/** Aplicación del pago a un documento; `reversalReasonCode` solo en una desasociación manual. */
+const ALLOCATION_RESPONSE_SCHEMA: SchemaObject = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'tenantId', 'paymentId', 'documentId', 'amount', 'createdBy', 'createdAt'],
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    tenantId: { type: 'string', format: 'uuid' },
+    paymentId: { type: 'string', format: 'uuid' },
+    documentId: { type: 'string', format: 'uuid' },
+    amount: { type: 'string' },
+    reversedAt: { type: 'string', format: 'date-time', nullable: true },
+    reversedBy: { type: 'string', format: 'uuid', nullable: true },
+    reversalReasonCode: {
+      type: 'string',
+      enum: [...BILLING_ALLOCATION_UNLINK_REASONS],
+      nullable: true,
+    },
+    createdBy: { type: 'string', format: 'uuid', nullable: true },
+    createdAt: { type: 'string', format: 'date-time' },
+  },
+};
+
+const UNLINK_ALLOCATION_REQUEST_SCHEMA: SchemaObject = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['reasonCode'],
+  properties: {
+    reasonCode: { type: 'string', enum: [...BILLING_ALLOCATION_UNLINK_REASONS] },
+  },
+};
+
 const PAYMENT_RESPONSE_SCHEMA: SchemaObject = {
   type: 'object',
   required: ['data'],
@@ -181,9 +220,22 @@ const PAYMENT_RESPONSE_SCHEMA: SchemaObject = {
         voidedBy: { type: 'string', format: 'uuid', nullable: true },
         allocatedAmount: { type: 'string' },
         unallocatedAmount: { type: 'string' },
-        allocations: { type: 'array', items: { type: 'object' } },
+        allocations: { type: 'array', items: ALLOCATION_RESPONSE_SCHEMA },
         withholdingAmount: { type: 'string' },
         withholdings: { type: 'array', items: WITHHOLDING_RESPONSE_SCHEMA },
+        receiptNumber: {
+          type: 'integer',
+          minimum: 1,
+          nullable: true,
+          description:
+            'Consecutivo del recibo por tenant; inmutable, se conserva al anular. Nulo en un pago importado.',
+        },
+        imported: { type: 'boolean', description: 'El pago proviene de una importación.' },
+        externalId: {
+          type: 'string',
+          nullable: true,
+          description: 'Referencia del sistema de origen de un pago importado (uisp:...).',
+        },
       },
     },
   },
@@ -252,6 +304,7 @@ export class BillingPaymentsController {
   constructor(
     private readonly billingPayments: BillingPaymentsService,
     private readonly effectivePermissionsService: EffectivePermissionsService,
+    @Optional() private readonly receipts?: BillingReceiptsService,
   ) {}
 
   @Post('payments')
@@ -413,6 +466,87 @@ export class BillingPaymentsController {
     const actor = actorId(request);
     const { readAccess } = await this.readAccess(actor);
     return { data: await this.billingPayments.voidPayment(id, body, actor, readAccess) };
+  }
+
+  @Post('payments/:id/allocations/:allocationId/unlink')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SUPPORT, UserRole.SALES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.BILLING_PAYMENTS_REGISTER)
+  @ApiOperation({
+    summary: 'Desasociar un pago de un documento sin anularlo',
+    description:
+      'El valor de la aplicación vuelve al saldo a favor del pago y puede aplicarse de nuevo con POST payments/{id}/allocations. Auditado.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiParam({ name: 'allocationId', format: 'uuid' })
+  @ApiBody({ schema: UNLINK_ALLOCATION_REQUEST_SCHEMA })
+  @ApiOkResponse({ description: 'Aplicación desasociada.', schema: PAYMENT_RESPONSE_SCHEMA })
+  @ApiNotFoundResponse({
+    description: 'BILLING_PAYMENT_NOT_FOUND o BILLING_ALLOCATION_NOT_FOUND (no vigente).',
+  })
+  @ApiConflictResponse({
+    description:
+      'BILLING_PAYMENT_VOIDED, PRIVACY_TITULAR_ANONYMIZED o BILLING_ALLOCATION_NOT_UNLINKABLE (documento anulado o importado).',
+  })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'VALIDATION_ERROR o BILLING_ALLOCATION_HAS_WITHHOLDING (retención vigente sobre el documento: anular el pago).',
+  })
+  @ApiUnauthorizedResponse({ description: 'La sesión no es válida.' })
+  @ApiForbiddenResponse({ description: 'El rol o permiso no permite desasociar pagos.' })
+  async unlink(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('allocationId', new ParseUUIDPipe()) allocationId: string,
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const actor = actorId(request);
+    const { readAccess } = await this.readAccess(actor);
+    return {
+      data: await this.billingPayments.unlinkAllocation(id, allocationId, body, actor, readAccess),
+    };
+  }
+
+  @Get('payments/:id/receipt/pdf')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SUPPORT, UserRole.SALES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.BILLING_PAYMENTS_READ)
+  @ApiOperation({
+    summary: 'Descargar el recibo del pago en PDF',
+    description:
+      'Recibo numerado con facturas cubiertas, retenciones vigentes y saldo a favor; marca ANULADO si el pago se anuló. Un pago importado no tiene recibo.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiProduces('application/pdf')
+  @ApiOkResponse({
+    description: 'Recibo de pago PDF (attachment; filename="recibo-<n>.pdf").',
+    content: { 'application/pdf': { schema: { type: 'string', format: 'binary' } } },
+  })
+  @ApiNotFoundResponse({ description: 'BILLING_PAYMENT_NOT_FOUND (incluye titular anonimizado).' })
+  @ApiConflictResponse({ description: 'BILLING_RECEIPT_NOT_AVAILABLE (pago importado).' })
+  @ApiUnauthorizedResponse({ description: 'La sesión no es válida.' })
+  @ApiForbiddenResponse({ description: 'El rol o permiso no permite consultar pagos.' })
+  @ApiResponse({
+    status: 503,
+    description: 'No fue posible verificar o auditar el acceso a datos protegidos.',
+  })
+  async receiptPdf(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Req() request: AuthenticatedRequest,
+    @Res() response: Response,
+  ): Promise<void> {
+    if (!this.receipts) {
+      throw new ServiceUnavailableException({
+        code: 'BILLING_RECEIPT_UNAVAILABLE',
+        message: 'El recibo no está disponible.',
+      });
+    }
+    const { readAccess } = await this.readAccess(actorId(request));
+    const receipt = await this.receipts.receiptPdf(id, readAccess);
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.setHeader('Content-Disposition', `attachment; filename="${receipt.filename}"`);
+    response.send(receipt.content);
   }
 
   @Get('subscribers/:subscriberId/statement')

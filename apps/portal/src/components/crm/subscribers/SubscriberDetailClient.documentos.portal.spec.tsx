@@ -3,7 +3,7 @@
  * documentos van dentro de las opciones del cliente, como en UISP, en una pestaña propia
  * después de Soporte; antes eran una tarjeta al final de Facturación.
  */
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   AccessPermissionKey,
@@ -173,14 +173,23 @@ describe('Ficha del suscriptor — pestaña Documentos', () => {
     expect(supportsSpy).not.toHaveBeenCalled();
   });
 
-  it('con lectura de facturación añade los PDF de cobro emitidos', async () => {
+  it('CA-1: con lectura de facturación tampoco lista los PDF de cobro emitidos', async () => {
     mockSearch.current = 'tab=documentos';
     mockGranted.current.add(AccessPermissionKey.BILLING_INVOICES_READ);
     await renderFicha();
-    await waitFor(async () => expect(await documentRows()).toHaveLength(2));
+    // El estado de cuenta (con FE-10 emitido) sí se carga para la ficha; Documentos no lo usa (D1).
+    await waitFor(() => expect(statementSpy).toHaveBeenCalled());
+    // Espera a que el estado de cuenta se resuelva y la ficha lo aplique antes de contar filas:
+    // si Documentos volviera a listar cobros, la fila de FE-10 ya estaría en la lista.
+    await act(async () => {
+      await statementSpy.mock.results[0]?.value;
+    });
+    await waitFor(async () => expect(await documentRows()).toHaveLength(1));
+    expect((await documentRows())[0]).toHaveTextContent('Soporte de estrato · Sede Norte');
+    expect(screen.queryByText(/Documento de cobro/)).not.toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Descargar PDF de Documento de cobro FE-10' }),
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: 'Descargar PDF de Documento de cobro FE-10' }),
+    ).not.toBeInTheDocument();
   });
 
   it('Facturación ya no repite la tarjeta Documentos', async () => {

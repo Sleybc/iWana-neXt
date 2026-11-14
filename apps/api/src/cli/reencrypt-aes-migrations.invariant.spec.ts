@@ -195,6 +195,8 @@ const PII_KEY_CONSUMERS: Readonly<Record<string, readonly string[]>> = {
   // Solo leen objetos IWE1 (H1, ADR-110) o descifran intermedias para suprimirlas (H2).
   'apps/api/src/modules/billing/documents/billing-imported-pdf.service.ts': [],
   'apps/api/src/modules/crm/contracts/documents/subscriber-documents.service.ts': [],
+  // Solo descifra subscribers.email_encrypted para los correos de Facturación (spec 2026-11-13 B).
+  'apps/api/src/modules/crm/contracts/billing-titular-contact-read.adapter.ts': [],
   'apps/api/src/modules/migration/privacy/migration-titular-erasure.participant.ts': [],
   // Importación UISP (ADR-110 D2): ZIP en storage (no es columna) y carga útil de intermedias.
   'apps/api/src/modules/migration/migration-crypto.ts': [

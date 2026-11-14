@@ -6,6 +6,8 @@ import { BillingImportedDocuments1970000000197 } from '../../../../../packages/d
 import { BillingAdditionalLines2020000000202 } from '../../../../../packages/database/src/migrations/tenant/202_billing_additional_lines';
 import { BillingCourtesies2030000000203 } from '../../../../../packages/database/src/migrations/tenant/203_billing_courtesies';
 import { BillingPaymentWithholdings2060000000206 } from '../../../../../packages/database/src/migrations/tenant/206_billing_payment_withholdings';
+import { BillingReceiptsAndAllocationReversalReason2070000000207 } from '../../../../../packages/database/src/migrations/tenant/207_billing_receipts_and_allocation_reversal_reason';
+import { BillingEmailLog2080000000208 } from '../../../../../packages/database/src/migrations/tenant/208_billing_email_log';
 
 /** Billing siempre se crea con la 173 real (más 193 y 197); las tablas mínimas de CRM son del fixture del adaptador. */
 export async function createBillingSchema(dataSource: DataSource) {
@@ -26,6 +28,8 @@ export async function createBillingSchema(dataSource: DataSource) {
           business_name varchar(300) NULL,
           address varchar(500) NULL,
           rut_responsibilities text[] NOT NULL DEFAULT '{}',
+          -- Correo cifrado del titular (envíos de Facturación, spec 2026-11-13 bloque B).
+          email_encrypted varchar(500) NULL,
           anonymized_at timestamptz NULL,
           anonymized_request_id uuid NULL,
           deleted_at timestamptz NULL
@@ -88,6 +92,8 @@ export async function createBillingSchema(dataSource: DataSource) {
     await new BillingCourtesies2030000000203().up(qr);
     // Retenciones en el pago (spec MOD14 2026-11-13 R6): la capacidad del pago las suma.
     await new BillingPaymentWithholdings2060000000206().up(qr);
+    await new BillingReceiptsAndAllocationReversalReason2070000000207().up(qr);
+    await new BillingEmailLog2080000000208().up(qr);
     await qr.commitTransaction();
   } catch (error) {
     await qr.rollbackTransaction();

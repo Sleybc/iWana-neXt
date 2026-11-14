@@ -36,6 +36,26 @@ const COURTESY_ERRORS: Record<string, string> = {
     'Esta cortesía ya forma parte de un documento emitido y no se puede anular.',
 };
 
+/** Recibos, desasociar y envíos por correo (spec MOD05↔MOD14 2026-11-13 D3–D6, CA-6, CA-7). */
+const RECEIPT_AND_EMAIL_ERRORS: Record<string, string> = {
+  BILLING_ALLOCATION_NOT_UNLINKABLE:
+    'No se puede desasociar: el documento está anulado o es un histórico importado.',
+  BILLING_ALLOCATION_HAS_WITHHOLDING:
+    'Este pago tiene una retención sobre el documento. Para corregirlo, anula el pago.',
+  BILLING_ALLOCATION_NOT_FOUND:
+    'Esta aplicación ya no está vigente. Actualiza el detalle del pago.',
+  BILLING_PAYMENT_VOIDED: 'El pago está anulado.',
+  BILLING_PAYMENT_NOT_FOUND: 'No se encontró el pago. Actualiza la información de facturación.',
+  BILLING_RECEIPT_NOT_AVAILABLE: 'Este pago se importó de otro sistema y no tiene recibo de iWana.',
+  BILLING_RECEIPT_UNAVAILABLE: 'El recibo no está disponible en este momento. Intenta más tarde.',
+  BILLING_DOCUMENT_NOT_ISSUED: 'Solo se pueden enviar documentos emitidos.',
+  BILLING_EMAIL_IMPORTED_NOT_SENDABLE: 'Un histórico importado no se envía por correo.',
+  BILLING_EMAIL_QUEUE_UNAVAILABLE:
+    'El envío de correos no está disponible en este momento. Intenta en unos minutos.',
+  BILLING_PRIVACY_UNAVAILABLE:
+    'No fue posible verificar los datos protegidos del titular. Intenta en unos minutos.',
+};
+
 /** Códigos de retención del contrato compartido (`BILLING_ERROR_CODES`). */
 type WithholdingErrorCode = Extract<BillingErrorCode, `BILLING_WITHHOLDING_${string}`>;
 
@@ -96,6 +116,8 @@ export function billingError(error: unknown): string {
       return 'La política fue modificada recientemente. Vuelve a abrirla para consultar los valores vigentes.';
     if (error.code === 'BILLING_IMPORTED_PDF_NOT_AVAILABLE')
       return 'El PDF de este documento histórico no se trajo en la importación.';
+    const receiptOrEmail = RECEIPT_AND_EMAIL_ERRORS[error.code];
+    if (receiptOrEmail) return receiptOrEmail;
     const courtesy = COURTESY_ERRORS[error.code];
     if (courtesy) return courtesy;
     const withholding = withholdingError(error.code);

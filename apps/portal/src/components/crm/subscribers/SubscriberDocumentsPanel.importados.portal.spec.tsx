@@ -1,15 +1,12 @@
 /**
- * Pestaña Documentos: soportes y cobros importados desde UISP (ADR-110 D5, D13; plan
- * 2026-11-12 bloque F).
+ * Pestaña Documentos: soportes importados desde UISP (ADR-110 D13; plan 2026-11-12 bloque F). Los
+ * cobros importados (D5) salieron de Documentos con la spec MOD05↔MOD14 2026-11-13 (D1, CA-1); su
+ * PDF se prueba en Facturas (`billing-imported-pdf.spec.tsx`, `billing-document-pdf-name.spec.ts`).
  */
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {
-  AccessPermissionKey,
-  type BillingAccountStatement,
-  type SubscriberDocument,
-} from '@iwana/shared';
-import { ApiError, billingApi, crmApi, subscriberDocumentsApi } from '@/lib/api-client';
+import { AccessPermissionKey, type SubscriberDocument } from '@iwana/shared';
+import { ApiError, crmApi, subscriberDocumentsApi, type Contract } from '@/lib/api-client';
 import { SubscriberDocumentsPanel } from './SubscriberDocumentsPanel';
 
 const mockGranted = { current: new Set<AccessPermissionKey>() };
@@ -36,19 +33,13 @@ const SUPPORT: SubscriberDocument = {
   createdAt: '2026-11-12T10:00:00.000Z',
 };
 
-const STATEMENT = {
-  documents: [
-    {
-      id: 'doc-importado',
-      number: null,
-      externalNumber: 'UISP-2024-0042',
-      status: 'IMPORTADO',
-      issueDate: '2024-05-01T00:00:00.000Z',
-      createdAt: '2026-11-12T10:00:00.000Z',
-    },
-  ],
-  payments: [],
-} as unknown as BillingAccountStatement;
+/** Otro documento del suscriptor que debe seguir visible si fallan los soportes importados. */
+const STRATUM_CONTRACT = {
+  id: '00000000-0000-4000-8000-0000000000c1',
+  alias: 'Sede Norte',
+  planSnapshotJson: { name: 'Fibra 300' },
+  stratumEvidenceMediaId: '00000000-0000-4000-8000-0000000000d1',
+} as unknown as Contract;
 
 beforeEach(() => {
   mockGranted.current = new Set([AccessPermissionKey.CRM_SUBSCRIBERS_READ]);
@@ -67,7 +58,6 @@ function renderPanel(props: Partial<Parameters<typeof SubscriberDocumentsPanel>[
       contracts={[]}
       anonymized={false}
       restricted={false}
-      statement={STATEMENT}
       {...props}
     />,
   );
@@ -75,19 +65,17 @@ function renderPanel(props: Partial<Parameters<typeof SubscriberDocumentsPanel>[
 
 async function rows() {
   const list = await screen.findByRole('list', { name: 'Documentos del suscriptor' });
-  await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(2));
+  await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(1));
   return within(list).getAllByRole('listitem');
 }
 
 describe('SubscriberDocumentsPanel — importados', () => {
-  it('lista el soporte importado con tipo, fecha y origen, y el cobro como histórico importado', async () => {
+  it('lista el soporte importado con tipo, fecha y origen', async () => {
     renderPanel();
-    const [support, charge] = await rows();
+    const [support] = await rows();
     expect(support).toHaveTextContent('Soporte importado (PDF)');
     expect(support).toHaveTextContent('Origen:Importado');
     expect(support).toHaveTextContent('Fecha:');
-    expect(charge).toHaveTextContent('Histórico importado UISP-2024-0042');
-    expect(charge).toHaveTextContent('Origen:Importado');
     expect(document.body.textContent).not.toMatch(/IMPORTADO|INTERNA/);
   });
 
@@ -116,38 +104,12 @@ describe('SubscriberDocumentsPanel — importados', () => {
     ).toBeInTheDocument();
   });
 
-  it('el PDF del histórico importado se descarga con su número externo', async () => {
-    const pdfSpy = jest.spyOn(billingApi, 'documentPdf').mockResolvedValue(new Blob(['%PDF']));
-    const user = userEvent.setup();
-    renderPanel();
-    await rows();
-    await user.click(
-      screen.getByRole('button', { name: 'Descargar PDF de Histórico importado UISP-2024-0042' }),
-    );
-    await waitFor(() => expect(pdfSpy).toHaveBeenCalledWith('doc-importado'));
-  });
-
-  it('explica cuando el PDF del histórico importado no se trajo en la importación', async () => {
-    jest
-      .spyOn(billingApi, 'documentPdf')
-      .mockRejectedValue(new ApiError(404, 'BILLING_IMPORTED_PDF_NOT_AVAILABLE', 'x'));
-    const user = userEvent.setup();
-    renderPanel();
-    await rows();
-    await user.click(
-      screen.getByRole('button', { name: 'Descargar PDF de Histórico importado UISP-2024-0042' }),
-    );
-    expect(
-      await screen.findByText('El PDF de este documento histórico no se trajo en la importación.'),
-    ).toBeInTheDocument();
-  });
-
   it('si fallan los soportes importados avisa y muestra el resto', async () => {
     jest.spyOn(subscriberDocumentsApi, 'list').mockRejectedValue(new Error('caído'));
-    renderPanel();
+    renderPanel({ contracts: [STRATUM_CONTRACT] });
     expect(
       await screen.findByText('No pudimos cargar los soportes importados'),
     ).toBeInTheDocument();
-    expect(await screen.findByText('Histórico importado UISP-2024-0042')).toBeInTheDocument();
+    expect(await screen.findByText('Soporte de estrato · Sede Norte')).toBeInTheDocument();
   });
 });

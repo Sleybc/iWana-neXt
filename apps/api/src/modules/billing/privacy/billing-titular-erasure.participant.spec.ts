@@ -19,24 +19,27 @@ function createScope(overrides: Partial<TitularErasureScope> = {}): TitularErasu
 /**
  * Las sondas de esquema responden aparte: columna `external_pdf_key` (199), tabla
  * `billing_courtesies` (203) y tabla `billing_payment_withholdings` (206, que el participante ya no
- * consulta: decisión D5). El resto va al mock.
+ * consulta: decisión D5) y tabla `billing_email_log` (208). El resto va al mock.
  */
 function qrOf(
   query: jest.Mock,
   hasPdf = true,
   hasCourtesies = false,
   hasWithholdings = false,
+  hasEmailLog = false,
 ): QueryRunner {
   return {
     query: (sql: string, parameters?: unknown[]) =>
       /information_schema/u.test(sql)
         ? Promise.resolve([
             {
-              present: /billing_payment_withholdings/u.test(sql)
-                ? hasWithholdings
-                : /billing_courtesies/u.test(sql)
-                  ? hasCourtesies
-                  : hasPdf,
+              present: /billing_email_log/u.test(sql)
+                ? hasEmailLog
+                : /billing_payment_withholdings/u.test(sql)
+                  ? hasWithholdings
+                  : /billing_courtesies/u.test(sql)
+                    ? hasCourtesies
+                    : hasPdf,
             },
           ])
         : query(sql, parameters),
@@ -244,5 +247,54 @@ describe('BillingTitularErasureParticipant', () => {
       residual: 1,
     });
     expect(query.mock.calls.every(([sql]) => !String(sql).trim().startsWith('UPDATE'))).toBe(true);
+  });
+
+  it('registro de correos (208): vacía el destinatario enmascarado y conserva el asunto', async () => {
+    query.mockImplementation((sql: string) => {
+      if (/FROM billing_email_log/u.test(sql) && /COUNT\(\*\)/u.test(sql)) {
+        const applied = query.mock.calls.some(([text]) =>
+          /UPDATE billing_email_log/u.test(String(text)),
+        );
+        return Promise.resolve([{ count: applied ? 0 : 3 }]);
+      }
+      if (/UPDATE billing_email_log/u.test(sql))
+        return Promise.resolve([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+      return Promise.resolve(/COUNT\(\*\)/u.test(sql) ? [{ count: 0 }] : []);
+    });
+
+    const preview = await participant.plan(createScope(), qrOf(query, true, false, false, true));
+    expect(preview.find((row) => row.table === 'billing_email_log')).toEqual({
+      table: 'billing_email_log',
+      category: 'COMERCIAL',
+      selected: 3,
+      changed: 0,
+      residual: 3,
+    });
+
+    const result = await participant.apply(
+      createScope(),
+      qrOf(query, true, false, false, true),
+      'apply',
+    );
+    expect(result.find((row) => row.table === 'billing_email_log')).toEqual({
+      table: 'billing_email_log',
+      category: 'COMERCIAL',
+      selected: 3,
+      changed: 3,
+      residual: 0,
+    });
+    const update = query.mock.calls.find(([sql]) => /UPDATE billing_email_log/u.test(String(sql)));
+    expect(String(update?.[0])).toContain('SET recipient_masked = NULL');
+    expect(String(update?.[0])).not.toContain('subject');
+    expect(update?.[1]).toEqual([tenantId, [subscriberId]]);
+  });
+
+  it('sin la tabla del registro de correos (schemas anteriores a la 208) no la consulta', async () => {
+    query.mockImplementation((sql: string) =>
+      Promise.resolve(/COUNT\(\*\)/u.test(sql) ? [{ count: 0 }] : []),
+    );
+    const result = await participant.apply(createScope(), qrOf(query), 'apply');
+    expect(result.map((row) => row.table)).not.toContain('billing_email_log');
+    expect(query.mock.calls.some(([sql]) => /billing_email_log/u.test(String(sql)))).toBe(false);
   });
 });

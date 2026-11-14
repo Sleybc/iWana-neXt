@@ -12,8 +12,6 @@ import {
 import { FileText, Upload } from 'lucide-react';
 import {
   AccessPermissionKey,
-  type BillingAccountStatement,
-  type BillingDocumentResponse,
   type SignedContractDocument,
   type SignedContractDownloadRestriction,
   type SubscriberDocument,
@@ -27,7 +25,6 @@ import {
   type ExpedienteDocumentItem,
 } from '@/lib/api-client';
 import { usePermissions } from '@/components/access-control/permissions-context';
-import { downloadBillingDocumentPdf } from '@/components/billing/billing-document-pdf';
 import { getSafeCrmErrorMessage } from '@/components/crm/expedientes/crm-error-message';
 import {
   PortalAlert,
@@ -42,12 +39,12 @@ import { STRATUM_EVIDENCE_FORMATS_LABEL, stratumEvidenceFileError } from './stra
 
 /**
  * Documentos del suscriptor (spec §3 F): reúne en una lista los soportes del expediente
- * de origen, la evidencia de estrato de cada servicio y los PDF de cobro. Solo lista y
- * sube; las plantillas llegan con «Cierre de venta» (D4).
+ * de origen, los contratos firmados, la evidencia de estrato y los soportes importados. Solo
+ * archivos (spec MOD05↔MOD14 2026-11-13 D1, CA-1): los documentos de cobro viven en
+ * Facturación → Facturas. Solo lista y sube; las plantillas llegan con «Cierre de venta» (D4).
  */
 export type SubscriberDocumentAction =
   | { kind: 'link'; href: string }
-  | { kind: 'pdf'; document: Pick<BillingDocumentResponse, 'id' | 'number'> }
   | { kind: 'signed-contract'; contractId: string }
   | { kind: 'imported-support'; document: Pick<SubscriberDocument, 'id' | 'contentType'> };
 
@@ -123,41 +120,6 @@ export function stratumRows(contracts: Contract[], anonymized: boolean): Subscri
 
 export const IMPORTED_ORIGIN_LABEL = 'Importado';
 
-export function billingRows(statement: BillingAccountStatement): SubscriberDocumentRow[] {
-  return statement.documents.flatMap((document): SubscriberDocumentRow[] => {
-    if (document.status === 'EMITIDO') {
-      return [
-        {
-          key: `cobro:${document.id}`,
-          type: `Documento de cobro ${document.number ?? ''}`.trim(),
-          date: document.issueDate ?? document.createdAt,
-          author: null,
-          version: 'Emitido',
-          visibleToTitular: false,
-          action: { kind: 'pdf', document },
-        },
-      ];
-    }
-    // ADR-110 D5: historial traído de UISP; se identifica por su número del sistema de origen.
-    if (document.status === 'IMPORTADO') {
-      const externalNumber = document.externalNumber ?? null;
-      return [
-        {
-          key: `cobro:${document.id}`,
-          type: `Histórico importado ${externalNumber ?? ''}`.trim(),
-          date: document.issueDate ?? document.createdAt,
-          author: null,
-          version: 'Histórico importado',
-          visibleToTitular: false,
-          origin: IMPORTED_ORIGIN_LABEL,
-          action: { kind: 'pdf', document: { id: document.id, number: externalNumber } },
-        },
-      ];
-    }
-    return [];
-  });
-}
-
 const IMPORTED_SUPPORT_TYPES: Record<SubscriberDocumentKind, string> = {
   PDF: 'Soporte importado (PDF)',
   IMAGEN: 'Soporte importado (imagen)',
@@ -205,14 +167,6 @@ async function downloadImportedSupport(
   } finally {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-}
-
-/** Descarga del PDF de un documento de cobro; el histórico importado puede no traer su PDF. */
-function billingPdfErrorMessage(error: unknown): string {
-  if (error instanceof ApiError && error.code === 'BILLING_IMPORTED_PDF_NOT_AVAILABLE') {
-    return 'El PDF de este documento histórico no se trajo en la importación.';
-  }
-  return 'No pudimos descargar el PDF. Intenta de nuevo.';
 }
 
 function importedSupportErrorMessage(error: unknown): string {
@@ -301,8 +255,6 @@ interface SubscriberDocumentsPanelProps {
   contracts: Contract[];
   anonymized: boolean;
   restricted: boolean;
-  /** Estado de cuenta ya cargado por la ficha; sin él no hay PDF de cobro que listar. */
-  statement: BillingAccountStatement | null;
   /** Cambia cada vez que «Registrar ▾ → Documento» pide llevar el foco aquí. */
   focusRequest?: number;
 }
@@ -313,7 +265,6 @@ export function SubscriberDocumentsPanel({
   contracts,
   anonymized,
   restricted,
-  statement,
   focusRequest = 0,
 }: SubscriberDocumentsPanelProps) {
   const { hasPermission } = usePermissions();
@@ -417,19 +368,6 @@ export function SubscriberDocumentsPanel({
     }
   }
 
-  async function download(document: Pick<BillingDocumentResponse, 'id' | 'number'>) {
-    if (downloading) return;
-    setPdfError(null);
-    setDownloading(document.id);
-    try {
-      await downloadBillingDocumentPdf(document);
-    } catch (error) {
-      setPdfError(billingPdfErrorMessage(error));
-    } finally {
-      setDownloading(null);
-    }
-  }
-
   return (
     <>
       <RemoteCard
@@ -457,7 +395,6 @@ export function SubscriberDocumentsPanel({
             ...signedContractRows(signed.items, contracts, anonymized),
             ...stratumRows(contracts, anonymized),
             ...importedSupportRows(imported.items, canDownloadImported),
-            ...(statement && !anonymized ? billingRows(statement) : []),
           ];
           return (
             <div className="space-y-3">
@@ -488,7 +425,7 @@ export function SubscriberDocumentsPanel({
                   embedded
                   icon={FileText}
                   title="Aún no hay documentos"
-                  description="Aquí aparecen los soportes de la venta, el soporte de estrato, los soportes importados y los documentos de cobro."
+                  description="Aquí aparecen los soportes de la venta, el soporte de estrato, los contratos firmados y los soportes importados."
                 />
               ) : (
                 <ul
@@ -550,20 +487,6 @@ export function SubscriberDocumentsPanel({
                         >
                           Abrir
                         </a>
-                      ) : row.action?.kind === 'pdf' ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="min-h-11"
-                          aria-label={`Descargar PDF de ${row.type}`}
-                          disabled={downloading !== null}
-                          loading={downloading === row.action.document.id}
-                          onClick={() => {
-                            if (row.action?.kind === 'pdf') void download(row.action.document);
-                          }}
-                        >
-                          Descargar PDF
-                        </Button>
                       ) : row.action?.kind === 'imported-support' ? (
                         <Button
                           type="button"

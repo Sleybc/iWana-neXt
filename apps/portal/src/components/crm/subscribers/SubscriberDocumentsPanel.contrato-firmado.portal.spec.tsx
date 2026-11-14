@@ -61,7 +61,6 @@ function renderPanel(props: Partial<Parameters<typeof SubscriberDocumentsPanel>[
       contracts={[CONTRACT]}
       anonymized={false}
       restricted={false}
-      statement={null}
       {...props}
     />,
   );

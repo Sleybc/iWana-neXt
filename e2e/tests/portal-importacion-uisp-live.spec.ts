@@ -472,18 +472,24 @@ test.describe('Importación desde UISP — ADR-110 contra Portal, API y worker r
     await expect(page.getByRole('list', { name: 'Etiquetas' }).first()).toContainText(TAG_NAME);
     await page.getByRole('tab', { name: 'Documentos', exact: true }).click();
     await expect(page).toHaveURL(/[?&]tab=documentos(?:&|$)/u);
-    for (const n of [1, 2, 3]) {
-      await expect(
-        // La actividad de la ficha también lo nombra: se acota al panel de Documentos.
-        page
-          .getByRole('tabpanel', { name: 'Documentos' })
-          .getByText(`Histórico importado SINT-2023-${n}`, { exact: true })
-          .first(),
-      ).toBeVisible();
-    }
     await expect(page.getByText('Soporte importado (PDF)', { exact: true })).toBeVisible();
     await expect(page.getByText('Soporte importado (imagen)', { exact: true })).toBeVisible();
+    // Spec MOD05↔MOD14 2026-11-13 D1: Documentos solo lista archivos; los históricos de cobro
+    // importados viven en Facturación → Facturas.
+    await expect(
+      page
+        .getByRole('tabpanel', { name: 'Documentos' })
+        .getByText(/^Histórico importado SINT-2023-/u),
+    ).toHaveCount(0);
     await expectNoSeriousAxeViolations(page, 'ficha · Documentos importados');
+    await page.goto(`/dashboard/crm/subscribers/${subscriberId}?tab=facturacion&sub=facturas`);
+    const invoices = page.getByRole('tabpanel', { name: 'Facturas', exact: true });
+    for (const n of [1, 2, 3]) {
+      await expect(invoices.getByRole('row').filter({ hasText: `SINT-2023-${n}` })).toContainText(
+        'Histórico importado',
+        { timeout: 30_000 },
+      );
+    }
 
     // ── Conciliación (CA-3) ──
     await page.goto(`/dashboard/settings/imports/${batchId}`);

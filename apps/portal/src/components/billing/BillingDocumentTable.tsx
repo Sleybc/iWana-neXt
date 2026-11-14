@@ -15,6 +15,7 @@ import { PortalAlert, PortalSidePeek } from '@/components/shared/portal-ui';
 import { billingApi } from '@/lib/api-client';
 import { BillingConfirmation } from './BillingConfirmation';
 import { BillingCourtesyDialog } from './BillingCourtesyDialog';
+import { BillingEmailLog, BillingEmailSendResult, useBillingEmailSend } from './BillingEmailLog';
 import { BillingInstallationBreakdown } from './BillingInstallationBreakdown';
 import { downloadBillingDocumentPdf } from './billing-document-pdf';
 import {
@@ -36,6 +37,7 @@ import {
   PROTECTED_LABEL,
   PROTECTED_NOTICE,
   documentCoveredRange,
+  documentIssueDate,
   documentReference,
 } from './billing-copy';
 import { BillingLoadState, BillingTable, billingError, useBillingLoad } from './billing-ui';
@@ -45,11 +47,17 @@ export function BillingDocumentTable({
   onChanged,
   selection,
   onSelectionChange,
+  subscriberId,
 }: {
   documents: BillingDocumentResponse[];
   onChanged: () => void;
   selection?: ReadonlySet<string>;
   onSelectionChange?: (documentId: string, selected: boolean) => void;
+  /**
+   * Ficha del suscriptor (Facturación → Facturas): habilita «Enviar por correo» y el registro de
+   * envíos del detalle (spec MOD05↔MOD14 2026-11-13 D5).
+   */
+  subscriberId?: string;
 }) {
   const { hasPermission } = usePermissions();
   const canManage = hasPermission(AccessPermissionKey.BILLING_INVOICES_MANAGE);
@@ -62,6 +70,11 @@ export function BillingDocumentTable({
   }>();
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const email = useBillingEmailSend();
+  const canSend = Boolean(subscriberId) && canManage;
+  // D11: el registro se ve con la lectura de documentos; enviar exige la gestión.
+  const canReadEmailLog =
+    Boolean(subscriberId) && hasPermission(AccessPermissionKey.BILLING_INVOICES_READ);
 
   async function download(document: BillingDocumentResponse) {
     if (downloading) return;
@@ -79,6 +92,7 @@ export function BillingDocumentTable({
   return (
     <>
       {pdfError ? <PortalAlert variant="error" title={pdfError} /> : null}
+      <BillingEmailSendResult outcome={email.outcome} />
       <BillingTable
         label="Documentos de cobro"
         columns={[
@@ -180,6 +194,21 @@ export function BillingDocumentTable({
                     Descargar PDF
                   </Button>
                 ) : null}
+                {canSend && document.status === 'EMITIDO' ? (
+                  <Button
+                    className="min-h-11"
+                    type="button"
+                    variant="ghost"
+                    aria-label={`Enviar por correo el documento ${documentReference(document)}`}
+                    disabled={email.busy !== null}
+                    loading={email.busy === document.id}
+                    onClick={() =>
+                      void email.send(document.id, () => billingApi.sendDocumentEmail(document.id))
+                    }
+                  >
+                    Enviar por correo
+                  </Button>
+                ) : null}
                 {document.status === 'EMITIDO' ? (
                   <>
                     {canManage ? (
@@ -203,6 +232,9 @@ export function BillingDocumentTable({
         <BillingDocumentDetail
           id={detail}
           canCourtesy={canCourtesy}
+          canSend={canSend}
+          canReadEmailLog={canReadEmailLog}
+          emailRevision={email.sent}
           onChanged={onChanged}
           onClose={() => setDetail(null)}
         />
@@ -253,11 +285,19 @@ export function BillingDocumentTable({
 function BillingDocumentDetail({
   id,
   canCourtesy,
+  canSend,
+  canReadEmailLog,
+  emailRevision,
   onChanged,
   onClose,
 }: {
   id: string;
   canCourtesy: boolean;
+  /** Solo en la ficha: envío por correo y registro de envíos del documento. */
+  canSend: boolean;
+  /** Solo en la ficha y con lectura de documentos: registro de envíos del documento. */
+  canReadEmailLog: boolean;
+  emailRevision: number;
   onChanged: () => void;
   onClose: () => void;
 }) {
@@ -265,6 +305,7 @@ function BillingDocumentDetail({
   const { data, error, loading, reload } = useBillingLoad(load);
   const [granting, setGranting] = useState(false);
   const [voiding, setVoiding] = useState<BillingCourtesyResponse>();
+  const email = useBillingEmailSend();
   const buyer = data?.buyerProtected ? null : data?.buyerSnapshot;
   function changed() {
     reload();
@@ -301,6 +342,10 @@ function BillingDocumentDetail({
               </div>
             ) : null}
             <div>
+              <dt className="font-medium">Fecha de emisión</dt>
+              <dd>{documentIssueDate(data)}</dd>
+            </div>
+            <div>
               <dt className="font-medium">Periodo cubierto</dt>
               <dd>{documentCoveredRange(data)}</dd>
             </div>
@@ -330,6 +375,23 @@ function BillingDocumentDetail({
             >
               Otorgar cortesía
             </Button>
+          ) : null}
+          {canSend && data.status === 'EMITIDO' ? (
+            <div className="space-y-2">
+              <Button
+                className="min-h-11"
+                type="button"
+                variant="secondary"
+                disabled={email.busy !== null}
+                loading={email.busy === data.id}
+                onClick={() =>
+                  void email.send(data.id, () => billingApi.sendDocumentEmail(data.id))
+                }
+              >
+                Enviar por correo
+              </Button>
+              <BillingEmailSendResult outcome={email.outcome} />
+            </div>
           ) : null}
           {data.lines?.length ? (
             <BillingTable
@@ -400,6 +462,13 @@ function BillingDocumentDetail({
                 })}
               />
             </section>
+          ) : null}
+          {canReadEmailLog && (data.status === 'EMITIDO' || data.status === 'ANULADO') ? (
+            <BillingEmailLog
+              subscriberId={data.subscriberId}
+              target={{ kind: 'FACTURA', documentId: data.id }}
+              revision={emailRevision + email.sent}
+            />
           ) : null}
         </div>
       ) : null}

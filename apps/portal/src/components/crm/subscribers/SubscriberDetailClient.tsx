@@ -114,6 +114,17 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
     },
     [pathname, queryString, router],
   );
+  // «Ver facturación» y «Ver los N documentos pendientes» de la Vista general llevan a
+  // Facturación → Facturas (spec MOD05↔MOD14 2026-11-13 R1; inventario W0, obligación 5).
+  const openBillingInvoices = useCallback(() => {
+    setActiveSubscriberTab('facturacion');
+    const next = new URLSearchParams(
+      typeof window === 'undefined' ? queryString : window.location.search,
+    );
+    next.set('tab', 'facturacion');
+    next.set('sub', 'facturas');
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+  }, [pathname, queryString, router]);
 
   useEffect(() => {
     setActiveSubscriberTab(urlTab);
@@ -258,7 +269,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
                   statement={statement}
                   contracts={subscriber360.contracts}
                   anonymized={anonymized}
-                  onOpenBilling={() => selectSubscriberTab('facturacion')}
+                  onOpenBilling={openBillingInvoices}
                 />
               ) : undefined
             }
@@ -325,7 +336,6 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
             contracts={subscriber360?.contracts ?? []}
             anonymized={anonymized}
             restricted={subscriber.privacyRestricted}
-            statement={canReadBilling ? statement.data : null}
             focusRequest={documentsFocusRequest}
           />
         ),
@@ -393,6 +403,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
     subscriber,
     subscriber360,
     selectSubscriberTab,
+    openBillingInvoices,
     loadSubscriber,
     canManagePrivacy,
     canReadPrivacy,

@@ -4,7 +4,7 @@
 
 **Objetivo:** Documentos solo con archivos y Facturación dividida en Facturas, Pagos y Estado de cuenta, con recibo numerado, libro con saldo corrido, envíos por correo y desasociar pago.
 **Versión:** 1.1 (2026-11-13). Incorpora la revisión AI-EM-ARCH: migraciones y archivos asignados por bloque, contrato de la ola 2, matriz con skills descartadas y gates, revisores de cierre, espejo `## Lanzamiento` y lista de exclusiones del commit.
-**Spec:** [2026-11-13-mod05-mod14-facturacion-en-la-ficha-estilo-uisp](../specs/2026-11-13-mod05-mod14-facturacion-en-la-ficha-estilo-uisp.md) v1.1 (G0 sobre v1.0; reafirmar sobre v1.1)
+**Spec:** [2026-11-13-mod05-mod14-facturacion-en-la-ficha-estilo-uisp](../specs/2026-11-13-mod05-mod14-facturacion-en-la-ficha-estilo-uisp.md) v1.1 (G0 sobre v1.0; reafirmado sobre v1.1 por el usuario el 2026-11-13 al aprobar el plan de ejecución)
 **Launcher:** [PROMPT-MOD05-MOD14-FACTURACION-FICHA-LAUNCH-v1.1](../prompts/PROMPT-MOD05-MOD14-FACTURACION-FICHA-LAUNCH-v1.1.md). Lanza la ola 1; las olas 2 y 3 se ejecutan desde este plan en la misma sesión (ADR-107 D8.2).
 **Informe de la fase:** `docs/informes/INFORME-MOD05-MOD14-FACTURACION-FICHA-CIERRE-v1.0.md`. Cada ola actualiza su sección; G6.5 se registra al final. Dueño: la sesión orquestadora.
 **Publicación:** un solo commit y push al terminar. Lleva migraciones con restricciones (ADR-107 regla 7).

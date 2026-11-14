@@ -16,6 +16,7 @@ import { BillingPolicyController } from './policy/billing-policy.controller';
 import { BillingPolicyService } from './policy/billing-policy.service';
 import { BillingPaymentsController } from './payments/billing-payments.controller';
 import { BillingPaymentsService } from './payments/billing-payments.service';
+import { BillingReceiptsService } from './payments/billing-receipts.service';
 import { BillingAccountReadPort } from './ports/billing-account-read.port';
 import { TenantModule } from '../tenant/tenant.module';
 import { PrivacyModule } from '../privacy/privacy.module';
@@ -37,6 +38,13 @@ import { BillingInstallationBreakdownModule } from './installation/billing-insta
 import { TaxationModule } from '../taxation/taxation.module';
 import { BillingWithholdingsController } from './payments/billing-withholdings.controller';
 import { BillingWithholdingOptionsService } from './payments/billing-withholding-options.service';
+import { BillingStatementLedgerController } from './statement/billing-statement-ledger.controller';
+import { BillingStatementLedgerService } from './statement/billing-statement-ledger.service';
+import { BillingEmailsController } from './emails/billing-emails.controller';
+import { BillingEmailsService } from './emails/billing-emails.service';
+import { BillingEmailProcessor } from './emails/billing-email.processor';
+import { BILLING_EMAIL_QUEUE } from './emails/billing-email.constants';
+import { BillingReceiptPdfSource } from './emails/billing-receipt-pdf.source';
 
 @Module({
   imports: [
@@ -61,6 +69,9 @@ import { BillingWithholdingOptionsService } from './payments/billing-withholding
     BullModule.registerQueue({ name: CRM_CONTRACT_EVENTS_QUEUE }),
     // Consumo de la OT de instalación al contrato (spec 2026-11-13, bloque A).
     BillingInstallationBreakdownModule,
+    // Envíos por correo de Facturación (spec MOD05↔MOD14 2026-11-13, bloque B: D5, D9); el
+    // MailerModule es global.
+    BullModule.registerQueue({ name: BILLING_EMAIL_QUEUE }),
   ],
   controllers: [
     BillingPolicyController,
@@ -68,10 +79,13 @@ import { BillingWithholdingOptionsService } from './payments/billing-withholding
     BillingDocumentsController,
     BillingCourtesiesController,
     BillingWithholdingsController,
+    BillingStatementLedgerController,
+    BillingEmailsController,
   ],
   providers: [
     BillingPolicyService,
     BillingPaymentsService,
+    BillingReceiptsService,
     BillingDocumentsService,
     BillingCourtesiesService,
     BillingWithholdingOptionsService,
@@ -83,6 +97,10 @@ import { BillingWithholdingOptionsService } from './payments/billing-withholding
     TenantBillingIssuerReadAdapter,
     { provide: BillingAccountReadPort, useExisting: BillingPaymentsService },
     { provide: BillingIssuerReadPort, useExisting: TenantBillingIssuerReadAdapter },
+    BillingStatementLedgerService,
+    BillingEmailsService,
+    BillingEmailProcessor,
+    { provide: BillingReceiptPdfSource, useExisting: BillingReceiptsService },
   ],
   exports: [
     BillingPolicyService,

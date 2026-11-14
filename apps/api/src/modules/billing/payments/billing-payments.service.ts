@@ -15,6 +15,7 @@ import {
   AllocateCreditCommandSchema,
   BillingPaymentResponseSchema,
   RegisterPaymentCommandSchema,
+  UnlinkAllocationCommandSchema,
   VoidPaymentCommandSchema,
   type BillingPaymentWithholdingResponse,
   type BillingWithholdingTaxCode,
@@ -75,6 +76,10 @@ type PaymentRow = {
   allocated_amount: string;
   /** Retenciones vigentes del pago (spec MOD14 2026-11-13 R6). */
   withholding_amount: string;
+  /** Recibo (migración 207): bigint como texto; nulo en un pago importado. */
+  receipt_number?: string | null;
+  imported?: boolean;
+  external_id?: string | null;
 };
 
 type WithholdingRow = {
@@ -99,6 +104,7 @@ type AllocationRow = {
   amount: string;
   reversed_at: Date | string | null;
   reversed_by: string | null;
+  reversal_reason_code?: string | null;
   created_by: string | null;
   created_at: Date | string;
 };
@@ -194,7 +200,9 @@ const PAYMENT_COLUMNS = `p.id::text, p.tenant_id::text, p.subscriber_id::text, p
   p.created_at, COALESCE((SELECT SUM(a.amount) FROM billing_payment_allocations a
     WHERE a.payment_id = p.id AND a.tenant_id = p.tenant_id AND a.reversed_at IS NULL), 0)::numeric(14,2)::text
     AS allocated_amount,
-  ${ACTIVE_WITHHOLDING_SUM_SQL}::numeric(14,2)::text AS withholding_amount`;
+  ${ACTIVE_WITHHOLDING_SUM_SQL}::numeric(14,2)::text AS withholding_amount,
+  p.receipt_number::text AS receipt_number, (p.import_batch_id IS NOT NULL) AS imported,
+  p.external_id`;
 
 function errorResponse(code: string, message: string): { code: string; message: string } {
   return { code, message };
@@ -322,6 +330,9 @@ function mapAllocation(row: AllocationRow) {
     amount: row.amount,
     reversedAt: row.reversed_at == null ? null : toIso(row.reversed_at),
     reversedBy: row.reversed_by,
+    ...(row.reversal_reason_code !== undefined
+      ? { reversalReasonCode: row.reversal_reason_code }
+      : {}),
     createdBy: row.created_by,
     createdAt: toIso(row.created_at),
   };
@@ -399,11 +410,18 @@ export class BillingPaymentsService extends BillingAccountReadPort {
         options.canExceedWithholdingRate === true,
       );
 
+      // D8 (spec MOD05↔MOD14 2026-11-13): consecutivo del recibo por tenant. El lock serializa
+      // la numeración hasta el commit; el índice único parcial de la 207 la respalda.
+      await qr.manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
+        `billing-receipt:${tenantId}`,
+      ]);
       const rows = (await qr.manager.query(
         `INSERT INTO billing_payments (
            tenant_id, subscriber_id, method, amount, paid_at, reference, note,
-           idempotency_key, allocations_fingerprint, created_by
-         ) VALUES ($1, $2::uuid, $3, $4::numeric, $5::date, $6, $7, $8, $9, $10::uuid)
+           idempotency_key, allocations_fingerprint, created_by, receipt_number
+         ) VALUES ($1, $2::uuid, $3, $4::numeric, $5::date, $6, $7, $8, $9, $10::uuid,
+                   (SELECT COALESCE(MAX(receipt_number), 0) + 1
+                      FROM billing_payments WHERE tenant_id = $1))
          ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
          RETURNING id::text`,
         [
@@ -664,6 +682,112 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       );
       const after = await this.findPaymentById(qr.manager, tenantId, paymentId);
       if (!after) throw new Error('El pago dejó de estar disponible durante la anulación.');
+      return { payment: await this.toPaymentResponse(qr.manager, after), events };
+    });
+    await this.emitEvents(committed.events);
+    return this.protectPaymentForReader(committed.payment, readAccess, 'write');
+  }
+
+  /**
+   * Desasocia una aplicación vigente del pago sin anularlo (spec MOD05↔MOD14 2026-11-13 D6, R5,
+   * CA-5, CA-7). El valor vuelve al saldo a favor del pago y puede re-aplicarse con
+   * `allocateCredit`. Orden de bloqueos como `allocateCredit`: titular, crédito del titular, pago,
+   * documento y aplicación.
+   */
+  async unlinkAllocation(
+    paymentId: string,
+    allocationId: string,
+    body: unknown,
+    actorId: string,
+    readAccess?: PaymentReadAccess,
+  ): Promise<BillingPaymentResponse> {
+    const parsed = UnlinkAllocationCommandSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new UnprocessableEntityException(
+        errorResponse('VALIDATION_ERROR', 'Revisa los datos enviados.'),
+      );
+    }
+    const { reasonCode } = parsed.data;
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const committed = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const found = await this.findPaymentById(qr.manager, tenantId, paymentId);
+      if (!found) throw this.paymentNotFound();
+      if (found.status !== 'REGISTRADO') throw this.paymentVoidedConflict();
+
+      const titular = await this.contractReadPort.lockTitularForBillingWrite(found.subscriber_id, {
+        manager: qr.manager,
+      });
+      if (!titular.exists || titular.anonymized) throw this.anonymizedConflict();
+      await this.lockSubscriber(qr.manager, found.subscriber_id);
+
+      const payment = await this.findPaymentById(qr.manager, tenantId, paymentId, true);
+      if (!payment) throw this.paymentNotFound();
+      if (payment.status !== 'REGISTRADO') throw this.paymentVoidedConflict();
+
+      const [allocation] = (await qr.manager.query(
+        `SELECT a.id::text, a.document_id::text, a.amount::text
+           FROM billing_payment_allocations a
+          WHERE a.id = $1::uuid AND a.payment_id = $2::uuid AND a.tenant_id = $3
+            AND a.reversed_at IS NULL`,
+        [allocationId, paymentId, tenantId],
+      )) as Array<{ id: string; document_id: string; amount: string }>;
+      if (!allocation) throw this.allocationNotFound();
+
+      const [document] = (await qr.manager.query(
+        `SELECT id::text, status, period_id::text
+           FROM billing_documents WHERE id = $1::uuid AND tenant_id = $2
+          FOR UPDATE`,
+        [allocation.document_id, tenantId],
+      )) as Array<{ id: string; status: string; period_id: string | null }>;
+      // CA-7: la guarda de la 199 no cubre el UPDATE de reversed_at; se valida aquí.
+      if (!document || document.status === 'ANULADO' || document.status === 'IMPORTADO') {
+        throw this.allocationNotUnlinkable();
+      }
+
+      const [withholding] = (await qr.manager.query(
+        `SELECT 1 AS present FROM billing_payment_withholdings
+          WHERE payment_id = $1::uuid AND document_id = $2::uuid AND tenant_id = $3
+            AND voided_at IS NULL
+          LIMIT 1`,
+        [paymentId, document.id, tenantId],
+      )) as Array<{ present: number }>;
+      if (withholding) throw this.allocationHasWithholding();
+
+      const updated = returningRows<{ id: string }>(
+        (await qr.manager.query(
+          `UPDATE billing_payment_allocations
+              SET reversed_at = now(), reversed_by = $1::uuid, reversal_reason_code = $2
+            WHERE id = $3::uuid AND tenant_id = $4 AND reversed_at IS NULL
+            RETURNING id::text`,
+          [actorId, reasonCode, allocation.id, tenantId],
+        )) as unknown,
+      );
+      if (updated.length !== 1) throw this.allocationNotFound();
+
+      await this.audit.logWithin(
+        {
+          action: AuditAction.UPDATE,
+          entityType: 'BillingPaymentAllocation',
+          entityId: allocation.id,
+          userId: actorId,
+          oldValue: { status: 'VIGENTE', paymentId, documentId: document.id },
+          newValue: {
+            status: 'DESASOCIADA',
+            reasonCode,
+            paymentId,
+            documentId: document.id,
+            amount: moneyString(allocation.amount),
+          },
+        },
+        qr.manager,
+      );
+      const events = await this.recalculateSignals(
+        qr.manager,
+        tenantId,
+        document.period_id ? [document.period_id] : [],
+      );
+      const after = await this.findPaymentById(qr.manager, tenantId, paymentId);
+      if (!after) throw new Error('El pago dejó de estar disponible durante la desasociación.');
       return { payment: await this.toPaymentResponse(qr.manager, after), events };
     });
     await this.emitEvents(committed.events);
@@ -1519,7 +1643,8 @@ export class BillingPaymentsService extends BillingAccountReadPort {
   ): Promise<BillingPaymentResponse> {
     const allocationRows = (await manager.query(
       `SELECT id::text, tenant_id::text, payment_id::text, document_id::text,
-              amount::text, reversed_at, reversed_by::text, created_by::text, created_at
+              amount::text, reversed_at, reversed_by::text, reversal_reason_code,
+              created_by::text, created_at
          FROM billing_payment_allocations WHERE payment_id = $1::uuid
          ORDER BY created_at ASC, id ASC`,
       [row.id],
@@ -1557,6 +1682,11 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       allocations: allocationRows.map(mapAllocation),
       withholdingAmount: centsMoney(withholding),
       withholdings: (withholdingRows ?? []).map(mapWithholding),
+      ...(row.receipt_number !== undefined
+        ? { receiptNumber: row.receipt_number == null ? null : Number(row.receipt_number) }
+        : {}),
+      ...(row.imported !== undefined ? { imported: row.imported } : {}),
+      ...(row.external_id !== undefined ? { externalId: row.external_id } : {}),
     };
     const parsed = BillingPaymentResponseSchema.parse(candidate);
     return redactFreeText ? redactPaymentFreeText(parsed) : parsed;
@@ -1823,6 +1953,39 @@ export class BillingPaymentsService extends BillingAccountReadPort {
   private paymentVoidedConflict(): ConflictException {
     return new ConflictException(
       errorResponse(BILLING_ERROR_CODES.BILLING_PAYMENT_VOIDED, 'El pago está anulado.'),
+    );
+  }
+
+  private paymentNotFound(): NotFoundException {
+    return new NotFoundException(
+      errorResponse('BILLING_PAYMENT_NOT_FOUND', 'No se encontró el pago.'),
+    );
+  }
+
+  private allocationNotFound(): NotFoundException {
+    return new NotFoundException(
+      errorResponse(
+        BILLING_ERROR_CODES.BILLING_ALLOCATION_NOT_FOUND,
+        'No se encontró una aplicación vigente de este pago.',
+      ),
+    );
+  }
+
+  private allocationNotUnlinkable(): ConflictException {
+    return new ConflictException(
+      errorResponse(
+        BILLING_ERROR_CODES.BILLING_ALLOCATION_NOT_UNLINKABLE,
+        'No se puede desasociar un pago de un documento anulado o importado.',
+      ),
+    );
+  }
+
+  private allocationHasWithholding(): UnprocessableEntityException {
+    return new UnprocessableEntityException(
+      errorResponse(
+        BILLING_ERROR_CODES.BILLING_ALLOCATION_HAS_WITHHOLDING,
+        'El pago tiene una retención sobre ese documento: anula el pago para corregirlo.',
+      ),
     );
   }
 

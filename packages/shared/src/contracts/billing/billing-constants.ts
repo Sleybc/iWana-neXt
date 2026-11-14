@@ -65,6 +65,17 @@ export const BILLING_PAYMENT_VOID_REASONS = [
 export type BillingPaymentVoidReason = (typeof BILLING_PAYMENT_VOID_REASONS)[number];
 
 /**
+ * Motivos de desasociación manual de una aplicación de pago (spec MOD05↔MOD14 2026-11-13 D6,
+ * migración 207). Dominio cerrado: el valor queda como saldo a favor del pago.
+ */
+export const BILLING_ALLOCATION_UNLINK_REASONS = [
+  'APLICADO_A_DOCUMENTO_EQUIVOCADO',
+  'VALOR_EQUIVOCADO',
+  'REASIGNACION',
+] as const;
+export type BillingAllocationUnlinkReason = (typeof BILLING_ALLOCATION_UNLINK_REASONS)[number];
+
+/**
  * Estados de pago derivados de un periodo de facturación (HLD v1.1 §4, ADR-103 D3).
  * Orden de evaluación: SIN_DOCUMENTO -> PAGADO -> VENCIDO -> PARCIAL -> PENDIENTE.
  */
@@ -171,5 +182,13 @@ export const BILLING_ERROR_CODES = {
   BILLING_WITHHOLDING_BASE_EXCEEDS_SUBTOTAL: 'BILLING_WITHHOLDING_BASE_EXCEEDS_SUBTOTAL',
   /** H-1 (c): la tarifa supera la sugerida más la tolerancia y el usuario no tiene permiso. */
   BILLING_WITHHOLDING_RATE_ABOVE_CEILING: 'BILLING_WITHHOLDING_RATE_ABOVE_CEILING',
+  /** Desasociar y recibo (spec MOD05↔MOD14 2026-11-13 D6, D8, CA-7). */
+  BILLING_ALLOCATION_NOT_FOUND: 'BILLING_ALLOCATION_NOT_FOUND',
+  /** El documento de la aplicación está ANULADO o IMPORTADO. */
+  BILLING_ALLOCATION_NOT_UNLINKABLE: 'BILLING_ALLOCATION_NOT_UNLINKABLE',
+  /** El pago tiene una retención vigente atribuida a ese documento: el camino es anular el pago. */
+  BILLING_ALLOCATION_HAS_WITHHOLDING: 'BILLING_ALLOCATION_HAS_WITHHOLDING',
+  /** Un pago importado no tiene recibo numerado de iWana. */
+  BILLING_RECEIPT_NOT_AVAILABLE: 'BILLING_RECEIPT_NOT_AVAILABLE',
 } as const;
 export type BillingErrorCode = (typeof BILLING_ERROR_CODES)[keyof typeof BILLING_ERROR_CODES];

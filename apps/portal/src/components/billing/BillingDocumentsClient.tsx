@@ -202,6 +202,7 @@ export function BillingDocumentList({
           <BillingDocumentTable
             documents={data.data}
             onChanged={onChanged}
+            {...(subscriberId ? { subscriberId } : {})}
             {...(canManage
               ? {
                   selection: new Set(selected.keys()),

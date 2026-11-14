@@ -18,6 +18,8 @@ import { BillingAccountReadPort } from './ports/billing-account-read.port';
 import { BillingContractReadPort } from './ports/billing-contract-read.port';
 import { BillingContractFirstChargePort } from './ports/billing-contract-first-charge.port';
 import { BillingContractFirstChargeAdapter } from '../crm/contracts/billing-contract-first-charge.adapter';
+import { BillingTitularContactReadPort } from './ports/billing-titular-contact-read.port';
+import { BillingTitularContactReadAdapter } from '../crm/contracts/billing-titular-contact-read.adapter';
 
 const meta = (key: string, target: object): unknown[] =>
   (Reflect.getMetadata(key, target) as unknown[] | undefined) ?? [];
@@ -50,12 +52,23 @@ describe('BR-4 composición de módulos y contratos', () => {
     const providers = meta(MODULE_METADATA.PROVIDERS, BillingContractReadModule);
     const exports = meta(MODULE_METADATA.EXPORTS, BillingContractReadModule);
     // SEC-3 añade el puerto de lectura del outbox de activación y la spec 2026-11-11 el del
-    // primer cobro (R3/R4); siguen sin exportarse adaptadores.
+    // primer cobro (R3/R4); la spec 2026-11-13 (bloque B) el del correo del titular. Siguen sin
+    // exportarse adaptadores.
     expect(exports).toEqual([
       BillingContractReadPort,
       ContractActivationEventReadPort,
       BillingContractFirstChargePort,
+      BillingTitularContactReadPort,
     ]);
+    expect(providers).toContainEqual(
+      expect.objectContaining({
+        provide: BillingTitularContactReadPort,
+        useExisting: BillingTitularContactReadAdapter,
+      }),
+    );
+    expect(meta(MODULE_METADATA.PROVIDERS, BillingModule)).not.toContain(
+      BillingTitularContactReadAdapter,
+    );
     expect(providers).toContainEqual(
       expect.objectContaining({
         provide: BillingContractFirstChargePort,

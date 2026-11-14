@@ -212,6 +212,7 @@ describe('Retenciones en el estado de cuenta (spec MOD14 2026-11-13 R8)', () => 
   });
 
   it('la pestaña de facturación muestra la tarjeta de retenciones y su detalle', async () => {
+    const user = userEvent.setup();
     render(
       <SubscriberBillingTab
         subscriberId={SUBSCRIBER_ID}
@@ -219,9 +220,12 @@ describe('Retenciones en el estado de cuenta (spec MOD14 2026-11-13 R8)', () => 
         statement={loaded(STATEMENT)}
       />,
     );
+    // La tarjeta sigue arriba de las subpestañas, visible en la vista por defecto (Facturas).
     const card = screen.getByText('Retenciones', { selector: 'p, h3, span, div' });
     expect(card).toBeInTheDocument();
     expect(screen.getAllByText('Ya están incluidas en lo pagado.').length).toBeGreaterThan(0);
+    // R1 (spec MOD05↔MOD14 2026-11-13): el detalle y la tabla de pagos viven en Pagos.
+    await user.click(screen.getByRole('tab', { name: 'Pagos' }));
     expect(screen.getByRole('region', { name: 'Detalle de retenciones' })).toBeInTheDocument();
     expect(await screen.findByRole('columnheader', { name: 'Retenciones' })).toBeInTheDocument();
   });

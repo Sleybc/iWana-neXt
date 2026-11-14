@@ -23,6 +23,7 @@ import {
   formatBillingMoney,
   PAYMENT_METHODS,
   PAYMENT_VOID_REASONS,
+  paymentReceiptLabel,
   PROTECTED_LABEL,
   PROTECTED_NOTICE,
   WITHHOLDING_TAX_CODES,
@@ -106,10 +107,16 @@ export function BillingPaymentTable({
   payments,
   onChanged,
   showSubscriber = false,
+  showReceipt = false,
+  onOpenDetail,
 }: {
   payments: BillingPaymentResponse[];
   onChanged: () => void;
   showSubscriber?: boolean;
+  /** Columna «Recibo»: consecutivo o referencia de origen del importado (spec 2026-11-13 D8). */
+  showReceipt?: boolean;
+  /** Abre el detalle del pago (facturas cubiertas, retenciones, recibo y desasociar). */
+  onOpenDetail?: (payment: BillingPaymentResponse) => void;
 }) {
   const { hasPermission } = usePermissions();
   const canRegister = hasPermission(AccessPermissionKey.BILLING_PAYMENTS_REGISTER);
@@ -125,6 +132,7 @@ export function BillingPaymentTable({
         label="Pagos registrados"
         columns={[
           ...(showSubscriber ? ['Suscriptor'] : []),
+          ...(showReceipt ? ['Recibo'] : []),
           'Fecha',
           'Método',
           'Referencia',
@@ -145,6 +153,7 @@ export function BillingPaymentTable({
                     : (payment.subscriberDisplayName ?? 'No disponible'),
                 ]
               : []),
+            ...(showReceipt ? [paymentReceiptLabel(payment)] : []),
             formatBillingDate(payment.paidAt),
             PAYMENT_METHODS[payment.method],
             payment.reference ?? '—',
@@ -155,18 +164,12 @@ export function BillingPaymentTable({
             <Badge variant={payment.status === 'ANULADO' ? 'error' : 'success'}>
               {payment.status === 'ANULADO' ? 'Anulado' : 'Registrado'}
             </Badge>,
-            canRegister && payment.status === 'REGISTRADO' ? (
-              <Button
-                className="min-h-11"
-                type="button"
-                variant="ghost"
-                onClick={() => setVoiding(payment)}
-              >
-                Anular pago
-              </Button>
-            ) : (
-              '—'
-            ),
+            <PaymentActions
+              payment={payment}
+              canVoid={canRegister && payment.status === 'REGISTRADO'}
+              onVoid={() => setVoiding(payment)}
+              {...(onOpenDetail ? { onOpenDetail: () => onOpenDetail(payment) } : {})}
+            />,
           ],
         }))}
       />
@@ -192,6 +195,41 @@ export function BillingPaymentTable({
         />
       ) : null}
     </>
+  );
+}
+
+function PaymentActions({
+  payment,
+  canVoid,
+  onVoid,
+  onOpenDetail,
+}: {
+  payment: BillingPaymentResponse;
+  canVoid: boolean;
+  onVoid: () => void;
+  onOpenDetail?: () => void;
+}) {
+  if (!canVoid && !onOpenDetail) return <>—</>;
+  const label = `${formatBillingDate(payment.paidAt)} por ${formatBillingMoney(payment.amount)}`;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {onOpenDetail ? (
+        <Button
+          className="min-h-11"
+          type="button"
+          variant="ghost"
+          aria-label={`Ver detalle del pago del ${label}`}
+          onClick={onOpenDetail}
+        >
+          Ver detalle
+        </Button>
+      ) : null}
+      {canVoid ? (
+        <Button className="min-h-11" type="button" variant="ghost" onClick={onVoid}>
+          Anular pago
+        </Button>
+      ) : null}
+    </div>
   );
 }
 

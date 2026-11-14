@@ -100,4 +100,53 @@ describeDb('MOD14 — supresión de notas de anulación sobre migración 173 rea
       }
     });
   });
+
+  it('registro de correos (208): vacía el destinatario del titular, conserva el asunto y no toca terceros', async () => {
+    const subscriber = randomUUID();
+    const otherSubscriber = randomUUID();
+    const owner = fixture.tenantId;
+    const actor = randomUUID();
+    await runInTenantSchema(ds, fixture.schemaName, async (qr) => {
+      for (const subject of [subscriber, otherSubscriber]) {
+        await qr.query(
+          `INSERT INTO billing_email_log (tenant_id, subscriber_id, kind, recipient_masked, subject,
+             status, requested_by, processed_at)
+           VALUES ($1, $2, 'ESTADO_CUENTA', 't***@e***.co', 'Estado de cuenta · ISP', 'ENVIADO',
+                   $3, now())`,
+          [owner, subject, actor],
+        );
+      }
+    });
+    const scope = { partyId: null, subscriberIds: [subscriber], expedienteIds: [], userIds: [] };
+    const participant = new BillingTitularErasureParticipant();
+    const run = (mode: 'dry-run' | 'apply') =>
+      TenantContext.run(
+        { tenantId: owner, schemaName: fixture.schemaName, tenantSlug: 'synthetic-erasure' },
+        () => runInTenantSchema(ds, fixture.schemaName, (qr) => participant.apply(scope, qr, mode)),
+      );
+    const preview = await run('dry-run');
+    expect(preview.find((r) => r.table === 'billing_email_log')).toMatchObject({
+      selected: 1,
+      changed: 0,
+      residual: 1,
+    });
+    const applied = await run('apply');
+    expect(applied.find((r) => r.table === 'billing_email_log')).toMatchObject({
+      selected: 1,
+      changed: 1,
+      residual: 0,
+    });
+    const rows = (await runInTenantSchema(ds, fixture.schemaName, (qr) =>
+      qr.query(
+        `SELECT subscriber_id::text, recipient_masked, subject FROM billing_email_log
+          WHERE subscriber_id = ANY($1::uuid[])`,
+        [[subscriber, otherSubscriber]],
+      ),
+    )) as Array<{ subscriber_id: string; recipient_masked: string | null; subject: string }>;
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.subject).toBe('Estado de cuenta · ISP');
+      expect(row.recipient_masked).toBe(row.subscriber_id === subscriber ? null : 't***@e***.co');
+    }
+  });
 });

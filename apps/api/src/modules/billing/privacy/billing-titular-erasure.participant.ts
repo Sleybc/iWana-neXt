@@ -211,6 +211,7 @@ export class BillingTitularErasureParticipant implements TitularErasureParticipa
     );
 
     const courtesies = await this.courtesyNotes(qr, mode, tenantId, subscriberIds);
+    const emailLog = await this.emailRecipients(qr, mode, tenantId, subscriberIds);
     // El número de certificado de retención (billing_payment_withholdings, migración 206) se
     // conserva: es soporte contable y tributario del ISP (decisión D5 de la spec MOD14 2026-11-13).
     // Las lecturas lo ocultan con DATOS_BLOQUEADOS o titular anonimizado.
@@ -238,7 +239,51 @@ export class BillingTitularErasureParticipant implements TitularErasureParticipa
         residual: paymentResiduals,
       },
       ...courtesies,
+      ...emailLog,
     ];
+  }
+
+  /**
+   * Registro de correos de Facturación (migración 208, spec MOD05↔MOD14 2026-11-13 R4): el
+   * destinatario enmascarado del titular se vacía. El asunto es texto de plantilla (tipo, número
+   * del documento o recibo y razón social del tenant) y se conserva con el estado y el motivo, que
+   * son códigos. Schemas anteriores a la 208 no tienen la tabla.
+   */
+  private async emailRecipients(
+    qr: QueryRunner,
+    mode: 'dry-run' | 'apply',
+    tenantId: string,
+    subscriberIds: string[],
+  ): Promise<TitularErasureTableResult[]> {
+    const probe = (await qr.query(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.tables
+                       WHERE table_schema = current_schema()
+                         AND table_name = 'billing_email_log') AS present`,
+    )) as Array<{ present: boolean }>;
+    if (probe[0]?.present !== true) return [];
+    const pendingSql = `SELECT COUNT(*)::int AS count
+           FROM billing_email_log
+          WHERE tenant_id = $1::uuid
+            AND subscriber_id = ANY($2::uuid[])
+            AND recipient_masked IS NOT NULL`;
+    const selected = await this.count(qr, pendingSql, [tenantId, subscriberIds]);
+    let changed = 0;
+    if (mode === 'apply') {
+      const updated = normalizeErasureRows<IdRow>(
+        await qr.query(
+          `UPDATE billing_email_log
+            SET recipient_masked = NULL
+          WHERE tenant_id = $1::uuid
+            AND subscriber_id = ANY($2::uuid[])
+            AND recipient_masked IS NOT NULL
+          RETURNING id::text AS id`,
+          [tenantId, subscriberIds],
+        ),
+      );
+      changed = updated.length;
+    }
+    const residual = await this.count(qr, pendingSql, [tenantId, subscriberIds]);
+    return [{ table: 'billing_email_log', category: 'COMERCIAL', selected, changed, residual }];
   }
 
   /**

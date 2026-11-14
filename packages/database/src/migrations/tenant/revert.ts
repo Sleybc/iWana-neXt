@@ -81,6 +81,8 @@ export const MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG: readonly string[] = [
   'BillingCourtesies2030000000203',
   'BillingInstallationBreakdowns2050000000205',
   'BillingPaymentWithholdings2060000000206',
+  'BillingReceiptsAndAllocationReversalReason2070000000207',
+  'BillingEmailLog2080000000208',
 ];
 
 /** Migraciones cuyo down() cuenta filas incompatibles y aborta antes de alterar el schema. */

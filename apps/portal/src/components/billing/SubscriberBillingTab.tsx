@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
 import {
   AccessPermissionKey,
   AllocateCreditCommandSchema,
@@ -15,6 +15,10 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
 } from '@iwana/ui';
 import { usePermissions } from '@/components/access-control/permissions-context';
 import {
@@ -22,6 +26,8 @@ import {
   PortalEmptyState,
   PortalMetricCard,
   PortalPanel,
+  portalResourceTabListClassName,
+  portalResourceTabTriggerClassName,
 } from '@/components/shared/portal-ui';
 import { billingApi, type Contract } from '@/lib/api-client';
 import { formatBillingDate } from '@/components/crm/subscribers/billing-cycle-ui';
@@ -29,7 +35,9 @@ import { BillingContractPolicy } from './BillingContractPolicy';
 import { BillingNotStartedNotice } from './BillingNotStartedNotice';
 import { BillingDocumentList } from './BillingDocumentsClient';
 import { BillingPaymentDialog, pendingDocuments } from './BillingPaymentDialog';
+import { BillingPaymentDetail } from './BillingPaymentDetail';
 import { BillingPaymentTable } from './BillingPaymentsClient';
+import { BillingStatementLedger } from './BillingStatementLedger';
 import {
   additionalNotice,
   formatBillingMoney,
@@ -47,8 +55,49 @@ import {
 } from './billing-copy';
 import { StatementCourtesyList } from './StatementCourtesyList';
 import { StatementWithholdingList } from './StatementWithholdingList';
-import { BillingLoadState, billingInputClass, useBillingMutation } from './billing-ui';
+import {
+  BillingLoadState,
+  billingInputClass,
+  useBillingMutation,
+  useBillingUrl,
+} from './billing-ui';
 import type { SubscriberStatementLoad } from './use-subscriber-statement';
+
+/** Subpestañas de Facturación (spec MOD05↔MOD14 2026-11-13 D2, R1), en el orden de UISP. */
+export const BILLING_SUBTABS = [
+  { id: 'facturas', label: 'Facturas' },
+  { id: 'pagos', label: 'Pagos' },
+  { id: 'estado', label: 'Estado de cuenta' },
+] as const;
+
+export type BillingSubtabId = (typeof BILLING_SUBTABS)[number]['id'];
+
+/** `?sub=` de la URL; vacío o desconocido abre Facturas. */
+export function billingSubtab(value: string | null | undefined): BillingSubtabId {
+  return BILLING_SUBTABS.find((tab) => tab.id === value)?.id ?? 'facturas';
+}
+
+/** Flechas, Inicio y Fin mueven el foco y activan la pestaña (patrón ARIA de pestañas). */
+function moveTabFocus(
+  event: KeyboardEvent<HTMLDivElement>,
+  onSelect: (id: BillingSubtabId) => void,
+) {
+  const tabs = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')];
+  const current = tabs.findIndex((tab) => tab === document.activeElement);
+  if (current < 0) return;
+  const next = {
+    ArrowRight: (current + 1) % tabs.length,
+    ArrowLeft: (current - 1 + tabs.length) % tabs.length,
+    Home: 0,
+    End: tabs.length - 1,
+  }[event.key];
+  if (next === undefined) return;
+  event.preventDefault();
+  const tab = BILLING_SUBTABS[next];
+  if (!tab) return;
+  onSelect(tab.id);
+  tabs[next]?.focus();
+}
 
 const NOT_STARTED_BADGE = { label: 'Sin cobros emitidos', variant: 'warning' } as const;
 
@@ -76,6 +125,17 @@ export function SubscriberBillingTab({
   const [pay, setPay] = useState(false);
   const [credit, setCredit] = useState(false);
   const [contract, setContract] = useState<Contract>();
+  const [paymentId, setPaymentId] = useState<string | null>(null);
+  const { params, update } = useBillingUrl();
+  const urlSub = billingSubtab(params.get('sub'));
+  const [sub, setSub] = useState<BillingSubtabId>(urlSub);
+  useEffect(() => setSub(urlSub), [urlSub]);
+
+  function selectSub(next: BillingSubtabId) {
+    setSub(next);
+    // Conserva `tab` y el resto de parámetros (p. ej. la página de documentos).
+    update({ sub: next });
+  }
 
   function changed() {
     setRevision((value) => value + 1);
@@ -97,6 +157,9 @@ export function SubscriberBillingTab({
   const courtesyTotal = statementCourtesyTotal(data);
   const withholdingTotal = withholdingAmountOrNull(data.totalWithholding);
   const metricCount = 4 + (courtesyTotal ? 1 : 0) + (withholdingTotal ? 1 : 0);
+  const selectedPayment = paymentId
+    ? data.payments.find((payment) => payment.id === paymentId)
+    : undefined;
   const canApply =
     moneyCents(data.creditBalance) > 0 && pendingDocuments(data.documents).length > 0;
   return (
@@ -176,74 +239,112 @@ export function SubscriberBillingTab({
           </Button>
         </div>
       ) : null}
-      {data.documents
-        .filter((document) => document.unbilledAdditionalCount > 0)
-        .map((document) => (
-          <PortalAlert
-            key={document.id}
-            variant="info"
-            title={additionalNotice(document.unbilledAdditionalCount)}
-            description={documentReference(document)}
+      <Tabs value={sub} onValueChange={(value) => selectSub(billingSubtab(value))}>
+        <TabsList
+          aria-label="Secciones de facturación"
+          className={portalResourceTabListClassName}
+          onKeyDown={(event) => moveTabFocus(event, selectSub)}
+        >
+          {BILLING_SUBTABS.map((tab) => (
+            <TabsTrigger
+              key={tab.id}
+              value={tab.id}
+              tabIndex={sub === tab.id ? 0 : -1}
+              className={portalResourceTabTriggerClassName(sub === tab.id)}
+            >
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        <TabsContent value="facturas" className="space-y-4" tabIndex={0}>
+          {data.documents
+            .filter((document) => document.unbilledAdditionalCount > 0)
+            .map((document) => (
+              <PortalAlert
+                key={document.id}
+                variant="info"
+                title={additionalNotice(document.unbilledAdditionalCount)}
+                description={documentReference(document)}
+              />
+            ))}
+          <StatementCourtesyList statement={data} />
+          <BillingDocumentList
+            subscriberId={subscriberId}
+            revision={revision}
+            onDocumentsChanged={changed}
           />
-        ))}
-      <StatementCourtesyList statement={data} />
-      <StatementWithholdingList statement={data} />
-      <BillingDocumentList
-        subscriberId={subscriberId}
-        revision={revision}
-        onDocumentsChanged={changed}
-      />
-      <PortalPanel title="Pagos recibidos">
-        {data.payments.length ? (
-          <BillingPaymentTable payments={data.payments} onChanged={changed} />
-        ) : (
-          <PortalEmptyState
-            title="Aún no hay pagos registrados"
-            description="Los pagos recibidos aparecerán en esta sección."
-          />
-        )}
-      </PortalPanel>
-      {contracts.length ? (
-        <PortalPanel title="Facturación por servicio">
-          <ul className="divide-y divide-gray-200 dark:divide-dark-border">
-            {contracts.map((item) => {
-              const summary = data.contractSummaries.find((entry) => entry.contractId === item.id);
-              // Sin cobros emitidos no es «al día»: la insignia lo dice en vez del estado (R2).
-              const state = summary?.billingNotStarted
-                ? NOT_STARTED_BADGE
-                : summary?.periodState
-                  ? PAYMENT_STATES[summary.periodState]
-                  : null;
-              return (
-                <li
-                  key={item.id}
-                  className="flex flex-wrap items-center justify-between gap-3 py-3"
-                >
-                  <div>
-                    <p className="text-sm font-semibold">{item.alias}</p>
-                    <p className="text-sm">
-                      {item.billingCycleDay
-                        ? `Ciclo: día ${item.billingCycleDay}`
-                        : 'Sin ciclo de facturación'}
-                      {summary ? ` · Pendiente: ${formatBillingMoney(summary.totalPending)}` : ''}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {state ? <Badge variant={state.variant}>{state.label}</Badge> : null}
-                    <Button
-                      className="min-h-11"
-                      variant="secondary"
-                      onClick={() => setContract(item)}
+          {contracts.length ? (
+            <PortalPanel title="Facturación por servicio">
+              <ul className="divide-y divide-gray-200 dark:divide-dark-border">
+                {contracts.map((item) => {
+                  const summary = data.contractSummaries.find(
+                    (entry) => entry.contractId === item.id,
+                  );
+                  // Sin cobros emitidos no es «al día»: la insignia lo dice en vez del estado (R2).
+                  const state = summary?.billingNotStarted
+                    ? NOT_STARTED_BADGE
+                    : summary?.periodState
+                      ? PAYMENT_STATES[summary.periodState]
+                      : null;
+                  return (
+                    <li
+                      key={item.id}
+                      className="flex flex-wrap items-center justify-between gap-3 py-3"
                     >
-                      Ver política
-                    </Button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </PortalPanel>
-      ) : null}
+                      <div>
+                        <p className="text-sm font-semibold">{item.alias}</p>
+                        <p className="text-sm">
+                          {item.billingCycleDay
+                            ? `Ciclo: día ${item.billingCycleDay}`
+                            : 'Sin ciclo de facturación'}
+                          {summary
+                            ? ` · Pendiente: ${formatBillingMoney(summary.totalPending)}`
+                            : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {state ? <Badge variant={state.variant}>{state.label}</Badge> : null}
+                        <Button
+                          className="min-h-11"
+                          variant="secondary"
+                          onClick={() => setContract(item)}
+                        >
+                          Ver política
+                        </Button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </PortalPanel>
+          ) : null}
+        </TabsContent>
+        <TabsContent value="pagos" className="space-y-4" tabIndex={0}>
+          <StatementWithholdingList statement={data} />
+          <PortalPanel title="Pagos recibidos">
+            {data.payments.length ? (
+              <BillingPaymentTable
+                payments={data.payments}
+                onChanged={changed}
+                showReceipt
+                onOpenDetail={(payment) => setPaymentId(payment.id)}
+              />
+            ) : (
+              <PortalEmptyState
+                title="Aún no hay pagos registrados"
+                description="Los pagos recibidos aparecerán en esta sección."
+              />
+            )}
+          </PortalPanel>
+        </TabsContent>
+        <TabsContent value="estado" className="space-y-4" tabIndex={0}>
+          <BillingStatementLedger
+            subscriberId={subscriberId}
+            documents={data.documents}
+            revision={revision}
+          />
+        </TabsContent>
+      </Tabs>
       {pay ? (
         <BillingPaymentDialog
           subscriberId={subscriberId}
@@ -263,6 +364,15 @@ export function SubscriberBillingTab({
             setCredit(false);
             changed();
           }}
+        />
+      ) : null}
+      {selectedPayment ? (
+        <BillingPaymentDetail
+          payment={selectedPayment}
+          documents={data.documents}
+          subscriberId={subscriberId}
+          onChanged={changed}
+          onClose={() => setPaymentId(null)}
         />
       ) : null}
       {contract ? (
