@@ -56,6 +56,20 @@ export const MIGRATION_PENDING_VALUE_OPENAPI: SchemaObject = {
       format: 'uuid',
       description: 'Solo TITULAR: id del suscriptor candidato.',
     },
+    titularSummary: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['servicios', 'facturas', 'pagos', 'tickets', 'cruces'],
+      description:
+        'Solo TITULAR: lo que traería el cliente de UISP; cruces = facturas desde la primera factura propia de iWana.',
+      properties: {
+        servicios: count,
+        facturas: count,
+        pagos: count,
+        tickets: count,
+        cruces: count,
+      },
+    },
   },
 };
 

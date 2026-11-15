@@ -32,14 +32,23 @@ function mappingRow(overrides: Record<string, unknown> = {}) {
 }
 
 describe('MigrationMappingsService — equivalencia TITULAR (spec 2026-11-15 §2.1)', () => {
-  let titularTarget: jest.Mock<Promise<MigrationTitularTarget | null>, [unknown, string]>;
+  let titularTarget: jest.Mock<Promise<MigrationTitularTarget | null>, [unknown, string, string]>;
+  let lookup: jest.Mock;
+  /** Suscriptor al que resuelve hoy el HMAC del documento del lote. */
+  let resolvesTo: string | undefined;
+  const crypto = {
+    decryptPayload: jest.fn(() => ({ derived: { documentNumber: '1000000022' } })),
+    documentHmac: jest.fn(() => 'HMAC-22'),
+  };
   let service: MigrationMappingsService;
   const audit = { logWithin: jest.fn().mockResolvedValue(undefined) };
 
-  /** Respuestas de `qr.query` por SQL: pendiente en lote, INSERT/UPDATE y SELECT FOR UPDATE. */
-  function queries(options: { pending: boolean; current?: Record<string, unknown> }) {
+  /** Respuestas de `qr.query` por SQL: titular en intermedias, INSERT/UPDATE y SELECT FOR UPDATE. */
+  function queries(options: { staged: boolean; current?: Record<string, unknown> }) {
     qr.query.mockImplementation(async (sql: string, params: unknown[]) => {
-      if (sql.includes('FROM migration_batches')) return options.pending ? [{ found: 1 }] : [];
+      if (sql.includes('FROM migration_staging_records')) {
+        return options.staged ? [{ payload_encrypted: 'cifrado' }] : [];
+      }
       if (sql.includes('FOR UPDATE')) return options.current ? [options.current] : [];
       if (sql.startsWith('INSERT') || sql.trimStart().startsWith('INSERT')) {
         return [mappingRow({ external_label: params[3], target_ref: params[5] })];
@@ -53,15 +62,20 @@ describe('MigrationMappingsService — equivalencia TITULAR (spec 2026-11-15 §2
 
   beforeEach(() => {
     jest.clearAllMocks();
+    resolvesTo = CANDIDATE;
     titularTarget = jest.fn().mockResolvedValue({
       subscriberId: CANDIDATE,
       externalId: null,
       restricted: false,
     });
+    lookup = jest.fn(async () => ({
+      subscriberIdByHmac: new Map(resolvesTo ? [['HMAC-22', resolvesTo]] : []),
+    }));
     service = new MigrationMappingsService(
       {} as never,
       audit as never,
-      { titularTarget } as unknown as MigrationTitularLookupPort,
+      { titularTarget, lookup } as unknown as MigrationTitularLookupPort,
+      crypto as never,
     );
   });
 
@@ -86,19 +100,27 @@ describe('MigrationMappingsService — equivalencia TITULAR (spec 2026-11-15 §2
     expect(qr.query.mock.calls.some(([sql]) => /INSERT|UPDATE migration/u.test(sql))).toBe(false);
   }
 
-  it('acepta un candidato pendiente, vigente y sin enlace; fuerza external_label null', async () => {
-    queries({ pending: true });
+  it('acepta el suscriptor al que resuelve el documento del lote; fuerza external_label null', async () => {
+    queries({ staged: true });
     const mapping = await create('Nombre que no debe guardarse');
     expect(mapping.targetRef).toBe(CANDIDATE);
     expect(mapping.externalLabel).toBeNull();
-    const pendingCall = qr.query.mock.calls.find(([sql]) => sql.includes('migration_batches'))!;
-    expect(pendingCall[0]).toContain('purged_at IS NULL');
-    expect(pendingCall[1]).toEqual([TENANT, '22', CANDIDATE]);
-    expect(titularTarget).toHaveBeenCalledWith(qr, CANDIDATE);
+    const stagedCall = qr.query.mock.calls.find(([sql]) =>
+      sql.includes('migration_staging_records'),
+    )!;
+    expect(stagedCall[0]).toContain('purged_at IS NULL');
+    expect(stagedCall[1]).toEqual([TENANT, 'uisp:client:22']);
+    expect(crypto.documentHmac).toHaveBeenCalledWith('1000000022');
+    expect(lookup).toHaveBeenCalledWith(qr, {
+      tenantId: TENANT,
+      documentHmacs: ['HMAC-22'],
+      externalIds: [],
+    });
+    expect(titularTarget).toHaveBeenCalledWith(qr, TENANT, CANDIDATE);
   });
 
   it('acepta un candidato ya enlazado al mismo cliente de UISP', async () => {
-    queries({ pending: true });
+    queries({ staged: true });
     titularTarget.mockResolvedValue({
       subscriberId: CANDIDATE,
       externalId: 'uisp:client:22',
@@ -107,19 +129,33 @@ describe('MigrationMappingsService — equivalencia TITULAR (spec 2026-11-15 §2
     await expect(create()).resolves.toMatchObject({ targetRef: CANDIDATE });
   });
 
-  it('422 si el candidato no aparece como pendiente en ningún lote vigente', async () => {
-    queries({ pending: false });
+  it('422 si ningún lote vigente trae a ese cliente de UISP', async () => {
+    queries({ staged: false });
+    await expect422(create());
+  });
+
+  it('422 si el documento del lote ya no resuelve a ese suscriptor (SEC-L1)', async () => {
+    queries({ staged: true });
+    resolvesTo = '99999999-2222-4333-8444-555555555555';
+    await expect422(create());
+    resolvesTo = undefined;
+    await expect422(create());
+  });
+
+  it('422 si el titular del lote no trae documento', async () => {
+    queries({ staged: true });
+    crypto.decryptPayload.mockReturnValueOnce({ derived: {} } as never);
     await expect422(create());
   });
 
   it('422 si el suscriptor no existe, está dado de baja o anonimizado', async () => {
-    queries({ pending: true });
+    queries({ staged: true });
     titularTarget.mockResolvedValue(null);
     await expect422(create());
   });
 
   it('422 si el suscriptor tiene datos bloqueados', async () => {
-    queries({ pending: true });
+    queries({ staged: true });
     titularTarget.mockResolvedValue({
       subscriberId: CANDIDATE,
       externalId: null,
@@ -129,7 +165,7 @@ describe('MigrationMappingsService — equivalencia TITULAR (spec 2026-11-15 §2
   });
 
   it('422 si el suscriptor está enlazado a otro cliente de UISP', async () => {
-    queries({ pending: true });
+    queries({ staged: true });
     titularTarget.mockResolvedValue({
       subscriberId: CANDIDATE,
       externalId: 'uisp:client:7',
@@ -139,7 +175,7 @@ describe('MigrationMappingsService — equivalencia TITULAR (spec 2026-11-15 §2
   });
 
   it('TITULAR solo admite EQUIVALE', async () => {
-    queries({ pending: true });
+    queries({ staged: true });
     await expect(
       service.create(
         scope,
@@ -151,8 +187,8 @@ describe('MigrationMappingsService — equivalencia TITULAR (spec 2026-11-15 §2
     });
   });
 
-  it('update de TITULAR revalida el destino y fuerza external_label null', async () => {
-    queries({ pending: true, current: mappingRow() });
+  it('update de una equivalencia ya consumida valida por documento, no por pendiente (D3)', async () => {
+    queries({ staged: true, current: mappingRow() });
     const updated = await service.update(
       scope,
       mappingRow().id,
@@ -160,11 +196,11 @@ describe('MigrationMappingsService — equivalencia TITULAR (spec 2026-11-15 §2
       ACTOR,
     );
     expect(updated.externalLabel).toBeNull();
-    expect(titularTarget).toHaveBeenCalledWith(qr, CANDIDATE);
+    expect(titularTarget).toHaveBeenCalledWith(qr, TENANT, CANDIDATE);
   });
 
   it('update de TITULAR responde 422 si el destino no es válido', async () => {
-    queries({ pending: false, current: mappingRow() });
+    queries({ staged: false, current: mappingRow() });
     await expect422(
       service.update(scope, mappingRow().id, { action: 'EQUIVALE', targetRef: CANDIDATE }, ACTOR),
     );
@@ -180,5 +216,6 @@ describe('MigrationMappingsService — equivalencia TITULAR (spec 2026-11-15 §2
       ACTOR,
     );
     expect(titularTarget).not.toHaveBeenCalled();
+    expect(lookup).not.toHaveBeenCalled();
   });
 });

@@ -18,6 +18,7 @@ import {
 } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
 import { MIGRATION_MAPPING_AUDIT_ENTITY } from './migration.constants';
+import { MigrationCrypto } from './migration-crypto';
 import type { MigrationTenantScope } from './migration-batches.service';
 import { MigrationTitularLookupPort } from './ports/migration-titular-lookup.port';
 import { externalIdOf } from './uisp/uisp-simulation';
@@ -107,6 +108,7 @@ export class MigrationMappingsService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
     private readonly titularLookup: MigrationTitularLookupPort,
+    private readonly crypto: MigrationCrypto,
   ) {}
 
   async list(
@@ -232,9 +234,11 @@ export class MigrationMappingsService {
   }
 
   /**
-   * Destino de una equivalencia `TITULAR` (spec 2026-11-15 §2.1): debe ser el candidato que un
-   * lote vigente del tenant ofreció para ese cliente (mismo HMAC de documento) y, según CRM,
-   * existir sin baja ni anonimización, sin datos bloqueados y sin enlace a otro cliente.
+   * Destino de una equivalencia `TITULAR` (spec 2026-11-15 §2.1): el documento del cliente de
+   * UISP, leído del lote vigente más reciente (intermedias cifradas), debe resolver por HMAC a
+   * ese suscriptor, y CRM debe confirmarlo sin baja ni anonimización, sin datos bloqueados y
+   * sin enlace a otro cliente. Al no depender de lo que la simulación ofreció, también vale
+   * para editar una equivalencia ya consumida.
    */
   private async assertTitularTarget(
     qr: QueryRunner,
@@ -242,21 +246,35 @@ export class MigrationMappingsService {
     externalValue: string,
     targetRef: string,
   ): Promise<void> {
-    const offered = (await qr.query(
-      `SELECT 1 AS found FROM migration_batches
-        WHERE tenant_id = $1 AND purged_at IS NULL
-          AND counts->'pendientesEquivalencia' @> jsonb_build_array(jsonb_build_object(
-                'kind', 'TITULAR', 'externalValue', $2::text, 'candidateRef', $3::text))
+    const externalId = externalIdOf('SUSCRIPTOR', externalValue);
+    const staged = (await qr.query(
+      `SELECT r.payload_encrypted
+         FROM migration_staging_records r
+         JOIN migration_batches b ON b.id = r.batch_id AND b.tenant_id = r.tenant_id
+        WHERE r.tenant_id = $1 AND r.entity = 'SUSCRIPTOR' AND r.external_id = $2
+          AND b.purged_at IS NULL
+        ORDER BY r.created_at DESC
         LIMIT 1`,
-      [tenantId, externalValue, targetRef],
-    )) as unknown[];
-    if (offered.length === 0) throw titularTargetInvalid();
-    const target = await this.titularLookup.titularTarget(qr, targetRef);
+      [tenantId, externalId],
+    )) as Array<{ payload_encrypted: string }>;
+    if (!staged[0]) throw titularTargetInvalid();
+    const payload = this.crypto.decryptPayload<{ derived?: Record<string, unknown> }>(
+      staged[0].payload_encrypted,
+    );
+    const documentNumber = payload.derived?.['documentNumber'];
+    if (typeof documentNumber !== 'string' || !documentNumber) throw titularTargetInvalid();
+    const hmac = this.crypto.documentHmac(documentNumber);
+    const facts = await this.titularLookup.lookup(qr, {
+      tenantId,
+      documentHmacs: [hmac],
+      externalIds: [],
+    });
+    if (facts.subscriberIdByHmac.get(hmac) !== targetRef) throw titularTargetInvalid();
+    const target = await this.titularLookup.titularTarget(qr, tenantId, targetRef);
     if (
       !target ||
       target.restricted ||
-      (target.externalId !== null &&
-        target.externalId !== externalIdOf('SUSCRIPTOR', externalValue))
+      (target.externalId !== null && target.externalId !== externalId)
     ) {
       throw titularTargetInvalid();
     }

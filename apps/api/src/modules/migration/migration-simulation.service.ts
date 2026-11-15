@@ -236,6 +236,7 @@ export class MigrationSimulationService {
     }>;
     const keys = collectTitularKeys(packages);
     const facts = await this.titularLookup.lookup(qr, {
+      tenantId: tenant.tenantId,
       documentHmacs: keys.documents.map((document) => this.crypto.documentHmac(document)),
       externalIds: keys.externalIds,
     });

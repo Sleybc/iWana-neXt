@@ -100,7 +100,9 @@ function TitularCard({ value, counts, onSaved }: TitularCardProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const clientLabel = externalClientLabel(value.externalValue);
-  const crossed = counts?.observaciones.CRUCE_CON_FACTURACION_IWANA ?? 0;
+  // Conteos de este titular (D4); los informes previos sin resumen caen a los del lote.
+  const summary = value.titularSummary;
+  const crossed = summary?.cruces ?? counts?.observaciones.CRUCE_CON_FACTURACION_IWANA ?? 0;
   const entities = counts?.entidades;
   const ready = candidate?.status === 'ready' && value.candidateRef;
 
@@ -176,7 +178,15 @@ function TitularCard({ value, counts, onSaved }: TitularCardProps) {
             </li>
             <li>
               Se importa todo su historial: facturas, pagos, tickets y soportes.
-              {entities ? (
+              {summary ? (
+                <>
+                  {' '}
+                  De este cliente vienen {plural(summary.servicios, 'servicio', 'servicios')},{' '}
+                  {plural(summary.facturas, 'factura', 'facturas')},{' '}
+                  {plural(summary.pagos, 'pago', 'pagos')} y{' '}
+                  {plural(summary.tickets, 'ticket', 'tickets')}.
+                </>
+              ) : entities ? (
                 <>
                   {' '}
                   En este lote vienen{' '}

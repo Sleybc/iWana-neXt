@@ -65,6 +65,7 @@ import { MigrationBatchesService, type MigrationTenantScope } from './migration-
 import { MigrationMappingsService } from './migration-mappings.service';
 import { MigrationPromotionService } from './migration-promotion.service';
 import { MigrationRevertService } from './migration-revert.service';
+import { MigrationUploadSizeInterceptor } from './migration-upload-size.interceptor';
 import {
   MIGRATION_BATCH_REPORT_OPENAPI,
   MIGRATION_BATCH_SUMMARY_OPENAPI,
@@ -109,6 +110,8 @@ export class MigrationBatchesController {
   @HttpCode(HttpStatus.ACCEPTED)
   @Throttle({ global: { ttl: 60_000, limit: resolveRouteRateLimit(10) } })
   @UseInterceptors(
+    // Antes de multer: acota el cuerpo sin leerlo (D2).
+    MigrationUploadSizeInterceptor,
     FilesInterceptor('files', MIGRATION_IMPORT_LIMITS.maxZipsPerBatch, {
       storage: memoryStorage(),
       limits: {
@@ -133,6 +136,10 @@ export class MigrationBatchesController {
         },
       },
     },
+  })
+  @ApiResponse({
+    status: HttpStatus.PAYLOAD_TOO_LARGE,
+    description: 'MIGRATION_BATCH_TOO_LARGE: el cuerpo declara más que el tope del lote.',
   })
   @ApiResponse({
     status: HttpStatus.ACCEPTED,

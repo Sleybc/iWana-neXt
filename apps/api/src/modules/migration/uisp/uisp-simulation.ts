@@ -218,6 +218,7 @@ class SimulationAccumulator {
     value: string,
     label: string | null,
     candidateRef?: string,
+    titularSummary?: MigrationPendingValue['titularSummary'],
   ): void {
     const key = `${kind}\u0000${value}`;
     const current = this.pending.get(key);
@@ -231,6 +232,7 @@ class SimulationAccumulator {
         externalLabel: label ? label.slice(0, 120) : null,
         occurrences: 1,
         ...(candidateRef ? { candidateRef } : {}),
+        ...(titularSummary ? { titularSummary } : {}),
       });
     }
   }
@@ -358,7 +360,21 @@ function simulatePackage(
     titularReason = resolution.reason;
     complementSubscriberId = resolution.complementSubscriberId;
     if (resolution.pendingCandidate) {
-      acc.pendingValue('TITULAR', clientId, null, resolution.pendingCandidate);
+      // Resumen para el diálogo de confirmación (spec 2026-11-15 §2.7): conteos sin PII.
+      const ownFrom = ctx.firstOwnIssueDates?.get(resolution.pendingCandidate) ?? null;
+      const cruces = ownFrom
+        ? pkg.invoices.filter(({ record }) => {
+            const issued = record ? civilDate(record.createdDate) : null;
+            return issued !== null && issued >= ownFrom;
+          }).length
+        : 0;
+      acc.pendingValue('TITULAR', clientId, null, resolution.pendingCandidate, {
+        servicios: pkg.services.length,
+        facturas: pkg.invoices.length,
+        pagos: pkg.payments.length,
+        tickets: pkg.tickets.length,
+        cruces,
+      });
     }
   }
   if (alreadyImported) acc.observe('YA_IMPORTADO');

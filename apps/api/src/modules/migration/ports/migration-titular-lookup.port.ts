@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import type { QueryRunner } from 'typeorm';
 
 export interface MigrationTitularLookupInput {
+  /** Tenant del llamador: todo SQL filtra además por `tenant_id` (defensa en profundidad). */
+  tenantId: string;
   /** HMAC (PII_HASH_KEY) de los documentos normalizados del lote. */
   documentHmacs: string[];
   /** `external_id` `uisp:client:<id>` del lote. */
@@ -52,6 +54,7 @@ export abstract class MigrationTitularLookupPort {
    */
   abstract titularTarget(
     qr: QueryRunner,
+    tenantId: string,
     subscriberId: string,
   ): Promise<MigrationTitularTarget | null>;
 

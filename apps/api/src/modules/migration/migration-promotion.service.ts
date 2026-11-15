@@ -824,6 +824,7 @@ export class MigrationPromotionService {
     if (documentNumber) {
       // Entre la simulación y la promoción pudo darse de alta el mismo titular (D11).
       const facts = await this.titularLookup.lookup(qr, {
+        tenantId: ctx.tenantId,
         documentHmacs: [this.crypto.documentHmac(documentNumber)],
         externalIds: [],
       });
@@ -893,7 +894,7 @@ export class MigrationPromotionService {
     if (this.mapped(mappings, 'TITULAR', clientId)?.target !== subscriberId) {
       throw new TitularRejected('TITULAR_EXISTENTE');
     }
-    const target = await this.titularLookup.titularTarget(qr, subscriberId);
+    const target = await this.titularLookup.titularTarget(qr, ctx.tenantId, subscriberId);
     if (!target || target.restricted) throw new TitularRejected('TITULAR_EXISTENTE');
     if (target.externalId !== null && target.externalId !== row.external_id) {
       throw new TitularRejected('TITULAR_VINCULADO_A_OTRO_CLIENTE');
@@ -902,7 +903,11 @@ export class MigrationPromotionService {
       typeof derived['documentNumber'] === 'string' ? derived['documentNumber'] : null;
     if (!documentNumber) throw new TitularRejected('TITULAR_EXISTENTE');
     const hmac = this.crypto.documentHmac(documentNumber);
-    const facts = await this.titularLookup.lookup(qr, { documentHmacs: [hmac], externalIds: [] });
+    const facts = await this.titularLookup.lookup(qr, {
+      tenantId: ctx.tenantId,
+      documentHmacs: [hmac],
+      externalIds: [],
+    });
     if (facts.subscriberIdByHmac.get(hmac) !== subscriberId) {
       throw new TitularRejected('TITULAR_EXISTENTE');
     }

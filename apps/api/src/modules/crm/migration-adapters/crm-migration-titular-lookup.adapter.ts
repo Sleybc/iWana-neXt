@@ -40,13 +40,13 @@ export class CrmMigrationTitularLookupAdapter extends MigrationTitularLookupPort
     if (input.documentHmacs.length > 0) {
       const rows = (await qr.query(
         `SELECT document_number_hmac AS hmac FROM subscribers
-          WHERE document_number_hmac = ANY($1::varchar[])
+          WHERE tenant_id = $2 AND document_number_hmac = ANY($1::varchar[])
             AND deleted_at IS NULL AND anonymized_at IS NULL
          UNION
          SELECT document_number_hmac AS hmac FROM expediente_records
-          WHERE document_number_hmac = ANY($1::varchar[])
+          WHERE tenant_id = $2 AND document_number_hmac = ANY($1::varchar[])
             AND deleted_at IS NULL AND anonymized_at IS NULL`,
-        [input.documentHmacs],
+        [input.documentHmacs, input.tenantId],
       )) as Array<{ hmac: string }>;
       for (const row of rows) existingHmacs.add(row.hmac);
 
@@ -55,10 +55,10 @@ export class CrmMigrationTitularLookupAdapter extends MigrationTitularLookupPort
                 document_number_hmac AS hmac, id::text AS id, party_id::text AS party_id,
                 external_id
            FROM subscribers
-          WHERE document_number_hmac = ANY($1::varchar[])
+          WHERE tenant_id = $2 AND document_number_hmac = ANY($1::varchar[])
             AND deleted_at IS NULL AND anonymized_at IS NULL
           ORDER BY document_number_hmac, created_at, id`,
-        [input.documentHmacs],
+        [input.documentHmacs, input.tenantId],
       )) as Array<CandidateRow & { hmac: string }>;
       for (const row of candidates) {
         subscriberIdByHmac.set(row.hmac, row.id);
@@ -72,8 +72,8 @@ export class CrmMigrationTitularLookupAdapter extends MigrationTitularLookupPort
         // Sin filtrar bajas: el índice único de `external_id` también las incluye.
         `SELECT external_id, (anonymized_at IS NOT NULL) AS anonymized
            FROM subscribers
-          WHERE external_id = ANY($1::varchar[])`,
-        [input.externalIds],
+          WHERE tenant_id = $2 AND external_id = ANY($1::varchar[])`,
+        [input.externalIds, input.tenantId],
       )) as Array<{ external_id: string; anonymized: boolean }>;
       for (const row of rows) {
         (row.anonymized ? anonymizedExternalIds : importedExternalIds).add(row.external_id);
@@ -92,13 +92,14 @@ export class CrmMigrationTitularLookupAdapter extends MigrationTitularLookupPort
 
   async titularTarget(
     qr: QueryRunner,
+    tenantId: string,
     subscriberId: string,
   ): Promise<MigrationTitularTarget | null> {
     const rows = (await qr.query(
       `SELECT id::text AS id, party_id::text AS party_id, external_id
          FROM subscribers
-        WHERE id = $1::uuid AND deleted_at IS NULL AND anonymized_at IS NULL`,
-      [subscriberId],
+        WHERE id = $1::uuid AND tenant_id = $2 AND deleted_at IS NULL AND anonymized_at IS NULL`,
+      [subscriberId, tenantId],
     )) as CandidateRow[];
     const row = rows[0];
     if (!row) return null;

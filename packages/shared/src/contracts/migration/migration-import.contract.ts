@@ -217,6 +217,20 @@ export const MigrationPendingValueSchema = z
     occurrences: countSchema,
     /** Solo `TITULAR`: id del suscriptor candidato (identificador, no PII). */
     candidateRef: z.string().uuid().optional(),
+    /**
+     * Solo `TITULAR`: lo que traería ese cliente de UISP si se complementa (conteos, sin PII);
+     * `cruces` = facturas emitidas desde la primera factura propia de iWana del candidato.
+     */
+    titularSummary: z
+      .object({
+        servicios: countSchema,
+        facturas: countSchema,
+        pagos: countSchema,
+        tickets: countSchema,
+        cruces: countSchema,
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export type MigrationPendingValue = z.infer<typeof MigrationPendingValueSchema>;

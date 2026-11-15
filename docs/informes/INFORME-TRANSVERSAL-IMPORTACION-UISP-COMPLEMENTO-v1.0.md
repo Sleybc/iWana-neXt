@@ -40,12 +40,13 @@
 
 ## 4. Deudas
 
-| # | Deuda | Dueño |
+| # | Deuda | Estado |
 |---|---|---|
-| D1 | `MigrationTitularLookupPort` no recibe `tenantId`: el aislamiento depende de `search_path` (SEC-L2) | `sr-backend` |
-| D2 | La subida usa `memoryStorage`: hasta 20 × 100 MB en RAM antes de validar el total; en producción lo acota nginx (210M) | `sr-backend` / `plat-ops` |
-| D3 | Editar una equivalencia `TITULAR` ya consumida da 422, porque el candidato deja de ofrecerse; para cambiarla hay que borrarla y re-simular | `sr-backend` |
-| D4 | El diálogo muestra los conteos del lote, no por titular | `fe-platform` |
-| D5 | e2e: 2 errores de tipos preexistentes en `portal-importacion-uisp-live.spec.ts` (`tareasSinFuente`, `Buffer`) | `sr-qa` |
-| D6 | Caso real (cliente 22 de UISP): ejecutar en el tenant del usuario con su confirmación | usuario |
+| D1 | `MigrationTitularLookupPort` no recibía `tenantId` (SEC-L2) | ✅ 2026-11-15: el puerto recibe `tenantId` y todo su SQL filtra por `tenant_id` |
+| D2 | `memoryStorage` podía cargar 20 × 100 MB en RAM antes de validar el total | ✅ `MigrationUploadSizeInterceptor` rechaza por `Content-Length` (413, o 411 sin él) antes de multer |
+| D3 | Editar una equivalencia `TITULAR` ya consumida daba 422 | ✅ el destino se valida por HMAC contra el documento del lote vigente (también cierra SEC-L1), no contra la oferta de la simulación |
+| D4 | El diálogo mostraba conteos del lote | ✅ `titularSummary` (servicios, facturas, pagos, tickets y cruces contra el candidato) en el pendiente; el aviso de cruce ya aparece antes de confirmar |
+| D5 | Errores de tipos preexistentes en el E2E | ✅ corregidos |
+| D6 | Caso real (cliente 22 de UISP): ejecutar en el tenant del usuario con su confirmación | pendiente del usuario |
 
+Evidencia del cierre de deudas: API unit completa 571 suites · 7614/7614; integración de migración 20 + 1 omitida (Redis); portal Importaciones 52/52; contrato 16/16; E2E en vivo 2/2.

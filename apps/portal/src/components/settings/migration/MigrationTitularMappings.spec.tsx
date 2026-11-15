@@ -121,6 +121,21 @@ describe('Titulares existentes', () => {
     expect(onSaved).toHaveBeenCalled();
   });
 
+  it('con el resumen del titular muestra sus propios conteos y cruces, no los del lote (D4)', async () => {
+    const user = userEvent.setup();
+    const withSummary: MigrationPendingValue = {
+      ...TITULAR,
+      titularSummary: { servicios: 1, facturas: 53, pagos: 40, tickets: 2, cruces: 1 },
+    };
+    render(<MigrationMappingEditor pending={[withSummary]} counts={COUNTS} onSaved={jest.fn()} />);
+    await screen.findByRole('link', { name: 'Ana Pérez' });
+    await user.click(screen.getByRole('button', { name: /Complementar este titular/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Complementar este titular' });
+    expect(dialog).toHaveTextContent('1 servicio, 53 facturas, 40 pagos y 2 tickets');
+    expect(dialog).toHaveTextContent('1 factura se cruza con la facturación de iWana');
+    expect(dialog).not.toHaveTextContent('12 facturas');
+  });
+
   it('a11y: el diálogo tiene nombre y descripción, atrapa el foco y lo devuelve al cerrar', async () => {
     const user = userEvent.setup();
     render(<MigrationMappingEditor pending={[TITULAR]} counts={COUNTS} onSaved={jest.fn()} />);

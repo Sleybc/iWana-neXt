@@ -53,6 +53,8 @@ type BatchReport = {
     archivos: { recibidos: number; leidos: number };
     entidades: Record<string, { leidos: number; validos: number; rechazados: number }>;
     observaciones: Record<string, number>;
+    tareasSinFuente: number;
+    titulares?: { complementados: number };
   };
   promotion: { procesamiento: string; promovidos: Record<string, number> } | null;
   reconciliation: { resultado: string; titulares: number; conciliados: number } | null;
@@ -514,7 +516,11 @@ test.describe('Importación desde UISP — ADR-110 contra Portal, API y worker r
     // ── Un segundo lote con los mismos ZIP no duplica (idempotencia por external_id) ──
     const form = new FormData();
     for (const file of await syntheticZips()) {
-      form.append('files', new Blob([file.buffer], { type: file.mimeType }), file.name);
+      form.append(
+        'files',
+        new Blob([new Uint8Array(file.buffer)], { type: file.mimeType }),
+        file.name,
+      );
     }
     const second = await expectJson<{ id: string }>('/migration/batches', 'POST', 202, {
       headers: tenantHeaders(),

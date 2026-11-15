@@ -132,7 +132,7 @@ describeDb('Importación UISP — simulación sobre PostgreSQL real', () => {
           subscriber_id uuid NOT NULL, status varchar(20) NOT NULL, number varchar(40) NULL,
           issue_date date NULL, external_id varchar(160) NULL);
         CREATE TABLE expediente_records (
-          id uuid PRIMARY KEY, document_number_hmac varchar(64) NULL,
+          id uuid PRIMARY KEY, tenant_id uuid NOT NULL, document_number_hmac varchar(64) NULL,
           anonymized_at timestamptz NULL, deleted_at timestamptz NULL);
         CREATE TABLE crm_billing_cycles (
           cycle_day smallint PRIMARY KEY, active boolean NOT NULL DEFAULT true);
@@ -149,7 +149,7 @@ describeDb('Importación UISP — simulación sobre PostgreSQL real', () => {
     const titularLookup = new CrmMigrationTitularLookupAdapter({
       activeMarks: jest.fn().mockResolvedValue({}),
     } as never);
-    mappings = new MigrationMappingsService(ds, audit as never, titularLookup);
+    mappings = new MigrationMappingsService(ds, audit as never, titularLookup, crypto);
     simulation = new MigrationSimulationService(
       ds,
       storage as never,
@@ -501,6 +501,7 @@ describeDb('Importación UISP — simulación sobre PostgreSQL real', () => {
     } as never);
     const facts = await runInTenantSchema(ds, schemaName, (qr) =>
       lookup.lookup(qr, {
+        tenantId,
         documentHmacs: [crypto.documentHmac('1000000301'), crypto.documentHmac('1000000302')],
         externalIds: [],
       }),

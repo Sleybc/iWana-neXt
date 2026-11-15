@@ -356,8 +356,31 @@ describe('simulateBatch — complemento de titular existente (spec 2026-11-15 §
       externalLabel: null,
       occurrences: 1,
       candidateRef: CANDIDATE,
+      titularSummary: expect.objectContaining({ facturas: 3, cruces: 0 }),
     });
     expect(result.counts.titulares.complementados).toBe(0);
+  });
+
+  it('el pendiente resume lo que traería el titular y sus cruces antes de confirmar (D4)', async () => {
+    const pkg = await parsed();
+    if (!pkg.ok) throw new Error('fixture');
+    const result = simulateBatch(
+      [pkg],
+      complement({
+        titularLinks: new Map(),
+        firstOwnIssueDates: new Map([[CANDIDATE, '2023-02-01']]),
+      }),
+    );
+    const pending = result.counts.pendientesEquivalencia.find((p) => p.kind === 'TITULAR');
+    expect(pending?.titularSummary).toEqual({
+      servicios: pkg.value.services.length,
+      facturas: 3,
+      pagos: pkg.value.payments.length,
+      tickets: pkg.value.tickets.length,
+      cruces: 2,
+    });
+    // Sin confirmar no hay complemento: la observación del lote no se cuenta todavía.
+    expect(result.counts.observaciones.CRUCE_CON_FACTURACION_IWANA).toBeUndefined();
   });
 
   it('con equivalencia al candidato → VALIDO en complemento, dependientes válidos y conteo', async () => {
