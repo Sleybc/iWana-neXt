@@ -269,13 +269,36 @@ async function loginInPortal(page: Page): Promise<void> {
 }
 
 async function expectNoSeriousAxeViolations(page: Page, label: string): Promise<void> {
+  // axe mide el contraste con la opacidad del momento: si una transición o un fundido sigue en
+  // curso, marca `color-contrast` de forma intermitente (CI 2026-11-14 y 2026-11-15). Se espera a
+  // que la página quede quieta; un contraste insuficiente real sigue fallando.
+  await page.evaluate(() =>
+    Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => null))),
+  );
   const result = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
     .analyze();
   const blocking = result.violations.filter(
     (v) => v.impact === 'serious' || v.impact === 'critical',
   );
-  expect(blocking, `axe ${label}: ${blocking.map((v) => v.id).join(', ')}`).toEqual([]);
+  // El resumen de CI está saneado: el mensaje lleva el selector y, en contraste, los colores
+  // y la razón medida, para poder diagnosticar sin reproducir.
+  const detail = blocking
+    .flatMap((v) =>
+      v.nodes.slice(0, 5).map((node) => {
+        const data = (node.any[0]?.data ?? {}) as {
+          fgColor?: string;
+          bgColor?: string;
+          contrastRatio?: number;
+        };
+        const colors = data.fgColor
+          ? ` ${data.fgColor} sobre ${data.bgColor} (${data.contrastRatio}:1)`
+          : '';
+        return `${v.id} → ${node.target.join(' ')}${colors}`;
+      }),
+    )
+    .join(' | ');
+  expect(blocking, `axe ${label}: ${detail}`).toEqual([]);
 }
 
 async function axeLightAndDark(page: Page, url: string, ready: () => Promise<void>, label: string) {
