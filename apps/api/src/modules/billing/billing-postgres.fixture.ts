@@ -48,6 +48,8 @@ export async function createBillingSchema(dataSource: DataSource) {
           status varchar(20) NOT NULL,
           status_reason_code varchar(40) NULL,
           terminated_at timestamptz NULL,
+          -- Migración 196: la generación excluye los terminados importados (contratos históricos).
+          import_batch_id uuid NULL,
           billing_cycle_day smallint NULL,
           start_date date NULL,
           end_date date NULL,

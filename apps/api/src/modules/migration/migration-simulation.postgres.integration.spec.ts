@@ -262,6 +262,8 @@ describeDb('Importación UISP — simulación sobre PostgreSQL real', () => {
         externalLabel: null,
         occurrences: 1,
         candidateRef: existingSubscriberId,
+        // D4: lo que traería ese cliente si se complementa (conteos, sin PII).
+        titularSummary: expect.objectContaining({ cruces: 0 }),
       },
     ]);
 
