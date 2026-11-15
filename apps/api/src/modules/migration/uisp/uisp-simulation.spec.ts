@@ -319,6 +319,38 @@ describe('extracción de datos del titular', () => {
     ).toBeNull();
   });
 
+  it('usa el «ID de Cliente» de UISP como respaldo si el atributo de cédula está vacío', () => {
+    // Caso real (2026-11-15): «Cedula» vacía y la cédula guardada en «ID de Cliente».
+    expect(
+      extractTitularFacts({
+        id: 22,
+        clientType: 1,
+        attributes: [{ name: 'Cedula', value: '' }],
+        userIdent: '74185184',
+      } as never),
+    ).toMatchObject({ documentType: 'CC', documentNumber: '74185184' });
+    expect(
+      extractTitularFacts({ id: 1, clientType: 2, userIdent: '900.123.456-7' } as never)
+        .documentNumber,
+    ).toBe('900123456');
+    expect(extractTitularFacts({ id: 1, userIdent: 74185184 } as never).documentNumber).toBe(
+      '74185184',
+    );
+  });
+
+  it('el atributo de cédula prevalece y un «ID de Cliente» sin forma de documento se ignora', () => {
+    expect(
+      extractTitularFacts({
+        id: 1,
+        attributes: [{ name: 'Cédula', value: '1234567' }],
+        userIdent: '99999999',
+      } as never).documentNumber,
+    ).toBe('1234567');
+    for (const userIdent of ['SINT-9001', 'C-22', '123', '0000000', '']) {
+      expect(extractTitularFacts({ id: 1, userIdent } as never).documentNumber).toBeNull();
+    }
+  });
+
   it('límites geográficos de Colombia', () => {
     expect(coordinatesInColombia(4.6, -74.08)).toBe(true);
     expect(coordinatesInColombia('12.58', '-81.7')).toBe(true);

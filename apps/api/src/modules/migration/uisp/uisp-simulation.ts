@@ -122,27 +122,41 @@ function attributeValue(client: UispClient, key: RegExp): string | null {
   return null;
 }
 
-/** Documento y estrato del titular desde los atributos de UISP (spec §3.2). */
+/** Documento normalizado y válido para el tipo, o `null` si `raw` no tiene forma de documento. */
+function parseDocument(raw: string | null, documentType: 'CC' | 'NIT'): string | null {
+  if (!raw) return null;
+  // NIT con dígito de verificación: «900123456-7» → base de 9 dígitos.
+  const withDv = /^\s*([\d.\s]+)-\s*\d\s*$/u.exec(raw);
+  const base = documentType === 'NIT' && withDv ? withDv[1]! : raw;
+  if (/[^\d.\s-]/u.test(base)) return null;
+  const normalized = normalizeDocumentNumber(
+    documentType === 'NIT' ? DocumentTypeParty.NIT : DocumentTypeParty.CC,
+    base,
+  );
+  const valid =
+    documentType === 'NIT'
+      ? /^\d{9,10}$/u.test(normalized)
+      : /^\d{5,10}$/u.test(normalized) && !/^0+$/u.test(normalized);
+  return valid ? normalized : null;
+}
+
+/**
+ * Documento y estrato del titular desde los atributos de UISP (spec §3.2). Si el atributo de
+ * cédula/NIT está vacío o no es un documento, se usa de respaldo el «ID de Cliente» de UISP
+ * (`userIdent`), que en este ISP guarda la cédula o el NIT (usuario, 2026-11-15); solo si
+ * tiene forma de documento.
+ */
 export function extractTitularFacts(client: UispClient): TitularFacts {
   const documentType = client.clientType === 2 ? 'NIT' : 'CC';
-  const raw = attributeValue(client, DOCUMENT_KEY);
-  let documentNumber: string | null = null;
-  if (raw) {
-    // NIT con dígito de verificación: «900123456-7» → base de 9 dígitos.
-    const withDv = /^\s*([\d.\s]+)-\s*\d\s*$/u.exec(raw);
-    const base = documentType === 'NIT' && withDv ? withDv[1]! : raw;
-    if (!/[^\d.\s-]/u.test(base)) {
-      const normalized = normalizeDocumentNumber(
-        documentType === 'NIT' ? DocumentTypeParty.NIT : DocumentTypeParty.CC,
-        base,
-      );
-      const valid =
-        documentType === 'NIT'
-          ? /^\d{9,10}$/u.test(normalized)
-          : /^\d{5,10}$/u.test(normalized) && !/^0+$/u.test(normalized);
-      documentNumber = valid ? normalized : null;
-    }
-  }
+  const userIdent = (client as Record<string, unknown>)['userIdent'];
+  const documentNumber =
+    parseDocument(attributeValue(client, DOCUMENT_KEY), documentType) ??
+    parseDocument(
+      typeof userIdent === 'string' || typeof userIdent === 'number'
+        ? String(userIdent).trim()
+        : null,
+      documentType,
+    );
   const stratumRaw = attributeValue(client, STRATUM_KEY);
   const stratum = stratumRaw && /^[1-6]$/u.test(stratumRaw) ? Number(stratumRaw) : null;
   return { documentType, documentNumber, stratum };
