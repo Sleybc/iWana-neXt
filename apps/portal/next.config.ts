@@ -70,6 +70,12 @@ const nextConfig: NextConfig = {
     instantInsights: {
       validationLevel: 'manual-warning',
     },
+    // Proxy de `/api/v1/*` (rewrites): por defecto Next corta el cuerpo en 10 MB y espera
+    // 30 s, así que un ZIP de UISP de 27,7 MB terminaba en 500 (2026-11-15). Alineado con
+    // MIGRATION_IMPORT_LIMITS.maxBatchBytes (200 MB) + holgura del multipart, igual que nginx
+    // (210M), y con el tiempo de espera de la subida en el cliente (10 min).
+    proxyClientMaxBodySize: '210mb',
+    proxyTimeout: 10 * 60_000,
   },
   async redirects() {
     // La raiz se resuelve en configuracion (307) para no prerenderizar un
