@@ -249,6 +249,9 @@ export class BillingContractReadAdapter extends BillingContractReadPort {
             AND s.anonymized_at IS NULL
             AND s.anonymized_request_id IS NULL
             AND c.status IN ('ACTIVE', 'SUSPENDED', 'TERMINATED', 'ARCHIVED')
+            -- Historial importado (ADR-110; spec 2026-11-15 §2.3): un contrato terminado que
+            -- trajo un lote no se prorratea; su facturación ya viene de UISP.
+            AND NOT (c.status = 'TERMINATED' AND c.import_batch_id IS NOT NULL)
             AND (c.terminated_at IS NULL OR (c.terminated_at AT TIME ZONE $5::text)::date >=
               ($2::date - $6::int))
             AND ($3::uuid IS NULL OR c.id > $3::uuid)

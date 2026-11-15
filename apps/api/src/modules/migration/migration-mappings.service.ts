@@ -3,9 +3,10 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, QueryFailedError } from 'typeorm';
+import { DataSource, QueryFailedError, type QueryRunner } from 'typeorm';
 import { runInTenantSchema } from '@iwana/db';
 import {
   AuditAction,
@@ -18,6 +19,8 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { MIGRATION_MAPPING_AUDIT_ENTITY } from './migration.constants';
 import type { MigrationTenantScope } from './migration-batches.service';
+import { MigrationTitularLookupPort } from './ports/migration-titular-lookup.port';
+import { externalIdOf } from './uisp/uisp-simulation';
 
 interface MappingRow {
   id: string;
@@ -79,6 +82,14 @@ function returningRows(result: unknown): MappingRow[] {
   return result as MappingRow[];
 }
 
+function titularTargetInvalid(): UnprocessableEntityException {
+  return new UnprocessableEntityException({
+    code: 'MIGRATION_TITULAR_TARGET_INVALID',
+    message:
+      'El suscriptor no puede complementarse con ese cliente: no coincide con el lote, está bloqueado o ya está enlazado a otro cliente.',
+  });
+}
+
 function notFound(): NotFoundException {
   return new NotFoundException({
     code: 'MIGRATION_MAPPING_NOT_FOUND',
@@ -95,6 +106,7 @@ export class MigrationMappingsService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
+    private readonly titularLookup: MigrationTitularLookupPort,
   ) {}
 
   async list(
@@ -120,8 +132,12 @@ export class MigrationMappingsService {
   ): Promise<MigrationMapping> {
     const targetRef = input.action === 'EQUIVALE' ? (input.targetRef ?? null) : null;
     assertTarget(input.kind, input.action, input.targetRef ?? null);
+    const titular = input.kind === 'TITULAR';
     try {
       return await runInTenantSchema(this.dataSource, scope.schemaName, async (qr) => {
+        if (titular) {
+          await this.assertTitularTarget(qr, scope.tenantId, input.externalValue, targetRef!);
+        }
         const [row] = (await qr.query(
           `INSERT INTO migration_mappings
              (tenant_id, source_system, kind, external_value, external_label, action,
@@ -132,7 +148,8 @@ export class MigrationMappingsService {
             scope.tenantId,
             input.kind,
             input.externalValue,
-            input.externalLabel ?? null,
+            // La tabla no se purga (D10): un titular nunca guarda etiqueta (nombre o documento).
+            titular ? null : (input.externalLabel ?? null),
             input.action,
             targetRef,
             actorId,
@@ -166,6 +183,15 @@ export class MigrationMappingsService {
       )) as MappingRow[];
       if (!current) throw notFound();
       assertTarget(current.kind, input.action, input.targetRef ?? null);
+      const titular = current.kind === 'TITULAR';
+      if (titular) {
+        await this.assertTitularTarget(
+          qr,
+          scope.tenantId,
+          current.external_value,
+          input.targetRef!,
+        );
+      }
       const [row] = returningRows(
         await qr.query(
           `UPDATE migration_mappings
@@ -179,8 +205,8 @@ export class MigrationMappingsService {
             scope.tenantId,
             input.action,
             input.action === 'EQUIVALE' ? (input.targetRef ?? null) : null,
-            input.externalLabel !== undefined,
-            input.externalLabel ?? null,
+            titular || input.externalLabel !== undefined,
+            titular ? null : (input.externalLabel ?? null),
             actorId,
           ],
         ),
@@ -203,6 +229,37 @@ export class MigrationMappingsService {
       if (!row) throw notFound();
       await this.audit(qr.manager, scope, AuditAction.DELETE, id, actorId, toMapping(row), null);
     });
+  }
+
+  /**
+   * Destino de una equivalencia `TITULAR` (spec 2026-11-15 §2.1): debe ser el candidato que un
+   * lote vigente del tenant ofreció para ese cliente (mismo HMAC de documento) y, según CRM,
+   * existir sin baja ni anonimización, sin datos bloqueados y sin enlace a otro cliente.
+   */
+  private async assertTitularTarget(
+    qr: QueryRunner,
+    tenantId: string,
+    externalValue: string,
+    targetRef: string,
+  ): Promise<void> {
+    const offered = (await qr.query(
+      `SELECT 1 AS found FROM migration_batches
+        WHERE tenant_id = $1 AND purged_at IS NULL
+          AND counts->'pendientesEquivalencia' @> jsonb_build_array(jsonb_build_object(
+                'kind', 'TITULAR', 'externalValue', $2::text, 'candidateRef', $3::text))
+        LIMIT 1`,
+      [tenantId, externalValue, targetRef],
+    )) as unknown[];
+    if (offered.length === 0) throw titularTargetInvalid();
+    const target = await this.titularLookup.titularTarget(qr, targetRef);
+    if (
+      !target ||
+      target.restricted ||
+      (target.externalId !== null &&
+        target.externalId !== externalIdOf('SUSCRIPTOR', externalValue))
+    ) {
+      throw titularTargetInvalid();
+    }
   }
 
   private audit(

@@ -13,12 +13,114 @@ import {
   paymentCovers,
   serviceAddress,
   serviceAlias,
+  subscriberContacts,
   suspensionPeriods,
   ticketComments,
   ticketStatus,
 } from './uisp-promotion-mapping';
 
 describe('uisp-promotion-mapping (ADR-110 D3, D5; spec §3.2)', () => {
+  describe('subscriberContacts', () => {
+    const principal = {
+      email: ' titular@example.invalid ',
+      phone: '3000000000',
+      name: null,
+      isContact: true,
+      types: [{ id: 1, name: 'Cliente' }],
+    };
+
+    it('conserva el principal y lleva el segundo contacto al contacto alternativo', () => {
+      const result = subscriberContacts({
+        contacts: [
+          principal,
+          {
+            email: 'esposa@example.invalid',
+            phone: ' 3110000000 ',
+            name: ' María Sintética ',
+            isContact: false,
+            types: [{ id: 2, name: 'General' }],
+          },
+        ],
+      });
+      expect(result).toEqual({
+        email: 'titular@example.invalid',
+        phone: '3000000000',
+        altContactName: 'María Sintética',
+        altContactPhone: '3110000000',
+        additionalContacts: [
+          { type: 'EMAIL', value: 'esposa@example.invalid' },
+          { type: 'PHONE', value: '3110000000' },
+        ],
+      });
+    });
+
+    it('elige como principal el de isContact aunque no sea el primero', () => {
+      const result = subscriberContacts({
+        contacts: [{ phone: '3220000000', name: 'Hijo', isContact: false }, principal],
+      });
+      expect(result.phone).toBe('3000000000');
+      expect(result.altContactName).toBe('Hijo');
+      expect(result.altContactPhone).toBe('3220000000');
+    });
+
+    it('sin isContact toma el primero como principal (comportamiento previo)', () => {
+      const result = subscriberContacts({
+        contacts: [
+          { email: 'a@example.invalid', phone: '3000000001' },
+          { phone: '3000000002', name: 'Otro' },
+        ],
+      });
+      expect(result.email).toBe('a@example.invalid');
+      expect(result.phone).toBe('3000000001');
+      expect(result.altContactPhone).toBe('3000000002');
+    });
+
+    it('el alternativo es el primer secundario con teléfono distinto; los demás no se pierden', () => {
+      const result = subscriberContacts({
+        contacts: [
+          principal,
+          { email: 'solo-correo@example.invalid', phone: null, name: 'Sin teléfono' },
+          { email: 'TITULAR@example.invalid', phone: '3000000000', name: 'Duplicado' },
+          { email: null, phone: '3330000000', name: 'Tercero' },
+          { email: null, phone: '3440000000', name: 'Cuarto' },
+        ],
+      });
+      expect(result.altContactName).toBe('Tercero');
+      expect(result.altContactPhone).toBe('3330000000');
+      expect(result.additionalContacts).toEqual([
+        { type: 'EMAIL', value: 'solo-correo@example.invalid' },
+        { type: 'PHONE', value: '3330000000' },
+        { type: 'PHONE', value: '3440000000' },
+      ]);
+    });
+
+    it('sin secundarios con teléfono deja el alternativo vacío', () => {
+      expect(subscriberContacts({ contacts: [principal] })).toEqual({
+        email: 'titular@example.invalid',
+        phone: '3000000000',
+        altContactName: null,
+        altContactPhone: null,
+        additionalContacts: [],
+      });
+      expect(subscriberContacts({})).toEqual({
+        email: null,
+        phone: null,
+        altContactName: null,
+        altContactPhone: null,
+        additionalContacts: [],
+      });
+      expect(subscriberContacts({ contacts: [null, 'x', principal] }).phone).toBe('3000000000');
+    });
+
+    it('recorta a las longitudes de las columnas', () => {
+      const result = subscriberContacts({
+        contacts: [principal, { phone: '9'.repeat(40), name: 'N'.repeat(200) }],
+      });
+      expect(result.altContactPhone).toHaveLength(30);
+      expect(result.altContactName).toHaveLength(160);
+    });
+  });
+
   it('civilDate toma la fecha civil de UISP y descarta fechas imposibles', () => {
     expect(civilDate('2023-02-01T00:00:00-0500')).toBe('2023-02-01');
     expect(civilDate('2023-02-30')).toBeNull();

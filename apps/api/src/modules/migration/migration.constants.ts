@@ -44,6 +44,7 @@ export function initialBatchCounts(filesReceived: number): MigrationBatchCounts 
     observaciones: {},
     tareasSinFuente: 0,
     pendientesEquivalencia: [],
+    titulares: { complementados: 0 },
     procesadoEn: null,
   };
 }

@@ -32,6 +32,7 @@ import {
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiUnauthorizedResponse,
+  ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { memoryStorage } from 'multer';
@@ -39,6 +40,7 @@ import { TenantContext } from '@iwana/db';
 import {
   AccessPermissionKey,
   MIGRATION_IMPORT_LIMITS,
+  MIGRATION_MAPPING_KINDS,
   MigrationBatchListQuerySchema,
   MigrationMappingCreateSchema,
   MigrationMappingListQuerySchema,
@@ -257,7 +259,7 @@ export class MigrationMappingsController {
 
   @Get()
   @ApiOperation({ summary: 'Listar equivalencias' })
-  @ApiQuery({ name: 'kind', required: false, enum: ['PLAN', 'METODO_PAGO', 'CICLO', 'ETIQUETA'] })
+  @ApiQuery({ name: 'kind', required: false, enum: [...MIGRATION_MAPPING_KINDS] })
   @ApiOkResponse({
     schema: {
       type: 'object',
@@ -277,6 +279,10 @@ export class MigrationMappingsController {
   @ApiCreatedResponse({ schema: envelope(MIGRATION_MAPPING_OPENAPI) })
   @ApiBadRequestResponse({ description: 'Datos inválidos o destino incompatible con el tipo.' })
   @ApiConflictResponse({ description: 'Ya existe una equivalencia para ese valor.' })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'MIGRATION_TITULAR_TARGET_INVALID: el suscriptor no corresponde al cliente de UISP (equivalencia TITULAR).',
+  })
   async create(
     @CurrentUser() user: JwtPayload,
     @Body(new ZodValidationPipe(MigrationMappingCreateSchema)) body: MigrationMappingCreate,
@@ -289,6 +295,11 @@ export class MigrationMappingsController {
   @ApiBody({ schema: MIGRATION_MAPPING_UPDATE_OPENAPI })
   @ApiOkResponse({ schema: envelope(MIGRATION_MAPPING_OPENAPI) })
   @ApiNotFoundResponse({ description: 'La equivalencia no existe.' })
+  @ApiBadRequestResponse({ description: 'Datos inválidos o destino incompatible con el tipo.' })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'MIGRATION_TITULAR_TARGET_INVALID: el suscriptor no corresponde al cliente de UISP (equivalencia TITULAR).',
+  })
   async update(
     @CurrentUser() user: JwtPayload,
     @Param('id', new ParseUUIDPipe()) id: string,

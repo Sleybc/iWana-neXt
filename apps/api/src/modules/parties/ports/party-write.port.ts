@@ -77,6 +77,23 @@ export abstract class IPartyWritePort {
   ): Promise<EnsurePartyResult>;
 
   /**
+   * Agrega contactos no principales a un party existente si su valor (por HMAC) no está ya
+   * (importación que complementa un titular, spec 2026-11-15 §2.4). Devuelve los ids creados.
+   */
+  abstract addContactsIfAbsent(
+    partyId: string,
+    contacts: Array<{ type: PartyContactType; value: string }>,
+    ctx: PartyWriteContext,
+  ): Promise<string[]>;
+
+  /** Retira contactos por id de un party (reversión de ese complemento). Devuelve cuántos. */
+  abstract removeContacts(
+    partyId: string,
+    contactIds: string[],
+    ctx: PartyWriteContext,
+  ): Promise<number>;
+
+  /**
    * Retira los party que creó una importación (ADR-110 D7) si quedaron huérfanos: sin rol
    * distinto de `onlyRole` y sin ninguna FK que los referencie (cada borrado va en su propio
    * savepoint; un 23503 deja ese party intacto). Devuelve los ids retirados.

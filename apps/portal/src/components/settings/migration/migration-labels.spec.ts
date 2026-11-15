@@ -80,9 +80,19 @@ describe('vocabulario de importaciones', () => {
     expect(validateMigrationFiles(Array.from({ length: 21 }, (_, i) => zip(`${i}.zip`)))).toMatch(
       /máximo 20/,
     );
-    const big = zip('grande.zip');
-    Object.defineProperty(big, 'size', { value: 25 * 1024 * 1024 + 1 });
-    expect(validateMigrationFiles([big])).toBe('«grande.zip» supera 25 MB.');
+    const sized = (name: string, megabytes: number) => {
+      const file = zip(name);
+      Object.defineProperty(file, 'size', { value: Math.round(megabytes * 1024 * 1024) });
+      return file;
+    };
+    // Un cliente con años de historial (27,7 MB real) ya entra.
+    expect(validateMigrationFiles([sized('client-export-22.zip', 27.7)])).toBeNull();
+    expect(validateMigrationFiles([sized('grande.zip', 100.1)])).toBe(
+      '«grande.zip» supera 100 MB.',
+    );
+    expect(
+      validateMigrationFiles([sized('a.zip', 90), sized('b.zip', 90), sized('c.zip', 30)]),
+    ).toBe('Los archivos suman más de 200 MB: divídelos en varios lotes.');
     expect(validateMigrationFiles([zip('cliente.ZIP')])).toBeNull();
   });
 

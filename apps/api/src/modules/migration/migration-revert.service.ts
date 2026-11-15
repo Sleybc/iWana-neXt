@@ -1,6 +1,6 @@
 import { ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, type QueryRunner } from 'typeorm';
 import { runInTenantSchema, summarizeErrorForLog } from '@iwana/db';
 import { STORAGE_PORT, type StoragePort } from '@iwana/storage';
 import {
@@ -18,6 +18,7 @@ import {
   MigrationCrmImportPort,
   MigrationSupportImportPort,
   MigrationWorkOrderReferencesPort,
+  type ComplementRecord,
   type MigrationWriteContext,
 } from './ports/migration-import.ports';
 
@@ -57,6 +58,32 @@ export class MigrationRevertService {
     private readonly audit: AuditService,
   ) {}
 
+  /** `promotion_meta` de los titulares complementados del lote (solo ids, campos y HMAC). */
+  private async complementRecords(
+    qr: QueryRunner,
+    tenantId: string,
+    batchId: string,
+  ): Promise<ComplementRecord[]> {
+    const rows = (await qr.query(
+      `SELECT promotion_meta FROM migration_staging_records
+        WHERE tenant_id = $1 AND batch_id = $2 AND entity = 'SUSCRIPTOR' AND status = 'PROMOVIDO'
+          AND promotion_meta->>'mode' = 'COMPLEMENTO'`,
+      [tenantId, batchId],
+    )) as Array<{ promotion_meta: Partial<ComplementRecord> | null }>;
+    return rows.flatMap(({ promotion_meta: meta }) =>
+      meta?.subscriberId
+        ? [
+            {
+              subscriberId: meta.subscriberId,
+              linkedExternalId: meta.linkedExternalId ?? null,
+              filled: Array.isArray(meta.filled) ? meta.filled : [],
+              contactIds: Array.isArray(meta.contactIds) ? meta.contactIds : [],
+            },
+          ]
+        : [],
+    );
+  }
+
   async revert(
     scope: MigrationTenantScope,
     batchId: string,
@@ -94,6 +121,9 @@ export class MigrationRevertService {
 
         const read = { manager: qr.manager, tenantId: scope.tenantId };
         const ids = await this.crm.batchEntityIds(read, batchId);
+        // Titulares existentes complementados (spec 2026-11-15 §2.6): nunca se borran.
+        const complements = await this.complementRecords(qr, scope.tenantId, batchId);
+        if (complements.length > 0) ids.complements = complements;
         const workOrders = await this.workOrders.countReferences(read, ids);
         const blockers = mergeBlockers([
           ...(await this.crm.revertBlockers(read, batchId, ids)),
@@ -131,6 +161,7 @@ export class MigrationRevertService {
         });
         const support = await this.support.revertBatch(ctx);
         const billing = await this.billing.revertBatch(ctx);
+        if (complements.length > 0) await this.crm.revertComplement(ctx, complements);
         const crm = await this.crm.revertBatch(
           ctx,
           parties.map((row) => row.party_id).filter((id): id is string => !!id),

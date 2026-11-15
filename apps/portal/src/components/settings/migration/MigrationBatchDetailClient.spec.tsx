@@ -89,6 +89,24 @@ describe('MigrationBatchDetailClient', () => {
     expect(screen.getByText('Simulado')).toBeInTheDocument();
   });
 
+  it('el informe muestra los titulares complementados y el cruce con la facturación', async () => {
+    const base = report();
+    getSpy.mockResolvedValue(
+      report({
+        counts: {
+          ...base.counts,
+          observaciones: { CRUCE_CON_FACTURACION_IWANA: 2 },
+          titulares: { complementados: 1 },
+        },
+      }),
+    );
+    render(<MigrationBatchDetailClient batchId={BATCH_ID} />);
+    expect(await screen.findByText('Titulares complementados: 1')).toBeInTheDocument();
+    expect(
+      screen.getByText('Facturas que se cruzan con la facturación de iWana: 2'),
+    ).toBeInTheDocument();
+  });
+
   it('las tareas sin fuente se cuentan una a una, no por ticket', async () => {
     const base = report();
     getSpy.mockResolvedValue(

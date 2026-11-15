@@ -157,6 +157,22 @@ export class BillingMigrationImportAdapter extends MigrationBillingImportPort {
     ctx: MigrationReadContext,
     subscriberIds: string[],
   ): Promise<Map<string, BillingTotals>> {
+    return this.totals(ctx, subscriberIds, false);
+  }
+
+  /** Solo lo importado de UISP (`external_id` `uisp:%`), nunca lo propio de iWana (§2.5). */
+  async importedTotalsBySubscriber(
+    ctx: MigrationReadContext,
+    subscriberIds: string[],
+  ): Promise<Map<string, BillingTotals>> {
+    return this.totals(ctx, subscriberIds, true);
+  }
+
+  private async totals(
+    ctx: MigrationReadContext,
+    subscriberIds: string[],
+    importedOnly: boolean,
+  ): Promise<Map<string, BillingTotals>> {
     const result = new Map<string, BillingTotals>();
     if (subscriberIds.length === 0) return result;
     for (const id of subscriberIds) result.set(id, { billedCents: 0, paidCents: 0 });
@@ -165,18 +181,45 @@ export class BillingMigrationImportAdapter extends MigrationBillingImportPort {
          FROM billing_documents
         WHERE tenant_id = $1 AND subscriber_id = ANY($2::uuid[])
           AND status IN ('EMITIDO', 'IMPORTADO')
+          AND (NOT $3::boolean OR external_id LIKE 'uisp:%')
         GROUP BY subscriber_id`,
-      [ctx.tenantId, subscriberIds],
+      [ctx.tenantId, subscriberIds, importedOnly],
     )) as Array<{ subscriber_id: string; cents: string }>;
     for (const row of billed) result.get(row.subscriber_id)!.billedCents = Number(row.cents);
     const paid = (await ctx.manager.query(
       `SELECT subscriber_id::text, round(SUM(amount) * 100)::bigint AS cents
          FROM billing_payments
         WHERE tenant_id = $1 AND subscriber_id = ANY($2::uuid[]) AND status = 'REGISTRADO'
+          AND (NOT $3::boolean OR external_id LIKE 'uisp:%')
         GROUP BY subscriber_id`,
-      [ctx.tenantId, subscriberIds],
+      [ctx.tenantId, subscriberIds, importedOnly],
     )) as Array<{ subscriber_id: string; cents: string }>;
     for (const row of paid) result.get(row.subscriber_id)!.paidCents = Number(row.cents);
+    return result;
+  }
+
+  /**
+   * Primer cobro propio emitido: `EMITIDO` o `ANULADO` con número (la anulación solo existe
+   * tras emitir), nunca `BORRADOR` ni `IMPORTADO`, y sin `external_id` de UISP.
+   */
+  async firstOwnIssueDates(
+    ctx: MigrationReadContext,
+    subscriberIds: string[],
+  ): Promise<Map<string, string>> {
+    const result = new Map<string, string>();
+    if (subscriberIds.length === 0) return result;
+    const rows = (await ctx.manager.query(
+      `SELECT subscriber_id::text AS subscriber_id,
+              to_char(MIN(issue_date), 'YYYY-MM-DD') AS first_issue
+         FROM billing_documents
+        WHERE tenant_id = $1 AND subscriber_id = ANY($2::uuid[])
+          AND status IN ('EMITIDO', 'ANULADO')
+          AND number IS NOT NULL AND issue_date IS NOT NULL
+          AND (external_id IS NULL OR external_id NOT LIKE 'uisp:%')
+        GROUP BY subscriber_id`,
+      [ctx.tenantId, subscriberIds],
+    )) as Array<{ subscriber_id: string; first_issue: string }>;
+    for (const row of rows) result.set(row.subscriber_id, row.first_issue);
     return result;
   }
 

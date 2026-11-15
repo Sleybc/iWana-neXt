@@ -29,6 +29,69 @@ export interface MigrationReadContext {
 export interface MigrationBatchEntityIds {
   subscriberIds: string[];
   contractIds: string[];
+  /**
+   * Titulares existentes que el lote complementó (spec 2026-11-15 §2.6). Nunca están en
+   * `subscriberIds` (no llevan `import_batch_id`); CRM los usa para `DATO_COMPLETADO_MODIFICADO`.
+   */
+  complements?: ComplementRecord[];
+}
+
+// ── Complemento de un titular existente (spec 2026-11-15 §2.3–§2.6) ─────────────────────
+
+/** Campos de `subscribers` que la importación puede completar si están vacíos. */
+export type ComplementField =
+  | 'email'
+  | 'phone'
+  | 'altContactName'
+  | 'altContactPhone'
+  | 'address'
+  | 'city'
+  | 'latitude'
+  | 'longitude';
+
+/**
+ * Campo completado: nombre y HMAC (`PII_HASH_KEY`) del valor tal como quedó guardado (el
+ * cifrado, en los campos cifrados). Nunca el valor: la reversión compara HMAC.
+ */
+export interface ComplementFilled {
+  field: ComplementField;
+  /** `hmacPii("<campo>:<valor en claro>")`: estable ante el recifrado de claves. */
+  hmac: string;
+  /**
+   * Solo en `address`: valor original sobrescrito, que únicamente puede ser el placeholder del
+   * alta, una cadena en blanco o null (nunca un dato del titular).
+   */
+  original?: string | null;
+}
+
+export interface ComplementSubscriberInput {
+  subscriberId: string;
+  email: string | null;
+  phone: string | null;
+  altContactName: string | null;
+  altContactPhone: string | null;
+  additionalContacts: Array<{ type: 'EMAIL' | 'PHONE'; value: string }>;
+  address: string | null;
+  city: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+export interface ComplementFillResult {
+  filled: ComplementFilled[];
+  /** Campos con valor en iWana distinto del de UISP (solo nombres). */
+  differing: ComplementField[];
+  /** `party_contact` agregados (sin `import_batch_id`: la reversión los retira por id). */
+  contactIds: string[];
+}
+
+/** Lo que la promoción registró en `promotion_meta` del titular complementado. */
+export interface ComplementRecord {
+  subscriberId: string;
+  /** `external_id` que el lote fijó (`null` si no lo fijó). */
+  linkedExternalId: string | null;
+  filled: ComplementFilled[];
+  contactIds: string[];
 }
 
 // ── CRM ─────────────────────────────────────────────────────────────────────────────────
@@ -46,6 +109,11 @@ export interface ImportedSubscriberInput {
   businessName: string | null;
   email: string | null;
   phone: string | null;
+  /** Primer contacto secundario de UISP con teléfono: el «Contacto alternativo» de la ficha. */
+  altContactName?: string | null;
+  altContactPhone?: string | null;
+  /** Correos y teléfonos de los demás contactos de UISP: `party_contact` no principal (D-CONT). */
+  additionalContacts?: Array<{ type: 'EMAIL' | 'PHONE'; value: string }>;
   address: string | null;
   city: string | null;
   latitude: number | null;
@@ -168,6 +236,28 @@ export abstract class MigrationCrmImportPort {
     ids: MigrationBatchEntityIds,
   ): Promise<MigrationRevertBlocker[]>;
 
+  /** Fija `external_id` solo si es `NULL`; `true` si lo fijó. Nunca escribe `import_batch_id`. */
+  abstract linkComplement(
+    ctx: MigrationWriteContext,
+    subscriberId: string,
+    externalId: string,
+  ): Promise<boolean>;
+
+  /** Completa solo campos vacíos del titular existente (spec §2.4); nunca sobrescribe. */
+  abstract fillEmptyFields(
+    ctx: MigrationWriteContext,
+    input: ComplementSubscriberInput,
+  ): Promise<ComplementFillResult>;
+
+  /**
+   * Deshace el complemento: vuelve a vacío los campos completados y el `external_id` fijado y
+   * retira los contactos agregados. El suscriptor nunca se borra. Llamar tras `revertBlockers`.
+   */
+  abstract revertComplement(
+    ctx: MigrationWriteContext,
+    records: ComplementRecord[],
+  ): Promise<number>;
+
   /** Retira lo del lote en orden inverso; los party creados por él solo si quedan huérfanos. */
   abstract revertBatch(
     ctx: MigrationWriteContext,
@@ -253,6 +343,24 @@ export abstract class MigrationBillingImportPort {
     ctx: MigrationReadContext,
     subscriberIds: string[],
   ): Promise<Map<string, BillingTotals>>;
+
+  /**
+   * Como `totalsBySubscriber`, pero solo documentos y pagos importados de UISP (`external_id`
+   * `uisp:%`): la conciliación de un titular complementado excluye lo propio de iWana (§2.5).
+   */
+  abstract importedTotalsBySubscriber(
+    ctx: MigrationReadContext,
+    subscriberIds: string[],
+  ): Promise<Map<string, BillingTotals>>;
+
+  /**
+   * Fecha civil (`YYYY-MM-DD`) del primer cobro propio emitido por iWana (con número; no
+   * importado) de cada suscriptor. Los que no tienen ninguno no aparecen (spec 2026-11-15 §2.2).
+   */
+  abstract firstOwnIssueDates(
+    ctx: MigrationReadContext,
+    subscriberIds: string[],
+  ): Promise<Map<string, string>>;
 
   abstract revertBlockers(
     ctx: MigrationReadContext,

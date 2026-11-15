@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { Button } from '@iwana/ui';
 import {
   BILLING_PAYMENT_METHODS,
   migrationMappingTargetError,
+  type MigrationBatchCounts,
   type MigrationMappingAction,
   type MigrationMappingKind,
   type MigrationPendingValue,
@@ -18,6 +19,7 @@ import {
   mappingActionsFor,
   migrationErrorMessage,
 } from './migration-labels';
+import { MigrationTitularMappings } from './MigrationTitularMappings';
 
 export interface MappingTargetOption {
   value: string;
@@ -53,6 +55,8 @@ export async function loadMappingCatalogs(
           }))
       : null,
     ETIQUETA: tags ? tags.map((tag) => ({ value: tag.id, label: tag.name })) : null,
+    // Los titulares no usan catálogo: cada uno trae su candidato (candidateRef).
+    TITULAR: null,
   };
 }
 
@@ -167,14 +171,18 @@ function MappingRow({ value, options, onSaved }: MappingRowProps) {
 
 interface MigrationMappingEditorProps {
   pending: MigrationPendingValue[];
+  /** Conteos del lote para explicar qué trae un titular complementado. */
+  counts?: MigrationBatchCounts;
   onSaved: () => void;
 }
 
 /** Editor de equivalencias pendientes del lote (ADR-110 D4). */
-export function MigrationMappingEditor({ pending, onSaved }: MigrationMappingEditorProps) {
+export function MigrationMappingEditor({ pending, counts, onSaved }: MigrationMappingEditorProps) {
+  const titulares = pending.filter((item) => item.kind === 'TITULAR');
+  const others = pending.filter((item) => item.kind !== 'TITULAR');
   const [catalogs, setCatalogs] = useState<MappingCatalogs | null>(null);
   const [error, setError] = useState(false);
-  const kindsKey = [...new Set(pending.map((item) => item.kind))].sort().join(',');
+  const kindsKey = [...new Set(others.map((item) => item.kind))].sort().join(',');
 
   useEffect(() => {
     let active = true;
@@ -202,35 +210,44 @@ export function MigrationMappingEditor({ pending, onSaved }: MigrationMappingEdi
       </p>
     );
   }
-  if (error) {
-    return (
+  let catalogView: ReactNode = null;
+  if (others.length === 0) {
+    catalogView = null;
+  } else if (error) {
+    catalogView = (
       <PortalAlert
         variant="error"
         title="No pudimos cargar los catálogos de iWana"
         description="Recarga la página para elegir las equivalencias."
       />
     );
-  }
-  if (!catalogs) {
-    return (
+  } else if (!catalogs) {
+    catalogView = (
       <p role="status" className="text-sm text-gray-600 dark:text-gray-300">
         Cargando catálogos…
       </p>
     );
+  } else {
+    catalogView = (
+      <ul
+        aria-label="Equivalencias pendientes"
+        className="divide-y divide-gray-100 dark:divide-dark-border"
+      >
+        {others.map((value) => (
+          <MappingRow
+            key={`${value.kind}:${value.externalValue}`}
+            value={value}
+            options={catalogs[value.kind] ?? []}
+            onSaved={onSaved}
+          />
+        ))}
+      </ul>
+    );
   }
   return (
-    <ul
-      aria-label="Equivalencias pendientes"
-      className="divide-y divide-gray-100 dark:divide-dark-border"
-    >
-      {pending.map((value) => (
-        <MappingRow
-          key={`${value.kind}:${value.externalValue}`}
-          value={value}
-          options={catalogs[value.kind] ?? []}
-          onSaved={onSaved}
-        />
-      ))}
-    </ul>
+    <div className="space-y-4">
+      <MigrationTitularMappings pending={titulares} counts={counts} onSaved={onSaved} />
+      {catalogView}
+    </div>
   );
 }

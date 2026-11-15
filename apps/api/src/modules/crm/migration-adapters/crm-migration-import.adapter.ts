@@ -8,7 +8,11 @@ import {
   type MigrationRevertBlocker,
   type MigrationRevertBlockReason,
 } from '@iwana/shared';
-import { encryptAes256Gcm, loadPiiAesGcmKeyPair } from '../../../common/crypto/aes-gcm.util';
+import {
+  decryptAes256Gcm,
+  encryptAes256Gcm,
+  loadPiiAesGcmKeyPair,
+} from '../../../common/crypto/aes-gcm.util';
 import { hashDocumentNumber } from '../../../common/crypto/hash-document.util';
 import { hashEmail } from '../../../common/crypto/hash-email.util';
 import { calculateNitVerificationDigit } from '../../../common/crypto/nit-verification-digit.adapter';
@@ -16,6 +20,11 @@ import { hmacPii, resolvePiiHashKey } from '../../../common/crypto/pii-hash-key.
 import { CommercialCatalogReadPort } from '../../commercial/ports/commercial-catalog-read.port';
 import {
   MigrationCrmImportPort,
+  type ComplementField,
+  type ComplementFillResult,
+  type ComplementFilled,
+  type ComplementRecord,
+  type ComplementSubscriberInput,
   type CrmRevertResult,
   type ImportedContractInput,
   type ImportedSubscriberDocumentInput,
@@ -28,6 +37,33 @@ import {
 } from '../../migration/ports/migration-import.ports';
 import { IPartyWritePort } from '../../parties/ports/party-write.port';
 
+const ALT_PHONE_CIPHERTEXT_MAX = 100;
+/** Dirección por defecto del alta importada: para el complemento cuenta como vacía. */
+const ADDRESS_PLACEHOLDER = 'Sin dirección registrada';
+
+/** Columna de `subscribers` de cada campo completable (lectura como texto, sin descifrar). */
+const COMPLEMENT_COLUMNS: Record<ComplementField, string> = {
+  email: 'email_encrypted',
+  phone: 'phone_encrypted',
+  altContactName: 'alt_contact_name',
+  altContactPhone: 'alt_contact_phone_encrypted',
+  address: 'address',
+  city: 'city',
+  latitude: 'latitude',
+  longitude: 'longitude',
+};
+const COMPLEMENT_FIELDS = Object.keys(COMPLEMENT_COLUMNS) as ComplementField[];
+const COMPLEMENT_SELECT = COMPLEMENT_FIELDS.map(
+  (field) => `${COMPLEMENT_COLUMNS[field]}::text AS "${field}"`,
+).join(', ');
+
+type ComplementSnapshot = Record<ComplementField, string | null>;
+/** Campos guardados cifrados: su HMAC de complemento se calcula sobre el valor en claro. */
+const ENCRYPTED_COMPLEMENT_FIELDS: ReadonlySet<ComplementField> = new Set([
+  'email',
+  'phone',
+  'altContactPhone',
+]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 function affected(result: unknown): number {
@@ -63,6 +99,7 @@ function blocker(motivo: MigrationRevertBlockReason, cantidad: number): Migratio
 @Injectable()
 export class CrmMigrationImportAdapter extends MigrationCrmImportPort {
   private readonly activeKey: Buffer;
+  private readonly previousKeys: Buffer[];
   private readonly hashKey: Buffer;
 
   constructor(
@@ -71,7 +108,9 @@ export class CrmMigrationImportAdapter extends MigrationCrmImportPort {
     private readonly catalog: CommercialCatalogReadPort,
   ) {
     super();
-    this.activeKey = loadPiiAesGcmKeyPair(config).activeKey;
+    const keys = loadPiiAesGcmKeyPair(config);
+    this.activeKey = keys.activeKey;
+    this.previousKeys = keys.previousKey;
     this.hashKey = resolvePiiHashKey(config);
   }
 
@@ -125,6 +164,12 @@ export class CrmMigrationImportAdapter extends MigrationCrmImportPort {
             ...(input.phone
               ? [{ type: PartyContactType.PHONE, value: input.phone, isPrimary: true }]
               : []),
+            // Los demás contactos de UISP: no principales, cifrados y con HMAC por Parties.
+            ...(input.additionalContacts ?? []).map((contact) => ({
+              type: contact.type === 'EMAIL' ? PartyContactType.EMAIL : PartyContactType.PHONE,
+              value: contact.value,
+              isPrimary: false,
+            })),
           ],
           address: input.address,
           city: input.city,
@@ -147,12 +192,14 @@ export class CrmMigrationImportAdapter extends MigrationCrmImportPort {
          document_number_encrypted, document_number_hmac, first_name, last_name, stratum,
          nit, nit_verification_digit, business_name, email_encrypted, email_hmac,
          phone_encrypted, phone_hmac, vat_treatment, address, city, latitude, longitude,
-         status, external_id, import_batch_id, created_by, converted_at, activated_at)
+         status, external_id, import_batch_id, created_by, converted_at, activated_at,
+         alt_contact_name, alt_contact_phone_encrypted)
        VALUES ($1, $2, $3::person_type_enum, $4::customer_segment_enum, $5,
          $6, $7, $8, $9, $28,
          $10, $11, $12, $13, $14,
          $15, $16, $17::vat_treatment_enum, $18, $19, $20, $21,
-         $22::subscriber_status_enum, $23, $24, $25, $26::date, $27::date)
+         $22::subscriber_status_enum, $23, $24, $25, $26::date, $27::date,
+         $29, $30)
        RETURNING id::text`,
       [
         ctx.tenantId,
@@ -183,9 +230,21 @@ export class CrmMigrationImportAdapter extends MigrationCrmImportPort {
         input.registeredOn,
         null,
         juridica ? null : input.stratum,
+        input.altContactName?.slice(0, 160) ?? null,
+        this.altPhoneCiphertext(input.altContactPhone ?? null),
       ],
     )) as Array<{ id: string }>;
     return { subscriberId: rows[0]!.id, partyId, partyCreated };
+  }
+
+  /**
+   * `alt_contact_phone_encrypted` es varchar(100): un teléfono de más de 21 bytes no cabe
+   * cifrado. Queda solo en `party_contact` (que sí guarda su HMAC) en vez de abortar el titular.
+   */
+  private altPhoneCiphertext(phone: string | null): string | null {
+    if (!phone) return null;
+    const ciphertext = encryptAes256Gcm(phone, this.activeKey);
+    return ciphertext.length <= ALT_PHONE_CIPHERTEXT_MAX ? ciphertext : null;
   }
 
   async findContracts(
@@ -336,6 +395,228 @@ export class CrmMigrationImportAdapter extends MigrationCrmImportPort {
     return rows[0]!.id;
   }
 
+  // ── Complemento de un titular existente (spec 2026-11-15 §2.3–§2.6) ──────────────────
+
+  async linkComplement(
+    ctx: MigrationWriteContext,
+    subscriberId: string,
+    externalId: string,
+  ): Promise<boolean> {
+    // Nunca `import_batch_id`: la reversión borra los suscriptores que lo tienen.
+    const rows = await ctx.manager.query(
+      `UPDATE subscribers SET external_id = $3, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 AND external_id IS NULL
+       RETURNING id`,
+      [ctx.tenantId, subscriberId, externalId],
+    );
+    return affected(rows) > 0;
+  }
+
+  async fillEmptyFields(
+    ctx: MigrationWriteContext,
+    input: ComplementSubscriberInput,
+  ): Promise<ComplementFillResult> {
+    const rows = (await ctx.manager.query(
+      `SELECT ${COMPLEMENT_SELECT}, email_hmac, phone_hmac, party_id::text AS party_id
+         FROM subscribers WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+      [ctx.tenantId, input.subscriberId],
+    )) as Array<
+      ComplementSnapshot & {
+        email_hmac: string | null;
+        phone_hmac: string | null;
+        party_id: string | null;
+      }
+    >;
+    const current = rows[0];
+    if (!current) return { filled: [], differing: [], contactIds: [] };
+
+    const set = new Map<ComplementField, unknown>();
+    const differing: ComplementField[] = [];
+    const plain = (value: string | null) => value?.trim().toLowerCase() || null;
+
+    if (input.email) {
+      if (current.email === null) set.set('email', encryptAes256Gcm(input.email, this.activeKey));
+      else if (current.email_hmac !== hashEmail(input.email, this.hashKey)) differing.push('email');
+    }
+    if (input.phone) {
+      if (current.phone === null) set.set('phone', encryptAes256Gcm(input.phone, this.activeKey));
+      else if (current.phone_hmac !== hmacPii(input.phone, this.hashKey)) differing.push('phone');
+    }
+    if (input.altContactName && input.altContactPhone) {
+      const phone = this.altPhoneCiphertext(input.altContactPhone);
+      if (current.altContactName === null && current.altContactPhone === null && phone) {
+        set.set('altContactName', input.altContactName.slice(0, 160));
+        set.set('altContactPhone', phone);
+      } else if (
+        current.altContactName !== null &&
+        plain(current.altContactName) !== plain(input.altContactName)
+      ) {
+        differing.push('altContactName');
+      }
+    }
+    const address = input.address?.trim() || null;
+    if (address) {
+      const empty = !current.address?.trim() || current.address.trim() === ADDRESS_PLACEHOLDER;
+      if (empty) {
+        // Dirección, municipio y coordenadas se completan juntas, nunca mezcladas.
+        set.set('address', address.slice(0, 500));
+        if (current.city === null && input.city) set.set('city', input.city.slice(0, 100));
+        if (current.latitude === null && current.longitude === null) {
+          if (input.latitude !== null && input.longitude !== null) {
+            set.set('latitude', input.latitude);
+            set.set('longitude', input.longitude);
+          }
+        }
+      } else if (plain(current.address) !== plain(address)) {
+        differing.push('address');
+      }
+    }
+
+    let filled: ComplementFilled[] = [];
+    if (set.size > 0) {
+      const fields = [...set.keys()];
+      const assignments = fields.map(
+        (field, index) => `${COMPLEMENT_COLUMNS[field]} = $${index + 3}`,
+      );
+      const params: unknown[] = [
+        ctx.tenantId,
+        input.subscriberId,
+        ...fields.map((field) => set.get(field)),
+      ];
+      if (set.has('email')) {
+        params.push(hashEmail(input.email!, this.hashKey));
+        assignments.push(`email_hmac = $${params.length}`);
+      }
+      if (set.has('phone')) {
+        params.push(hmacPii(input.phone!, this.hashKey));
+        assignments.push(`phone_hmac = $${params.length}`);
+      }
+      const updated = (await ctx.manager.query(
+        `UPDATE subscribers SET ${assignments.join(', ')}, updated_at = now()
+          WHERE tenant_id = $1 AND id = $2
+         RETURNING ${COMPLEMENT_SELECT}`,
+        params,
+      )) as unknown;
+      const after = (
+        Array.isArray(updated) && Array.isArray(updated[0]) ? updated[0] : updated
+      ) as ComplementSnapshot[];
+      filled = fields.map((field) => ({
+        field,
+        hmac: this.complementHmac(field, after[0]?.[field] ?? null) ?? '',
+        // Marca sin PII del valor original (placeholder o en blanco) para restaurarlo exacto.
+        ...(field === 'address' ? { original: current.address } : {}),
+      }));
+    }
+
+    let contactIds: string[] = [];
+    if (current.party_id && input.additionalContacts.length > 0) {
+      contactIds = await this.partyWritePort.addContactsIfAbsent(
+        current.party_id,
+        input.additionalContacts.map((contact) => ({
+          type: contact.type === 'EMAIL' ? PartyContactType.EMAIL : PartyContactType.PHONE,
+          value: contact.value,
+        })),
+        { manager: ctx.manager, actorUserId: ctx.actorId },
+      );
+    }
+    return { filled, differing, contactIds };
+  }
+
+  async revertComplement(ctx: MigrationWriteContext, records: ComplementRecord[]): Promise<number> {
+    let reverted = 0;
+    for (const record of records) {
+      const assignments = record.filled.map((item) =>
+        item.field === 'address'
+          ? `address = ${this.originalAddressSql(item.original)}`
+          : `${COMPLEMENT_COLUMNS[item.field]} = NULL`,
+      );
+      if (record.filled.some((item) => item.field === 'email'))
+        assignments.push('email_hmac = NULL');
+      if (record.filled.some((item) => item.field === 'phone'))
+        assignments.push('phone_hmac = NULL');
+      if (assignments.length > 0) {
+        await ctx.manager.query(
+          `UPDATE subscribers SET ${assignments.join(', ')}, updated_at = now()
+            WHERE tenant_id = $1 AND id = $2`,
+          [ctx.tenantId, record.subscriberId],
+        );
+      }
+      if (record.linkedExternalId) {
+        await ctx.manager.query(
+          `UPDATE subscribers SET external_id = NULL, updated_at = now()
+            WHERE tenant_id = $1 AND id = $2 AND external_id = $3`,
+          [ctx.tenantId, record.subscriberId, record.linkedExternalId],
+        );
+      }
+      if (record.contactIds.length > 0) {
+        const party = (await ctx.manager.query(
+          `SELECT party_id::text AS party_id FROM subscribers WHERE tenant_id = $1 AND id = $2`,
+          [ctx.tenantId, record.subscriberId],
+        )) as Array<{ party_id: string | null }>;
+        if (party[0]?.party_id) {
+          await this.partyWritePort.removeContacts(party[0].party_id, record.contactIds, {
+            manager: ctx.manager,
+            actorUserId: ctx.actorId,
+          });
+        }
+      }
+      reverted += 1;
+    }
+    return reverted;
+  }
+
+  /** Campos completados que alguien cambió después (HMAC actual distinto del escrito). */
+  private async modifiedComplementFields(
+    ctx: MigrationReadContext,
+    records: ComplementRecord[],
+  ): Promise<number> {
+    let modified = 0;
+    for (const record of records) {
+      if (record.filled.length === 0) continue;
+      const rows = (await ctx.manager.query(
+        `SELECT ${COMPLEMENT_SELECT} FROM subscribers WHERE tenant_id = $1 AND id = $2`,
+        [ctx.tenantId, record.subscriberId],
+      )) as ComplementSnapshot[];
+      const current = rows[0];
+      for (const item of record.filled) {
+        const now = current ? this.complementHmac(item.field, current[item.field] ?? null) : null;
+        if (now !== item.hmac) modified += 1;
+      }
+    }
+    return modified;
+  }
+
+  /**
+   * HMAC del valor EN CLARO con el campo como dominio: `hmacPii("<campo>:<valor>")`. Los campos
+   * cifrados se descifran (clave activa y anteriores) para que el recifrado de claves, que
+   * cambia el texto cifrado sin cambiar el dato, no cuente como edición. Se descifra en vez de
+   * usar `email_hmac`/`phone_hmac` porque `alt_contact_phone` no tiene columna HMAC y así la
+   * regla es una sola para todos los campos. Si no descifra, devuelve null (cuenta como
+   * modificado: falla cerrada).
+   */
+  private complementHmac(field: ComplementField, stored: string | null): string | null {
+    let value = stored;
+    if (value !== null && ENCRYPTED_COMPLEMENT_FIELDS.has(field)) {
+      try {
+        value = decryptAes256Gcm(value, this.activeKey, this.previousKeys);
+      } catch {
+        return null;
+      }
+    }
+    return hmacPii(`${field}:${value ?? ''}`, this.hashKey);
+  }
+
+  /**
+   * Literal SQL de la dirección original. Solo admite el placeholder del alta o un valor en
+   * blanco (lo único que el complemento sobrescribe); cualquier otra cosa o la marca ausente
+   * (registros previos) vuelve al placeholder.
+   */
+  private originalAddressSql(original: string | null | undefined): string {
+    if (original === null) return 'NULL';
+    if (typeof original === 'string' && /^\s*$/u.test(original)) return `'${original}'`;
+    return `'${ADDRESS_PLACEHOLDER}'`;
+  }
+
   async batchEntityIds(
     ctx: MigrationReadContext,
     batchId: string,
@@ -359,7 +640,11 @@ export class CrmMigrationImportAdapter extends MigrationCrmImportPort {
     batchId: string,
     ids: MigrationBatchEntityIds,
   ): Promise<MigrationRevertBlocker[]> {
-    if (ids.subscriberIds.length === 0 && ids.contractIds.length === 0) return [];
+    const modified = blocker(
+      'DATO_COMPLETADO_MODIFICADO',
+      await this.modifiedComplementFields(ctx, ids.complements ?? []),
+    );
+    if (ids.subscriberIds.length === 0 && ids.contractIds.length === 0) return modified;
     const rows = (await ctx.manager.query(
       `SELECT
          (SELECT COUNT(*) FROM contracts
@@ -388,6 +673,7 @@ export class CrmMigrationImportAdapter extends MigrationCrmImportPort {
       ...blocker('CONTRATO_POSTERIOR', Number(row.contracts)),
       ...blocker('SOPORTE_POSTERIOR', Number(row.documents)),
       ...blocker('ETIQUETA_POSTERIOR', Number(row.tags)),
+      ...modified,
     ];
   }
 

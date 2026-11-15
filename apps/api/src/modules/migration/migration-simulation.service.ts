@@ -14,6 +14,7 @@ import {
   MIGRATION_STAGING_CHUNK,
   migrationObjectKey,
 } from './migration.constants';
+import { MigrationBillingImportPort } from './ports/migration-import.ports';
 import { MigrationTitularLookupPort } from './ports/migration-titular-lookup.port';
 import { parseUispPackage, type ParseUispResult } from './uisp/uisp-parser';
 import {
@@ -70,6 +71,7 @@ export class MigrationSimulationService {
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     private readonly crypto: MigrationCrypto,
     private readonly titularLookup: MigrationTitularLookupPort,
+    private readonly billing: MigrationBillingImportPort,
   ) {}
 
   async resolveTenant(tenantId: string): Promise<ResolvedTenant> {
@@ -237,8 +239,20 @@ export class MigrationSimulationService {
       documentHmacs: keys.documents.map((document) => this.crypto.documentHmac(document)),
       externalIds: keys.externalIds,
     });
+    // Equivalencias `TITULAR` (spec 2026-11-15 §2.1): id de cliente UISP → suscriptor.
+    const titularLinks = new Map(
+      mappingRows
+        .filter((row) => row.kind === 'TITULAR' && row.action === 'EQUIVALE' && row.target_ref)
+        .map((row) => [row.external_value, row.target_ref!] as const),
+    );
+    const firstOwnIssueDates = await this.billing.firstOwnIssueDates(
+      { manager: qr.manager, tenantId: tenant.tenantId },
+      [...new Set(facts.subscriberIdByHmac.values())],
+    );
     return simulateBatch(packages, {
       ...facts,
+      titularLinks,
+      firstOwnIssueDates,
       mappings: buildMappingIndex(
         mappingRows.map((row) => ({
           kind: row.kind,

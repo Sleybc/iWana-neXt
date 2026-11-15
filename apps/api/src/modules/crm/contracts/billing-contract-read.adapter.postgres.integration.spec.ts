@@ -222,6 +222,35 @@ describeWithDb('BillingContractReadAdapter contra PostgreSQL real', () => {
     expect(result.map((item) => item.contractId)).not.toContain(outsideWindowTerminatedId);
   });
 
+  it('spec 2026-11-15 §2.3: un contrato TERMINATED importado de UISP no entra en la generación diaria', async () => {
+    const subscriberId = await insertSubscriber();
+    const ownTerminatedId = await insertContract({
+      subscriberId,
+      status: 'TERMINATED',
+      terminatedAt: '2026-11-18T10:00:00-05:00',
+    });
+    const importedTerminatedId = await insertContract({
+      subscriberId,
+      status: 'TERMINATED',
+      terminatedAt: '2026-11-18T10:00:00-05:00',
+    });
+    await runInTenantSchema(dataSource, schemaName, (qr) =>
+      qr.query(`UPDATE contracts SET external_id = $2, import_batch_id = $3 WHERE id = $1`, [
+        importedTerminatedId,
+        `uisp:service:${randomUUID()}`,
+        randomUUID(),
+      ]),
+    );
+
+    const result = await TenantContext.run(tenantContext, () =>
+      adapter.findBillableForDate('2026-11-20', { limit: 500 }),
+    );
+
+    const ids = result.map((item) => item.contractId);
+    expect(ids).toContain(ownTerminatedId);
+    expect(ids).not.toContain(importedTerminatedId);
+  });
+
   it('BR-9.1 hasImpersonationSuspension distingue suspendido por suplantación', async () => {
     const suspended = await insertSubscriber();
     await insertContract({

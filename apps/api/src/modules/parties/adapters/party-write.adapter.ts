@@ -1,7 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IsNull } from 'typeorm';
-import { DocumentTypeParty, PartyStatus, PartyRoleStatus, PartyRoleType } from '@iwana/shared';
+import {
+  DocumentTypeParty,
+  PartyContactType,
+  PartyStatus,
+  PartyRoleStatus,
+  PartyRoleType,
+} from '@iwana/shared';
 import { Party } from '../entities/party.entity';
 import { PartyRole } from '../entities/party-role.entity';
 import { PartyContact } from '../entities/party-contact.entity';
@@ -187,6 +193,53 @@ export class PartyWriteAdapter extends IPartyWritePort {
       });
       await manager.save(PartyContact, contact);
     }
+  }
+
+  async addContactsIfAbsent(
+    partyId: string,
+    contacts: Array<{ type: PartyContactType; value: string }>,
+    ctx: PartyWriteContext,
+  ): Promise<string[]> {
+    const created: string[] = [];
+    for (const input of contacts) {
+      const valueHmac = this.pii.contactHmac(input.type, input.value);
+      const existing = (await ctx.manager.query(
+        `SELECT 1 FROM party_contact WHERE party_id = $1 AND type = $2 AND value_hmac = $3 LIMIT 1`,
+        [partyId, input.type, valueHmac],
+      )) as unknown[];
+      if (existing.length > 0) continue;
+      const saved = await ctx.manager.save(
+        PartyContact,
+        ctx.manager.create(PartyContact, {
+          partyId,
+          type: input.type,
+          value: partyContactStorageValue(),
+          valueEncrypted: this.pii.encrypt(input.value),
+          valueHmac,
+          isPrimary: false,
+          metadata: null,
+        }),
+      );
+      created.push(saved.id);
+    }
+    return created;
+  }
+
+  async removeContacts(
+    partyId: string,
+    contactIds: string[],
+    ctx: PartyWriteContext,
+  ): Promise<number> {
+    if (contactIds.length === 0) return 0;
+    const rows = (await ctx.manager.query(
+      `DELETE FROM party_contact WHERE party_id = $1 AND id = ANY($2::uuid[]) RETURNING id`,
+      [partyId, contactIds],
+    )) as unknown;
+    return Array.isArray(rows) && Array.isArray(rows[0])
+      ? (rows[0] as unknown[]).length
+      : Array.isArray(rows)
+        ? rows.length
+        : 0;
   }
 
   async removeOrphanImportedParties(

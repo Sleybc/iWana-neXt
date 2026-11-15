@@ -35,7 +35,11 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { SubscriberTagAssignmentPort } from '../crm/ports/subscriber-tag-assignment.port';
 import { MigrationCrypto } from './migration-crypto';
-import { MIGRATION_AUDIT_ENTITY, migrationObjectKey } from './migration.constants';
+import {
+  MIGRATION_AUDIT_ENTITY,
+  MIGRATION_PURGE_TIME_ZONE,
+  migrationObjectKey,
+} from './migration.constants';
 import type { MigrationTenantScope } from './migration-batches.service';
 import {
   MigrationBatchNotVisibleError,
@@ -68,6 +72,7 @@ import {
   paymentCovers,
   serviceAddress,
   serviceAlias,
+  subscriberContacts,
   suspensionPeriods,
   ticketComments,
   ticketStatus,
@@ -129,6 +134,22 @@ function emptyPromotion(): MigrationPromotionReport {
 }
 
 const text = importedText;
+
+/** Suscriptor existente que este titular complementa (lo fija la simulación), o `null`. */
+function complementTarget(row: StagedRow): string | null {
+  const value = row.payload.derived['complementSubscriberId'];
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/** Fecha civil de hoy en Bogotá (`YYYY-MM-DD`). */
+function bogotaToday(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: MIGRATION_PURGE_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+}
 
 function coordinate(value: unknown): number | null {
   const number = amount(value);
@@ -329,6 +350,7 @@ export class MigrationPromotionService {
           WHERE id = $1 AND tenant_id = $2 AND status = 'CARGADO'`,
         [batchId, tenant.tenantId, JSON.stringify(promotion)],
       );
+      await this.recordDifferingObservation(qr, tenant.tenantId, batchId);
       await this.audit.logWithin(
         {
           action: AuditAction.UPDATE,
@@ -416,16 +438,23 @@ export class MigrationPromotionService {
       ]);
       const uisp = new Map<
         string,
-        { subscriberId: string; billed: number; paid: number; balance: number }
+        {
+          subscriberId: string;
+          complement: boolean;
+          billed: number;
+          paid: number;
+          balance: number;
+        }
       >();
       for (const row of rows) {
         if (row.entity === 'SUSCRIPTOR' && row.status === 'PROMOVIDO') {
-          const subscriberId = await this.promotedId(qr, row.id);
-          if (!subscriberId) continue;
+          const promoted = await this.promotedInfo(qr, tenant.tenantId, row.id);
+          if (!promoted) continue;
           const accountBalance = amount(row.payload.raw?.['accountBalance']) ?? 0;
           // En UISP el saldo negativo es deuda; en iWana el saldo es facturado − pagado.
           uisp.set(row.external_id, {
-            subscriberId,
+            subscriberId: promoted.id,
+            complement: promoted.mode === 'COMPLEMENTO',
             billed: 0,
             paid: 0,
             balance: -cents(accountBalance),
@@ -439,10 +468,19 @@ export class MigrationPromotionService {
           owner.billed += cents(amount(row.payload.raw?.['total']) ?? 0);
         if (row.entity === 'PAGO') owner.paid += cents(amount(row.payload.raw?.['amount']) ?? 0);
       }
-      const totals = await this.billing.totalsBySubscriber(
-        { manager: qr.manager, tenantId: tenant.tenantId },
-        [...uisp.values()].map((value) => value.subscriberId),
-      );
+      const read = { manager: qr.manager, tenantId: tenant.tenantId };
+      const owners = [...uisp.values()];
+      // Complementado (§2.5): solo lo importado de UISP; las facturas propias no concilian.
+      const totals = new Map([
+        ...(await this.billing.totalsBySubscriber(
+          read,
+          owners.filter((value) => !value.complement).map((value) => value.subscriberId),
+        )),
+        ...(await this.billing.importedTotalsBySubscriber(
+          read,
+          owners.filter((value) => value.complement).map((value) => value.subscriberId),
+        )),
+      ]);
       const differences: MigrationReconciliationDifference[] = [];
       for (const [externalId, value] of uisp) {
         const own = totals.get(value.subscriberId) ?? { billedCents: 0, paidCents: 0 };
@@ -568,14 +606,17 @@ export class MigrationPromotionService {
         }
         const stratum = group.subscriber.payload.derived['stratum'] as { value: number } | null;
         const dates = contractDates(raw);
+        // Titular complementado (§2.3): contrato histórico, siempre terminado; no aprovisiona ni
+        // factura. Fin = fecha de fin de UISP o la de promoción (civil Bogotá).
+        const historical = complementTarget(group.subscriber) !== null;
         const created = await this.crm.createContract(ctx, {
           externalId: row.external_id,
           subscriberId,
           planId: plan.target,
           billingCycleDay: cycleDay,
-          status: contractStatus(raw['status']),
+          status: historical ? 'TERMINATED' : contractStatus(raw['status']),
           startDate: dates.startDate,
-          endDate: dates.endDate,
+          endDate: historical ? (dates.endDate ?? bogotaToday()) : dates.endDate,
           individualPrice: individualPrice(raw),
           stratum: stratum?.value ?? null,
           personType:
@@ -753,12 +794,31 @@ export class MigrationPromotionService {
     // Una baja conserva su `external_id` en el índice único: no se reutiliza ni se recrea.
     if (existing?.deleted) throw new TitularRejected('TITULAR_EXISTENTE');
     if (existing) {
-      await this.markPromoted(qr, row, existing.id, { existing: true });
+      // Reimportar a un titular complementado por otro lote: sigue conciliando solo lo de UISP.
+      const complemented = await this.complementedBefore(qr, ctx.tenantId, existing.id);
+      await this.markPromoted(
+        qr,
+        row,
+        existing.id,
+        complemented
+          ? {
+              existing: true,
+              mode: 'COMPLEMENTO',
+              subscriberId: existing.id,
+              linkedExternalId: null,
+              filled: [],
+              differing: [],
+              contactIds: [],
+            }
+          : { existing: true },
+      );
       return existing.id;
     }
     if (row.status !== 'VALIDO') throw new TitularRejected('DATOS_INVALIDOS');
     const derived = row.payload.derived;
     const raw = row.payload.raw ?? {};
+    const complementId = complementTarget(row);
+    if (complementId) return this.promoteComplement(qr, ctx, row, mappings, complementId);
     const documentNumber =
       typeof derived['documentNumber'] === 'string' ? derived['documentNumber'] : null;
     if (documentNumber) {
@@ -774,10 +834,7 @@ export class MigrationPromotionService {
       if (!this.mapped(mappings, 'ETIQUETA', tag))
         throw new TitularRejected('ETIQUETA_SIN_EQUIVALENCIA');
     }
-    const contacts = Array.isArray(raw['contacts'])
-      ? (raw['contacts'] as Array<Record<string, unknown>>)
-      : [];
-    const contact = contacts.find((item) => item['isContact'] === true) ?? contacts[0];
+    const contacts = subscriberContacts(raw);
     const coordinatesDiscarded = derived['coordinatesDiscarded'] === true;
     const juridica = derived['documentType'] === 'NIT';
     const stratum = (derived['stratum'] as { value: number } | null)?.value ?? null;
@@ -797,14 +854,101 @@ export class MigrationPromotionService {
       firstName,
       lastName,
       businessName,
-      email: text(contact?.['email'], 254),
-      phone: text(contact?.['phone'], 30),
+      email: contacts.email,
+      phone: contacts.phone,
+      altContactName: contacts.altContactName,
+      altContactPhone: contacts.altContactPhone,
+      additionalContacts: contacts.additionalContacts,
       address: text(raw['fullAddress'], 500) ?? text(raw['street1'], 500),
       city: text(raw['city'], 100),
       latitude: coordinatesDiscarded ? null : coordinate(raw['addressGpsLat']),
       longitude: coordinatesDiscarded ? null : coordinate(raw['addressGpsLon']),
       registeredOn: civilDate(raw['registrationDate']),
     });
+    const tagsAssigned = await this.assignTags(qr, ctx, created.subscriberId, tagRefs, mappings);
+    await this.markPromoted(qr, row, created.subscriberId, {
+      partyId: created.partyId,
+      partyCreated: created.partyCreated,
+      tags: tagsAssigned,
+    });
+    return created.subscriberId;
+  }
+
+  /**
+   * Titular de UISP que complementa un suscriptor existente (spec 2026-11-15 §2.3–§2.4). Dentro
+   * del savepoint del titular revalida C2.1–C2.4 (puede haber cambiado desde la simulación),
+   * enlaza `external_id` si está vacío, completa solo campos vacíos y asigna las etiquetas
+   * equivalentes. Nunca crea suscriptor ni le escribe `import_batch_id`.
+   */
+  private async promoteComplement(
+    qr: QueryRunner,
+    ctx: MigrationWriteContext,
+    row: StagedRow,
+    mappings: MappingIndex,
+    subscriberId: string,
+  ): Promise<string> {
+    const derived = row.payload.derived;
+    const raw = row.payload.raw ?? {};
+    const clientId = row.external_id.slice(row.external_id.lastIndexOf(':') + 1);
+    if (this.mapped(mappings, 'TITULAR', clientId)?.target !== subscriberId) {
+      throw new TitularRejected('TITULAR_EXISTENTE');
+    }
+    const target = await this.titularLookup.titularTarget(qr, subscriberId);
+    if (!target || target.restricted) throw new TitularRejected('TITULAR_EXISTENTE');
+    if (target.externalId !== null && target.externalId !== row.external_id) {
+      throw new TitularRejected('TITULAR_VINCULADO_A_OTRO_CLIENTE');
+    }
+    const documentNumber =
+      typeof derived['documentNumber'] === 'string' ? derived['documentNumber'] : null;
+    if (!documentNumber) throw new TitularRejected('TITULAR_EXISTENTE');
+    const hmac = this.crypto.documentHmac(documentNumber);
+    const facts = await this.titularLookup.lookup(qr, { documentHmacs: [hmac], externalIds: [] });
+    if (facts.subscriberIdByHmac.get(hmac) !== subscriberId) {
+      throw new TitularRejected('TITULAR_EXISTENTE');
+    }
+    const tagRefs = Array.isArray(derived['tagRefs']) ? (derived['tagRefs'] as string[]) : [];
+    for (const tag of tagRefs) {
+      if (!this.mapped(mappings, 'ETIQUETA', tag))
+        throw new TitularRejected('ETIQUETA_SIN_EQUIVALENCIA');
+    }
+
+    const linked = await this.crm.linkComplement(ctx, subscriberId, row.external_id);
+    const contacts = subscriberContacts(raw);
+    const coordinatesDiscarded = derived['coordinatesDiscarded'] === true;
+    const fill = await this.crm.fillEmptyFields(ctx, {
+      subscriberId,
+      email: contacts.email,
+      phone: contacts.phone,
+      altContactName: contacts.altContactName,
+      altContactPhone: contacts.altContactPhone,
+      additionalContacts: contacts.additionalContacts,
+      address: text(raw['fullAddress'], 500) ?? text(raw['street1'], 500),
+      city: text(raw['city'], 100),
+      latitude: coordinatesDiscarded ? null : coordinate(raw['addressGpsLat']),
+      longitude: coordinatesDiscarded ? null : coordinate(raw['addressGpsLon']),
+    });
+    const tagsAssigned = await this.assignTags(qr, ctx, subscriberId, tagRefs, mappings);
+    // Sin valores: solo nombres de campo, HMAC e ids (D9). `existing` lo cuenta como existente.
+    await this.markPromoted(qr, row, subscriberId, {
+      mode: 'COMPLEMENTO',
+      existing: true,
+      subscriberId,
+      linkedExternalId: linked ? row.external_id : null,
+      filled: fill.filled,
+      differing: fill.differing,
+      contactIds: fill.contactIds,
+      tags: tagsAssigned,
+    });
+    return subscriberId;
+  }
+
+  private async assignTags(
+    qr: QueryRunner,
+    ctx: MigrationWriteContext,
+    subscriberId: string,
+    tagRefs: string[],
+    mappings: MappingIndex,
+  ): Promise<number> {
     let tagsAssigned = 0;
     for (const tag of tagRefs) {
       const mapping = this.mapped(mappings, 'ETIQUETA', tag)!;
@@ -813,7 +957,7 @@ export class MigrationPromotionService {
         const result = await this.tags.assignForImport(
           {
             tenantId: ctx.tenantId,
-            subscriberId: created.subscriberId,
+            subscriberId,
             tagId: mapping.target,
             tagName: mapping.target,
             importBatchId: ctx.batchId,
@@ -828,12 +972,7 @@ export class MigrationPromotionService {
         throw error;
       }
     }
-    await this.markPromoted(qr, row, created.subscriberId, {
-      partyId: created.partyId,
-      partyCreated: created.partyCreated,
-      tags: tagsAssigned,
-    });
-    return created.subscriberId;
+    return tagsAssigned;
   }
 
   /**
@@ -944,12 +1083,34 @@ export class MigrationPromotionService {
     }));
   }
 
-  private async promotedId(qr: QueryRunner, stagingId: string): Promise<string | null> {
+  /** ¿Algún lote vigente (no revertido) complementó a este suscriptor? */
+  private async complementedBefore(
+    qr: QueryRunner,
+    tenantId: string,
+    subscriberId: string,
+  ): Promise<boolean> {
     const rows = (await qr.query(
-      `SELECT promoted_entity_id::text AS id FROM migration_staging_records WHERE id = $1`,
-      [stagingId],
-    )) as Array<{ id: string | null }>;
-    return rows[0]?.id ?? null;
+      `SELECT 1 FROM migration_staging_records
+        WHERE tenant_id = $1 AND entity = 'SUSCRIPTOR' AND status = 'PROMOVIDO'
+          AND promoted_entity_id = $2 AND promotion_meta->>'mode' = 'COMPLEMENTO'
+        LIMIT 1`,
+      [tenantId, subscriberId],
+    )) as unknown[];
+    return rows.length > 0;
+  }
+
+  private async promotedInfo(
+    qr: QueryRunner,
+    tenantId: string,
+    stagingId: string,
+  ): Promise<{ id: string; mode: string | null } | null> {
+    const rows = (await qr.query(
+      `SELECT promoted_entity_id::text AS id, promotion_meta->>'mode' AS mode
+         FROM migration_staging_records WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, stagingId],
+    )) as Array<{ id: string | null; mode: string | null }>;
+    const row = rows[0];
+    return row?.id ? { id: row.id, mode: row.mode } : null;
   }
 
   private async loadGroups(tenant: ResolvedTenant, batchId: string): Promise<TitularGroup[]> {
@@ -1112,6 +1273,38 @@ export class MigrationPromotionService {
     }
     report.rechazados = rejected;
     return report;
+  }
+
+  /**
+   * «Dato distinto en UISP» (spec §2.4): el informe de promoción no tiene observaciones, así que
+   * se fija en `counts.observaciones` del lote (contrato congelado). Se recalcula desde las
+   * intermedias para que un reintento no lo duplique; sin diferencias, la clave no aparece.
+   */
+  private async recordDifferingObservation(
+    qr: QueryRunner,
+    tenantId: string,
+    batchId: string,
+  ): Promise<void> {
+    await qr.query(
+      `WITH total AS (
+         SELECT COALESCE(SUM(jsonb_array_length(promotion_meta->'differing')), 0)::int AS n
+           FROM migration_staging_records
+          WHERE tenant_id = $1 AND batch_id = $2 AND entity = 'SUSCRIPTOR'
+            AND status = 'PROMOVIDO' AND promotion_meta->>'mode' = 'COMPLEMENTO'
+            AND jsonb_typeof(promotion_meta->'differing') = 'array')
+       UPDATE migration_batches b
+          SET counts = jsonb_set(
+                b.counts, '{observaciones}',
+                CASE WHEN total.n > 0
+                     THEN COALESCE(b.counts->'observaciones', '{}'::jsonb)
+                          || jsonb_build_object('DATO_DISTINTO_EN_UISP', total.n)
+                     ELSE COALESCE(b.counts->'observaciones', '{}'::jsonb) - 'DATO_DISTINTO_EN_UISP'
+                END),
+              updated_at = now()
+         FROM total
+        WHERE b.id = $2 AND b.tenant_id = $1 AND b.counts IS NOT NULL`,
+      [tenantId, batchId],
+    );
   }
 
   private conflict(code: string, message: string): ConflictException {

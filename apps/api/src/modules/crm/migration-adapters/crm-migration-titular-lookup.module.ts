@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MigrationTitularLookupPort } from '../../migration/ports/migration-titular-lookup.port';
+import { PrivacyModule } from '../../privacy/privacy.module';
 import { CrmMigrationTitularLookupAdapter } from './crm-migration-titular-lookup.adapter';
 
 /**
@@ -7,6 +8,7 @@ import { CrmMigrationTitularLookupAdapter } from './crm-migration-titular-lookup
  * la migración no importa el módulo CRM completo ni la clase del adaptador.
  */
 @Module({
+  imports: [PrivacyModule],
   providers: [
     CrmMigrationTitularLookupAdapter,
     { provide: MigrationTitularLookupPort, useExisting: CrmMigrationTitularLookupAdapter },

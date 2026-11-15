@@ -6,6 +6,8 @@ import { DataSource } from 'typeorm';
 import { dataSourceOptions, runInTenantSchema } from '@iwana/db';
 import { MigrationBatchReportSchema, type MigrationSimulateJob } from '@iwana/shared';
 import { MigrationImportTables1940000000194 } from '../../../../../packages/database/src/migrations/tenant/194_migration_import_tables';
+import { MigrationMappingKindTitular2100000000210 } from '../../../../../packages/database/src/migrations/tenant/210_migration_mapping_kind_titular';
+import { BillingMigrationImportAdapter } from '../billing/migration-adapters/billing-migration-import.adapter';
 import { CrmMigrationTitularLookupAdapter } from '../crm/migration-adapters/crm-migration-titular-lookup.adapter';
 import { MigrationBatchesService } from './migration-batches.service';
 import { MigrationImportProcessor } from './migration-import.processor';
@@ -114,6 +116,7 @@ describeDb('Importación UISP — simulación sobre PostgreSQL real', () => {
     );
     await runInTenantSchema(ds, schemaName, async (qr) => {
       await new MigrationImportTables1940000000194().up(qr);
+      await new MigrationMappingKindTitular2100000000210().up(qr);
       // Columnas de promoción y conciliación del lote (199, bloque C) que lee el informe.
       await qr.query(`ALTER TABLE migration_batches
         ADD COLUMN promotion jsonb NULL, ADD COLUMN reconciliation jsonb NULL,
@@ -122,7 +125,12 @@ describeDb('Importación UISP — simulación sobre PostgreSQL real', () => {
         CREATE TABLE subscribers (
           id uuid PRIMARY KEY, tenant_id uuid NOT NULL,
           document_number_hmac varchar(64) NULL, external_id varchar(160) NULL,
+          party_id uuid NULL, created_at timestamptz NOT NULL DEFAULT now(),
           anonymized_at timestamptz NULL, deleted_at timestamptz NULL);
+        CREATE TABLE billing_documents (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
+          subscriber_id uuid NOT NULL, status varchar(20) NOT NULL, number varchar(40) NULL,
+          issue_date date NULL, external_id varchar(160) NULL);
         CREATE TABLE expediente_records (
           id uuid PRIMARY KEY, document_number_hmac varchar(64) NULL,
           anonymized_at timestamptz NULL, deleted_at timestamptz NULL);
@@ -138,12 +146,16 @@ describeDb('Importación UISP — simulación sobre PostgreSQL real', () => {
       crypto,
       audit as never,
     );
-    mappings = new MigrationMappingsService(ds, audit as never);
+    const titularLookup = new CrmMigrationTitularLookupAdapter({
+      activeMarks: jest.fn().mockResolvedValue({}),
+    } as never);
+    mappings = new MigrationMappingsService(ds, audit as never, titularLookup);
     simulation = new MigrationSimulationService(
       ds,
       storage as never,
       crypto,
-      new CrmMigrationTitularLookupAdapter(),
+      titularLookup,
+      new BillingMigrationImportAdapter(),
     );
     purge = new MigrationPurgeService(ds, storage as never, audit as never);
   });
@@ -158,10 +170,11 @@ describeDb('Importación UISP — simulación sobre PostgreSQL real', () => {
 
   it('simula el lote, carga intermedias cifradas e informa por entidad y motivo', async () => {
     // Titular vigente con el documento del cliente 9002 → conflicto; 9003 fue anonimizado.
+    const existingSubscriberId = randomUUID();
     await sql(
       `INSERT INTO subscribers (id, tenant_id, document_number_hmac, external_id)
        VALUES ($1, $2, $3, NULL), ($4, $2, NULL, 'uisp:client:9003')`,
-      [randomUUID(), tenantId, crypto.documentHmac('1000000002'), randomUUID()],
+      [existingSubscriberId, tenantId, crypto.documentHmac('1000000002'), randomUUID()],
     );
     await sql(
       `UPDATE subscribers SET anonymized_at = now() WHERE external_id = 'uisp:client:9003'`,
@@ -239,8 +252,17 @@ describeDb('Importación UISP — simulación sobre PostgreSQL real', () => {
       ESTRATO_PENDIENTE_EVIDENCIA: 3,
       FACTURA_SIN_PDF: 3,
     });
+    // 9002 coincide por documento con un suscriptor: pendiente TITULAR con el candidato, sin
+    // etiqueta (spec 2026-11-15 §2.2).
     expect(report.counts.pendientesEquivalencia).toEqual([
       { kind: 'PLAN', externalValue: '502', externalLabel: 'Plan sintético 502', occurrences: 3 },
+      {
+        kind: 'TITULAR',
+        externalValue: '9002',
+        externalLabel: null,
+        occurrences: 1,
+        candidateRef: existingSubscriberId,
+      },
     ]);
 
     // Intermedias: códigos de motivo en claro, carga útil cifrada y descifrable.
@@ -293,13 +315,15 @@ describeDb('Importación UISP — simulación sobre PostgreSQL real', () => {
     expect(total).toBe(rows.length);
 
     // Pendientes contra el catálogo vigente: al crear la equivalencia desaparece.
-    await expect(batches.pendingMappings(scope, summary.id)).resolves.toHaveLength(1);
+    await expect(batches.pendingMappings(scope, summary.id)).resolves.toHaveLength(2);
     await mappings.create(
       scope,
       { kind: 'PLAN', externalValue: '502', action: 'EQUIVALE', targetRef: randomUUID() },
       actorId,
     );
-    await expect(batches.pendingMappings(scope, summary.id)).resolves.toEqual([]);
+    await expect(batches.pendingMappings(scope, summary.id)).resolves.toEqual([
+      expect.objectContaining({ kind: 'TITULAR', candidateRef: existingSubscriberId }),
+    ]);
 
     const listed = await batches.list(scope, 1, 20);
     expect(listed.total).toBe(1);
@@ -446,5 +470,92 @@ describeDb('Importación UISP — simulación sobre PostgreSQL real', () => {
     } finally {
       await sql(`UPDATE crm_billing_cycles SET active = true WHERE cycle_day = 5`);
     }
+  });
+
+  it('complemento: equivalencia TITULAR validada contra CRM, re-simulación y cruce con Billing', async () => {
+    const candidate = randomUUID();
+    const restricted = randomUUID();
+    const restrictedParty = randomUUID();
+    await sql(
+      `INSERT INTO subscribers (id, tenant_id, document_number_hmac, external_id, party_id)
+       VALUES ($1, $2, $3, NULL, NULL), ($4, $2, $5, NULL, $6)`,
+      [
+        candidate,
+        tenantId,
+        crypto.documentHmac('1000000301'),
+        restricted,
+        crypto.documentHmac('1000000302'),
+        restrictedParty,
+      ],
+    );
+    // Primera factura propia 2023-02-15; la importada (uisp:) y el borrador no cuentan.
+    await sql(
+      `INSERT INTO billing_documents (tenant_id, subscriber_id, status, number, issue_date, external_id)
+       VALUES ($1, $2, 'EMITIDO', 'FE-1', '2023-02-15', NULL),
+              ($1, $2, 'IMPORTADO', NULL, '2022-01-01', 'uisp:invoice:1'),
+              ($1, $2, 'BORRADOR', NULL, '2022-01-01', NULL)`,
+      [tenantId, candidate],
+    );
+    const lookup = new CrmMigrationTitularLookupAdapter({
+      activeMarks: jest.fn().mockResolvedValue({ [restrictedParty]: ['DATOS_BLOQUEADOS'] }),
+    } as never);
+    const facts = await runInTenantSchema(ds, schemaName, (qr) =>
+      lookup.lookup(qr, {
+        documentHmacs: [crypto.documentHmac('1000000301'), crypto.documentHmac('1000000302')],
+        externalIds: [],
+      }),
+    );
+    expect(facts.subscriberIdByHmac.get(crypto.documentHmac('1000000301'))).toBe(candidate);
+    expect([...facts.restrictedSubscriberIds]).toEqual([restricted]);
+    expect(facts.externalIdBySubscriber.get(candidate)).toBeNull();
+    await expect(
+      runInTenantSchema(ds, schemaName, (qr) =>
+        new BillingMigrationImportAdapter().firstOwnIssueDates({ manager: qr.manager, tenantId }, [
+          candidate,
+        ]),
+      ),
+    ).resolves.toEqual(new Map([[candidate, '2023-02-15']]));
+
+    const summary = await batches.createBatch(
+      scope,
+      [
+        zipFile(
+          await buildSyntheticUispZip({ clientId: 9301, document: '1000000301', tagIds: [] }),
+          'c.zip',
+        ),
+      ],
+      actorId,
+    );
+    await simulation.simulate(tenantId, summary.id);
+    let report = await batches.getReport(scope, summary.id);
+    expect(report.rejections.SUSCRIPTOR).toEqual({ TITULAR_EXISTENTE: 1 });
+
+    // Un candidato distinto del ofrecido → 422 y nada guardado.
+    await expect(
+      mappings.create(
+        scope,
+        { kind: 'TITULAR', externalValue: '9301', action: 'EQUIVALE', targetRef: restricted },
+        actorId,
+      ),
+    ).rejects.toMatchObject({ status: 422 });
+    const mapping = await mappings.create(
+      scope,
+      {
+        kind: 'TITULAR',
+        externalValue: '9301',
+        externalLabel: 'no se guarda',
+        action: 'EQUIVALE',
+        targetRef: candidate,
+      },
+      actorId,
+    );
+    expect(mapping.externalLabel).toBeNull();
+
+    await simulation.simulate(tenantId, summary.id);
+    report = await batches.getReport(scope, summary.id);
+    expect(report.rejections.SUSCRIPTOR).toBeUndefined();
+    expect(report.counts.titulares.complementados).toBe(1);
+    // Facturas sintéticas 2023-02-01 y 2023-03-01 vs. primera propia 2023-02-15 → 1 cruce.
+    expect(report.counts.observaciones.CRUCE_CON_FACTURACION_IWANA).toBe(1);
   });
 });

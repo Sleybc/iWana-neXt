@@ -51,6 +51,11 @@ export const MIGRATION_PENDING_VALUE_OPENAPI: SchemaObject = {
     externalValue: { type: 'string', maxLength: 120 },
     externalLabel: { type: 'string', maxLength: 120, nullable: true },
     occurrences: count,
+    candidateRef: {
+      type: 'string',
+      format: 'uuid',
+      description: 'Solo TITULAR: id del suscriptor candidato.',
+    },
   },
 };
 
@@ -205,6 +210,7 @@ export const MIGRATION_BATCH_REPORT_OPENAPI: SchemaObject = {
         'observaciones',
         'tareasSinFuente',
         'pendientesEquivalencia',
+        'titulares',
         'procesadoEn',
       ],
       properties: {
@@ -235,6 +241,11 @@ export const MIGRATION_BATCH_REPORT_OPENAPI: SchemaObject = {
         observaciones: countsBy(MIGRATION_OBSERVATIONS),
         tareasSinFuente: count,
         pendientesEquivalencia: { type: 'array', items: MIGRATION_PENDING_VALUE_OPENAPI },
+        titulares: {
+          type: 'object',
+          required: ['complementados'],
+          properties: { complementados: count },
+        },
         procesadoEn: { type: 'string', format: 'date-time', nullable: true },
       },
     },
@@ -289,7 +300,7 @@ export const MIGRATION_MAPPING_CREATE_OPENAPI: SchemaObject = {
       maxLength: 80,
       nullable: true,
       description:
-        'Obligatorio con EQUIVALE: UUID de plan o etiqueta, método de pago de MOD14 o día de ciclo 1–28.',
+        'Obligatorio con EQUIVALE: UUID de plan, etiqueta o suscriptor (TITULAR), método de pago de MOD14 o día de ciclo 1–28.',
     },
   },
 };

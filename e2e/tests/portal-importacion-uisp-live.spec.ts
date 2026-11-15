@@ -486,7 +486,7 @@ test.describe('Importación desde UISP — ADR-110 contra Portal, API y worker r
     const invoices = page.getByRole('tabpanel', { name: 'Facturas', exact: true });
     for (const n of [1, 2, 3]) {
       await expect(invoices.getByRole('row').filter({ hasText: `SINT-2023-${n}` })).toContainText(
-        'Importada de UISP',
+        'Importada',
         { timeout: 30_000 },
       );
     }
@@ -548,5 +548,147 @@ test.describe('Importación desde UISP — ADR-110 contra Portal, API y worker r
       headers: tenantHeaders(),
     });
     expect(gone.status()).toBe(404);
+  });
+
+  test('Complemento (spec 2026-11-15 §5 CA-2/CA-6/CA-7): un titular existente se complementa sin duplicarse', async ({
+    page,
+  }) => {
+    // Corre después del caso anterior (serial): ese lote ya se revirtió y no dejó suscriptores;
+    // las equivalencias de plan y etiqueta quedan como configuración del tenant.
+    const clientId = 9201;
+    const document = `100000${clientId}`;
+    const legal = await expectJson<{ id: string }>('/privacy/legal-texts', 'POST', 201, {
+      headers: tenantHeaders(),
+      data: {
+        type: 'AUTORIZACION',
+        version: `qa-comp-${RUN_ID}`,
+        content: 'Texto de autorización sintético para la prueba E2E de complemento.',
+      },
+    });
+    const existing = await expectJson<{ id: string }>('/crm/subscribers', 'POST', 201, {
+      headers: tenantHeaders(),
+      data: {
+        personType: 'NATURAL',
+        customerSegment: 'RESIDENTIAL',
+        documentType: 'CC',
+        documentNumber: document,
+        firstName: 'Titular existente',
+        lastName: `Sintético ${RUN_ID}`,
+        stratum: 3,
+        email: `qa-comp-${RUN_ID}@example.invalid`,
+        address: `Dirección sintética ${RUN_ID}`,
+        city: 'Bogotá',
+        department: 'Cundinamarca',
+        vatResponsibility: 'NO_RESPONSABLE',
+        rutResponsibilities: [],
+        authorizationChannel: 'PRESENCIAL',
+        authorizations: [
+          { purpose: 'TRATAMIENTO_CONTRACTUAL', granted: true, legalTextId: legal.id },
+        ],
+      },
+    });
+    expect(await listSubscriberIds()).toEqual([existing.id]);
+
+    await loginInPortal(page);
+    await page.goto('/dashboard/settings/imports');
+    await page.getByLabel('Archivos ZIP de clientes de UISP').setInputFiles([
+      {
+        name: `cliente-${clientId}.zip`,
+        mimeType: 'application/zip',
+        buffer: await buildSyntheticUispZip({
+          clientId,
+          document,
+          lastName: 'Sintético complemento',
+          stratum: '3',
+        }),
+      },
+    ]);
+    await page.getByRole('button', { name: 'Subir y simular' }).click();
+    await expect(page).toHaveURL(/\/dashboard\/settings\/imports\/[0-9a-f-]{36}$/u);
+    const batchId = new URL(page.url()).pathname.split('/').pop()!;
+    await waitBatch(
+      batchId,
+      (r) => r.status === 'SIMULADO' && r.counts.procesamiento === 'COMPLETADO',
+    );
+    await page.reload();
+
+    // ── Grupo «Titulares existentes» con el candidato (§2.7) ──
+    const titulares = page.getByRole('list', { name: 'Titulares existentes' });
+    await expect(titulares).toBeVisible({ timeout: 30_000 });
+    const card = titulares.getByRole('listitem').filter({ hasText: `Cliente ${clientId} de UISP` });
+    await expect(card.getByRole('link', { name: /Titular existente/u })).toHaveAttribute(
+      'href',
+      `/dashboard/crm/subscribers/${existing.id}`,
+    );
+    // El documento se muestra enmascarado: nunca completo.
+    await expect(card).not.toContainText(document);
+    await card
+      .getByRole('button', { name: `Complementar este titular: Cliente ${clientId} de UISP` })
+      .click();
+    const dialog = page.getByRole('dialog', { name: 'Complementar este titular' });
+    await expect(dialog).toContainText('contratos terminados');
+    const saved = page.waitForResponse(
+      (r) => r.url().includes('/migration/mappings') && r.request().method() === 'POST',
+    );
+    await dialog.getByRole('button', { name: 'Complementar', exact: true }).click();
+    expect((await saved).status()).toBe(201);
+    await expect(dialog).toBeHidden();
+    // Re-simulación: el titular sale de los pendientes.
+    await expect(page.getByRole('list', { name: 'Titulares existentes' })).toHaveCount(0);
+    const pending = await expectJson<Array<{ kind: string }>>(
+      `/migration/batches/${batchId}/pending-mappings`,
+      'GET',
+      200,
+      { headers: tenantHeaders() },
+    );
+    expect(pending.filter((value) => value.kind === 'TITULAR')).toEqual([]);
+    expect(pending, `pendientes: ${pending.map((v) => v.kind).join(', ')}`).toEqual([]);
+
+    // ── Promoción ──
+    await expect(page.getByRole('button', { name: 'Promover' })).toBeVisible();
+    await page.getByRole('button', { name: 'Promover' }).click();
+    await page
+      .getByRole('dialog', { name: 'Promover el lote' })
+      .getByRole('button', { name: 'Promover', exact: true })
+      .click();
+    const promoted = await waitBatch(
+      batchId,
+      (r) => (r.status === 'PROMOVIDO' || r.status === 'CONCILIADO') && r.promotion !== null,
+    );
+    const report = `informe de promoción: ${JSON.stringify(promoted.promotion)}`;
+    expect(promoted.promotion?.promovidos.DOCUMENTO_COBRO, report).toBe(3);
+    expect(promoted.promotion?.promovidos.SUSCRIPTOR ?? 0, report).toBe(0);
+    await page.reload();
+    await expect(page.getByText('Titulares complementados: 1', { exact: true })).toBeVisible({
+      timeout: 30_000,
+    });
+
+    // ── Sin duplicado: un único suscriptor con ese documento, con facturas importadas ──
+    expect(await listSubscriberIds()).toEqual([existing.id]);
+    const imported = await listDocuments(`&subscriberId=${existing.id}`);
+    expect(imported.filter((d) => d.status === 'IMPORTADO')).toHaveLength(3);
+    await page.goto(`/dashboard/crm/subscribers/${existing.id}?tab=facturacion&sub=facturas`);
+    const invoices = page.getByRole('tabpanel', { name: 'Facturas', exact: true });
+    await expect(invoices.getByRole('row').filter({ hasText: 'SINT-2023-1' })).toContainText(
+      'Importada',
+      { timeout: 30_000 },
+    );
+
+    // ── Reversión (CA-7): el suscriptor sigue existiendo, sin lo importado ──
+    await page.goto(`/dashboard/settings/imports/${batchId}`);
+    await page.getByRole('button', { name: 'Revertir' }).click();
+    await page
+      .getByRole('dialog', { name: 'Revertir el lote' })
+      .getByRole('button', { name: 'Revertir', exact: true })
+      .click();
+    await expect(
+      page.getByText('Lote revertido. Lo que trajo ya no está en iWana.', { exact: true }),
+    ).toBeVisible({ timeout: 60_000 });
+    expect((await getBatch(batchId)).status).toBe('REVERTIDO');
+    expect(await listSubscriberIds()).toEqual([existing.id]);
+    await expectJson(`/crm/subscribers/${existing.id}`, 'GET', 200, { headers: tenantHeaders() });
+    expect(
+      (await listDocuments(`&subscriberId=${existing.id}`)).filter((d) => d.status === 'IMPORTADO'),
+    ).toHaveLength(0);
   });
 });

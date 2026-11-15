@@ -154,6 +154,13 @@ export class MigrationBatchesService {
         message: `Un lote admite hasta ${MIGRATION_IMPORT_LIMITS.maxZipsPerBatch} archivos.`,
       });
     }
+    const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+    if (totalBytes > MIGRATION_IMPORT_LIMITS.maxBatchBytes) {
+      throw new BadRequestException({
+        code: 'MIGRATION_BATCH_TOO_LARGE',
+        message: 'Los archivos del lote superan el tamaño total permitido.',
+      });
+    }
     for (const [index, file] of files.entries()) {
       if (file.size <= 0 || file.size > MIGRATION_IMPORT_LIMITS.maxZipBytes) {
         throw new BadRequestException({

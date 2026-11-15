@@ -98,6 +98,7 @@ export const MIGRATION_REJECTION_REASON_LABELS: Record<MigrationRejectionReason,
   SIN_CONTRATO_ASOCIADO: 'Sin servicio al que asociarlo',
   MONTO_O_FECHA_INVALIDOS: 'Monto o fecha no admitidos',
   ARCHIVO_AUSENTE: 'El archivo ya no está en el lote',
+  TITULAR_VINCULADO_A_OTRO_CLIENTE: 'El suscriptor ya está enlazado a otro cliente de UISP',
 };
 
 export const MIGRATION_FILE_REJECTION_LABELS: Record<MigrationFileRejectionReason, string> = {
@@ -119,6 +120,8 @@ export const MIGRATION_OBSERVATION_LABELS: Record<MigrationObservation, string> 
   TAREAS_SIN_FUENTE: 'Tareas de UISP que no se importan',
   YA_IMPORTADO: 'Registros ya importados antes',
   FACTURA_SIN_PDF: 'Facturas sin PDF',
+  CRUCE_CON_FACTURACION_IWANA: 'Facturas que se cruzan con la facturación de iWana',
+  DATO_DISTINTO_EN_UISP: 'Datos distintos en UISP (se conservó el de iWana)',
 };
 
 export const MIGRATION_MAPPING_KIND_LABELS: Record<MigrationMappingKind, string> = {
@@ -126,6 +129,7 @@ export const MIGRATION_MAPPING_KIND_LABELS: Record<MigrationMappingKind, string>
   METODO_PAGO: 'Método de pago',
   CICLO: 'Ciclo de facturación',
   ETIQUETA: 'Etiqueta',
+  TITULAR: 'Titular',
 };
 
 export const MIGRATION_MAPPING_ACTION_LABELS: Record<MigrationMappingAction, string> = {
@@ -148,6 +152,7 @@ export const MIGRATION_REVERT_BLOCK_LABELS: Record<MigrationRevertBlockReason, s
   TICKET_POSTERIOR: 'Tickets creados después de la importación',
   SOPORTE_POSTERIOR: 'Soportes cargados después de la importación',
   ETIQUETA_POSTERIOR: 'Etiquetas asignadas después de la importación',
+  DATO_COMPLETADO_MODIFICADO: 'Un dato que completó el lote se editó después',
 };
 
 /** Bloqueos de la reversión desde `details.blockers` del 409; vacío si no vienen o no validan. */
@@ -163,6 +168,7 @@ export function revertBlockersFromError(error: unknown): MigrationRevertBlocker[
 
 /** Tamaño máximo por ZIP tomado del contrato (no un literal). */
 export const MIGRATION_MAX_ZIP_LABEL = `${Math.round(MIGRATION_IMPORT_LIMITS.maxZipBytes / (1024 * 1024))} MB`;
+export const MIGRATION_MAX_BATCH_LABEL = `${Math.round(MIGRATION_IMPORT_LIMITS.maxBatchBytes / (1024 * 1024))} MB`;
 
 function isMigrationErrorCode(code: string): code is MigrationErrorCode {
   return (MIGRATION_ERROR_CODES as readonly string[]).includes(code);
@@ -172,6 +178,7 @@ const ERROR_MESSAGES: Record<MigrationErrorCode, string> = {
   MIGRATION_FILES_REQUIRED: 'Elige al menos un archivo ZIP.',
   MIGRATION_TOO_MANY_FILES: `Sube máximo ${MIGRATION_IMPORT_LIMITS.maxZipsPerBatch} archivos por lote.`,
   MIGRATION_FILE_TOO_LARGE: `Uno de los archivos supera ${MIGRATION_MAX_ZIP_LABEL}.`,
+  MIGRATION_BATCH_TOO_LARGE: `Los archivos suman más de ${MIGRATION_MAX_BATCH_LABEL}: divídelos en varios lotes.`,
   MIGRATION_FILE_TYPE_NOT_ALLOWED: 'Solo se admiten archivos ZIP exportados de UISP.',
   MIGRATION_ZIP_REJECTED: 'Uno de los archivos no se pudo leer como ZIP de UISP.',
   MIGRATION_ENQUEUE_FAILED:
@@ -186,6 +193,7 @@ const ERROR_MESSAGES: Record<MigrationErrorCode, string> = {
   MIGRATION_BATCH_NOT_REVERTIBLE: 'Este lote ya no se puede revertir.',
   MIGRATION_REVERT_BLOCKED:
     'No se puede revertir: hay movimientos posteriores que dependen del lote.',
+  MIGRATION_TITULAR_TARGET_INVALID: 'Ese suscriptor no corresponde a este cliente de UISP.',
 };
 
 export function migrationErrorMessage(error: unknown, fallback: string): string {
@@ -207,6 +215,10 @@ export function validateMigrationFiles(files: File[]): string | null {
   if (notZip) return `«${notZip.name}» no es un archivo ZIP.`;
   const tooLarge = files.find((file) => file.size > MIGRATION_IMPORT_LIMITS.maxZipBytes);
   if (tooLarge) return `«${tooLarge.name}» supera ${MIGRATION_MAX_ZIP_LABEL}.`;
+  const total = files.reduce((sum, file) => sum + file.size, 0);
+  if (total > MIGRATION_IMPORT_LIMITS.maxBatchBytes) {
+    return `Los archivos suman más de ${MIGRATION_MAX_BATCH_LABEL}: divídelos en varios lotes.`;
+  }
   return null;
 }
 

@@ -50,8 +50,13 @@ export type MigrationPromoteJob = z.infer<typeof MigrationPromoteJobSchema>;
 
 // ── Límites de subida ───────────────────────────────────────────────────────────────────
 export const MIGRATION_IMPORT_LIMITS = {
-  /** ZIP por cliente: tamaño comprimido máximo. */
-  maxZipBytes: 25 * 1024 * 1024,
+  /**
+   * ZIP por cliente: tamaño comprimido máximo. Un cliente con años de historial trae un PDF por
+   * factura y supera 25 MB (27,7 MB real, usuario 2026-11-15).
+   */
+  maxZipBytes: 100 * 1024 * 1024,
+  /** Suma de los ZIP de un lote (también es el tope del cuerpo en nginx de producción). */
+  maxBatchBytes: 200 * 1024 * 1024,
   /** ZIP por lote en una sola subida. */
   maxZipsPerBatch: 20,
   /** Entradas por ZIP. */
@@ -125,6 +130,8 @@ export const MIGRATION_REJECTION_REASONS = [
   'MONTO_O_FECHA_INVALIDOS',
   /** Promoción: el archivo del soporte o del PDF ya no está en el ZIP del lote. */
   'ARCHIVO_AUSENTE',
+  /** Promoción en modo complemento: el suscriptor ya está enlazado a otro cliente de UISP. */
+  'TITULAR_VINCULADO_A_OTRO_CLIENTE',
 ] as const;
 export type MigrationRejectionReason = (typeof MIGRATION_REJECTION_REASONS)[number];
 
@@ -136,6 +143,10 @@ export const MIGRATION_OBSERVATIONS = [
   'TAREAS_SIN_FUENTE',
   'YA_IMPORTADO',
   'FACTURA_SIN_PDF',
+  /** Titular complementado: facturas importadas que se cruzan con la facturación propia de iWana. */
+  'CRUCE_CON_FACTURACION_IWANA',
+  /** Titular complementado: UISP trae un dato distinto; se conservó el de iWana. */
+  'DATO_DISTINTO_EN_UISP',
 ] as const;
 export type MigrationObservation = (typeof MIGRATION_OBSERVATIONS)[number];
 
@@ -153,7 +164,14 @@ export const MIGRATION_FILE_REJECTION_REASONS = [
 ] as const;
 export type MigrationFileRejectionReason = (typeof MIGRATION_FILE_REJECTION_REASONS)[number];
 
-export const MIGRATION_MAPPING_KINDS = ['PLAN', 'METODO_PAGO', 'CICLO', 'ETIQUETA'] as const;
+/** `TITULAR`: enlaza un cliente de UISP con un suscriptor existente de iWana (ADR-110 D11). */
+export const MIGRATION_MAPPING_KINDS = [
+  'PLAN',
+  'METODO_PAGO',
+  'CICLO',
+  'ETIQUETA',
+  'TITULAR',
+] as const;
 export type MigrationMappingKind = (typeof MIGRATION_MAPPING_KINDS)[number];
 
 export const MIGRATION_MAPPING_ACTIONS = ['EQUIVALE', 'DESCARTAR', 'NOTA'] as const;
@@ -166,6 +184,7 @@ export const MIGRATION_ERROR_CODES = [
   'MIGRATION_FILES_REQUIRED',
   'MIGRATION_TOO_MANY_FILES',
   'MIGRATION_FILE_TOO_LARGE',
+  'MIGRATION_BATCH_TOO_LARGE',
   'MIGRATION_FILE_TYPE_NOT_ALLOWED',
   'MIGRATION_ZIP_REJECTED',
   'MIGRATION_ENQUEUE_FAILED',
@@ -178,6 +197,7 @@ export const MIGRATION_ERROR_CODES = [
   'MIGRATION_BATCH_NOT_RECONCILABLE',
   'MIGRATION_BATCH_NOT_REVERTIBLE',
   'MIGRATION_REVERT_BLOCKED',
+  'MIGRATION_TITULAR_TARGET_INVALID',
 ] as const;
 export type MigrationErrorCode = (typeof MIGRATION_ERROR_CODES)[number];
 
@@ -195,6 +215,8 @@ export const MigrationPendingValueSchema = z
     externalValue: z.string().min(1).max(120),
     externalLabel: z.string().max(120).nullable(),
     occurrences: countSchema,
+    /** Solo `TITULAR`: id del suscriptor candidato (identificador, no PII). */
+    candidateRef: z.string().uuid().optional(),
   })
   .strict();
 export type MigrationPendingValue = z.infer<typeof MigrationPendingValueSchema>;
@@ -219,6 +241,8 @@ export const MigrationBatchCountsSchema = z
     observaciones: z.record(z.enum(MIGRATION_OBSERVATIONS), countSchema),
     tareasSinFuente: countSchema,
     pendientesEquivalencia: z.array(MigrationPendingValueSchema),
+    /** Titulares de UISP que completarán un suscriptor existente; los counts previos traen 0. */
+    titulares: z.object({ complementados: countSchema }).strict().default({ complementados: 0 }),
     procesadoEn: z.string().datetime().nullable(),
   })
   .strict();
@@ -312,6 +336,8 @@ export const MIGRATION_REVERT_BLOCK_REASONS = [
   'TICKET_POSTERIOR',
   'SOPORTE_POSTERIOR',
   'ETIQUETA_POSTERIOR',
+  /** Un dato que el lote completó en un titular existente se editó después. */
+  'DATO_COMPLETADO_MODIFICADO',
 ] as const;
 export type MigrationRevertBlockReason = (typeof MIGRATION_REVERT_BLOCK_REASONS)[number];
 
@@ -359,13 +385,14 @@ const externalValueSchema = z
 
 const targetRefSchema = z.string().trim().min(1).max(80);
 
-/** Plan y etiqueta: UUID; método de pago: `BILLING_PAYMENT_METHODS`; ciclo: día 1–28 (ADR-102). */
+/** Plan, etiqueta y titular: UUID; método de pago: `BILLING_PAYMENT_METHODS`; ciclo: día 1–28 (ADR-102). */
 export const MIGRATION_MAPPING_TARGET_FORMAT: Record<MigrationMappingKind, RegExp> = {
   PLAN: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu,
   ETIQUETA: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu,
   // Derivado del catálogo de Billing: un método nuevo no exige tocar este patrón.
   METODO_PAGO: new RegExp(`^(${BILLING_PAYMENT_METHODS.join('|')})$`, 'u'),
   CICLO: /^([1-9]|1\d|2[0-8])$/u,
+  TITULAR: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu,
 };
 
 export const MigrationMappingCreateSchema = z

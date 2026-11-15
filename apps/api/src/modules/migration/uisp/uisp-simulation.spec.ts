@@ -331,3 +331,105 @@ describe('extracción de datos del titular', () => {
     expect(keys).toEqual({ documents: ['1000000001'], externalIds: ['uisp:client:9001'] });
   });
 });
+
+describe('simulateBatch — complemento de titular existente (spec 2026-11-15 §2.2)', () => {
+  const CANDIDATE = '11111111-2222-4333-8444-555555555555';
+  const OTHER = '99999999-2222-4333-8444-555555555555';
+  const docHmac = () => hmacOf('1000000001');
+  const complement = (overrides: Partial<SimulationContext> = {}): SimulationContext =>
+    context({
+      existingHmacs: new Set([docHmac()]),
+      subscriberIdByHmac: new Map([[docHmac(), CANDIDATE]]),
+      restrictedSubscriberIds: new Set(),
+      externalIdBySubscriber: new Map([[CANDIDATE, null]]),
+      titularLinks: new Map([['9001', CANDIDATE]]),
+      firstOwnIssueDates: new Map(),
+      ...overrides,
+    });
+
+  it('sin equivalencia → TITULAR_EXISTENTE y pendiente TITULAR con candidateRef, sin etiqueta', async () => {
+    const result = simulateBatch([await parsed()], complement({ titularLinks: new Map() }));
+    expect(result.rejections.SUSCRIPTOR).toEqual({ TITULAR_EXISTENTE: 1 });
+    expect(result.counts.pendientesEquivalencia).toContainEqual({
+      kind: 'TITULAR',
+      externalValue: '9001',
+      externalLabel: null,
+      occurrences: 1,
+      candidateRef: CANDIDATE,
+    });
+    expect(result.counts.titulares.complementados).toBe(0);
+  });
+
+  it('con equivalencia al candidato → VALIDO en complemento, dependientes válidos y conteo', async () => {
+    const result = simulateBatch([await parsed({ firstName: null, lastName: null })], complement());
+    expect(result.rejections.SUSCRIPTOR).toBeUndefined();
+    expect(result.rejections.CONTRATO).toBeUndefined();
+    expect(result.counts.entidades.DOCUMENTO_COBRO).toEqual({
+      leidos: 3,
+      validos: 3,
+      rechazados: 0,
+    });
+    const titular = result.records.find((record) => record.entity === 'SUSCRIPTOR')!;
+    expect(titular.status).toBe('VALIDO');
+    expect((titular.payload['derived'] as Record<string, unknown>)['complementSubscriberId']).toBe(
+      CANDIDATE,
+    );
+    expect(result.counts.titulares.complementados).toBe(1);
+    expect(result.counts.pendientesEquivalencia.some((p) => p.kind === 'TITULAR')).toBe(false);
+    expect(result.counts.observaciones.CRUCE_CON_FACTURACION_IWANA).toBeUndefined();
+  });
+
+  it('acepta external_id del candidato igual al del cliente', async () => {
+    const result = simulateBatch(
+      [await parsed()],
+      complement({ externalIdBySubscriber: new Map([[CANDIDATE, 'uisp:client:9001']]) }),
+    );
+    expect(result.counts.titulares.complementados).toBe(1);
+  });
+
+  it('equivalencia hacia otro suscriptor → TITULAR_EXISTENTE con pendiente', async () => {
+    const result = simulateBatch(
+      [await parsed()],
+      complement({ titularLinks: new Map([['9001', OTHER]]) }),
+    );
+    expect(result.rejections.SUSCRIPTOR).toEqual({ TITULAR_EXISTENTE: 1 });
+    expect(
+      result.counts.pendientesEquivalencia.find((p) => p.kind === 'TITULAR')?.candidateRef,
+    ).toBe(CANDIDATE);
+    expect(result.counts.titulares.complementados).toBe(0);
+  });
+
+  it('candidato enlazado a otro cliente de UISP → TITULAR_VINCULADO_A_OTRO_CLIENTE', async () => {
+    const result = simulateBatch(
+      [await parsed()],
+      complement({ externalIdBySubscriber: new Map([[CANDIDATE, 'uisp:client:7']]) }),
+    );
+    expect(result.rejections.SUSCRIPTOR).toEqual({ TITULAR_VINCULADO_A_OTRO_CLIENTE: 1 });
+    expect(result.rejections.CONTRATO).toEqual({ DEPENDE_DE_TITULAR_RECHAZADO: 2 });
+    expect(result.counts.titulares.complementados).toBe(0);
+  });
+
+  it('candidato con datos bloqueados → TITULAR_EXISTENTE, sin complemento', async () => {
+    const result = simulateBatch(
+      [await parsed()],
+      complement({ restrictedSubscriberIds: new Set([CANDIDATE]) }),
+    );
+    expect(result.rejections.SUSCRIPTOR).toEqual({ TITULAR_EXISTENTE: 1 });
+    expect(result.counts.titulares.complementados).toBe(0);
+  });
+
+  it('coincidencia solo en expediente → TITULAR_EXISTENTE sin pendiente', async () => {
+    const result = simulateBatch([await parsed()], complement({ subscriberIdByHmac: new Map() }));
+    expect(result.rejections.SUSCRIPTOR).toEqual({ TITULAR_EXISTENTE: 1 });
+    expect(result.counts.pendientesEquivalencia.some((p) => p.kind === 'TITULAR')).toBe(false);
+  });
+
+  it('cuenta facturas con fecha civil ≥ primera factura propia como cruce', async () => {
+    // Facturas sintéticas: 2023-01-01, 2023-02-01 y 2023-03-01 (-0500).
+    const result = simulateBatch(
+      [await parsed()],
+      complement({ firstOwnIssueDates: new Map([[CANDIDATE, '2023-02-01']]) }),
+    );
+    expect(result.counts.observaciones.CRUCE_CON_FACTURACION_IWANA).toBe(2);
+  });
+});

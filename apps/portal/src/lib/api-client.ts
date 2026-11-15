@@ -6890,8 +6890,8 @@ function pageQuery(params?: { page?: number; limit?: number }): string {
   return query ? `?${query}` : '';
 }
 
-/** Tiempo de espera de la subida de un lote: hasta 20 ZIP de 25 MB (ADR-110 D1). */
-const MIGRATION_UPLOAD_TIMEOUT_MS = 5 * 60_000;
+/** Tiempo de espera de la subida de un lote: hasta 200 MB en total (ADR-110 D1). */
+const MIGRATION_UPLOAD_TIMEOUT_MS = 10 * 60_000;
 
 /** Importación por lotes desde UISP (ADR-110; ADMIN con migration.import.manage). */
 export const migrationApi = {

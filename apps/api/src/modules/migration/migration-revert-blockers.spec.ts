@@ -5,14 +5,21 @@ import { BillingMigrationImportAdapter } from '../billing/migration-adapters/bil
 import { CrmMigrationImportAdapter } from '../crm/migration-adapters/crm-migration-import.adapter';
 
 /**
- * Los 8 motivos de bloqueo de la reversión (ADR-110 D7): cada adaptador traduce sus conteos a
+ * Los 9 motivos de bloqueo de la reversión (ADR-110 D7): cada adaptador traduce sus conteos a
  * motivos, sin filas en cero, y entre todos cubren el catálogo compartido completo. El SQL de
  * cada conteo lo ejercita la integración (D7 en migration-promotion.postgres.integration).
  */
 const ids = { subscriberIds: ['11111111-1111-4111-8111-111111111111'], contractIds: [] };
 const batchId = '22222222-2222-4222-8222-222222222222';
+/** Titular complementado cuyo correo escrito por el lote ya no coincide (HMAC distinto). */
+const complement = {
+  subscriberId: '33333333-3333-4333-8333-333333333333',
+  linkedExternalId: 'uisp:client:7',
+  filled: [{ field: 'email' as const, hmac: 'hmac-del-valor-escrito' }],
+  contactIds: [],
+};
 
-function ctxReturning(row: Record<string, number>) {
+function ctxReturning(row: Record<string, number | string>) {
   return { manager: { query: jest.fn().mockResolvedValue([row]) }, tenantId: 't' } as never;
 }
 
@@ -64,15 +71,15 @@ describe('Reversión UISP — motivos de bloqueo por adaptador', () => {
     ]);
   });
 
-  it('conteos en cero no bloquean y entre los tres cubren los 8 motivos', async () => {
+  it('conteos en cero no bloquean y entre los tres cubren los 9 motivos', async () => {
     await expect(
       crm.revertBlockers(ctxReturning({ contracts: 0, documents: 0, tags: 0 }), batchId, ids),
     ).resolves.toEqual([]);
     const all: MigrationRevertBlocker[] = [
       ...(await crm.revertBlockers(
-        ctxReturning({ contracts: 1, documents: 1, tags: 1 }),
+        ctxReturning({ contracts: 1, documents: 1, tags: 1, email: 'otro' }),
         batchId,
-        ids,
+        { ...ids, complements: [complement] },
       )),
       ...(await billing.revertBlockers(
         ctxReturning({ documents: 1, payments: 1, allocations: 1 }),

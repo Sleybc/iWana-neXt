@@ -27,6 +27,12 @@ import { MigrationCrypto } from './migration-crypto';
 import { MigrationPromotionService } from './migration-promotion.service';
 import { MigrationRevertService } from './migration-revert.service';
 import { MigrationSimulationService } from './migration-simulation.service';
+import {
+  decryptAes256Gcm,
+  encryptAes256Gcm,
+  loadPiiAesGcmKeyPair,
+} from '../../common/crypto/aes-gcm.util';
+import { hmacPii, resolvePiiHashKey } from '../../common/crypto/pii-hash-key.util';
 import { MigrationTitularErasureParticipant } from './privacy/migration-titular-erasure.participant';
 import { SYNTHETIC_METHOD_ID, buildSyntheticUispZip } from './test/uisp-zip.fixture';
 
@@ -228,7 +234,9 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
         activeMarks: jest.fn().mockResolvedValue({}),
       } as never,
     );
-    const titularLookup = new CrmMigrationTitularLookupAdapter();
+    const titularLookup = new CrmMigrationTitularLookupAdapter({
+      activeMarks: jest.fn().mockResolvedValue({}),
+    } as never);
     batches = new MigrationBatchesService(
       ds,
       storage as never,
@@ -236,7 +244,13 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
       crypto,
       audit as never,
     );
-    simulation = new MigrationSimulationService(ds, storage as never, crypto, titularLookup);
+    simulation = new MigrationSimulationService(
+      ds,
+      storage as never,
+      crypto,
+      titularLookup,
+      billing,
+    );
     promotion = new MigrationPromotionService(
       ds,
       storage as never,
@@ -824,6 +838,461 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
       await sql(`DELETE FROM catalog_items WHERE id = $1`, [realPlanId]);
     }
   });
+
+  it('contactos: un cliente de UISP con dos contactos conserva el principal y el alternativo', async () => {
+    const clientId = run * 10 + 9;
+    const altPhone = `311${run}`;
+    const altEmail = `alterno-${run}@example.invalid`;
+    const summary = await batches.createBatch(
+      scope(),
+      [
+        zipFile(
+          await buildSyntheticUispZip({
+            clientId,
+            document: documentFor(9),
+            planIds: [planA, planB],
+            tagIds: [tagExternal],
+            cycleDay,
+            methodId,
+            extraContacts: [
+              {
+                email: altEmail,
+                phone: altPhone,
+                name: 'Contacto Sintético',
+                types: [{ id: 2, name: 'General' }],
+              },
+            ],
+          }),
+          `${clientId}.zip`,
+        ),
+      ],
+      actorId,
+    );
+    createdBatches.push(summary.id);
+    await expect(simulation.simulate(tenantId, summary.id)).resolves.toBe('SIMULADO');
+    const simulated = MigrationBatchReportSchema.parse(
+      await batches.getReport(scope(), summary.id),
+    );
+    expect(simulated.counts.entidades.SUSCRIPTOR?.leidos).toBe(1);
+    await expect(promoteNow(summary.id)).resolves.toBe('CONCILIADO');
+
+    const { activeKey, previousKey } = loadPiiAesGcmKeyPair(config);
+    const hashKey = resolvePiiHashKey(config);
+    const [subscriber] = await sql<{
+      party_id: string;
+      phone_encrypted: string;
+      phone_hmac: string;
+      alt_contact_name: string | null;
+      alt_contact_phone_encrypted: string | null;
+    }>(
+      `SELECT party_id::text, phone_encrypted, phone_hmac, alt_contact_name,
+              alt_contact_phone_encrypted
+         FROM subscribers WHERE import_batch_id = $1`,
+      [summary.id],
+    );
+    expect(decryptAes256Gcm(subscriber!.phone_encrypted, activeKey, previousKey)).toBe(
+      '3000000000',
+    );
+    expect(subscriber!.phone_hmac).toBe(hmacPii('3000000000', hashKey));
+    expect(subscriber!.alt_contact_name).toBe('Contacto Sintético');
+    expect(subscriber!.alt_contact_phone_encrypted).not.toContain(altPhone);
+    expect(decryptAes256Gcm(subscriber!.alt_contact_phone_encrypted!, activeKey, previousKey)).toBe(
+      altPhone,
+    );
+
+    const contacts = await sql<{
+      type: string;
+      value: string | null;
+      value_encrypted: string;
+      value_hmac: string;
+      is_primary: boolean;
+    }>(
+      `SELECT type, value, value_encrypted, value_hmac, is_primary
+         FROM party_contact WHERE party_id = $1 ORDER BY is_primary DESC, type, created_at`,
+      [subscriber!.party_id],
+    );
+    const plain = contacts.map((row) => ({
+      type: row.type,
+      primary: row.is_primary,
+      value: decryptAes256Gcm(row.value_encrypted, activeKey, previousKey),
+      hmac: row.value_hmac,
+      stored: row.value,
+    }));
+    expect(plain).toEqual([
+      {
+        type: 'EMAIL',
+        primary: true,
+        value: 'titular@example.invalid',
+        hmac: hmacPii('titular@example.invalid', hashKey),
+        stored: null,
+      },
+      {
+        type: 'PHONE',
+        primary: true,
+        value: '3000000000',
+        hmac: hmacPii('3000000000', hashKey),
+        stored: null,
+      },
+      {
+        type: 'EMAIL',
+        primary: false,
+        value: altEmail,
+        hmac: hmacPii(altEmail, hashKey),
+        stored: null,
+      },
+      {
+        type: 'PHONE',
+        primary: false,
+        value: altPhone,
+        hmac: hmacPii(altPhone, hashKey),
+        stored: null,
+      },
+    ]);
+
+    // La reversión retira el titular y su party, contactos incluidos.
+    await expect(reversion.revert(scope(), summary.id, actorId)).resolves.toBeDefined();
+    await expect(
+      sql(`SELECT 1 FROM party_contact WHERE party_id = $1`, [subscriber!.party_id]),
+    ).resolves.toHaveLength(0);
+  });
+
+  it('spec 2026-11-15 C: complementa un titular existente, concilia solo lo de UISP, reimporta y revierte', async () => {
+    const clientId = run * 10 + 10;
+    const document = documentFor(10);
+    const ownPhone = `310${run}`;
+    const altPhone = `312${run}`;
+    const altEmail = `complemento-${run}@example.invalid`;
+    const { activeKey, previousKey } = loadPiiAesGcmKeyPair(config);
+    const hashKey = resolvePiiHashKey(config);
+    const party = new PartyWriteAdapter(config);
+
+    // Titular de iWana: teléfono propio, sin correo ni dirección; contrato ACTIVE y factura propia.
+    const subscriberId = randomUUID();
+    const partyId = await runInTenantSchema(ds, schemaName, async (qr) => {
+      const ensured = await party.ensurePartyWithRole(
+        {
+          partyType: 'NATURAL' as never,
+          documentType: 'CC' as never,
+          documentNumber: document,
+          displayName: 'Titular Propio',
+        },
+        'CUSTOMER' as never,
+        { manager: qr.manager, actorUserId: actorId },
+      );
+      await qr.query(
+        `INSERT INTO subscribers (
+           id, tenant_id, party_id, person_type, customer_segment, document_type,
+           document_number_encrypted, document_number_hmac, first_name, last_name, stratum,
+           phone_encrypted, phone_hmac, vat_treatment, address, status, created_by)
+         VALUES ($1, $2, $3, 'NATURAL', 'RESIDENTIAL', 'CC', $4, $5, 'Titular', 'Propio', 3,
+           $6, $7, 'EXCLUDED', 'Sin dirección registrada', 'PROSPECT', $8)`,
+        [
+          subscriberId,
+          tenantId,
+          ensured.partyId,
+          encryptAes256Gcm(document, activeKey),
+          crypto.documentHmac(document),
+          encryptAes256Gcm(ownPhone, activeKey),
+          hmacPii(ownPhone, hashKey),
+          actorId,
+        ],
+      );
+      return ensured.partyId;
+    });
+    const ownContractId = randomUUID();
+    await sql(
+      `INSERT INTO contracts (id, tenant_id, subscriber_id, status, billing_cycle_day, start_date,
+         plan_id, plan_snapshot_json)
+       VALUES ($1, $2, $3, 'ACTIVE', $4, '2025-01-01', $5,
+         '{"name":"Plan propio","monthlyPrice":"85000.00"}'::jsonb)`,
+      [ownContractId, tenantId, subscriberId, cycleDay, planId],
+    );
+    const [period] = await sql<{ id: string }>(
+      `INSERT INTO billing_periods (tenant_id, contract_id, subscriber_id, period_start, due_date,
+         period_end, covered_start, generation_date, effective_policy)
+       VALUES ($1, $2, $3, '2025-02-01', '2025-02-15', '2025-02-28', '2025-02-01', '2025-02-01',
+         '{}'::jsonb) RETURNING id::text`,
+      [tenantId, ownContractId, subscriberId],
+    );
+    const [ownDocument] = await sql<{ id: string }>(
+      `INSERT INTO billing_documents (tenant_id, subscriber_id, contract_id, period_id, status,
+         number, issue_date, due_date, subtotal, tax_total, total)
+       VALUES ($1, $2, $3, $5, 'EMITIDO', $4, '2025-02-01', '2025-02-15', 85000, 0, 85000)
+       RETURNING id::text`,
+      [tenantId, subscriberId, ownContractId, `FE-IT-${run}`, period!.id],
+    );
+    await sql(
+      `INSERT INTO migration_mappings
+         (tenant_id, source_system, kind, external_value, action, target_ref, created_by)
+       VALUES ($1, 'UISP', 'TITULAR', $2, 'EQUIVALE', $3, $4)`,
+      [tenantId, String(clientId), subscriberId, actorId],
+    );
+    const zip = () =>
+      buildSyntheticUispZip({
+        clientId,
+        document,
+        planIds: [planA, planB],
+        tagIds: [tagExternal],
+        cycleDay,
+        methodId,
+        extraContacts: [{ email: altEmail, phone: altPhone, name: 'Contacto Sintético' }],
+      });
+    const snapshot = async () =>
+      (
+        await sql<Record<string, unknown>>(
+          `SELECT external_id, import_batch_id, email_encrypted, email_hmac, phone_hmac,
+                  alt_contact_name, alt_contact_phone_encrypted, address, city,
+                  latitude::text AS latitude, longitude::text AS longitude
+             FROM subscribers WHERE id = $1`,
+          [subscriberId],
+        )
+      )[0]!;
+    const before = await snapshot();
+
+    const summary = await batches.createBatch(scope(), [zipFile(await zip(), 'c.zip')], actorId);
+    createdBatches.push(summary.id);
+    await expect(simulation.simulate(tenantId, summary.id)).resolves.toBe('SIMULADO');
+    const simulated = MigrationBatchReportSchema.parse(
+      await batches.getReport(scope(), summary.id),
+    );
+    expect(simulated.counts.titulares.complementados).toBe(1);
+    await expect(promoteNow(summary.id)).resolves.toBe('CONCILIADO');
+
+    // No crea suscriptor; contratos históricos TERMINATED; el historial completo entra.
+    expect(await countsFor(summary.id)).toMatchObject({
+      subscribers: 0,
+      contracts: 2,
+      documents: 3,
+      payments: 2,
+      tickets: 2,
+      supports: 2,
+      tags: 1,
+    });
+    const historical = await sql<{ subscriber_id: string; status: string; end_date: unknown }>(
+      `SELECT subscriber_id::text, status::text, end_date FROM contracts WHERE import_batch_id = $1`,
+      [summary.id],
+    );
+    expect(historical).toHaveLength(2);
+    for (const contract of historical) {
+      expect(contract).toMatchObject({ subscriber_id: subscriberId, status: 'TERMINATED' });
+      expect(contract.end_date).not.toBeNull();
+    }
+    const [own] = await sql<{ status: string }>(
+      `SELECT status::text FROM contracts WHERE id = $1`,
+      [ownContractId],
+    );
+    expect(own!.status).toBe('ACTIVE');
+
+    // Vacíos completados (cifrados) y nada sobrescrito.
+    const after = await snapshot();
+    expect(after).toMatchObject({
+      external_id: `uisp:client:${clientId}`,
+      import_batch_id: null,
+      phone_hmac: hmacPii(ownPhone, hashKey),
+      alt_contact_name: 'Contacto Sintético',
+      address: 'Calle Ficticia 1, Ciudad Ficticia',
+      city: 'Ciudad Ficticia',
+    });
+    expect(decryptAes256Gcm(String(after['email_encrypted']), activeKey, previousKey)).toBe(
+      'titular@example.invalid',
+    );
+    expect(Number(after['latitude'])).toBeCloseTo(4.6);
+    const added = await sql<{ id: string }>(
+      `SELECT id::text FROM party_contact WHERE party_id = $1 AND value_hmac = $2`,
+      [partyId, hmacPii(altEmail, hashKey)],
+    );
+    expect(added).toHaveLength(1);
+
+    const report = MigrationBatchReportSchema.parse(await batches.getReport(scope(), summary.id));
+    expect(report.promotion).toMatchObject({ existentes: { SUSCRIPTOR: 1 } });
+    expect(report.promotion?.promovidos.SUSCRIPTOR).toBeUndefined();
+    // Teléfono principal distinto en UISP: observación sin valor.
+    expect(report.counts.observaciones.DATO_DISTINTO_EN_UISP).toBe(1);
+    expect(report.reconciliation).toMatchObject({ resultado: 'CONCILIADO', diferencias: [] });
+    const [meta] = await sql<{ promotion_meta: Record<string, unknown> }>(
+      `SELECT promotion_meta FROM migration_staging_records
+        WHERE batch_id = $1 AND entity = 'SUSCRIPTOR'`,
+      [summary.id],
+    );
+    expect(meta!.promotion_meta).toMatchObject({
+      mode: 'COMPLEMENTO',
+      subscriberId,
+      linkedExternalId: `uisp:client:${clientId}`,
+    });
+    expect(JSON.stringify(meta!.promotion_meta)).not.toMatch(
+      new RegExp(`titular@example|Calle Ficticia|${altPhone}|${document}`, 'u'),
+    );
+
+    // Reimportar el mismo ZIP: no duplica y sigue conciliando solo lo de UISP.
+    const again = await batches.createBatch(scope(), [zipFile(await zip(), 'c.zip')], actorId);
+    createdBatches.push(again.id);
+    await expect(simulation.simulate(tenantId, again.id)).resolves.toBe('SIMULADO');
+    await expect(promoteNow(again.id)).resolves.toBe('CONCILIADO');
+    expect(Object.values(await countsFor(again.id)).every((value) => value === 0)).toBe(true);
+    await expect(reversion.revert(scope(), again.id, actorId)).resolves.toBeDefined();
+
+    // Un dato completado editado después bloquea la reversión.
+    await sql(`UPDATE subscribers SET city = 'Otra Ciudad' WHERE id = $1`, [subscriberId]);
+    await expect(reversion.revert(scope(), summary.id, actorId)).rejects.toMatchObject({
+      response: {
+        code: 'MIGRATION_REVERT_BLOCKED',
+        details: { blockers: [{ motivo: 'DATO_COMPLETADO_MODIFICADO', cantidad: 1 }] },
+      },
+    });
+    await sql(`UPDATE subscribers SET city = 'Ciudad Ficticia' WHERE id = $1`, [subscriberId]);
+
+    // H1: el recifrado de claves (mismo valor en claro, IV nuevo) NO cuenta como edición...
+    const reencrypt = async (plainEmail: string) => {
+      const [row] = await sql<{ alt: string | null }>(
+        `SELECT alt_contact_phone_encrypted AS alt FROM subscribers WHERE id = $1`,
+        [subscriberId],
+      );
+      const alt = row!.alt ? decryptAes256Gcm(row!.alt, activeKey, previousKey) : null;
+      await sql(
+        `UPDATE subscribers SET email_encrypted = $2, alt_contact_phone_encrypted = $3
+          WHERE id = $1`,
+        [
+          subscriberId,
+          encryptAes256Gcm(plainEmail, activeKey),
+          alt ? encryptAes256Gcm(alt, activeKey) : null,
+        ],
+      );
+    };
+    const [cipherBefore] = await sql<{ email_encrypted: string }>(
+      `SELECT email_encrypted FROM subscribers WHERE id = $1`,
+      [subscriberId],
+    );
+    // ...pero editar el valor en claro SÍ bloquea.
+    await reencrypt(`editado-${run}@example.invalid`);
+    await expect(reversion.revert(scope(), summary.id, actorId)).rejects.toMatchObject({
+      response: {
+        code: 'MIGRATION_REVERT_BLOCKED',
+        details: { blockers: [{ motivo: 'DATO_COMPLETADO_MODIFICADO', cantidad: 1 }] },
+      },
+    });
+    await reencrypt('titular@example.invalid');
+    const [cipherAfter] = await sql<{ email_encrypted: string }>(
+      `SELECT email_encrypted FROM subscribers WHERE id = $1`,
+      [subscriberId],
+    );
+    expect(cipherAfter!.email_encrypted).not.toBe(cipherBefore!.email_encrypted);
+
+    // Revertir: el suscriptor queda como antes; contrato y factura propios intactos.
+    await expect(reversion.revert(scope(), summary.id, actorId)).resolves.toBeDefined();
+    expect(await snapshot()).toEqual(before);
+    expect(await countsFor(summary.id)).toMatchObject({ contracts: 0, documents: 0, payments: 0 });
+    await expect(
+      sql(`SELECT 1 FROM contracts WHERE id = $1 AND status = 'ACTIVE'`, [ownContractId]),
+    ).resolves.toHaveLength(1);
+    await expect(
+      sql(`SELECT 1 FROM billing_documents WHERE id = $1 AND status = 'EMITIDO'`, [
+        ownDocument!.id,
+      ]),
+    ).resolves.toHaveLength(1);
+    await expect(
+      sql(`SELECT 1 FROM party_contact WHERE id = $1`, [added[0]!.id]),
+    ).resolves.toHaveLength(0);
+
+    await sql(`DELETE FROM billing_documents WHERE id = $1`, [ownDocument!.id]);
+    await sql(`DELETE FROM billing_periods WHERE id = $1`, [period!.id]);
+    await sql(`DELETE FROM contracts WHERE id = $1`, [ownContractId]);
+    await sql(`DELETE FROM subscribers WHERE id = $1`, [subscriberId]);
+    await runInTenantSchema(ds, schemaName, (qr) =>
+      party.removeOrphanImportedParties([partyId], 'CUSTOMER' as never, { manager: qr.manager }),
+    );
+  });
+
+  it.each([
+    ['vacía', '', 11],
+    ['en blanco', '   ', 12],
+  ])(
+    'spec 2026-11-15 H4: revertir el complemento restaura exacta la dirección original %s',
+    async (_label, originalAddress, offset) => {
+      const clientId = run * 10 + offset;
+      const document = documentFor(offset);
+      const { activeKey } = loadPiiAesGcmKeyPair(config);
+      const party = new PartyWriteAdapter(config);
+      const subscriberId = randomUUID();
+      const partyId = await runInTenantSchema(ds, schemaName, async (qr) => {
+        const ensured = await party.ensurePartyWithRole(
+          {
+            partyType: 'NATURAL' as never,
+            documentType: 'CC' as never,
+            documentNumber: document,
+            displayName: 'Titular Propio',
+          },
+          'CUSTOMER' as never,
+          { manager: qr.manager, actorUserId: actorId },
+        );
+        await qr.query(
+          `INSERT INTO subscribers (
+             id, tenant_id, party_id, person_type, customer_segment, document_type,
+             document_number_encrypted, document_number_hmac, first_name, last_name, stratum,
+             vat_treatment, address, status, created_by)
+           VALUES ($1, $2, $3, 'NATURAL', 'RESIDENTIAL', 'CC', $4, $5, 'Titular', 'Propio', 3,
+             'EXCLUDED', $6, 'PROSPECT', $7)`,
+          [
+            subscriberId,
+            tenantId,
+            ensured.partyId,
+            encryptAes256Gcm(document, activeKey),
+            crypto.documentHmac(document),
+            originalAddress,
+            actorId,
+          ],
+        );
+        return ensured.partyId;
+      });
+      await sql(
+        `INSERT INTO migration_mappings
+           (tenant_id, source_system, kind, external_value, action, target_ref, created_by)
+         VALUES ($1, 'UISP', 'TITULAR', $2, 'EQUIVALE', $3, $4)`,
+        [tenantId, String(clientId), subscriberId, actorId],
+      );
+      const snapshot = async () =>
+        (
+          await sql<Record<string, unknown>>(
+            `SELECT external_id, email_encrypted, email_hmac, phone_encrypted, phone_hmac,
+                    alt_contact_name, alt_contact_phone_encrypted, address, city,
+                    latitude::text AS latitude, longitude::text AS longitude
+               FROM subscribers WHERE id = $1`,
+            [subscriberId],
+          )
+        )[0]!;
+      const before = await snapshot();
+      const summary = await batches.createBatch(
+        scope(),
+        [
+          zipFile(
+            await buildSyntheticUispZip({
+              clientId,
+              document,
+              planIds: [planA, planB],
+              tagIds: [tagExternal],
+              cycleDay,
+              methodId,
+            }),
+            `${clientId}.zip`,
+          ),
+        ],
+        actorId,
+      );
+      createdBatches.push(summary.id);
+      await expect(simulation.simulate(tenantId, summary.id)).resolves.toBe('SIMULADO');
+      await expect(promoteNow(summary.id)).resolves.toBe('CONCILIADO');
+      expect((await snapshot())['address']).toBe('Calle Ficticia 1, Ciudad Ficticia');
+
+      await expect(reversion.revert(scope(), summary.id, actorId)).resolves.toBeDefined();
+      expect(await snapshot()).toEqual(before);
+
+      await sql(`DELETE FROM subscribers WHERE id = $1`, [subscriberId]);
+      await runInTenantSchema(ds, schemaName, (qr) =>
+        party.removeOrphanImportedParties([partyId], 'CUSTOMER' as never, {
+          manager: qr.manager,
+        }),
+      );
+    },
+  );
 
   it('guardas: no se promueve sin simulación completa ni se revierte un lote solo simulado', async () => {
     const summary = await batches.createBatch(

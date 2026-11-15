@@ -62,6 +62,62 @@ function text(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function capped(value: unknown, max: number): string | null {
+  return text(value)?.slice(0, max) ?? null;
+}
+
+export interface UispSubscriberContacts {
+  email: string | null;
+  phone: string | null;
+  altContactName: string | null;
+  altContactPhone: string | null;
+  additionalContacts: Array<{ type: 'EMAIL' | 'PHONE'; value: string }>;
+}
+
+/**
+ * Contactos del cliente de UISP. El principal (`isContact` o el primero) da el correo y el
+ * teléfono del titular; el primer secundario con teléfono, el contacto alternativo de la
+ * ficha; y todos los correos y teléfonos secundarios distintos del principal viajan como
+ * contactos no principales del party, para no perder ninguno.
+ */
+export function subscriberContacts(raw: Raw): UispSubscriberContacts {
+  const list = Array.isArray(raw?.['contacts'])
+    ? (raw['contacts'] as unknown[]).filter(
+        (item): item is Record<string, unknown> => !!item && typeof item === 'object',
+      )
+    : [];
+  const principal = list.find((item) => item['isContact'] === true) ?? list[0];
+  const email = capped(principal?.['email'], 254);
+  const phone = capped(principal?.['phone'], 30);
+  const others = list.filter((item) => item !== principal);
+  const alternate = others.find((item) => {
+    const value = capped(item['phone'], 30);
+    return value !== null && value !== phone;
+  });
+  const seen = new Set<string>([`EMAIL:${email?.toLowerCase()}`, `PHONE:${phone}`]);
+  const additionalContacts: UispSubscriberContacts['additionalContacts'] = [];
+  for (const item of others) {
+    const candidates: Array<['EMAIL' | 'PHONE', string | null]> = [
+      ['EMAIL', capped(item['email'], 254)],
+      ['PHONE', capped(item['phone'], 30)],
+    ];
+    for (const [type, value] of candidates) {
+      if (value === null) continue;
+      const key = `${type}:${type === 'EMAIL' ? value.toLowerCase() : value}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      additionalContacts.push({ type, value });
+    }
+  }
+  return {
+    email,
+    phone,
+    altContactName: alternate ? capped(alternate['name'], 160) : null,
+    altContactPhone: alternate ? capped(alternate['phone'], 30) : null,
+    additionalContacts,
+  };
+}
+
 /** `status` del servicio de UISP → estado del contrato (spec §3.2: 1 → ACTIVE). */
 export function contractStatus(value: unknown): ImportedContractInput['status'] {
   switch (Number(value)) {

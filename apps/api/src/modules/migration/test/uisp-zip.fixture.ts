@@ -26,6 +26,8 @@ export interface UispFixtureOptions {
   methodId?: string;
   /** Carpeta raíz dentro del ZIP (algunos exports la traen). */
   rootFolder?: string;
+  /** Contactos adicionales de UISP, después del principal (`isContact: true`). */
+  extraContacts?: Array<Record<string, unknown>>;
 }
 
 export const SYNTHETIC_METHOD_ID = '00000000-aaaa-4bbb-8ccc-000000000001';
@@ -83,6 +85,13 @@ export function syntheticUispClient(options: UispFixtureOptions = {}): Record<st
         isContact: true,
         types: [{ id: 1, name: 'Billing' }],
       },
+      ...(options.extraContacts ?? []).map((contact, index) => ({
+        id: index + 2,
+        clientId,
+        isBilling: false,
+        isContact: false,
+        ...contact,
+      })),
     ],
     attributes,
     tags: (options.tagIds ?? [11]).map((id) => ({

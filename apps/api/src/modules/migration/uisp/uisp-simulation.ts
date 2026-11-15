@@ -13,6 +13,7 @@ import {
   type MigrationRejectionReason,
 } from '@iwana/shared';
 import type { ParseUispResult, ParsedUispPackage, UispClient } from './uisp-parser';
+import { civilDate } from './uisp-promotion-mapping';
 import { titularPersonFields } from './uisp-titular-required';
 
 /**
@@ -30,7 +31,13 @@ import { titularPersonFields } from './uisp-titular-required';
  *   la promoción) → `DATOS_OBLIGATORIOS_AUSENTES`, salvo que ya esté importado.
  * - Ciclo con equivalencia cuyo día no está activo en CRM → `CICLO_SIN_EQUIVALENCIA`.
  * - Coordenadas fuera de Colombia → se descartan; observación y cola de datos incompletos.
- * - HMAC del documento ya presente → `TITULAR_EXISTENTE` (conflicto, nunca fusión, D11).
+ * - HMAC del documento ya presente → `TITULAR_EXISTENTE` (conflicto, nunca fusión, D11), con
+ *   un pendiente `TITULAR` cuyo `candidateRef` es el suscriptor que coincide. Con equivalencia
+ *   `TITULAR` hacia ese mismo suscriptor (no restringido ni enlazado a otro cliente) el titular
+ *   queda `VALIDO` en modo complemento (`derived.complementSubscriberId`); si el suscriptor ya
+ *   está enlazado a otro cliente → `TITULAR_VINCULADO_A_OTRO_CLIENTE` (spec 2026-11-15 §2.2).
+ * - En complemento, facturas con fecha civil ≥ la primera factura propia del suscriptor →
+ *   observación `CRUCE_CON_FACTURACION_IWANA`.
  * - `external_id` de un titular anonimizado → `TITULAR_ANONIMIZADO`.
  * - Estrato → entra pendiente de evidencia; no fija IVA (ADR-093).
  * - Tickets: tareas referenciadas que no viajan en `jobs.json` se cuentan.
@@ -43,6 +50,12 @@ export interface TitularLookupFacts {
   existingHmacs: ReadonlySet<string>;
   anonymizedExternalIds: ReadonlySet<string>;
   importedExternalIds: ReadonlySet<string>;
+  /** HMAC → id del suscriptor vigente que coincide (no expedientes). */
+  subscriberIdByHmac?: ReadonlyMap<string, string>;
+  /** Suscriptores con datos bloqueados por privacidad (`DATOS_BLOQUEADOS`). */
+  restrictedSubscriberIds?: ReadonlySet<string>;
+  /** `external_id` actual de cada candidato (`null` si no está enlazado). */
+  externalIdBySubscriber?: ReadonlyMap<string, string | null>;
 }
 
 export interface SimulationContext extends TitularLookupFacts {
@@ -56,6 +69,10 @@ export interface SimulationContext extends TitularLookupFacts {
     targetDayOf: ReadonlyMap<string, number | null>;
     activeDays: ReadonlySet<number>;
   };
+  /** Equivalencias `TITULAR` `EQUIVALE`: id de cliente UISP → id del suscriptor de iWana. */
+  titularLinks?: ReadonlyMap<string, string>;
+  /** Primera fecha civil (`YYYY-MM-DD`) de emisión de un cobro propio de iWana, por suscriptor. */
+  firstOwnIssueDates?: ReadonlyMap<string, string>;
 }
 
 export interface StagedRecord {
@@ -182,6 +199,7 @@ class SimulationAccumulator {
       observaciones: {},
       tareasSinFuente: 0,
       pendientesEquivalencia: [],
+      titulares: { complementados: 0 },
       procesadoEn: new Date().toISOString(),
     };
   }
@@ -195,7 +213,12 @@ class SimulationAccumulator {
     this.counts.observaciones[observation] = (this.counts.observaciones[observation] ?? 0) + amount;
   }
 
-  pendingValue(kind: MigrationMappingKind, value: string, label: string | null): void {
+  pendingValue(
+    kind: MigrationMappingKind,
+    value: string,
+    label: string | null,
+    candidateRef?: string,
+  ): void {
     const key = `${kind}\u0000${value}`;
     const current = this.pending.get(key);
     if (current) {
@@ -207,6 +230,7 @@ class SimulationAccumulator {
         externalValue: value.slice(0, 120),
         externalLabel: label ? label.slice(0, 120) : null,
         occurrences: 1,
+        ...(candidateRef ? { candidateRef } : {}),
       });
     }
   }
@@ -263,6 +287,44 @@ function hasMapping(ctx: SimulationContext, kind: MigrationMappingKind, value: s
   return ctx.mappings.get(kind)?.has(value) ?? false;
 }
 
+interface ExistingTitularResolution {
+  reason: MigrationRejectionReason | null;
+  complementSubscriberId: string | null;
+  /** Candidato a ofrecer como pendiente `TITULAR` (solo si podría equivaler). */
+  pendingCandidate: string | null;
+}
+
+/**
+ * Titular cuyo documento ya existe en iWana (spec 2026-11-15 §2.2). Solo un suscriptor vigente,
+ * sin datos bloqueados y sin enlace a otro cliente de UISP puede complementarse; la
+ * coincidencia solo en expedientes sigue siendo conflicto sin pendiente.
+ */
+function resolveExistingTitular(
+  ctx: SimulationContext,
+  clientId: string,
+  clientExternalId: string,
+  documentHmac: string,
+): ExistingTitularResolution {
+  const conflict = { reason: 'TITULAR_EXISTENTE' as const, complementSubscriberId: null };
+  const candidate = ctx.subscriberIdByHmac?.get(documentHmac) ?? null;
+  if (!candidate || ctx.restrictedSubscriberIds?.has(candidate)) {
+    return { ...conflict, pendingCandidate: null };
+  }
+  const linked = ctx.externalIdBySubscriber?.get(candidate) ?? null;
+  const linkable = linked === null || linked === clientExternalId;
+  if (ctx.titularLinks?.get(clientId) !== candidate) {
+    return { ...conflict, pendingCandidate: linkable ? candidate : null };
+  }
+  if (!linkable) {
+    return {
+      reason: 'TITULAR_VINCULADO_A_OTRO_CLIENTE',
+      complementSubscriberId: null,
+      pendingCandidate: null,
+    };
+  }
+  return { reason: null, complementSubscriberId: candidate, pendingCandidate: null };
+}
+
 function simulatePackage(
   pkg: ParsedUispPackage,
   fileIndex: number,
@@ -286,15 +348,24 @@ function simulatePackage(
   const facts = extractTitularFacts(pkg.client);
   const queues: string[] = [];
   let titularReason: MigrationRejectionReason | null = null;
+  let complementSubscriberId: string | null = null;
+  const alreadyImported = ctx.importedExternalIds.has(clientExternalId);
+  const documentHmac = facts.documentNumber ? ctx.hmacOf(facts.documentNumber) : null;
   if (ctx.anonymizedExternalIds.has(clientExternalId)) {
     titularReason = 'TITULAR_ANONIMIZADO';
-  } else if (facts.documentNumber && ctx.existingHmacs.has(ctx.hmacOf(facts.documentNumber))) {
-    titularReason = ctx.importedExternalIds.has(clientExternalId) ? null : 'TITULAR_EXISTENTE';
+  } else if (documentHmac && ctx.existingHmacs.has(documentHmac) && !alreadyImported) {
+    const resolution = resolveExistingTitular(ctx, clientId, clientExternalId, documentHmac);
+    titularReason = resolution.reason;
+    complementSubscriberId = resolution.complementSubscriberId;
+    if (resolution.pendingCandidate) {
+      acc.pendingValue('TITULAR', clientId, null, resolution.pendingCandidate);
+    }
   }
-  const alreadyImported = ctx.importedExternalIds.has(clientExternalId);
   if (alreadyImported) acc.observe('YA_IMPORTADO');
+  if (complementSubscriberId) acc.counts.titulares.complementados += 1;
   if (
     !alreadyImported &&
+    !complementSubscriberId &&
     !titularPersonFields(pkg.client as unknown as Record<string, unknown>, facts).complete
   ) {
     titularReason ??= 'DATOS_OBLIGATORIOS_AUSENTES';
@@ -331,6 +402,7 @@ function simulatePackage(
       coordinatesDiscarded: clientInColombia === false,
       queues,
       tagRefs,
+      ...(complementSubscriberId ? { complementSubscriberId } : {}),
     },
   });
   const dependency: MigrationRejectionReason | null = titularReason
@@ -380,10 +452,17 @@ function simulatePackage(
   }
 
   // ── Facturas → documentos de cobro históricos ──
+  const firstOwnIssueDate = complementSubscriberId
+    ? (ctx.firstOwnIssueDates?.get(complementSubscriberId) ?? null)
+    : null;
   for (const { record, index, pdfPath } of pkg.invoices) {
     const id = safeId(record?.id) ?? `sin-id-${fileIndex}-${index}`;
     const invalid = !record || !safeId(record.id) || !belongs(record.clientId);
     if (record && !pdfPath) acc.observe('FACTURA_SIN_PDF');
+    if (record && firstOwnIssueDate) {
+      const issued = civilDate(record.createdDate);
+      if (issued && issued >= firstOwnIssueDate) acc.observe('CRUCE_CON_FACTURACION_IWANA');
+    }
     acc.add(
       'DOCUMENTO_COBRO',
       externalIdOf('DOCUMENTO_COBRO', id),

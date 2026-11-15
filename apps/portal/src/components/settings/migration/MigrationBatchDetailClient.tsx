@@ -183,12 +183,15 @@ function RejectionList({
 function FileAndObservationReport({ report }: { report: MigrationBatchReport }) {
   const fileRejections = countEntries(report.counts.archivos.rechazados);
   const observations = countEntries(report.counts.observaciones);
+  // Informes anteriores al complemento de titulares no traen el conteo.
+  const complemented = report.counts.titulares?.complementados ?? 0;
   return (
     <div className="space-y-3 text-sm text-gray-700 dark:text-gray-200">
       <p>
         Archivos recibidos: {report.counts.archivos.recibidos} · leídos:{' '}
         {report.counts.archivos.leidos}
       </p>
+      {complemented > 0 ? <p>Titulares complementados: {complemented}</p> : null}
       {fileRejections.length > 0 ? (
         <ul aria-label="Archivos rechazados" className="ml-4 list-disc">
           {fileRejections.map(([reason, count]) => (
@@ -535,10 +538,14 @@ export function MigrationBatchDetailClient({ batchId }: { batchId: string }) {
       {report.status === 'SIMULADO' || pending.length > 0 ? (
         <PortalPanel
           title="Equivalencias pendientes"
-          description="Indica a qué corresponde en iWana cada plan, método de pago, ciclo o etiqueta de UISP."
+          description="Indica a qué corresponde en iWana cada cliente, plan, método de pago, ciclo o etiqueta de UISP."
           labelled
         >
-          <MigrationMappingEditor pending={pending} onSaved={() => void load()} />
+          <MigrationMappingEditor
+            pending={pending}
+            counts={report.counts}
+            onSaved={() => void load()}
+          />
         </PortalPanel>
       ) : null}
 
