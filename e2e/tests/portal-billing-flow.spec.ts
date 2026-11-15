@@ -587,7 +587,7 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
 
     await loginInPortal(page, ADMIN_EMAIL, tenantAdminPassword);
     await page.goto('/dashboard/settings/billing');
-    await expect(page.getByText('Define las reglas de emisión de cobro')).toBeVisible();
+    await expect(page.getByText('Define las reglas de emisión de facturas')).toBeVisible();
     // La vista previa viene del servidor: tres fechas por ciclo activo.
     await expect(page.getByText('Vista previa de fechas')).toBeVisible();
     await expect(page.getByText('Vista previa actualizada para')).toBeVisible();
