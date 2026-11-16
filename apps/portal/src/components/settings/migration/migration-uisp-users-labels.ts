@@ -106,14 +106,18 @@ function plural(count: number, one: string, many: string): string {
 }
 
 /**
- * Error de una acción de revisión: «Enlazar» sin un usuario de iWana con el mismo correo
- * (422 `MIGRATION_MAPPING_TARGET_INVALID` con `details.reason` SIN_COINCIDENCIA) tiene su texto.
+ * Error de una acción de revisión (422 `MIGRATION_MAPPING_TARGET_INVALID`): «Enlazar» sin un
+ * usuario de iWana con el mismo correo (`SIN_COINCIDENCIA`) o «Enlazar con…» hacia un usuario
+ * inexistente, borrado o con rol externo (`USUARIO_NO_VALIDO`) tienen su texto.
  */
 export function uispUsersActionErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError && error.code === 'MIGRATION_MAPPING_TARGET_INVALID') {
     const details = error.details as { reason?: unknown } | undefined;
     if (details?.reason === 'SIN_COINCIDENCIA') {
       return 'Ese usuario no tiene un usuario de iWana con el mismo correo para enlazar.';
+    }
+    if (details?.reason === 'USUARIO_NO_VALIDO') {
+      return 'Ese usuario no se puede enlazar (no existe o no es personal de la empresa).';
     }
   }
   return migrationErrorMessage(error, fallback);

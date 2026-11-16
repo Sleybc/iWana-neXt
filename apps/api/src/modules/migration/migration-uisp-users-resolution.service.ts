@@ -93,6 +93,23 @@ function linkTargetInvalid(id: string): UnprocessableEntityException {
   });
 }
 
+/**
+ * ENLAZAR con `targetUserId` (elección manual, 2026-11-15): el usuario elegido no existe, está
+ * borrado o tiene un rol externo (S-5). Mismo código, motivo `USUARIO_NO_VALIDO`.
+ */
+function manualTargetInvalid(id: string): UnprocessableEntityException {
+  return new UnprocessableEntityException({
+    code: 'MIGRATION_MAPPING_TARGET_INVALID',
+    message: 'El usuario de iWana elegido no existe o no se puede enlazar a un usuario de UISP.',
+    details: { id, reason: 'USUARIO_NO_VALIDO' },
+  });
+}
+
+/** Usuario al que apunta un ENLAZAR: el elegido a mano (en minúsculas) o la coincidencia por correo. */
+function linkCandidate(item: MigrationUispUserResolveItem, row: ReviewRow): string | null {
+  return item.targetUserId !== undefined ? item.targetUserId.toLowerCase() : row.matched_user_id;
+}
+
 function roleNotAllowed(id: string): UnprocessableEntityException {
   return new UnprocessableEntityException({
     code: 'MIGRATION_USER_ROLE_NOT_ALLOWED',
@@ -108,6 +125,9 @@ function roleNotAllowed(id: string): UnprocessableEntityException {
  * - **Resolver es todo o nada**: el lote completo corre en una transacción con las filas
  *   bloqueadas (`FOR UPDATE`); cualquier fila inexistente (404), ya resuelta (409), mal formada
  *   (400), sin coincidencia que enlazar o con rol no permitido (422) revierte todo.
+ * - Enlazar usa el usuario elegido a mano (`targetUserId`, cualquier fuente) o, sin él, la
+ *   coincidencia por correo; el puerto de Usuarios valida que siga vigente y con rol importable.
+ *   Varias filas pueden enlazar al mismo usuario (una persona con dos cuentas en UISP).
  * - Enlazar y crear dejan la equivalencia `USUARIO` (número → usuario, sin etiqueta); descartar
  *   no. Las tres purgan el nombre y el correo de la fila (CHECK de la 211).
  * - Los usuarios se crean e invitan solo por `MigrationUserProvisioningPort` (Usuarios): la
@@ -156,19 +176,27 @@ export class MigrationUispUsersResolutionService {
       if (resolved.length > 0) throw rowAlreadyResolved(resolved);
 
       for (const item of items) this.assertItem(item, byId.get(item.id)!);
+      // Usuarios vigentes con rol importable (S-5), según el puerto de Usuarios.
       const linkable = await this.directory.existingUserIds(
         ctx,
         items
           .filter((item) => item.action === 'ENLAZAR')
-          .map((item) => byId.get(item.id)!.matched_user_id!),
+          .map((item) => linkCandidate(item, byId.get(item.id)!)!),
       );
+      // Todos los ENLAZAR se validan antes de escribir nada (ni crear usuarios).
+      for (const item of items) {
+        if (item.action !== 'ENLAZAR') continue;
+        if (linkable.has(linkCandidate(item, byId.get(item.id)!)!)) continue;
+        throw item.targetUserId !== undefined
+          ? manualTargetInvalid(item.id)
+          : linkTargetInvalid(item.id);
+      }
 
       for (const item of items) {
         const row = byId.get(item.id)!;
         let targetUserId: string | null = null;
         if (item.action === 'ENLAZAR') {
-          if (!linkable.has(row.matched_user_id!)) throw linkTargetInvalid(row.id);
-          targetUserId = row.matched_user_id;
+          targetUserId = linkCandidate(item, row);
         } else if (item.action === 'CREAR') {
           const result = await this.provisioning.createImportedUser(ctx, {
             uispUserId: Number(row.uisp_user_id),
@@ -259,7 +287,7 @@ export class MigrationUispUsersResolutionService {
 
   /** Reglas por ítem que no dependen de otras tablas; se comprueban antes de escribir. */
   private assertItem(item: MigrationUispUserResolveItem, row: ReviewRow): void {
-    if (item.action === 'ENLAZAR' && !row.matched_user_id) throw linkTargetInvalid(row.id);
+    if (item.action === 'ENLAZAR' && !linkCandidate(item, row)) throw linkTargetInvalid(row.id);
     if (item.action !== 'CREAR') return;
     if (!item.role || !isMigrationImportableUserRole(item.role)) throw roleNotAllowed(row.id);
     if (row.source === 'SIN_DATOS' && item.displayName === undefined) {
@@ -351,6 +379,9 @@ export class MigrationUispUsersResolutionService {
         oldValue: { status: row.status },
         newValue: {
           accion: item.action,
+          ...(item.action === 'ENLAZAR'
+            ? { origen: item.targetUserId !== undefined ? 'MANUAL' : 'CORREO' }
+            : {}),
           uispUserId: Number(row.uisp_user_id),
           status,
           targetUserId,

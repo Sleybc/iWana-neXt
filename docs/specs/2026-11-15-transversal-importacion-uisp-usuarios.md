@@ -1,6 +1,6 @@
 # Spec — Transversal · Importación UISP: usuarios del personal
 
-**Versión:** 1.1 (2026-11-15: §2.4 invitación para crear la contraseña, tras la ejecución)
+**Versión:** 1.2 (2026-11-15: §2.4 invitación para crear la contraseña; §2.3 «Enlazar con…» un usuario existente)
 **Estado:** G0 aprobado por el usuario el 2026-11-15 («Apruebo el G0»). [ADR-110](../adrs/ADR-110-Importacion-por-Lotes-desde-UISP-y-Portabilidad.md) enmendado en v1.2 (D15)
 **Fecha:** 2026-11-15
 **Emisor:** Claude Code, con criterio de AI-DATA-ENG
@@ -64,6 +64,7 @@ Acciones por fila o en lote:
 | Acción | Resultado |
 |---|---|
 | **Enlazar** (hay coincidencia) | Se vincula el número de UISP con ese usuario de iWana. No se le cambia nada. |
+| **Enlazar con…** (elección manual, v1.2) | Para filas «sin datos» o sin coincidencia por correo: el administrador elige un usuario existente del personal (nunca SUBSCRIBER, PARTNER ni INVESTOR). Se vincula igual y no se le cambia nada. Varias filas pueden enlazar con la misma persona. |
 | **Crear** (activo en UISP) | Usuario con el rol elegido, estado `PENDING_VERIFICATION`, contraseña inutilizable, sin invitación. `is_operational_resource` según el rol (como en el alta manual), editable antes de crear. |
 | **Crear** (inactivo en UISP o sin datos) | Usuario `INACTIVE`, contraseña inutilizable, `is_operational_resource = false` siempre. Nunca aparece en Programación ni puede entrar. |
 | **Descartar** | Sin usuario; el historial de ese número queda a nombre de quien importa y el informe lo cuenta. |

@@ -6,11 +6,13 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   UserRole,
+  UserStatus,
+  type ListMeta,
   type MigrationSourceConnection,
   type MigrationUispUser,
   type MigrationUispUsersListMeta,
 } from '@iwana/shared';
-import { ApiError, migrationApi } from '@/lib/api-client';
+import { ApiError, migrationApi, usersApi, type InternalUser } from '@/lib/api-client';
 import { MigrationUispUsersSection } from './MigrationUispUsersSection';
 
 const APP_KEY = 'clave-de-prueba-123';
@@ -466,5 +468,198 @@ describe('Lista de revisión', () => {
     expect(
       await screen.findByText(/Enviamos 1 invitación\. 1 usuario no la recibió/),
     ).toBeInTheDocument();
+  });
+});
+
+describe('Enlazar con… un usuario de iWana existente', () => {
+  const ADMIN_ID = '00000000-0000-4000-8000-0000000007a1';
+  const pending = uispUser(56, {
+    uispUserId: 2156,
+    source: 'SIN_DATOS',
+    displayName: null,
+    email: null,
+    isActiveInUisp: null,
+  });
+  const created = uispUser(57, { status: 'CREADO', displayName: null, email: null });
+
+  function staff(id: string, overrides: Partial<InternalUser> = {}): InternalUser {
+    return {
+      id,
+      email: `${id.slice(-4)}@empresa.test`,
+      role: UserRole.ADMIN,
+      status: UserStatus.ACTIVE,
+      tenantId: '00000000-0000-4000-8000-000000000001',
+      mfaEnabled: false,
+      mfaRequired: false,
+      isOperationalResource: false,
+      emailVerified: true,
+      passwordResetRequired: false,
+      lastLoginAt: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      deletedAt: null,
+      firstName: null,
+      lastName: null,
+      phone: null,
+      jobTitle: null,
+      documentType: null,
+      documentNumber: null,
+      avatarUrl: null,
+      ...overrides,
+    };
+  }
+
+  function page(data: InternalUser[], hasMore = false): { data: InternalUser[]; meta: ListMeta } {
+    return {
+      data,
+      meta: {
+        nextCursor: null,
+        total: data.length,
+        totalIsEstimate: false,
+        page: null,
+        limit: 20,
+        totalPages: null,
+        hasMore,
+        mode: 'cursor',
+        capabilities: { randomAccess: false, sortableFields: [] },
+        sort: null,
+      },
+    };
+  }
+
+  const admin = staff(ADMIN_ID, { firstName: 'Ana', lastName: 'Gómez' });
+  const technician = staff('00000000-0000-4000-8000-0000000007a2', {
+    firstName: 'Luis',
+    lastName: 'Pérez',
+    role: UserRole.TECHNICIAN,
+    status: UserStatus.INACTIVE,
+  });
+  const subscriber = staff('00000000-0000-4000-8000-0000000007a3', {
+    firstName: 'Cliente',
+    lastName: 'Externo',
+    role: UserRole.SUBSCRIBER,
+  });
+  const partner = staff('00000000-0000-4000-8000-0000000007a4', {
+    firstName: 'Socio',
+    lastName: 'Aliado',
+    role: UserRole.PARTNER,
+  });
+  const investor = staff('00000000-0000-4000-8000-0000000007a5', {
+    firstName: 'Inversor',
+    lastName: 'Externo',
+    role: UserRole.INVESTOR,
+  });
+
+  let usersListSpy: jest.SpyInstance;
+  beforeEach(() => {
+    listSpy.mockResolvedValue(list([pending, created]));
+    usersListSpy = jest
+      .spyOn(usersApi, 'list')
+      .mockResolvedValue(page([admin, technician, subscriber, partner, investor]));
+  });
+
+  async function openLinkDialog(user: ReturnType<typeof userEvent.setup>) {
+    render(<MigrationUispUsersSection />);
+    expect(
+      await screen.findByText(/usa «Enlazar con…» en vez de Crear para no\s+duplicarla/),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', { name: 'Enlazar con… (usuario de UISP n.º 2156)' }),
+    );
+    return screen.findByRole('dialog', {
+      name: 'Enlazar al usuario de UISP n.º 2156 con un usuario de iWana',
+    });
+  }
+
+  it('solo las filas pendientes ofrecen «Enlazar con…»', async () => {
+    const user = userEvent.setup();
+    render(<MigrationUispUsersSection />);
+    await screen.findByText('Usuario de UISP n.º 2156 (sin datos)');
+    await user.click(screen.getByRole('button', { name: /Todos/ }));
+    expect(screen.getAllByRole('button', { name: /^Enlazar con…/ })).toHaveLength(1);
+  });
+
+  it('abre el buscador con el foco y excluye los roles externos', async () => {
+    const user = userEvent.setup();
+    const dialog = await openLinkDialog(user);
+    const search = within(dialog).getByLabelText('Buscar usuario de iWana por nombre o correo');
+    await waitFor(() => expect(search).toHaveFocus());
+
+    const results = within(
+      await within(dialog).findByRole('list', { name: 'Usuarios de iWana encontrados' }),
+    );
+    expect(results.getByRole('button', { name: /Ana Gómez/ })).toHaveTextContent(
+      /Administrador.*Activo/,
+    );
+    expect(results.getByRole('button', { name: /Luis Pérez/ })).toHaveTextContent('Inactivo');
+    expect(results.getAllByRole('button')).toHaveLength(2);
+    expect(within(dialog).queryByText(/Cliente Externo|Socio Aliado|Inversor Externo/)).toBeNull();
+    expect(within(dialog).queryByText(/ADMIN|ACTIVE|TECHNICIAN/)).toBeNull();
+    expect(usersListSpy).toHaveBeenLastCalledWith({ limit: 20 });
+
+    usersListSpy.mockResolvedValue(page([admin], true));
+    await user.type(search, 'ana');
+    await waitFor(() =>
+      expect(usersListSpy).toHaveBeenLastCalledWith({ limit: 20, search: 'ana' }),
+    );
+    expect(await within(dialog).findByText(/Hay más usuarios/)).toBeInTheDocument();
+  });
+
+  it('sin resultados lo dice y ofrece Crear como salida', async () => {
+    usersListSpy.mockResolvedValue(page([subscriber]));
+    const user = userEvent.setup();
+    const dialog = await openLinkDialog(user);
+    expect(
+      await within(dialog).findByText('No encontramos usuarios de iWana con esa búsqueda'),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/usa Crear/)).toBeInTheDocument();
+  });
+
+  it('confirma y envía el usuario elegido con ENLAZAR', async () => {
+    const resolveSpy = jest.spyOn(migrationApi, 'resolveUispUsers').mockResolvedValue([]);
+    const user = userEvent.setup();
+    const dialog = await openLinkDialog(user);
+    await user.click(await within(dialog).findByRole('button', { name: /Ana Gómez/ }));
+
+    expect(dialog).toHaveTextContent(
+      'El usuario de UISP n.º 2156 se enlazará con Ana Gómez. Sus tickets y pagos quedarán a su nombre.',
+    );
+    const confirm = within(dialog).getByRole('button', { name: 'Enlazar' });
+    await waitFor(() => expect(confirm).toHaveFocus());
+    expect(resolveSpy).not.toHaveBeenCalled();
+    const loadsBefore = listSpy.mock.calls.length;
+    await user.click(confirm);
+
+    await waitFor(() =>
+      expect(resolveSpy).toHaveBeenCalledWith({
+        items: [{ id: pending.id, action: 'ENLAZAR', targetUserId: ADMIN_ID }],
+      }),
+    );
+    expect(
+      await screen.findByText('El usuario de UISP n.º 2156 quedó enlazado con Ana Gómez.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(listSpy.mock.calls.length).toBeGreaterThan(loadsBefore));
+  });
+
+  it('un usuario que no se puede enlazar se explica sin códigos y deja elegir otro', async () => {
+    jest
+      .spyOn(migrationApi, 'resolveUispUsers')
+      .mockRejectedValue(
+        new ApiError(422, 'MIGRATION_MAPPING_TARGET_INVALID', 'x', { reason: 'USUARIO_NO_VALIDO' }),
+      );
+    const user = userEvent.setup();
+    const dialog = await openLinkDialog(user);
+    await user.click(await within(dialog).findByRole('button', { name: /Luis Pérez/ }));
+    await user.click(within(dialog).getByRole('button', { name: 'Enlazar' }));
+
+    expect(
+      await within(dialog).findByText(
+        'Ese usuario no se puede enlazar (no existe o no es personal de la empresa).',
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/USUARIO_NO_VALIDO|MIGRATION_/)).toBeNull();
+    await user.click(within(dialog).getByRole('button', { name: 'Elegir otro' }));
+    expect(await within(dialog).findByRole('button', { name: /Ana Gómez/ })).toBeInTheDocument();
   });
 });

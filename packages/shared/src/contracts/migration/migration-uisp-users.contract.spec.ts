@@ -240,6 +240,30 @@ describe('Contrato de usuarios de UISP (spec 2026-11-15 usuarios, ADR-110 D15)',
       expect(parsed.success && parsed.data.items[1]?.displayName).toBe('Técnico sin datos');
     });
 
+    it('targetUserId (usuario elegido a mano) solo se admite con ENLAZAR', () => {
+      expect(
+        MigrationUispUsersResolveSchema.safeParse({
+          items: [{ id: uuid, action: 'ENLAZAR', targetUserId: uuid2 }],
+        }).success,
+      ).toBe(true);
+      for (const item of [
+        { id: uuid, action: 'DESCARTAR', targetUserId: uuid2 },
+        { id: uuid, action: 'CREAR', role: UserRole.NOC, targetUserId: uuid2 },
+        { id: uuid, action: 'ENLAZAR', targetUserId: 'no-uuid' },
+      ]) {
+        const parsed = MigrationUispUsersResolveSchema.safeParse({ items: [item] });
+        expect(parsed.success).toBe(false);
+      }
+      const misplaced = MigrationUispUsersResolveSchema.safeParse({
+        items: [{ id: uuid, action: 'DESCARTAR', targetUserId: uuid2 }],
+      });
+      expect(misplaced.success === false && misplaced.error.issues[0]?.path).toEqual([
+        'items',
+        0,
+        'targetUserId',
+      ]);
+    });
+
     it('un rol no importable pasa el contrato y lo rechaza la API con su código', () => {
       expect(
         MigrationUispUsersResolveSchema.safeParse({

@@ -159,9 +159,21 @@ export const MigrationUispUserResolveItemSchema = z
       .regex(NO_CONTROL_CHARS, 'Nombre con caracteres de control.')
       .optional(),
     isOperationalResource: z.boolean().optional(),
+    /**
+     * Solo con ENLAZAR: usuario de iWana elegido a mano (2026-11-15), para filas «sin datos» o
+     * sin coincidencia por correo. Sin él, ENLAZAR usa la coincidencia por correo.
+     */
+    targetUserId: z.string().uuid().optional(),
   })
   .strict()
   .superRefine((item, ctx) => {
+    if (item.targetUserId !== undefined && item.action !== 'ENLAZAR') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['targetUserId'],
+        message: 'Solo se admite al enlazar.',
+      });
+    }
     if (item.action === 'CREAR') {
       if (item.role === undefined) {
         ctx.addIssue({ code: 'custom', path: ['role'], message: 'Crear exige un rol.' });

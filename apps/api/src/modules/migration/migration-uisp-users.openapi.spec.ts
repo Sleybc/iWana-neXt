@@ -71,4 +71,17 @@ describe('OpenAPI de usuarios de UISP (correcciones de revisión)', () => {
     );
     expect(MIGRATION_SOURCE_ERROR_DESCRIPTIONS.notConfigured).toMatch(/409/u);
   });
+
+  it('documenta targetUserId (solo ENLAZAR) y el motivo USUARIO_NO_VALIDO', () => {
+    const target = prop(MIGRATION_UISP_USERS_RESOLVE_OPENAPI, 'items', '[]', 'targetUserId');
+    expect(target).toMatchObject({ type: 'string', format: 'uuid' });
+    expect(target.description).toMatch(/ENLAZAR/u);
+    expect(prop(MIGRATION_UISP_USERS_RESOLVE_OPENAPI, 'items', '[]').required).toEqual([
+      'id',
+      'action',
+    ]);
+    expect(MIGRATION_UISP_USERS_RESOLVE_ERROR_DESCRIPTIONS.unprocessable).toMatch(
+      /details\.reason = USUARIO_NO_VALIDO/u,
+    );
+  });
 });

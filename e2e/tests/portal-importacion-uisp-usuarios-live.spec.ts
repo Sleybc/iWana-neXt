@@ -95,7 +95,7 @@ type Ticket = {
   createdByUserId: string;
 };
 type Comment = { body: string; authorUserId: string };
-type Payment = { id: string; paidAt: string; createdBy: string };
+type Payment = { id: string; subscriberId: string; paidAt: string; createdBy: string };
 
 const API_BASE_URL = process.env.API_BASE_URL ?? 'http://127.0.0.1:3000';
 const API_PREFIX = '/api/v1';
@@ -485,13 +485,16 @@ async function attribution(subscriberId: string) {
   const comments = asList<Comment>(commentsBody);
   const paymentsBody = (
     await expectBody<unknown>(
-      `/billing/payments?page=1&limit=50&subscriberId=${subscriberId}`,
+      // Sin filtro por cliente: `main` solo acepta page y limit; el tenant es desechable.
+      '/billing/payments?page=1&limit=100',
       'GET',
       200,
       { headers: tenantHeaders() },
     )
   ).body;
-  const payments = asList<Payment>(paymentsBody).sort((a, b) => a.paidAt.localeCompare(b.paidAt));
+  const payments = asList<Payment>(paymentsBody)
+    .filter((payment) => payment.subscriberId === subscriberId)
+    .sort((a, b) => a.paidAt.localeCompare(b.paidAt));
   return {
     assigned: ticket.assignedUserId,
     createdBy: ticket.createdByUserId,

@@ -242,6 +242,165 @@ describe('MigrationUispUsersResolutionService', () => {
       expect(error.getResponse().message).not.toMatch(/destino/i);
     });
 
+    describe('ENLAZAR con un usuario elegido a mano (targetUserId)', () => {
+      const MANUAL_USER = '69100000-0000-4000-8000-0000000000b3';
+
+      beforeEach(() => {
+        directory.existingUserIds.mockImplementation(
+          async (_ctx: unknown, ids: string[]) =>
+            new Set(ids.filter((id) => id === MATCHED_USER || id === MANUAL_USER)),
+        );
+      });
+
+      it('enlaza una fila SIN_DATOS al usuario elegido, purga y no toca Usuarios', async () => {
+        const [row] = await resolve([
+          { id: ROW_SIN_DATOS, action: 'ENLAZAR', targetUserId: MANUAL_USER },
+        ]);
+
+        expect(MigrationUispUserSchema.parse(row)).toMatchObject({
+          status: 'ENLAZADO',
+          targetUserId: MANUAL_USER,
+          source: 'SIN_DATOS',
+        });
+        expect(directory.existingUserIds).toHaveBeenCalledWith(expect.anything(), [MANUAL_USER]);
+        expect(mappings).toEqual([{ externalValue: '44', targetRef: MANUAL_USER, label: null }]);
+        expect(provisioning.createImportedUser).not.toHaveBeenCalled();
+        expect(provisioning.publishCreatedUsers).toHaveBeenCalledWith(tenantId, []);
+        expect(events).toEqual(['BEGIN', 'COMMIT']);
+      });
+
+      it('en una fila de la API prevalece sobre la coincidencia por correo', async () => {
+        const [row] = await resolve([
+          { id: ROW_MATCHED, action: 'ENLAZAR', targetUserId: MANUAL_USER },
+        ]);
+        expect(row).toMatchObject({ status: 'ENLAZADO', targetUserId: MANUAL_USER });
+        expect(mappings).toEqual([{ externalValue: '43', targetRef: MANUAL_USER, label: null }]);
+        expect(table.get(ROW_MATCHED)).toMatchObject({
+          display_name_encrypted: null,
+          email_encrypted: null,
+          email_hash: null,
+        });
+      });
+
+      it('normaliza el uuid elegido a minúsculas antes de validarlo y guardarlo', async () => {
+        const [row] = await resolve([
+          { id: ROW_SIN_DATOS, action: 'ENLAZAR', targetUserId: MANUAL_USER.toUpperCase() },
+        ]);
+        expect(row?.targetUserId).toBe(MANUAL_USER);
+      });
+
+      it('dos filas de UISP pueden enlazar al mismo usuario (una persona, dos cuentas)', async () => {
+        const rows = await resolve([
+          { id: ROW_SIN_DATOS, action: 'ENLAZAR', targetUserId: MANUAL_USER },
+          { id: ROW_ACTIVE, action: 'ENLAZAR', targetUserId: MANUAL_USER },
+        ]);
+        expect(
+          rows
+            .map((row) => [row.uispUserId, row.status, row.targetUserId])
+            .sort((a, b) => Number(a[0]) - Number(b[0])),
+        ).toEqual([
+          [41, 'ENLAZADO', MANUAL_USER],
+          [44, 'ENLAZADO', MANUAL_USER],
+        ]);
+        expect(mappings).toEqual([
+          { externalValue: '44', targetRef: MANUAL_USER, label: null },
+          { externalValue: '41', targetRef: MANUAL_USER, label: null },
+        ]);
+      });
+
+      it.each([
+        ['inexistente', '69100000-0000-4000-8000-0000000000c1'],
+        [
+          'borrado o con rol externo (el puerto no lo devuelve)',
+          '69100000-0000-4000-8000-0000000000c2',
+        ],
+      ])(
+        'un usuario %s responde 422 USUARIO_NO_VALIDO y revierte el lote',
+        async (_name, targetUserId) => {
+          const error = await resolve([
+            { id: ROW_ACTIVE, action: 'DESCARTAR' },
+            { id: ROW_SIN_DATOS, action: 'ENLAZAR', targetUserId },
+          ]).catch((e) => e);
+          expect(error).toBeInstanceOf(UnprocessableEntityException);
+          expect(error.getResponse()).toMatchObject({
+            code: 'MIGRATION_MAPPING_TARGET_INVALID',
+            details: { id: ROW_SIN_DATOS, reason: 'USUARIO_NO_VALIDO' },
+          });
+          expect(error.getResponse().message).not.toMatch(/destino/i);
+          expect(events).toEqual(['BEGIN', 'ROLLBACK']);
+          expect(mappings).toHaveLength(0);
+          expect(audit.logWithin).not.toHaveBeenCalled();
+        },
+      );
+
+      it('la validación la hace el puerto de Usuarios (S-5: sin SUBSCRIBER, PARTNER, INVESTOR)', async () => {
+        directory.existingUserIds.mockResolvedValue(new Set());
+        const error = await resolve([
+          { id: ROW_SIN_DATOS, action: 'ENLAZAR', targetUserId: MANUAL_USER },
+        ]).catch((e) => e);
+        expect(error.getResponse()).toMatchObject({ details: { reason: 'USUARIO_NO_VALIDO' } });
+      });
+
+      it('valida todos los enlaces antes de crear usuarios del mismo lote', async () => {
+        const error = await resolve([
+          { id: ROW_ACTIVE, action: 'CREAR', role: UserRole.SUPPORT },
+          {
+            id: ROW_SIN_DATOS,
+            action: 'ENLAZAR',
+            targetUserId: '69100000-0000-4000-8000-0000000000c1',
+          },
+        ]).catch((e) => e);
+        expect(error).toBeInstanceOf(UnprocessableEntityException);
+        expect(provisioning.createImportedUser).not.toHaveBeenCalled();
+        expect(provisioning.publishCreatedUsers).not.toHaveBeenCalled();
+      });
+
+      it('sin targetUserId una fila SIN_DATOS sigue respondiendo SIN_COINCIDENCIA', async () => {
+        const error = await resolve([{ id: ROW_SIN_DATOS, action: 'ENLAZAR' }]).catch((e) => e);
+        expect(error.getResponse()).toMatchObject({
+          code: 'MIGRATION_MAPPING_TARGET_INVALID',
+          details: { reason: 'SIN_COINCIDENCIA' },
+        });
+      });
+
+      it('la auditoría marca la elección manual, sin PII', async () => {
+        await resolve([
+          { id: ROW_MATCHED, action: 'ENLAZAR', targetUserId: MANUAL_USER },
+          { id: ROW_INACTIVE, action: 'ENLAZAR', targetUserId: MATCHED_USER },
+        ]);
+        const rowEntries = audit.logWithin.mock.calls
+          .map(([entry]) => entry)
+          .filter((entry) => entry.entityType === 'MigrationUispUsers');
+        expect(rowEntries.map((entry) => entry.newValue)).toEqual([
+          expect.objectContaining({
+            accion: 'ENLAZAR',
+            origen: 'MANUAL',
+            targetUserId: MANUAL_USER,
+          }),
+          expect.objectContaining({
+            accion: 'ENLAZAR',
+            origen: 'MANUAL',
+            targetUserId: MATCHED_USER,
+          }),
+        ]);
+        const audited = JSON.stringify(audit.logWithin.mock.calls.map(([entry]) => entry));
+        for (const pii of [EMAIL_MATCHED, EMAIL_INACTIVE, 'Coincide Sintetico', 'Inactivo']) {
+          expect(audited).not.toContain(pii);
+        }
+      });
+
+      it('el enlace por correo se audita con origen CORREO', async () => {
+        await resolve([{ id: ROW_MATCHED, action: 'ENLAZAR' }]);
+        expect(audit.logWithin).toHaveBeenCalledWith(
+          expect.objectContaining({
+            entityType: 'MigrationUispUsers',
+            newValue: expect.objectContaining({ accion: 'ENLAZAR', origen: 'CORREO' }),
+          }),
+          expect.anything(),
+        );
+      });
+    });
+
     it('CREAR con un activo pasa nombre y correo descifrados al puerto de Usuarios', async () => {
       const [row] = await resolve([{ id: ROW_ACTIVE, action: 'CREAR', role: UserRole.TECHNICIAN }]);
 

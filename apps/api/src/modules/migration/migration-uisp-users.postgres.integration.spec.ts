@@ -500,6 +500,10 @@ describeTenant('Usuarios de UISP — resolver e invitar sobre el tenant de prueb
     discard: randomUUID(),
   };
   const matchedUserId = randomUUID();
+  /** Enlace elegido a mano (2026-11-15): filas SIN_DATOS y usuarios no enlazables (S-5). */
+  const manualRows = { first: randomUUID(), second: randomUUID() };
+  const externalUserId = randomUUID();
+  const deletedUserId = randomUUID();
   const createdUserIds: string[] = [];
   /** Enlaces en claro de la primera invitación y del reenvío (solo en memoria). */
   const invitationTokens = { first: '', second: '' };
@@ -566,6 +570,25 @@ describeTenant('Usuarios de UISP — resolver e invitar sobre el tenant de prueb
                  false, false, false, false, 0, true, 'Original', now(), now())`,
       [matchedUserId, EMAILS.matched, hashEmail(EMAILS.matched), '!'.repeat(60), tenantId],
     );
+    for (const [id, role, deleted] of [
+      [externalUserId, 'SUBSCRIBER', false],
+      [deletedUserId, 'SUPPORT', true],
+    ] as const) {
+      const email = `uisp-no-enlazable-${id}@example.test`;
+      await sql(
+        `INSERT INTO users (
+           id, email, email_hmac, password_hash, role, status, tenant_id,
+           mfa_enabled, mfa_required, is_operational_resource,
+           password_reset_required, failed_login_attempts, email_verified, first_name,
+           created_at, updated_at, deleted_at
+         ) VALUES ($1, $2, $3, $4, $5, 'ACTIVE', $6,
+                   false, false, false, false, 0, true, 'Ajeno', now(), now(),
+                   CASE WHEN $7::boolean THEN now() END)`,
+        [id, email, hashEmail(email), '!'.repeat(60), role, tenantId, deleted],
+      );
+    }
+    await insertRow(manualRows.first, uispId(7), null);
+    await insertRow(manualRows.second, uispId(8), null);
     await insertRow(rows.active, uispId(1), {
       name: NAMES.active,
       email: EMAILS.active,
@@ -615,7 +638,7 @@ describeTenant('Usuarios de UISP — resolver e invitar sobre el tenant de prueb
     if (previousHashKey === undefined) delete process.env['PII_HASH_KEY'];
     else process.env['PII_HASH_KEY'] = previousHashKey;
     if (!ds?.isInitialized) return;
-    const numbers = [1, 2, 3, 4, 5, 6].map((offset) => String(uispId(offset)));
+    const numbers = [1, 2, 3, 4, 5, 6, 7, 8].map((offset) => String(uispId(offset)));
     await sql(
       `DELETE FROM migration_mappings
         WHERE tenant_id = $1 AND kind = 'USUARIO' AND external_value = ANY($2::varchar[])`,
@@ -623,10 +646,12 @@ describeTenant('Usuarios de UISP — resolver e invitar sobre el tenant de prueb
     );
     await sql(`DELETE FROM migration_uisp_users WHERE tenant_id = $1 AND id = ANY($2::uuid[])`, [
       tenantId,
-      Object.values(rows),
+      [...Object.values(rows), ...Object.values(manualRows)],
     ]);
     await sql(`DELETE FROM refresh_tokens WHERE user_id = ANY($1::uuid[])`, [createdUserIds]);
-    await sql(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [[...createdUserIds, matchedUserId]]);
+    await sql(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [
+      [...createdUserIds, matchedUserId, externalUserId, deletedUserId],
+    ]);
     await ds.destroy();
   });
 
@@ -771,6 +796,99 @@ describeTenant('Usuarios de UISP — resolver e invitar sobre el tenant de prueb
     expect(stored).toHaveLength(6);
     expect(stored.every((row) => Object.values(row).every((value) => value === null))).toBe(true);
     expect(mailer.sendMail).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['inexistente', () => randomUUID()],
+    ['con rol externo (SUBSCRIBER)', () => externalUserId],
+    ['borrado', () => deletedUserId],
+  ])(
+    'ENLAZAR a mano con un usuario %s responde 422 USUARIO_NO_VALIDO y no cambia nada',
+    async (_name, target) => {
+      const error = await resolution
+        .resolve(
+          { tenantId, schemaName },
+          [{ id: manualRows.first, action: 'ENLAZAR', targetUserId: target() }],
+          actorId,
+        )
+        .catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(UnprocessableEntityException);
+      expect((error as UnprocessableEntityException).getResponse()).toMatchObject({
+        code: 'MIGRATION_MAPPING_TARGET_INVALID',
+        details: { id: manualRows.first, reason: 'USUARIO_NO_VALIDO' },
+      });
+      const [row] = await sql<{ status: string; target_user_id: string | null }>(
+        `SELECT status, target_user_id FROM migration_uisp_users WHERE id = $1`,
+        [manualRows.first],
+      );
+      expect(row).toEqual({ status: 'PENDIENTE', target_user_id: null });
+    },
+  );
+
+  it('ENLAZAR a mano filas SIN_DATOS a un usuario existente: equivalencias y usuario intacto', async () => {
+    const userColumns = `SELECT updated_at, role, status, email, first_name, deleted_at
+                           FROM users WHERE id = $1`;
+    const before = await sql(userColumns, [matchedUserId]);
+    // Dos cuentas de UISP de la misma persona; la fila de la API ya la enlazó por correo.
+    const result = await resolution.resolve(
+      { tenantId, schemaName },
+      [
+        { id: manualRows.first, action: 'ENLAZAR', targetUserId: matchedUserId },
+        { id: manualRows.second, action: 'ENLAZAR', targetUserId: matchedUserId.toUpperCase() },
+      ],
+      actorId,
+    );
+
+    expect(result.map((row) => MigrationUispUserSchema.parse(row))).toEqual([
+      expect.objectContaining({
+        id: manualRows.first,
+        source: 'SIN_DATOS',
+        status: 'ENLAZADO',
+        targetUserId: matchedUserId,
+      }),
+      expect.objectContaining({
+        id: manualRows.second,
+        source: 'SIN_DATOS',
+        status: 'ENLAZADO',
+        targetUserId: matchedUserId,
+      }),
+    ]);
+    const stored = await sql<{ status: string; target_user_id: string }>(
+      `SELECT status, target_user_id::text AS target_user_id FROM migration_uisp_users
+        WHERE id = ANY($1::uuid[])`,
+      [Object.values(manualRows)],
+    );
+    expect(stored).toEqual([
+      { status: 'ENLAZADO', target_user_id: matchedUserId },
+      { status: 'ENLAZADO', target_user_id: matchedUserId },
+    ]);
+
+    const mappings = await sql<{ external_value: string; target_ref: string; action: string }>(
+      `SELECT external_value, target_ref, action FROM migration_mappings
+        WHERE tenant_id = $1 AND kind = 'USUARIO' AND external_value = ANY($2::varchar[])
+        ORDER BY external_value`,
+      [tenantId, [3, 7, 8].map((offset) => String(uispId(offset)))],
+    );
+    expect(mappings).toEqual(
+      [3, 7, 8].map((offset) => ({
+        external_value: String(uispId(offset)),
+        target_ref: matchedUserId,
+        action: 'EQUIVALE',
+      })),
+    );
+
+    expect(await sql(userColumns, [matchedUserId])).toEqual(before);
+
+    const audits = await sql<{ new_value: Record<string, unknown> }>(
+      `SELECT new_value FROM audit_logs
+        WHERE entity_type = 'MigrationUispUsers' AND entity_id = ANY($1::varchar[])
+          AND user_id = $2`,
+      [Object.values(manualRows), actorId],
+    );
+    expect(audits).toHaveLength(2);
+    for (const { new_value: value } of audits) {
+      expect(value).toMatchObject({ accion: 'ENLAZAR', origen: 'MANUAL', status: 'ENLAZADO' });
+    }
   });
 
   it('el CHECK de la 211 impide reponer PII en una fila resuelta', async () => {

@@ -163,6 +163,12 @@ export const MIGRATION_UISP_USERS_RESOLVE_OPENAPI: SchemaObject = {
             description:
               'Solo con CREAR; se fuerza a false si el usuario está inactivo o sin datos.',
           },
+          targetUserId: {
+            type: 'string',
+            format: 'uuid',
+            description:
+              'Solo con ENLAZAR (otra acción responde 400): usuario de iWana elegido a mano, válido en filas PENDIENTE de cualquier fuente (API o SIN_DATOS). Debe existir, no estar borrado y tener un rol importable; si no, 422 MIGRATION_MAPPING_TARGET_INVALID con details.reason = USUARIO_NO_VALIDO. Sin él, ENLAZAR usa la coincidencia por correo. Varias filas pueden enlazar al mismo usuario; el usuario no cambia.',
+          },
         },
       },
     },
@@ -206,7 +212,7 @@ export const MIGRATION_UISP_USERS_RESOLVE_ERROR_DESCRIPTIONS = {
   resolved:
     'MIGRATION_UISP_USER_ALREADY_RESOLVED: alguna fila ya está ENLAZADO, CREADO o DESCARTADO (details.ids); no se aplicó nada.',
   unprocessable:
-    'MIGRATION_USER_ROLE_NOT_ALLOWED (rol no importable) o MIGRATION_MAPPING_TARGET_INVALID con details.reason = SIN_COINCIDENCIA (ENLAZAR sin usuario de iWana con el mismo correo, o ese usuario ya no existe; details.id = fila). No se aplicó nada.',
+    'MIGRATION_USER_ROLE_NOT_ALLOWED (rol no importable) o MIGRATION_MAPPING_TARGET_INVALID con details.reason = SIN_COINCIDENCIA (ENLAZAR sin usuario de iWana con el mismo correo, o ese usuario ya no existe; details.id = fila) o con details.reason = USUARIO_NO_VALIDO (ENLAZAR con targetUserId de un usuario inexistente, borrado o con rol no importable; details.id = fila). No se aplicó nada.',
 } as const;
 
 export const MIGRATION_SOURCE_ERROR_DESCRIPTIONS = {

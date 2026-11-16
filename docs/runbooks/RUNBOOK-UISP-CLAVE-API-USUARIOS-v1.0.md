@@ -4,9 +4,9 @@
 
 ## 1. Crear la clave de aplicación en UISP
 
-1. En UISP, entra como administrador al **CRM** → **Sistema** → **Seguridad** → **Claves de aplicación** (en inglés: *System → Security → App keys*).
-2. Crea una clave nueva con permiso de **solo lectura** (*Read*). Nunca de escritura.
-3. Ponle un nombre que la identifique (por ejemplo «iWana — lectura de usuarios») y copia la clave. UISP solo la muestra una vez.
+1. En UISP, entra como administrador al **CRM** → engranaje **Sistema** (abajo a la izquierda) → **Seguridad** → pestaña **Claves app** (ruta directa: `https://<uisp>/crm/system/security/app-keys`).
+2. Pulsa **+ Clave app**. Nombre: por ejemplo «iWana — lectura de usuarios». Tipo: **leer** (nunca «escribir»). Guardar.
+3. Copia la clave que aparece en la lista; es la que se pega en iWana.
 
 ## 2. Obtener la huella del certificado (si UISP usa certificado autofirmado)
 

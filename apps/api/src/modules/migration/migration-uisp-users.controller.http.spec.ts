@@ -44,6 +44,7 @@ const tenant = { id: tenantId, schemaName, slug: 'migration-uisp', status: Tenan
 const APP_KEY = 'clave-sintetica-http-77aa';
 const ROW_ID = '68000000-0000-4000-8000-0000000001a1';
 const ROW_ID_2 = '68000000-0000-4000-8000-0000000001a2';
+const ROW_ID_3 = '68000000-0000-4000-8000-0000000001a3';
 
 /**
  * Seguridad HTTP de la conexión con UISP y de la lista de usuarios (ADR-110 D15): solo ADMIN
@@ -294,6 +295,7 @@ describe('Usuarios de UISP — seguridad HTTP', () => {
       const items = [
         { id: ROW_ID, action: 'CREAR', role: UserRole.TECHNICIAN, isOperationalResource: false },
         { id: ROW_ID_2, action: 'ENLAZAR' },
+        { id: ROW_ID_3, action: 'ENLAZAR', targetUserId: adminId },
       ];
       const response = await request(app.getHttpServer())
         .post('/migration/uisp-users/resolve')
@@ -308,6 +310,11 @@ describe('Usuarios de UISP — seguridad HTTP', () => {
       ['sin ítems', { items: [] }],
       ['CREAR sin rol', { items: [{ id: ROW_ID, action: 'CREAR' }] }],
       ['rol en ENLAZAR', { items: [{ id: ROW_ID, action: 'ENLAZAR', role: UserRole.NOC }] }],
+      [
+        'targetUserId fuera de ENLAZAR',
+        { items: [{ id: ROW_ID, action: 'DESCARTAR', targetUserId: adminId }] },
+      ],
+      ['targetUserId no uuid', { items: [{ id: ROW_ID, action: 'ENLAZAR', targetUserId: 'x' }] }],
       [
         'filas repetidas',
         {

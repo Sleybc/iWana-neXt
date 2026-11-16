@@ -47,6 +47,7 @@ import {
   uispUserDisplayName,
   uispUsersActionErrorMessage,
 } from './migration-uisp-users-labels';
+import { MigrationUispUserLinkDialog } from './MigrationUispUserLinkDialog';
 
 type Filter = MigrationUispUserStatus | 'TODOS';
 type Dialogs = 'create' | 'discard' | null;
@@ -84,6 +85,8 @@ export function MigrationUispUsersReview({
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** Fila pendiente abierta en «Enlazar con…». */
+  const [linkRow, setLinkRow] = useState<MigrationUispUser | null>(null);
 
   const counts = useMemo(() => {
     const result = { TODOS: users.length } as Record<Filter, number>;
@@ -210,6 +213,19 @@ export function MigrationUispUsersReview({
     });
   }
 
+  function linkedManually(row: MigrationUispUser, targetLabel: string) {
+    setLinkRow(null);
+    setError(null);
+    setNotice(`El usuario de UISP n.º ${row.uispUserId} quedó enlazado con ${targetLabel}.`);
+    setSelected((current) => {
+      if (!current.has(row.id)) return current;
+      const next = new Set(current);
+      next.delete(row.id);
+      return next;
+    });
+    void onChanged();
+  }
+
   function invite() {
     if (invitableRows.length === 0 || tooMany(invitableRows.length)) return;
     void run('invite', async () => {
@@ -249,6 +265,10 @@ export function MigrationUispUsersReview({
         title="Nadie entra a iWana sin tu invitación"
         description="Los usuarios activos en UISP se crean sin acceso hasta que les envíes la invitación. Los inactivos se crean sin acceso, no aparecen en Programación y no se pueden invitar; si vuelven a trabajar, reactívalos desde Usuarios."
       />
+      <p className="text-sm text-gray-700 dark:text-gray-200">
+        Si la persona ya tiene usuario en iWana, usa «Enlazar con…» en vez de Crear para no
+        duplicarla.
+      </p>
 
       <div role="group" aria-label="Filtrar por estado" className={portalFilterChipGroupClassName}>
         {filters.map((value) => (
@@ -338,8 +358,8 @@ export function MigrationUispUsersReview({
         </Button>
         {pendingRows.length > 0 && !role ? (
           <p className="w-full text-sm text-gray-600 dark:text-gray-300">
-            Para crear, elige primero el rol. Enlazar solo aplica a quien tiene coincidencia en
-            iWana.
+            Para crear, elige primero el rol. Enlazar en lote solo aplica a quien tiene el mismo
+            correo en iWana.
           </p>
         ) : null}
       </div>
@@ -360,7 +380,7 @@ export function MigrationUispUsersReview({
         />
       ) : (
         <div className={portalDataTableShellClassName}>
-          <table className="w-full min-w-[56rem]" aria-busy={busy !== null}>
+          <table className="w-full min-w-[64rem]" aria-busy={busy !== null}>
             <caption className="sr-only">Usuarios de UISP para revisar</caption>
             <thead>
               <tr className={portalDataTableHeadRowClassName}>
@@ -382,6 +402,9 @@ export function MigrationUispUsersReview({
                 <PortalDataTableHead className="text-right">Lotes</PortalDataTableHead>
                 <PortalDataTableHead>Rol</PortalDataTableHead>
                 <PortalDataTableHead>Estado</PortalDataTableHead>
+                <PortalDataTableHead>
+                  <span className="sr-only">Acciones</span>
+                </PortalDataTableHead>
               </tr>
             </thead>
             <tbody className={portalDataTableBodyClassName}>
@@ -429,6 +452,20 @@ export function MigrationUispUsersReview({
                     </td>
                     <td className={portalDataTableCellClassName}>
                       <Badge variant={status.variant}>{status.label}</Badge>
+                    </td>
+                    <td className={`${portalDataTableCellClassName} text-right`}>
+                      {user.status === 'PENDIENTE' ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="min-h-11 whitespace-nowrap"
+                          disabled={busy !== null}
+                          onClick={() => setLinkRow(user)}
+                        >
+                          Enlazar con…
+                          <span className="sr-only"> (usuario de UISP n.º {user.uispUserId})</span>
+                        </Button>
+                      ) : null}
                     </td>
                   </tr>
                 );
@@ -518,6 +555,12 @@ export function MigrationUispUsersReview({
           </div>
         </DialogContent>
       </Dialog>
+
+      <MigrationUispUserLinkDialog
+        row={linkRow}
+        onClose={() => setLinkRow(null)}
+        onLinked={linkedManually}
+      />
 
       <Dialog open={dialog === 'discard'} onOpenChange={(open) => !open && setDialog(null)}>
         <DialogContent className="max-w-lg">
