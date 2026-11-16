@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {
   AccessPermissionKey,
   TicketFieldDecision,
@@ -9,20 +10,27 @@ import {
   TicketStatus,
   TicketType,
 } from '@iwana/shared';
-import type { AssuranceTicket, SubscriberRecord } from '@/lib/api-client';
+import type { AssuranceTicket, AssuranceTicketComment, SubscriberRecord } from '@/lib/api-client';
 import { assuranceApi, usersApi, wfmApi } from '@/lib/api-client';
 import { SubscriberSupportTab } from './SubscriberSupportTab';
 
 const mockPermissions = { current: new Set<AccessPermissionKey>() };
 
 jest.mock('@/components/access-control/permissions-context', () => ({
-  usePermissions: () => ({
-    hasPermission: (permission: AccessPermissionKey) => mockPermissions.current.has(permission),
-  }),
+  usePermissions: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () =>
+      (ctx ??= {
+        hasPermission: (permission: AccessPermissionKey) => mockPermissions.current.has(permission),
+      });
+  })(),
 }));
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { push: jest.fn() });
+  })(),
 }));
 
 jest.mock('@/lib/api-client', () => ({
@@ -33,7 +41,7 @@ jest.mock('@/lib/api-client', () => ({
       listComments: jest.fn(),
       listTimeline: jest.fn(),
       create: jest.fn(),
-      addComment: jest.fn(),
+      submitComment: jest.fn(),
       transitionStatus: jest.fn(),
       assign: jest.fn(),
       requestFieldService: jest.fn(),
@@ -176,5 +184,93 @@ describe('SubscriberSupportTab', () => {
     expect(assuranceApi.tickets.list).not.toHaveBeenCalled();
     expect(wfmApi.visitRequests.list).not.toHaveBeenCalled();
     expect(wfmApi.events.list).not.toHaveBeenCalled();
+  });
+
+  describe('comentario desde la pestaña (MOD09 adjuntos)', () => {
+    const ticket = { ...createdTicket(), id: 'ticket-1', ticketNumber: 'TK-1', subject: 'Caso 1' };
+
+    function comment(id: string, body: string): AssuranceTicketComment {
+      return {
+        id,
+        ticketId: ticket.id,
+        authorUserId: 'user-a',
+        body,
+        isInternal: false,
+        createdAt: '2026-11-16T10:00:00.000Z',
+        attachments: [],
+      } as unknown as AssuranceTicketComment;
+    }
+
+    async function openTicketAndComment(text: string) {
+      mockPermissions.current = new Set([
+        AccessPermissionKey.ASSURANCE_TICKETS_READ,
+        AccessPermissionKey.ASSURANCE_TICKETS_MANAGE,
+      ]);
+      (assuranceApi.tickets.list as jest.Mock).mockResolvedValue({ data: [ticket] });
+      (assuranceApi.tickets.get as jest.Mock).mockResolvedValue(ticket);
+      (assuranceApi.tickets.listComments as jest.Mock).mockResolvedValue([]);
+      (assuranceApi.tickets.listTimeline as jest.Mock).mockResolvedValue([]);
+      const user = userEvent.setup();
+      render(<SubscriberSupportTab subscriber={subscriber} />);
+
+      await user.click(await screen.findByRole('button', { name: /^Abrir ticket TK-1/u }));
+      const box = await screen.findByLabelText('Nuevo comentario');
+      await waitFor(() => expect(assuranceApi.tickets.listComments).toHaveBeenCalledTimes(1));
+      await user.type(box, text);
+      await user.click(screen.getByRole('button', { name: 'Agregar comentario' }));
+    }
+
+    it('guarda el comentario y recarga el listado y el ticket abierto', async () => {
+      (assuranceApi.tickets.submitComment as jest.Mock).mockResolvedValue(
+        comment('c1', 'Se cambió la ONU'),
+      );
+      await openTicketAndComment('Se cambió la ONU');
+      (assuranceApi.tickets.listComments as jest.Mock).mockResolvedValue([
+        comment('c1', 'Se cambió la ONU'),
+      ]);
+
+      await waitFor(() =>
+        expect(assuranceApi.tickets.submitComment).toHaveBeenCalledWith(
+          'ticket-1',
+          expect.objectContaining({ body: 'Se cambió la ONU' }),
+        ),
+      );
+      expect(await screen.findByText('Cambios guardados.')).toBeInTheDocument();
+      // Listado (clip y «Adjuntos (N)») y ticket abierto se releen; sin sondeo.
+      await waitFor(() => expect(assuranceApi.tickets.list).toHaveBeenCalledTimes(2));
+      expect(assuranceApi.tickets.get).toHaveBeenCalledTimes(2);
+      expect(assuranceApi.tickets.listComments).toHaveBeenCalledTimes(2);
+      expect(assuranceApi.tickets.listTimeline).toHaveBeenCalledTimes(2);
+    });
+
+    it('muestra el motivo de la API cuando rechaza un archivo y no recarga', async () => {
+      (assuranceApi.tickets.submitComment as jest.Mock).mockRejectedValue(
+        Object.assign(new Error('El archivo acta.exe no es un tipo permitido.'), {
+          status: 400,
+          code: 'TICKET_ATTACHMENT_REJECTED',
+        }),
+      );
+      await openTicketAndComment('Con archivo');
+
+      expect(
+        await screen.findByText('El archivo acta.exe no es un tipo permitido.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Cambios guardados.')).not.toBeInTheDocument();
+      expect(assuranceApi.tickets.list).toHaveBeenCalledTimes(1);
+      expect(assuranceApi.tickets.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('muestra el mensaje genérico ante otro error', async () => {
+      (assuranceApi.tickets.submitComment as jest.Mock).mockRejectedValue(
+        Object.assign(new Error('Internal'), { status: 500, code: 'INTERNAL_ERROR' }),
+      );
+      await openTicketAndComment('Texto');
+
+      expect(
+        await screen.findByText('No fue posible guardar los cambios. Intenta de nuevo.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Internal')).not.toBeInTheDocument();
+      expect(assuranceApi.tickets.list).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -8,7 +8,12 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Readable } from 'node:stream';
-import type { PutObjectOptions, StoragePort, StoredObjectSummary } from '../ports/storage.port';
+import type {
+  PutObjectOptions,
+  SignedUrlResponseOptions,
+  StoragePort,
+  StoredObjectSummary,
+} from '../ports/storage.port';
 
 /**
  * Configuración para el adaptador MinIO / S3.
@@ -154,10 +159,18 @@ export class MinioStorageAdapter implements StoragePort {
     return `${this.publicBaseUrl}/${objectKey}`;
   }
 
-  async getSignedUrl(objectKey: string, expiresInSeconds: number): Promise<string> {
+  async getSignedUrl(
+    objectKey: string,
+    expiresInSeconds: number,
+    options?: SignedUrlResponseOptions,
+  ): Promise<string> {
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: objectKey,
+      ...(options?.responseContentType ? { ResponseContentType: options.responseContentType } : {}),
+      ...(options?.responseContentDisposition
+        ? { ResponseContentDisposition: options.responseContentDisposition }
+        : {}),
     });
 
     return getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });

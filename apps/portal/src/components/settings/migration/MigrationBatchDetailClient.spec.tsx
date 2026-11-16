@@ -183,6 +183,126 @@ describe('MigrationBatchDetailClient', () => {
     expect(alert.textContent).not.toMatch(/PAGO_POSTERIOR/);
   });
 
+  it('Revertir bloqueado por adjuntos añadidos a mano muestra el mensaje de la API', async () => {
+    getSpy.mockResolvedValue(report({ status: 'PROMOVIDO' }));
+    const apiMessage =
+      'Hay registros creados después que dependen de este lote. Hay 2 adjuntos añadidos a mano en tickets importados: quítalos antes de revertir el lote.';
+    jest.spyOn(migrationApi, 'revert').mockRejectedValue(
+      new ApiError(409, 'MIGRATION_REVERT_BLOCKED', apiMessage, {
+        blockers: [
+          { motivo: 'TICKET_POSTERIOR', cantidad: 2 },
+          { motivo: 'PAGO_POSTERIOR', cantidad: 1 },
+        ],
+      }),
+    );
+    const user = userEvent.setup();
+    render(<MigrationBatchDetailClient batchId={BATCH_ID} />);
+    await user.click(await screen.findByRole('button', { name: 'Revertir' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Revertir el lote' });
+    await user.click(within(dialog).getByRole('button', { name: 'Revertir' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('No se puede revertir');
+    expect(within(alert).getByText(apiMessage)).toBeInTheDocument();
+    const blockers = within(alert).getByRole('list', { name: 'Qué bloquea la reversión' });
+    expect(blockers).toHaveTextContent('Tickets o adjuntos añadidos después de la importación: 2');
+    expect(blockers).toHaveTextContent('Pagos registrados después de la importación: 1');
+    expect(alert.textContent).not.toMatch(/TICKET_POSTERIOR/);
+  });
+
+  it('Revertir bloqueado sin tickets no muestra el mensaje de la API', async () => {
+    getSpy.mockResolvedValue(report({ status: 'PROMOVIDO' }));
+    jest.spyOn(migrationApi, 'revert').mockRejectedValue(
+      new ApiError(409, 'MIGRATION_REVERT_BLOCKED', 'Mensaje de la API', {
+        blockers: [{ motivo: 'PAGO_POSTERIOR', cantidad: 1 }],
+      }),
+    );
+    const user = userEvent.setup();
+    render(<MigrationBatchDetailClient batchId={BATCH_ID} />);
+    await user.click(await screen.findByRole('button', { name: 'Revertir' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Revertir el lote' });
+    await user.click(within(dialog).getByRole('button', { name: 'Revertir' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).not.toHaveTextContent('Mensaje de la API');
+  });
+
+  it('Revertir con éxito informa los adjuntos de tickets retirados', async () => {
+    getSpy.mockResolvedValue(report({ status: 'PROMOVIDO' }));
+    jest.spyOn(migrationApi, 'revert').mockResolvedValue({
+      id: BATCH_ID,
+      status: 'REVERTIDO',
+      retirados: { TICKET: 3 },
+      etiquetasRetiradas: 0,
+      adjuntosTicketsRetirados: 4,
+    });
+    const user = userEvent.setup();
+    render(<MigrationBatchDetailClient batchId={BATCH_ID} />);
+    await user.click(await screen.findByRole('button', { name: 'Revertir' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Revertir el lote' });
+    await user.click(within(dialog).getByRole('button', { name: 'Revertir' }));
+    expect(
+      await screen.findByText(
+        'Lote revertido. Lo que trajo ya no está en iWana. Adjuntos de tickets retirados: 4.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('el informe de promoción muestra los adjuntos de tickets y los no importados por motivo', async () => {
+    getSpy.mockResolvedValue(
+      report({
+        status: 'PROMOVIDO',
+        promotion: {
+          procesamiento: 'COMPLETADO',
+          promovidos: { TICKET: 2 },
+          existentes: {},
+          rechazados: {},
+          etiquetasAsignadas: 0,
+          periodosSuspension: 0,
+          aplicaciones: 0,
+          adjuntosTickets: {
+            importados: 5,
+            existentes: 1,
+            noImportados: { ARCHIVO_AUSENTE: 2, TAMANO_EXCEDIDO: 1, TIPO_NO_PERMITIDO: 0 },
+          },
+          iniciadoEn: '2026-11-12T10:02:00.000Z',
+          terminadoEn: '2026-11-12T10:03:00.000Z',
+        },
+      }),
+    );
+    render(<MigrationBatchDetailClient batchId={BATCH_ID} />);
+    expect(
+      await screen.findByText('Adjuntos de tickets importados: 5 · ya existentes: 1'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Adjuntos de tickets no importados: 3')).toBeInTheDocument();
+    const list = screen.getByRole('list', { name: 'Adjuntos de tickets no importados' });
+    expect(list).toHaveTextContent('El archivo no venía en el ZIP: 2');
+    expect(list).toHaveTextContent('Supera el tamaño máximo permitido: 1');
+    expect(list).not.toHaveTextContent('Tipo de archivo no permitido');
+    expect(document.body.textContent).not.toMatch(/ARCHIVO_AUSENTE|TAMANO_EXCEDIDO/);
+  });
+
+  it('un lote promovido sin adjuntos no muestra la sección de adjuntos', async () => {
+    getSpy.mockResolvedValue(
+      report({
+        status: 'PROMOVIDO',
+        promotion: {
+          procesamiento: 'COMPLETADO',
+          promovidos: { SUSCRIPTOR: 3 },
+          existentes: {},
+          rechazados: {},
+          etiquetasAsignadas: 0,
+          periodosSuspension: 0,
+          aplicaciones: 0,
+          adjuntosTickets: { importados: 0, existentes: 0, noImportados: {} },
+          iniciadoEn: null,
+          terminadoEn: null,
+        },
+      }),
+    );
+    render(<MigrationBatchDetailClient batchId={BATCH_ID} />);
+    await screen.findByRole('table', { name: 'Registros por entidad' });
+    expect(screen.queryByText(/Adjuntos de tickets/)).not.toBeInTheDocument();
+  });
+
   it('Conciliar muestra el informe de diferencias por suscriptor', async () => {
     getSpy.mockResolvedValue(report({ status: 'PROMOVIDO' }));
     const reconciled = report({

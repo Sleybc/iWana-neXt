@@ -22,7 +22,7 @@ import {
 import { AccessPermissionKey, UserRole, TicketFieldDecision } from '@iwana/shared';
 import type { ListMeta } from '@iwana/shared';
 import type {
-  AddAssuranceCommentDto,
+  AssuranceCommentSubmission,
   AssuranceDashboardSummary,
   AssuranceSlaPolicy,
   AssuranceTicket,
@@ -756,17 +756,23 @@ function AssuranceClientInner() {
           setActionError(null);
           setActionFeedback(null);
         }}
-        onAddComment={async (payload: AddAssuranceCommentDto) => {
-          if (!selectedTicket) return;
+        onAddComment={async (payload: AssuranceCommentSubmission) => {
+          if (!selectedTicket) return false;
           setIsCommentSubmitting(true);
           try {
-            await assuranceApi.tickets.addComment(selectedTicket.id, payload);
-            await reloadAfterAction(selectedTicket.id, 'Comentario registrado.');
+            await assuranceApi.tickets.submitComment(selectedTicket.id, payload);
           } catch (commentError) {
             setActionError(mapAssuranceError(commentError));
+            return false;
           } finally {
             setIsCommentSubmitting(false);
           }
+          try {
+            await reloadAfterAction(selectedTicket.id, 'Comentario registrado.');
+          } catch (reloadError) {
+            setActionError(mapAssuranceError(reloadError));
+          }
+          return true;
         }}
         onTransitionStatus={async (payload: TransitionAssuranceTicketDto) => {
           if (!selectedTicket) return;

@@ -1,10 +1,11 @@
 'use client';
 
+import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AccessPermissionKey, TicketFieldDecision } from '@iwana/shared';
 import type {
-  AddAssuranceCommentDto,
+  AssuranceCommentSubmission,
   AssuranceSlaPolicy,
   AssuranceTicket,
   AssuranceTicketComment,
@@ -24,6 +25,7 @@ import { SubscriberVisitsSection } from './SubscriberVisitsSection';
 import { AssuranceCreateTicketForm } from '@/components/assurance/AssuranceCreateTicketForm';
 import type { AssuranceCreateTicketSubmitPayload } from '@/components/assurance/AssuranceCreateTicketForm';
 import { AssuranceTicketDrawer } from '@/components/assurance/AssuranceTicketDrawer';
+import { getTicketCommentAttachmentError } from '@/components/assurance/ticket-attachments';
 import { createAssuranceVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
 import { PortalAlert } from '@/components/shared/portal-ui';
 import {
@@ -189,6 +191,21 @@ export function SubscriberSupportTab({ subscriber }: SubscriberSupportTabProps) 
     [canManageTickets, canReadTickets, subscriber.privacyRestricted],
   );
 
+  /** Relee el ticket abierto tras un comentario, como la mesa de ayuda; conserva lo que falle. */
+  const reloadOpenTicket = useCallback(
+    async (ticketId: string): Promise<AssuranceTicket | null> => {
+      const [ticketResult, commentsResult, timelineResult] = await Promise.allSettled([
+        assuranceApi.tickets.get(ticketId),
+        assuranceApi.tickets.listComments(ticketId),
+        assuranceApi.tickets.listTimeline(ticketId),
+      ]);
+      if (commentsResult.status === 'fulfilled') setComments(commentsResult.value);
+      if (timelineResult.status === 'fulfilled') setTimeline(timelineResult.value);
+      return ticketResult.status === 'fulfilled' ? ticketResult.value : null;
+    },
+    [],
+  );
+
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false);
     setDrawerTicket(null);
@@ -199,8 +216,11 @@ export function SubscriberSupportTab({ subscriber }: SubscriberSupportTabProps) 
   }, []);
 
   const runDrawerAction = useCallback(
-    async (action: Exclude<DrawerAction, null>, task: () => Promise<AssuranceTicket | unknown>) => {
-      if (!canManageTickets || !drawerTicket) return;
+    async (
+      action: Exclude<DrawerAction, null>,
+      task: () => Promise<AssuranceTicket | unknown>,
+    ): Promise<boolean> => {
+      if (!canManageTickets || !drawerTicket) return false;
       setDrawerAction(action);
       setDrawerActionError(null);
       setDrawerFeedback(null);
@@ -211,8 +231,14 @@ export function SubscriberSupportTab({ subscriber }: SubscriberSupportTabProps) 
         }
         setDrawerFeedback('Cambios guardados.');
         refreshTickets();
-      } catch {
-        setDrawerActionError('No fue posible guardar los cambios. Intenta de nuevo.');
+        return true;
+      } catch (cause) {
+        // Un archivo rechazado trae su nombre y el motivo: se muestra tal cual (MOD09 adjuntos).
+        setDrawerActionError(
+          getTicketCommentAttachmentError(cause) ??
+            'No fue posible guardar los cambios. Intenta de nuevo.',
+        );
+        return false;
       } finally {
         setDrawerAction(null);
       }
@@ -235,29 +261,33 @@ export function SubscriberSupportTab({ subscriber }: SubscriberSupportTabProps) 
     <div className="space-y-4">
       {createFeedback ? <PortalAlert variant="success" title={createFeedback} /> : null}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-3">
-          <div className="flex justify-end">
-            {canManageTickets ? (
+      {/* «Crear ticket» va en la cabecera del panel: fuera de él desalineaba las dos columnas. */}
+      {/* Los tickets usan dos tercios: son la lista larga; Visitas suele tener pocos eventos. */}
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <SubscriberTicketsSection
+          subscriber={subscriber}
+          canRead={canReadTickets}
+          users={assignees}
+          refreshKey={refreshTicketsKey}
+          onOpenTicket={openTicket}
+          actions={
+            canManageTickets ? (
               <Button
                 type="button"
+                variant="secondary"
+                className="min-h-11 gap-1.5"
                 onClick={() => {
                   setCreateError(null);
                   setCreateFeedback('');
                   setCreateOpen(true);
                 }}
               >
+                <Plus className="h-4 w-4" aria-hidden />
                 Crear ticket
               </Button>
-            ) : null}
-          </div>
-          <SubscriberTicketsSection
-            subscriber={subscriber}
-            canRead={canReadTickets}
-            refreshKey={refreshTicketsKey}
-            onOpenTicket={openTicket}
-          />
-        </div>
+            ) : undefined
+          }
+        />
         <SubscriberVisitsSection subscriber={subscriber} canRead={canReadVisits} />
       </div>
 
@@ -305,11 +335,13 @@ export function SubscriberSupportTab({ subscriber }: SubscriberSupportTabProps) 
         canManage={canManageTickets}
         canOperate={canManageTickets}
         onClose={closeDrawer}
-        onAddComment={(payload: AddAssuranceCommentDto) =>
+        onAddComment={(payload: AssuranceCommentSubmission) =>
           runDrawerAction('comment', async () => {
-            const added = await assuranceApi.tickets.addComment(drawerTicket!.id, payload);
+            const ticketId = drawerTicket!.id;
+            const added = await assuranceApi.tickets.submitComment(ticketId, payload);
             setComments((current) => [...current, added]);
-            return added;
+            // runDrawerAction recarga el listado (clip y «Adjuntos (N)»); aquí, el ticket abierto.
+            return (await reloadOpenTicket(ticketId)) ?? added;
           })
         }
         onTransitionStatus={(payload: TransitionAssuranceTicketDto) =>

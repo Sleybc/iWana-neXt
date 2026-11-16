@@ -16,7 +16,7 @@ import {
 } from '@iwana/ui';
 import { SlaBreachStatus, TicketStatus } from '@iwana/shared';
 import type {
-  AddAssuranceCommentDto,
+  AssuranceCommentSubmission,
   AssuranceTicket,
   AssuranceTicketComment,
   AssuranceTimelineEvent,
@@ -50,6 +50,9 @@ import {
   getAssuranceUserDisplayName,
 } from './assurance-labels';
 import { AssuranceKeyValueItem, assuranceTextareaClassName } from './assurance-ui';
+import { TicketAttachmentList } from './TicketAttachmentList';
+import { TicketAttachmentPicker } from './TicketAttachmentPicker';
+import { formatTicketAttachmentCount } from './ticket-attachments';
 
 interface AssuranceTicketDrawerProps {
   open: boolean;
@@ -70,11 +73,12 @@ interface AssuranceTicketDrawerProps {
   canOperate: boolean;
   onCreateLinkedTask?: () => void;
   onClose: () => void;
-  onAddComment: (payload: AddAssuranceCommentDto) => Promise<void>;
-  onTransitionStatus: (payload: TransitionAssuranceTicketDto) => Promise<void>;
-  onAssign: (payload: AssignAssuranceTicketDto) => Promise<void>;
-  onRequestFieldService: (payload: RequestAssuranceFieldServiceDto) => Promise<void>;
-  onLinkWorkOrder: (payload: LinkAssuranceWorkOrderDto) => Promise<void>;
+  /** Devuelve `false` si no se guardó: el formulario conserva el texto y los archivos. */
+  onAddComment: (payload: AssuranceCommentSubmission) => Promise<boolean | void>;
+  onTransitionStatus: (payload: TransitionAssuranceTicketDto) => Promise<unknown>;
+  onAssign: (payload: AssignAssuranceTicketDto) => Promise<unknown>;
+  onRequestFieldService: (payload: RequestAssuranceFieldServiceDto) => Promise<unknown>;
+  onLinkWorkOrder: (payload: LinkAssuranceWorkOrderDto) => Promise<unknown>;
 }
 
 function isTerminalStatus(status: string | null | undefined): boolean {
@@ -112,6 +116,7 @@ export function AssuranceTicketDrawer({
 }: AssuranceTicketDrawerProps) {
   const [commentBody, setCommentBody] = useState('');
   const [commentIsInternal, setCommentIsInternal] = useState(false);
+  const [commentFiles, setCommentFiles] = useState<File[]>([]);
   const [nextStatus, setNextStatus] = useState('');
   const [statusNotes, setStatusNotes] = useState('');
   const [assignedUserId, setAssignedUserId] = useState('');
@@ -121,6 +126,12 @@ export function AssuranceTicketDrawer({
   const [workOrderNotes, setWorkOrderNotes] = useState('');
 
   const usersById = useMemo(() => new Map(assignees.map((user) => [user.id, user])), [assignees]);
+  // «Adjuntos (N)»: los de los comentarios que esta persona puede ver (la API ya filtra los
+  // internos), en orden de creación. Sale de la misma respuesta de comentarios: sin otra carga.
+  const ticketAttachments = useMemo(
+    () => comments.flatMap((comment) => comment.attachments ?? []),
+    [comments],
+  );
 
   useEffect(() => {
     if (!open) {
@@ -141,6 +152,7 @@ export function AssuranceTicketDrawer({
     setWorkOrderId(ticket.workOrderId ?? '');
     setCommentBody('');
     setCommentIsInternal(false);
+    setCommentFiles([]);
     setNextStatus('');
     setStatusNotes('');
     setFieldServiceNotes('');
@@ -239,19 +251,29 @@ export function AssuranceTicketDrawer({
                   <Badge variant={getAssuranceTicketPriorityVariant(ticket.priority)}>
                     {getAssuranceTicketPriorityLabel(ticket.priority)}
                   </Badge>
-                  <Badge variant={getAssuranceSlaStatusVariant(ticket.slaBreachStatus)}>
-                    {getAssuranceSlaStatusLabel(ticket.slaBreachStatus)}
-                  </Badge>
+                  {/* Sin política de SLA (p. ej. importados) «En tiempo» no significa nada. */}
+                  {ticket.slaPolicyId ? (
+                    <Badge variant={getAssuranceSlaStatusVariant(ticket.slaBreachStatus)}>
+                      {getAssuranceSlaStatusLabel(ticket.slaBreachStatus)}
+                    </Badge>
+                  ) : null}
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   <AssuranceKeyValueItem
+                    label="Abierto"
+                    value={formatAssuranceDateTime(ticket.createdAt)}
+                  />
+                  {/* Los importados de UISP no traen fecha real de cierre: coincide con la apertura. */}
+                  {ticket.closedAt && ticket.closedAt !== ticket.createdAt ? (
+                    <AssuranceKeyValueItem
+                      label="Cerrado"
+                      value={formatAssuranceDateTime(ticket.closedAt)}
+                    />
+                  ) : null}
+                  <AssuranceKeyValueItem
                     label="Solicitante"
                     value={getAssuranceRequesterTypeLabel(ticket.requesterType)}
-                  />
-                  <AssuranceKeyValueItem
-                    label="Ref. solicitante"
-                    value={formatAssuranceReference(ticket.requesterRefId)}
                   />
                   <AssuranceKeyValueItem
                     label="Objeto afectado"
@@ -260,10 +282,6 @@ export function AssuranceTicketDrawer({
                         ? getAssuranceSubjectTypeLabel(ticket.subjectType)
                         : 'No disponible'
                     }
-                  />
-                  <AssuranceKeyValueItem
-                    label="Ref. objeto"
-                    value={formatAssuranceReference(ticket.subjectRefId)}
                   />
                   <AssuranceKeyValueItem
                     label="Cola funcional"
@@ -282,17 +300,25 @@ export function AssuranceTicketDrawer({
                     value={getAssuranceFieldDecisionLabel(ticket.fieldDecision)}
                   />
                   <AssuranceKeyValueItem
-                    label="Work order vinculada"
-                    value={formatAssuranceReference(ticket.workOrderId)}
+                    label="Orden de trabajo"
+                    value={
+                      ticket.workOrderId
+                        ? formatAssuranceReference(ticket.workOrderId)
+                        : 'Sin vincular'
+                    }
                   />
-                  <AssuranceKeyValueItem
-                    label="Primera respuesta SLA"
-                    value={formatAssuranceDateTime(ticket.slaFirstResponseAt)}
-                  />
-                  <AssuranceKeyValueItem
-                    label="Resolución SLA"
-                    value={formatAssuranceDateTime(ticket.slaResolveByAt)}
-                  />
+                  {ticket.slaPolicyId ? (
+                    <>
+                      <AssuranceKeyValueItem
+                        label="Primera respuesta SLA"
+                        value={formatAssuranceDateTime(ticket.slaFirstResponseAt)}
+                      />
+                      <AssuranceKeyValueItem
+                        label="Resolución SLA"
+                        value={formatAssuranceDateTime(ticket.slaResolveByAt)}
+                      />
+                    </>
+                  ) : null}
                   <AssuranceKeyValueItem
                     label="Actualizado"
                     value={formatAssuranceDateTime(ticket.updatedAt)}
@@ -301,13 +327,40 @@ export function AssuranceTicketDrawer({
 
                 <div className="rounded-2xl border border-gray-200 bg-[#fbfcf8] p-4 dark:border-dark-border dark:bg-dark-surface-3">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
-                    Descripción controlada
+                    Descripción
                   </p>
                   <p className="mt-2 text-sm leading-6 text-gray-700 dark:text-gray-200">
                     {ticket.description?.trim() ||
                       'Sin descripción adicional registrada para este caso.'}
                   </p>
                 </div>
+
+                <section
+                  aria-labelledby="assurance-ticket-attachments-title"
+                  data-testid="ticket-attachments-section"
+                  className="rounded-2xl border border-gray-200 bg-[#fbfcf8] p-4 dark:border-dark-border dark:bg-dark-surface-3"
+                >
+                  <h3
+                    id="assurance-ticket-attachments-title"
+                    className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400"
+                  >
+                    Adjuntos ({ticketAttachments.length})
+                  </h3>
+                  {ticketAttachments.length === 0 ? (
+                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                      Este caso no tiene archivos adjuntos.
+                    </p>
+                  ) : (
+                    <div className="mt-3">
+                      <TicketAttachmentList
+                        ticketId={ticket.id}
+                        attachments={ticketAttachments}
+                        variant="compact"
+                        label={`Adjuntos del caso: ${formatTicketAttachmentCount(ticketAttachments.length)}`}
+                      />
+                    </div>
+                  )}
+                </section>
 
                 {actionFeedback && (
                   <PortalAlert
@@ -358,9 +411,18 @@ export function AssuranceTicketDrawer({
                                   {formatAssuranceDateTime(comment.createdAt)}
                                 </span>
                               </div>
-                              <p className="mt-3 text-sm leading-6 text-gray-700 dark:text-gray-200">
-                                {comment.body}
-                              </p>
+                              {/* Importados de UISP solo con adjuntos llegan sin texto (D4). */}
+                              {comment.body.trim() ? (
+                                <p className="mt-3 text-sm leading-6 text-gray-700 dark:text-gray-200">
+                                  {comment.body}
+                                </p>
+                              ) : null}
+                              <TicketAttachmentList
+                                ticketId={ticket.id}
+                                attachments={comment.attachments ?? []}
+                                variant="preview"
+                                label="Adjuntos del comentario"
+                              />
                             </article>
                           );
                         })}
@@ -391,18 +453,32 @@ export function AssuranceTicketDrawer({
                           />
                           Marcar como comentario interno
                         </label>
-                        <div className="mt-4 flex justify-end">
+                        <TicketAttachmentPicker
+                          files={commentFiles}
+                          onChange={setCommentFiles}
+                          disabled={isCommentSubmitting}
+                        />
+                        <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
+                          {isCommentSubmitting && commentFiles.length > 0 ? (
+                            <p role="status" className="text-sm text-gray-600 dark:text-gray-300">
+                              Subiendo {formatTicketAttachmentCount(commentFiles.length)}…
+                            </p>
+                          ) : null}
                           <Button
                             type="button"
                             loading={isCommentSubmitting}
                             disabled={!commentBody.trim()}
                             onClick={async () => {
-                              await onAddComment({
+                              const saved = await onAddComment({
                                 body: commentBody.trim(),
                                 isInternal: commentIsInternal,
+                                files: commentFiles,
                               });
+                              // Si no se guardó, el texto y los archivos quedan para reintentar.
+                              if (saved === false) return;
                               setCommentBody('');
                               setCommentIsInternal(false);
+                              setCommentFiles([]);
                             }}
                           >
                             Agregar comentario

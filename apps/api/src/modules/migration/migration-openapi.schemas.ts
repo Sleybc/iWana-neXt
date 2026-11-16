@@ -11,6 +11,7 @@ import {
   MIGRATION_REJECTION_REASONS,
   MIGRATION_REVERT_BLOCK_REASONS,
   MIGRATION_SOURCE_SYSTEMS,
+  MIGRATION_TICKET_ATTACHMENT_SKIP_REASONS,
 } from '@iwana/shared';
 
 /** OpenAPI de la importación UISP, derivado de las listas `as const` de `@iwana/shared`. */
@@ -132,6 +133,7 @@ export const MIGRATION_PROMOTION_OPENAPI: SchemaObject = {
     'etiquetasAsignadas',
     'periodosSuspension',
     'aplicaciones',
+    'adjuntosTickets',
     'iniciadoEn',
     'terminadoEn',
   ],
@@ -143,6 +145,16 @@ export const MIGRATION_PROMOTION_OPENAPI: SchemaObject = {
     etiquetasAsignadas: count,
     periodosSuspension: count,
     aplicaciones: count,
+    adjuntosTickets: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['importados', 'existentes', 'noImportados'],
+      properties: {
+        importados: count,
+        existentes: count,
+        noImportados: countsBy(MIGRATION_TICKET_ATTACHMENT_SKIP_REASONS),
+      },
+    },
     iniciadoEn: { type: 'string', format: 'date-time', nullable: true },
     terminadoEn: { type: 'string', format: 'date-time', nullable: true },
   },
@@ -184,12 +196,13 @@ export const MIGRATION_PROMOTE_ACCEPTED_OPENAPI: SchemaObject = {
 
 export const MIGRATION_REVERT_RESULT_OPENAPI: SchemaObject = {
   type: 'object',
-  required: ['id', 'status', 'retirados', 'etiquetasRetiradas'],
+  required: ['id', 'status', 'retirados', 'etiquetasRetiradas', 'adjuntosTicketsRetirados'],
   properties: {
     id: { type: 'string', format: 'uuid' },
     status: { type: 'string', enum: ['REVERTIDO'] },
     retirados: countsBy(MIGRATION_ENTITIES),
     etiquetasRetiradas: count,
+    adjuntosTicketsRetirados: count,
   },
 };
 

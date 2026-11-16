@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   SupportTicket,
   TicketComment,
+  TicketCommentAttachment,
   TicketPqrRecord,
   TicketSlaPolicy,
   TicketTimelineEvent,
@@ -14,6 +15,7 @@ import { WfmModule } from '../wfm/wfm.module';
 import { SubscribersModule } from '../crm/subscribers/subscribers.module';
 import { AssuranceController } from './assurance.controller';
 import { AccessControlModule } from '../access-control/access-control.module';
+import { MediaModule } from '../media/media.module';
 import { AssuranceExecutionOrderNotifierAdapter } from './ports/assurance-execution-order-notifier.adapter';
 import { AssuranceFieldServiceAdapter } from './ports/assurance-field-service.adapter';
 import { AssuranceFieldServicePort } from './ports/assurance-field-service.port';
@@ -26,6 +28,7 @@ import { PqrService } from './services/pqr.service';
 import { SlaService } from './services/sla.service';
 import { TicketsService } from './services/tickets.service';
 import { TimelineService } from './services/timeline.service';
+import { TicketAttachmentsService } from './services/ticket-attachments.service';
 
 @Module({
   imports: [
@@ -34,6 +37,7 @@ import { TimelineService } from './services/timeline.service';
     TypeOrmModule.forFeature([
       SupportTicket,
       TicketComment,
+      TicketCommentAttachment,
       TicketTimelineEvent,
       TicketSlaPolicy,
       TicketPqrRecord,
@@ -43,6 +47,8 @@ import { TimelineService } from './services/timeline.service';
       name: ASSURANCE_FIELD_SERVICE_QUEUE,
     }),
     AccessControlModule,
+    // Solo por el puerto TicketAttachmentMediaPort (adjuntos de tickets, spec MOD09 §2.2).
+    MediaModule,
   ],
   controllers: [AssuranceController],
   providers: [
@@ -52,6 +58,7 @@ import { TimelineService } from './services/timeline.service';
     SlaService,
     PqrService,
     AssuranceDashboardService,
+    TicketAttachmentsService,
     {
       provide: AssuranceSubscriberTicketLinksReadPort,
       useClass: AssuranceSubscriberTicketLinksReadAdapter,

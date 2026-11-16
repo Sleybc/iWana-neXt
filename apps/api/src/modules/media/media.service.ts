@@ -12,6 +12,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, IsNull, Repository } from 'typeorm';
 import { randomUUID } from 'node:crypto';
 import { MediaAsset, MediaUsage, summarizeErrorForLog } from '@iwana/db';
+import { TICKET_ATTACHMENT_CONTENT_TYPES, TICKET_ATTACHMENT_VIDEO_MAX_BYTES } from '@iwana/shared';
 import { STORAGE_PORT, type StoragePort } from '@iwana/storage';
 import { imageSize } from 'image-size';
 import { validateMagicBytes } from './magic-bytes';
@@ -22,6 +23,8 @@ import type { MediaAssetResponseDto } from './dto/media-asset-response.dto';
 const PRIVATE_MEDIA_USAGES: ReadonlySet<MediaUsage> = new Set([
   MediaUsage.STRATUM_EVIDENCE,
   MediaUsage.PRIVACY_EVIDENCE,
+  // Adjuntos de tickets: se sirven solo por Soporte, con los permisos del comentario (spec MOD09 adjuntos §2.2).
+  MediaUsage.TICKET_ATTACHMENT,
 ]);
 
 /**
@@ -67,6 +70,12 @@ const MEDIA_CONSTRAINTS: Record<MediaUsage, { maxBytes: number; allowedMimes: st
   [MediaUsage.PRIVACY_EVIDENCE]: {
     maxBytes: 10 * 1024 * 1024, // 10 MiB
     allowedMimes: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
+  },
+  // Techo del uso (MP4). El límite por tipo (25 MB foto y PDF) lo aplica Soporte con
+  // TICKET_ATTACHMENT_MAX_BYTES_BY_CONTENT_TYPE (bloque B del plan MOD09 adjuntos).
+  [MediaUsage.TICKET_ATTACHMENT]: {
+    maxBytes: TICKET_ATTACHMENT_VIDEO_MAX_BYTES,
+    allowedMimes: [...TICKET_ATTACHMENT_CONTENT_TYPES],
   },
 };
 
@@ -325,7 +334,9 @@ export class MediaService {
       where: { id, tenantSchema, deletedAt: IsNull() },
     });
 
-    if (!asset || asset.deletedAt) {
+    // Los adjuntos de tickets solo se leen por Soporte, con los permisos del comentario:
+    // la lectura genérica responde 404, igual que su firma y su borrado genéricos.
+    if (!asset || asset.deletedAt || asset.usage === MediaUsage.TICKET_ATTACHMENT) {
       throw new NotFoundException(`Asset ${id} no encontrado.`);
     }
 
@@ -408,9 +419,7 @@ export class MediaService {
     if (
       !asset ||
       asset.deletedAt ||
-      (access === 'generic' &&
-        (asset.usage === MediaUsage.STRATUM_EVIDENCE ||
-          asset.usage === MediaUsage.PRIVACY_EVIDENCE)) ||
+      (access === 'generic' && PRIVATE_MEDIA_USAGES.has(asset.usage)) ||
       (access !== 'generic' && asset.usage !== access)
     ) {
       throw new NotFoundException(`Asset ${id} no encontrado.`);

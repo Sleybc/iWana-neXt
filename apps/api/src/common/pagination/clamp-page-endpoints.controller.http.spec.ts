@@ -30,6 +30,7 @@ import { TimelineService } from '../../modules/assurance/services/timeline.servi
 import { SlaService } from '../../modules/assurance/services/sla.service';
 import { PqrService } from '../../modules/assurance/services/pqr.service';
 import { AssuranceDashboardService } from '../../modules/assurance/services/assurance-dashboard.service';
+import { TicketAttachmentsService } from '../../modules/assurance/services/ticket-attachments.service';
 import { AssuranceFieldServicePort } from '../../modules/assurance/ports/assurance-field-service.port';
 import { CrmSubscriberReadPort } from '../../modules/crm/ports/crm-subscriber-read.port';
 // —— inventory ——
@@ -311,6 +312,13 @@ describe('clampPage en endpoints de listado paginado (HTTP)', () => {
         { provide: SlaService, useValue: stubProvider() },
         { provide: PqrService, useValue: stubProvider() },
         { provide: AssuranceDashboardService, useValue: stubProvider() },
+        {
+          provide: TicketAttachmentsService,
+          useValue: {
+            decorateTicketList: jest.fn(async (result: unknown) => result),
+            decorateComments: jest.fn(async (comments: unknown) => comments),
+          },
+        },
         { provide: AssuranceFieldServicePort, useValue: stubProvider() },
 
         // —— inventory: resto del controller y dependencias de PurchasingQueryService ——

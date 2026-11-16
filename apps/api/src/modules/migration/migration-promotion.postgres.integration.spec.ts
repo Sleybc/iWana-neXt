@@ -1,7 +1,13 @@
 import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
-import { TenantContext, dataSourceOptions, isValidSchemaName, runInTenantSchema } from '@iwana/db';
+import {
+  MediaAsset,
+  TenantContext,
+  dataSourceOptions,
+  isValidSchemaName,
+  runInTenantSchema,
+} from '@iwana/db';
 import {
   MigrationBatchReportSchema,
   MigrationReconciliationReportSchema,
@@ -9,6 +15,7 @@ import {
   type MigrationPromoteJob,
 } from '@iwana/shared';
 import { AssuranceMigrationImportAdapter } from '../assurance/migration-adapters/assurance-migration-import.adapter';
+import { TicketAttachmentMediaProvider } from '../media/ticket-attachment-media.provider';
 import { BillingMigrationImportAdapter } from '../billing/migration-adapters/billing-migration-import.adapter';
 import { CrmMigrationImportAdapter } from '../crm/migration-adapters/crm-migration-import.adapter';
 import { CatalogItem } from '../commercial/entities/catalog-item.entity';
@@ -37,6 +44,9 @@ import { MigrationTitularErasureParticipant } from './privacy/migration-titular-
 import {
   SYNTHETIC_METHOD_ID,
   buildSyntheticUispZip,
+  syntheticAttachmentBytes,
+  syntheticFirstTicketId,
+  syntheticTicketAttachments,
   type UispFixtureOptions,
 } from './test/uisp-zip.fixture';
 import { UsersMigrationDirectoryAdapter } from '../users/migration-adapters/users-migration-directory.adapter';
@@ -85,6 +95,8 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
     MFA_ENCRYPTION_KEY: '8b'.repeat(32),
     PII_HASH_KEY: '7c'.repeat(32),
     NODE_ENV: 'test',
+    // Adjuntos de tickets: el proveedor de medios exige almacenamiento privado (spec MOD09 §2.1).
+    STORAGE_DRIVER: 'minio',
   });
   const crypto = new MigrationCrypto(config);
   const decryptStored = (blob: Buffer) => crypto.decryptObject(blob);
@@ -118,6 +130,7 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
   let simulation: MigrationSimulationService;
   let promotion: MigrationPromotionService;
   let reversion: MigrationRevertService;
+  let media: TicketAttachmentMediaProvider;
   const createdBatches: string[] = [];
 
   const scope = () => ({ tenantId, schemaName });
@@ -190,7 +203,15 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
   beforeAll(async () => {
     ds = new DataSource({
       ...dataSourceOptions,
-      entities: [Party, PartyRole, PartyContact, CatalogItem, PlanDetail, CatalogPriceHistory],
+      entities: [
+        Party,
+        PartyRole,
+        PartyContact,
+        CatalogItem,
+        PlanDetail,
+        CatalogPriceHistory,
+        MediaAsset,
+      ],
       migrations: [],
       logging: false,
       extra: { max: 4, connectionTimeoutMillis: 5000 },
@@ -236,7 +257,8 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
       catalog as never,
     );
     const billing = new BillingMigrationImportAdapter();
-    const support = new AssuranceMigrationImportAdapter();
+    media = new TicketAttachmentMediaProvider(ds, storage as never, config, queue as never);
+    const support = new AssuranceMigrationImportAdapter(media);
     const tags = new SubscriberTagsService(
       ds,
       audit as never,
@@ -293,6 +315,14 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
       for (const batchId of [...createdBatches].reverse()) {
         await reversion.revert(scope(), batchId, actorId).catch(() => undefined);
       }
+      // La reversión retira (deleted_at) los activos de adjuntos de tickets sin borrar la fila de
+      // public.media_assets: sin esta limpieza se acumulan en la base compartida de integración y
+      // rompen la prueba de la 032 (su down restaura el CHECK sin ticket_attachment).
+      await ds.query(
+        `DELETE FROM public.media_assets
+          WHERE tenant_schema = $1 AND usage = 'ticket_attachment' AND deleted_at IS NOT NULL`,
+        [schemaName],
+      );
       await sql(`DELETE FROM migration_batches WHERE id = ANY($1::uuid[])`, [createdBatches]);
       await sql(
         `DELETE FROM migration_mappings
@@ -623,6 +653,10 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
         SOPORTE_DOCUMENTAL: 2,
       },
       etiquetasRetiradas: 1,
+      // Valor real calculado por la reversión (spec MOD09 adjuntos §2.3): el ZIP por defecto no
+      // referencia adjuntos desde sus comentarios (su `adjunto.txt` queda suelto), así que no
+      // se importó ninguno y no hay ninguno que retirar.
+      adjuntosTicketsRetirados: 0,
     });
     expect(await countsFor(batchId)).toEqual({
       subscribers: 0,
@@ -1339,6 +1373,303 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
     });
     await expect(promotion.refreshAuthors(scope(), randomUUID(), actorId)).rejects.toMatchObject({
       response: { code: 'MIGRATION_BATCH_NOT_FOUND' },
+    });
+  });
+
+  describe('spec MOD09 adjuntos §2.3: adjuntos de comentarios de tickets', () => {
+    const attachmentObjectKey = (assetId: string) => `${schemaName}/ticket_attachment/${assetId}`;
+
+    async function attachmentsOf(batchId: string) {
+      return sql<{
+        id: string;
+        external_id: string;
+        filename: string;
+        content_type: string;
+        size_bytes: number;
+        media_asset_id: string;
+        comment_body: string;
+        comment_internal: boolean;
+        ticket_external_id: string;
+      }>(
+        `SELECT a.id::text, a.external_id, a.filename, a.content_type, a.size_bytes,
+                a.media_asset_id::text, c.body AS comment_body, c.is_internal AS comment_internal,
+                t.external_id AS ticket_external_id
+           FROM ticket_comment_attachments a
+           JOIN ticket_comments c ON c.id = a.comment_id AND c.ticket_id = a.ticket_id
+           JOIN support_tickets t ON t.id = a.ticket_id
+          WHERE a.import_batch_id = $1
+          ORDER BY a.external_id`,
+        [batchId],
+      );
+    }
+
+    async function assetsOf(ids: string[]) {
+      return (await ds.query(
+        `SELECT id::text, asset_status, usage, deleted_at FROM public.media_assets
+          WHERE id = ANY($1::uuid[]) ORDER BY id`,
+        [ids],
+      )) as Array<{ id: string; asset_status: string; usage: string; deleted_at: Date | null }>;
+    }
+
+    async function commentsOf(ticketExternalId: string) {
+      return sql<{ id: string; body: string }>(
+        `SELECT c.id::text, c.body FROM ticket_comments c
+           JOIN support_tickets t ON t.id = c.ticket_id
+          WHERE t.external_id = $1 ORDER BY c.created_at`,
+        [ticketExternalId],
+      );
+    }
+
+    it('criterios 5 y 6: importa PNG, PDF y MP4 en su comentario; ausente e inválido se cuentan y el comentario queda; repetir no duplica', async () => {
+      const clientId = run * 10 + 30;
+      const firstAttachmentId = clientId * 100;
+      const batchId = await simulatedBatch(
+        [clientId],
+        [],
+        syntheticTicketAttachments(firstAttachmentId),
+      );
+      await expect(promoteNow(batchId)).resolves.toBe('CONCILIADO');
+
+      const report = MigrationBatchReportSchema.parse(await batches.getReport(scope(), batchId));
+      expect(report.promotion?.adjuntosTickets).toEqual({
+        importados: 3,
+        existentes: 0,
+        noImportados: { ARCHIVO_AUSENTE: 1, TIPO_NO_PERMITIDO: 1 },
+      });
+      const ticketExternalId = `uisp:ticket:${syntheticFirstTicketId(clientId)}`;
+      // Los dos comentarios se importan aunque el segundo tenga sus dos adjuntos rechazados.
+      expect((await commentsOf(ticketExternalId)).map((row) => row.body)).toEqual([
+        'Comentario sintético con foto, acta y video',
+        'Comentario sintético con adjunto ausente e inválido',
+      ]);
+
+      const rows = await attachmentsOf(batchId);
+      expect(
+        rows.map(({ external_id, filename, content_type, size_bytes, comment_body }) => ({
+          external_id,
+          filename,
+          content_type,
+          size_bytes,
+          comment_body,
+        })),
+      ).toEqual([
+        {
+          external_id: `uisp:ticket_attachment:${firstAttachmentId}`,
+          filename: 'foto sintética.png',
+          content_type: 'image/png',
+          size_bytes: syntheticAttachmentBytes.png().length,
+          comment_body: 'Comentario sintético con foto, acta y video',
+        },
+        {
+          external_id: `uisp:ticket_attachment:${firstAttachmentId + 1}`,
+          filename: 'acta.pdf',
+          content_type: 'application/pdf',
+          size_bytes: syntheticAttachmentBytes.pdf().length,
+          comment_body: 'Comentario sintético con foto, acta y video',
+        },
+        {
+          external_id: `uisp:ticket_attachment:${firstAttachmentId + 2}`,
+          filename: 'video.mp4',
+          content_type: 'video/mp4',
+          size_bytes: syntheticAttachmentBytes.mp4().length,
+          comment_body: 'Comentario sintético con foto, acta y video',
+        },
+      ]);
+      expect(new Set(rows.map((row) => row.ticket_external_id))).toEqual(
+        new Set([ticketExternalId]),
+      );
+      // Importados: AVAILABLE tras la firma; el objeto en claro en el bucket privado (como B).
+      const assets = await assetsOf(rows.map((row) => row.media_asset_id));
+      expect(assets).toHaveLength(3);
+      for (const asset of assets) {
+        expect(asset).toMatchObject({
+          asset_status: 'AVAILABLE',
+          usage: 'ticket_attachment',
+          deleted_at: null,
+        });
+      }
+      const pngRow = rows.find((row) => row.content_type === 'image/png')!;
+      expect(objects.get(attachmentObjectKey(pngRow.media_asset_id))).toEqual(
+        syntheticAttachmentBytes.png(),
+      );
+
+      // Reintento del job sobre el mismo lote: nada se duplica.
+      await sql(
+        `UPDATE migration_batches
+            SET status = 'CARGADO', promotion = jsonb_set(promotion, '{procesamiento}', '"FALLIDO"'::jsonb),
+                reconciled_at = NULL
+          WHERE id = $1`,
+        [batchId],
+      );
+      await expect(promoteNow(batchId)).resolves.toBe('CONCILIADO');
+      expect(await attachmentsOf(batchId)).toHaveLength(3);
+      const retried = MigrationBatchReportSchema.parse(await batches.getReport(scope(), batchId));
+      expect(retried.promotion?.adjuntosTickets).toEqual(report.promotion?.adjuntosTickets);
+
+      // Reimportar el mismo ZIP en otro lote: el ticket existe, sus adjuntos también.
+      const second = await simulatedBatch(
+        [clientId],
+        [],
+        syntheticTicketAttachments(firstAttachmentId),
+      );
+      await expect(promoteNow(second)).resolves.toBe('CONCILIADO');
+      const secondReport = MigrationBatchReportSchema.parse(
+        await batches.getReport(scope(), second),
+      );
+      expect(secondReport.promotion?.adjuntosTickets).toEqual({
+        importados: 0,
+        existentes: 3,
+        noImportados: { COMENTARIO_NO_IMPORTADO: 2 },
+      });
+      const [{ total }] = (await sql<{ total: number }>(
+        `SELECT COUNT(*)::int AS total FROM ticket_comment_attachments WHERE external_id = ANY($1::varchar[])`,
+        [[0, 1, 2, 3, 4].map((n) => `uisp:ticket_attachment:${firstAttachmentId + n}`)],
+      )) as [{ total: number }];
+      expect(total).toBe(3);
+
+      // Criterio 7: el segundo lote no creó adjuntos; el primero retira los suyos con su archivo.
+      await expect(reversion.revert(scope(), second, actorId)).resolves.toMatchObject({
+        status: 'REVERTIDO',
+        adjuntosTicketsRetirados: 0,
+      });
+      const result = MigrationRevertResultSchema.parse(
+        await reversion.revert(scope(), batchId, actorId),
+      );
+      expect(result.adjuntosTicketsRetirados).toBe(3);
+      expect(result.retirados.TICKET).toBe(2);
+      expect(await attachmentsOf(batchId)).toHaveLength(0);
+      for (const asset of await assetsOf(rows.map((row) => row.media_asset_id))) {
+        expect(asset.deleted_at).not.toBeNull();
+      }
+      for (const row of rows)
+        expect(objects.has(attachmentObjectKey(row.media_asset_id))).toBe(false);
+    });
+
+    it('D4: un comentario de UISP solo con adjuntos se importa con texto vacío y conserva su adjunto', async () => {
+      const clientId = run * 10 + 32;
+      const firstAttachmentId = clientId * 100;
+      const png = syntheticAttachmentBytes.png();
+      const batchId = await simulatedBatch([clientId], [], {
+        ticketActivity: [
+          {
+            id: 1,
+            public: true,
+            createdAt: '2023-03-01T10:00:00-0500',
+            comment: {
+              body: '   ',
+              attachments: [
+                {
+                  id: firstAttachmentId,
+                  filename: 'solo.png',
+                  mimeType: 'image/png',
+                  size: png.length,
+                },
+              ],
+            },
+          },
+        ],
+        ticketFiles: { 'solo.png': png },
+      });
+      await expect(promoteNow(batchId)).resolves.toBe('CONCILIADO');
+
+      const report = MigrationBatchReportSchema.parse(await batches.getReport(scope(), batchId));
+      expect(report.promotion?.adjuntosTickets).toEqual({
+        importados: 1,
+        existentes: 0,
+        noImportados: {},
+      });
+      const ticketExternalId = `uisp:ticket:${syntheticFirstTicketId(clientId)}`;
+      expect((await commentsOf(ticketExternalId)).map((row) => row.body)).toEqual(['']);
+      const rows = await attachmentsOf(batchId);
+      expect(rows.map(({ external_id, comment_body }) => ({ external_id, comment_body }))).toEqual([
+        { external_id: `uisp:ticket_attachment:${firstAttachmentId}`, comment_body: '' },
+      ]);
+    });
+
+    it('criterio 7: un adjunto añadido a mano en un comentario importado bloquea la reversión sin borrar nada', async () => {
+      const clientId = run * 10 + 31;
+      const firstAttachmentId = clientId * 100;
+      const batchId = await simulatedBatch(
+        [clientId],
+        [],
+        syntheticTicketAttachments(firstAttachmentId),
+      );
+      await promoteNow(batchId);
+      const imported = await attachmentsOf(batchId);
+      expect(imported).toHaveLength(3);
+      const ticketExternalId = `uisp:ticket:${syntheticFirstTicketId(clientId)}`;
+      const [comment] = await commentsOf(ticketExternalId);
+      const [ticket] = await sql<{ id: string }>(
+        `SELECT id::text FROM support_tickets WHERE external_id = $1`,
+        [ticketExternalId],
+      );
+
+      // Adjunto manual (como la subida del portal: activo en cuarentena y fila sin lote).
+      const manualAssetId = await runInTenantSchema(ds, schemaName, async (qr) => {
+        const file = {
+          buffer: syntheticAttachmentBytes.pdf(),
+          declaredContentType: 'application/pdf',
+          originalName: 'manual.pdf',
+        };
+        const inspection = media.inspect(file);
+        if (!inspection.ok) throw new Error('inspección sintética inválida');
+        const { mediaAssetId } = await media.store(
+          {
+            manager: qr.manager,
+            tenantSchema: schemaName,
+            actorId,
+            initialStatus: 'QUARANTINED',
+          },
+          file,
+          inspection,
+        );
+        await qr.query(
+          `INSERT INTO ticket_comment_attachments (
+             tenant_id, ticket_id, comment_id, media_asset_id, filename, content_type, size_bytes,
+             uploaded_by_user_id)
+           VALUES ($1, $2, $3, $4, 'manual.pdf', 'application/pdf', $5, $6)`,
+          [tenantId, ticket!.id, comment!.id, mediaAssetId, inspection.sizeBytes, actorId],
+        );
+        return mediaAssetId;
+      });
+
+      const blocked = await reversion
+        .revert(scope(), batchId, actorId)
+        .catch((error: unknown) => error);
+      expect(blocked).toMatchObject({
+        response: {
+          code: 'MIGRATION_REVERT_BLOCKED',
+          message: expect.stringContaining('1 adjunto añadido a mano en un ticket importado'),
+          details: {
+            blockers: expect.arrayContaining([{ motivo: 'TICKET_POSTERIOR', cantidad: 1 }]),
+          },
+        },
+      });
+      // Nada se tocó: filas, activos y objetos de importados y manual siguen.
+      expect(await attachmentsOf(batchId)).toHaveLength(3);
+      const [{ manual }] = (await sql<{ manual: number }>(
+        `SELECT COUNT(*)::int AS manual FROM ticket_comment_attachments
+          WHERE media_asset_id = $1 AND import_batch_id IS NULL`,
+        [manualAssetId],
+      )) as [{ manual: number }];
+      expect(manual).toBe(1);
+      const assetIds = [...imported.map((row) => row.media_asset_id), manualAssetId];
+      for (const asset of await assetsOf(assetIds)) expect(asset.deleted_at).toBeNull();
+      for (const id of assetIds) expect(objects.has(attachmentObjectKey(id))).toBe(true);
+      expect((await countsFor(batchId)).tickets).toBe(2);
+
+      // Quitado el manual (lo hace una persona; aquí por SQL), la reversión retira los importados.
+      await sql(`DELETE FROM ticket_comment_attachments WHERE media_asset_id = $1`, [
+        manualAssetId,
+      ]);
+      await ds.query(`DELETE FROM public.media_assets WHERE id = $1`, [manualAssetId]);
+      objects.delete(attachmentObjectKey(manualAssetId));
+      await expect(reversion.revert(scope(), batchId, actorId)).resolves.toMatchObject({
+        status: 'REVERTIDO',
+        adjuntosTicketsRetirados: 3,
+      });
+      for (const row of imported)
+        expect(objects.has(attachmentObjectKey(row.media_asset_id))).toBe(false);
     });
   });
 

@@ -28,6 +28,11 @@ export enum MediaUsage {
   STRATUM_EVIDENCE = 'stratum_evidence',
   /** Evidencia de identidad Habeas Data: PDF, JPEG, PNG o WEBP (ADR-094, A9) */
   PRIVACY_EVIDENCE = 'privacy_evidence',
+  /**
+   * Adjunto de un comentario de ticket: JPEG, PNG, WebP, GIF y PDF hasta 25 MB; MP4 hasta
+   * 100 MB (spec MOD09 2026-11-16 §2.1; migración public 032). Límites en `@iwana/shared`.
+   */
+  TICKET_ATTACHMENT = 'ticket_attachment',
 }
 
 /**

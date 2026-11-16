@@ -70,6 +70,7 @@ export * from './contracts/crm';
 export * from './contracts/organization';
 export * from './contracts/billing';
 export * from './contracts/migration';
+export * from './contracts/assurance';
 
 // Operations
 export * from './operations/task-type-to-wfm-work-type';

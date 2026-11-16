@@ -48,6 +48,10 @@
  * desde la API de UISP (migración 211, ADR-110 D15): la credencial del ISP y nombre y correo de
  * empleados (no titulares), cuya purga al resolver la fila exige un CHECK; el resto son códigos y
  * dominios con CHECK.
+ * Las tres de ticket_comment_attachments son de los adjuntos en tickets (migración 212, spec MOD09
+ * 2026-11-16 §2.4): filename es texto libre del titular CUBIERTO por
+ * AssuranceTitularErasureParticipant junto con la fila y el archivo (participante: bloque B del
+ * plan); content_type es un dominio con CHECK y external_id el identificador de UISP.
  */
 export type TextErasureManifestKind = 'CUBIERTA' | 'EXCLUIDA' | 'PENDIENTE-MOD14';
 
@@ -3721,6 +3725,24 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
     d: 'apps/api/src/modules/assurance/privacy/assurance-titular-erasure.participant.ts (R-4 B3)',
   },
   { t: 'ticket_pqr_records', c: 'deadline_type', k: 'EXCLUIDA', d: 'ENUM: dominio cerrado' },
+  {
+    t: 'ticket_comment_attachments',
+    c: 'content_type',
+    k: 'EXCLUIDA',
+    d: 'ENUM: tipos admitidos de adjunto (jpeg, png, webp, gif, pdf, mp4), dominio cerrado con CHECK (migración 212)',
+  },
+  {
+    t: 'ticket_comment_attachments',
+    c: 'external_id',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: uisp:ticket_attachment:<id> del adjunto en UISP, sin texto del titular (migración 212)',
+  },
+  {
+    t: 'ticket_comment_attachments',
+    c: 'filename',
+    k: 'CUBIERTA',
+    d: 'apps/api/src/modules/assurance/privacy/assurance-titular-erasure.participant.ts (adjuntos en tickets, spec MOD09 2026-11-16 §2.4: retira fila y archivo del titular; la fila en la transacción, el activo con media-titular-erasure y el objeto en la fase 4 del worker evidence-orphan-detection; bloque B)',
+  },
   {
     t: 'ticket_pqr_records',
     c: 'notes',

@@ -5,6 +5,7 @@ import { ticketScopePredicates } from './ticket-scope';
 import {
   anonymizeConfiguredTable,
   loadErasureKeys,
+  normalizeErasureRows,
   readTenantColumns,
   selectErasureIds,
   selectErasureColumnValues,
@@ -42,6 +43,15 @@ export class AssuranceTitularErasureParticipant implements TitularErasurePartici
       parameters,
     );
     const linkIds = await this.childIds(qr, 'ticket_work_order_links', related.ticketIds, columns);
+    // Adjuntos de tickets (spec MOD09 adjuntos §2.4): Soporte publica sus archivos para que el
+    // participante de Media los retire después; las filas se borran en `run`.
+    related.ticketAttachmentMediaIds = await selectErasureColumnValues(
+      qr,
+      'ticket_comment_attachments',
+      'media_asset_id',
+      await this.childIds(qr, 'ticket_comment_attachments', related.ticketIds, columns),
+      columns,
+    );
     related.ticketWorkOrderIds = [
       ...new Set([
         ...(await selectErasureColumnValues(
@@ -94,7 +104,12 @@ export class AssuranceTitularErasureParticipant implements TitularErasurePartici
       ['ticket_work_order_links', [{ column: 'notes', kind: 'null' }]],
       ['ticket_pqr_records', [{ column: 'notes', kind: 'null' }]],
     ];
-    const results: TitularErasureTableResult[] = [];
+    // Antes de tocar comentarios: la fila del adjunto (con su nombre, texto libre del titular)
+    // se retira; su activo lo retira Media con `relatedIds.ticketAttachmentMediaIds` y el objeto
+    // lo borra después del commit la fase 4 del worker `evidence-orphan-detection`.
+    const results: TitularErasureTableResult[] = [
+      await this.removeAttachments(qr, ticketIds, columns, mode),
+    ];
     for (const [table, rules] of tables) {
       const ids =
         table === 'support_tickets'
@@ -107,6 +122,48 @@ export class AssuranceTitularErasureParticipant implements TitularErasurePartici
       });
     }
     return results;
+  }
+
+  private async removeAttachments(
+    qr: QueryRunner,
+    ticketIds: string[],
+    columns: Map<string, TenantColumn>,
+    mode: 'dry-run' | 'apply',
+  ): Promise<TitularErasureTableResult> {
+    const table = 'ticket_comment_attachments';
+    const ids = await this.childIds(qr, table, ticketIds, columns);
+    const result: TitularErasureTableResult = {
+      table,
+      category: 'OPERACION_CAMPO',
+      selected: ids.length,
+      changed: 0,
+      residual: 0,
+    };
+    if (ids.length === 0) return result;
+    if (mode === 'apply') {
+      const deleted = normalizeErasureRows<{ id: string }>(
+        await qr.query(
+          // Acotado también al tenant del schema en curso: sin él, nada se borra y el residuo
+          // hace fallar la verificación del orquestador (falla cerrado).
+          `DELETE FROM "ticket_comment_attachments"
+            WHERE "id" = ANY($1::uuid[])
+              AND "tenant_id" = (
+                SELECT t.id FROM public.tenants t WHERE t.schema_name = current_schema()
+              )
+            RETURNING "id"`,
+          [ids],
+        ),
+      );
+      result.changed = deleted.length;
+    } else {
+      result.changed = ids.length;
+    }
+    const residual = (await qr.query(
+      `SELECT COUNT(*)::int AS count FROM "ticket_comment_attachments" WHERE "id" = ANY($1::uuid[])`,
+      [ids],
+    )) as Array<{ count: number }>;
+    result.residual = mode === 'apply' ? Number(residual[0]?.count ?? 0) : 0;
+    return result;
   }
 
   private childIds(

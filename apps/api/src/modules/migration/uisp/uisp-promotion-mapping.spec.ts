@@ -245,6 +245,21 @@ describe('uisp-promotion-mapping (ADR-110 D3, D5; spec §3.2)', () => {
     expect(ticketComments({ ...raw, public: false }).every((c) => c.internal)).toBe(true);
   });
 
+  it('ticketComments importa con texto vacío el comentario que solo trae adjuntos (D4)', () => {
+    const raw = {
+      public: true,
+      activity: [
+        { public: true, comment: { body: '  ', attachments: [{ id: 1, filename: 'acta.pdf' }] } },
+        { public: true, comment: { body: null, attachments: [] } },
+        { public: true, comment: { attachments: [{ id: 2, filename: 'foto.jpg' }] } },
+      ],
+    };
+    expect(ticketComments(raw)).toEqual([
+      { body: '', internal: false, createdAt: null },
+      { body: '', internal: false, createdAt: null },
+    ]);
+  });
+
   it('documentKind decide por la firma del contenido, nunca por el nombre', () => {
     expect(documentKind(Buffer.from('%PDF-1.4\n'))).toMatchObject({
       kind: 'PDF',

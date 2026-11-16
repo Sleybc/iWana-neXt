@@ -1,16 +1,45 @@
 import { Injectable } from '@nestjs/common';
-import type { MigrationRevertBlocker } from '@iwana/shared';
+import {
+  isTicketAttachmentContentType,
+  TICKET_ATTACHMENTS_MAX_PER_COMMENT,
+  type MigrationRevertBlocker,
+  type MigrationTicketAttachmentSkipReason,
+} from '@iwana/shared';
 import {
   MigrationSupportImportPort,
+  type ImportedTicketAttachmentInput,
+  type ImportedTicketAttachmentResult,
   type ImportedAuthorsRefreshContext,
   type ImportedTicketAuthors,
   type ImportedTicketAuthorsResult,
+  type ImportedTicketCreated,
   type ImportedTicketInput,
   type MigrationBatchEntityIds,
   type MigrationReadContext,
   type MigrationWriteContext,
 } from '../../migration/ports/migration-import.ports';
 import { matchImportedComments } from './imported-comment-matching';
+import {
+  TicketAttachmentMediaPort,
+  type TicketAttachmentRejectionCode,
+} from '../ports/ticket-attachment-media.port';
+
+/** Motivo del informe del lote por cada rechazo de la validación de medios. */
+const SKIP_REASON_BY_REJECTION: Readonly<
+  Record<TicketAttachmentRejectionCode, MigrationTicketAttachmentSkipReason>
+> = {
+  ARCHIVO_VACIO: 'ARCHIVO_AUSENTE',
+  TIPO_NO_PERMITIDO: 'TIPO_NO_PERMITIDO',
+  FIRMA_NO_COINCIDE: 'TIPO_NO_PERMITIDO',
+  TAMANO_EXCEDIDO: 'TAMANO_EXCEDIDO',
+};
+
+function rowsOf<T>(result: unknown): T[] {
+  if (Array.isArray(result) && result.length === 2 && Array.isArray(result[0])) {
+    return result[0] as T[];
+  }
+  return Array.isArray(result) ? (result as T[]) : [];
+}
 
 /**
  * Adaptador de Soporte (MOD09) de la importación desde UISP (ADR-110 D3, D7; spec §3.2).
@@ -19,6 +48,11 @@ import { matchImportedComments } from './imported-comment-matching';
  */
 @Injectable()
 export class AssuranceMigrationImportAdapter extends MigrationSupportImportPort {
+  /** Obligatorio: sin el puerto de medios la API no arranca (lo exporta `MediaModule`). */
+  constructor(private readonly media: TicketAttachmentMediaPort) {
+    super();
+  }
+
   async findTickets(
     ctx: MigrationReadContext,
     externalIds: string[],
@@ -34,10 +68,24 @@ export class AssuranceMigrationImportAdapter extends MigrationSupportImportPort 
     return result;
   }
 
+  async findAttachments(ctx: MigrationReadContext, externalIds: string[]): Promise<Set<string>> {
+    const result = new Set<string>();
+    if (externalIds.length === 0) return result;
+    const rows = rowsOf<{ external_id: string }>(
+      await ctx.manager.query(
+        `SELECT external_id FROM ticket_comment_attachments
+          WHERE tenant_id = $1 AND external_id = ANY($2::varchar[])`,
+        [ctx.tenantId, externalIds],
+      ),
+    );
+    for (const row of rows) result.add(row.external_id);
+    return result;
+  }
+
   async createImportedTicket(
     ctx: MigrationWriteContext,
     input: ImportedTicketInput,
-  ): Promise<string> {
+  ): Promise<ImportedTicketCreated> {
     const closed = input.status === 'CLOSED';
     const rows = (await ctx.manager.query(
       `INSERT INTO support_tickets (
@@ -64,22 +112,27 @@ export class AssuranceMigrationImportAdapter extends MigrationSupportImportPort 
       ],
     )) as Array<{ id: string }>;
     const ticketId = rows[0]!.id;
+    const commentIds: Array<string | null> = [];
+    // El mapeo solo entrega texto vacío en comentarios con adjuntos (D4): se insertan igual.
     for (const comment of input.comments) {
-      if (!comment.body.trim()) continue;
-      await ctx.manager.query(
-        `INSERT INTO ticket_comments (ticket_id, tenant_id, body, is_internal, author_user_id, created_at)
-         VALUES ($1, $2, $3, $4, $5, COALESCE($6::timestamptz, now()))`,
-        [
-          ticketId,
-          ctx.tenantId,
-          comment.body,
-          comment.internal,
-          comment.authorUserId ?? ctx.actorId,
-          comment.createdAt,
-        ],
+      const inserted = rowsOf<{ id: string }>(
+        await ctx.manager.query(
+          `INSERT INTO ticket_comments (ticket_id, tenant_id, body, is_internal, author_user_id, created_at)
+           VALUES ($1, $2, $3, $4, $5, COALESCE($6::timestamptz, now()))
+           RETURNING id::text AS id`,
+          [
+            ticketId,
+            ctx.tenantId,
+            comment.body,
+            comment.internal,
+            comment.authorUserId ?? ctx.actorId,
+            comment.createdAt,
+          ],
+        ),
       );
+      commentIds.push(inserted[0]?.id ?? null);
     }
-    return ticketId;
+    return { ticketId, commentIds };
   }
 
   /**
@@ -184,9 +237,56 @@ export class AssuranceMigrationImportAdapter extends MigrationSupportImportPort 
           from: match.current,
           to: match.target,
         });
+        await this.refreshImportedAttachmentAuthors(ctx, match.id, match.target, importers, result);
       }
     }
     return result;
+  }
+
+  /**
+   * M3: los adjuntos importados del comentario siguen a su autor. Solo los de este lote y solo
+   * si siguen a nombre de quien importó; un cambio posterior se respeta y se cuenta.
+   */
+  private async refreshImportedAttachmentAuthors(
+    ctx: ImportedAuthorsRefreshContext,
+    commentId: string,
+    target: string,
+    importers: ReadonlySet<string>,
+    result: ImportedTicketAuthorsResult,
+  ): Promise<void> {
+    const rows = rowsOf<{ id: string; uploaded_by: string }>(
+      await ctx.manager.query(
+        `SELECT id::text AS id, uploaded_by_user_id::text AS uploaded_by
+           FROM ticket_comment_attachments
+          WHERE tenant_id = $1 AND comment_id = $2 AND import_batch_id = $3
+          FOR UPDATE`,
+        [ctx.tenantId, commentId, ctx.batchId],
+      ),
+    );
+    const changed: Array<{ id: string; from: string }> = [];
+    for (const row of rows) {
+      if (row.uploaded_by === target) continue;
+      if (!importers.has(row.uploaded_by)) {
+        result.respected += 1;
+        continue;
+      }
+      changed.push({ id: row.id, from: row.uploaded_by });
+    }
+    if (changed.length === 0) return;
+    await ctx.manager.query(
+      `UPDATE ticket_comment_attachments SET uploaded_by_user_id = $3::uuid
+        WHERE tenant_id = $1 AND id = ANY($2::uuid[])`,
+      [ctx.tenantId, changed.map((row) => row.id), target],
+    );
+    for (const row of changed) {
+      result.changes.push({
+        entity: 'TICKET_COMMENT_ATTACHMENT',
+        id: row.id,
+        field: 'uploaded_by_user_id',
+        from: row.from,
+        to: target,
+      });
+    }
   }
 
   async revertBlockers(
@@ -223,6 +323,114 @@ export class AssuranceMigrationImportAdapter extends MigrationSupportImportPort 
       result.push({ motivo: 'ORDEN_DE_TRABAJO', cantidad: Number(row.work_orders) });
     }
     return result;
+  }
+
+  async createImportedAttachment(
+    ctx: MigrationWriteContext,
+    input: ImportedTicketAttachmentInput,
+  ): Promise<ImportedTicketAttachmentResult> {
+    const media = this.media;
+    const existing = rowsOf<{ id: string }>(
+      await ctx.manager.query(
+        `SELECT id::text AS id FROM ticket_comment_attachments
+          WHERE tenant_id = $1 AND external_id = $2`,
+        [ctx.tenantId, input.externalId],
+      ),
+    );
+    if (existing[0]) return { status: 'EXISTING', attachmentId: existing[0].id };
+
+    const counted = rowsOf<{ total: number }>(
+      await ctx.manager.query(
+        `SELECT COUNT(*)::int AS total FROM ticket_comment_attachments
+          WHERE tenant_id = $1 AND comment_id = $2`,
+        [ctx.tenantId, input.commentId],
+      ),
+    );
+    if (Number(counted[0]?.total ?? 0) >= TICKET_ATTACHMENTS_MAX_PER_COMMENT) {
+      return { status: 'SKIPPED', reason: 'EXCEDE_MAXIMO_POR_COMENTARIO' };
+    }
+
+    // El `mimeType` de UISP no es confiable y a veces no es estándar (`image/jpg`): solo se
+    // contrasta con la firma si es uno de los tipos admitidos; si no, decide la firma.
+    const declared = (input.declaredContentType ?? '').trim().toLowerCase();
+    const file = {
+      buffer: input.buffer,
+      declaredContentType: isTicketAttachmentContentType(declared) ? declared : null,
+      originalName: input.filename,
+    };
+    const inspection = media.inspect(file);
+    if (!inspection.ok) {
+      return { status: 'SKIPPED', reason: SKIP_REASON_BY_REJECTION[inspection.code] };
+    }
+
+    // Importado: entra AVAILABLE tras la validación de firma, como los PDF de facturas
+    // importados (spec §2.3). El objeto se borra con `purgeImportedAttachmentFiles` si la
+    // transacción del lote se revierte.
+    const { mediaAssetId } = await media.store(
+      {
+        manager: ctx.manager,
+        tenantSchema: ctx.schemaName,
+        actorId: input.uploadedByUserId ?? ctx.actorId,
+        initialStatus: 'AVAILABLE',
+      },
+      file,
+      inspection,
+    );
+    const inserted = rowsOf<{ id: string }>(
+      await ctx.manager.query(
+        `INSERT INTO ticket_comment_attachments (
+           tenant_id, ticket_id, comment_id, media_asset_id, filename, content_type, size_bytes,
+           uploaded_by_user_id, external_id, import_batch_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, clock_timestamp())
+         RETURNING id::text AS id`,
+        [
+          ctx.tenantId,
+          input.ticketId,
+          input.commentId,
+          mediaAssetId,
+          inspection.filename,
+          inspection.contentType,
+          inspection.sizeBytes,
+          input.uploadedByUserId ?? ctx.actorId,
+          input.externalId,
+          ctx.batchId,
+        ],
+      ),
+    );
+    return { status: 'CREATED', attachmentId: inserted[0]!.id, mediaAssetId };
+  }
+
+  async retireBatchAttachments(
+    ctx: MigrationWriteContext,
+  ): Promise<{ attachments: number; manual: number; mediaAssetIds: string[] }> {
+    const media = this.media;
+    const rows = rowsOf<{ id: string; media_asset_id: string; imported: boolean }>(
+      await ctx.manager.query(
+        `SELECT a.id::text AS id, a.media_asset_id::text AS media_asset_id,
+                (a.import_batch_id IS NOT DISTINCT FROM $2::uuid) AS imported
+           FROM ticket_comment_attachments a
+           JOIN support_tickets t ON t.id = a.ticket_id
+          WHERE t.tenant_id = $1 AND t.import_batch_id = $2
+          FOR UPDATE OF a`,
+        [ctx.tenantId, ctx.batchId],
+      ),
+    );
+    if (rows.length === 0) return { attachments: 0, manual: 0, mediaAssetIds: [] };
+    await ctx.manager.query(
+      `DELETE FROM ticket_comment_attachments WHERE tenant_id = $1 AND id = ANY($2::uuid[])`,
+      [ctx.tenantId, rows.map((row) => row.id)],
+    );
+    const mediaAssetIds = rows.map((row) => row.media_asset_id);
+    await media.retire(ctx.manager, ctx.schemaName, mediaAssetIds);
+    return {
+      attachments: rows.filter((row) => row.imported).length,
+      manual: rows.filter((row) => !row.imported).length,
+      mediaAssetIds,
+    };
+  }
+
+  purgeImportedAttachmentFiles(schemaName: string, mediaAssetIds: string[]): Promise<number> {
+    return this.media.removeObjects(schemaName, mediaAssetIds);
   }
 
   async revertBatch(ctx: MigrationWriteContext): Promise<{ tickets: number }> {

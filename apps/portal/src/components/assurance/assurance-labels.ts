@@ -121,7 +121,7 @@ export const ASSURANCE_SOURCE_LABELS: Record<TicketSource, string> = {
   [TicketSource.EMAIL]: 'Correo',
   [TicketSource.NMS]: 'NMS',
   [TicketSource.WFM]: 'WFM',
-  [TicketSource.MIGRATION]: 'Migración',
+  [TicketSource.MIGRATION]: 'Importación',
   [TicketSource.INTERNAL]: 'Interno',
 };
 

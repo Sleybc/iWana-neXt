@@ -11,6 +11,11 @@ import {
   type SignedContractDocument,
   type UpdateOperatorContractProfileInput,
 } from '@iwana/shared';
+import type {
+  TicketCommentAttachment,
+  TicketCommentAttachmentsField,
+  TicketListAttachmentCountField,
+} from '@iwana/shared';
 
 import {
   AcquisitionChannel,
@@ -3440,9 +3445,11 @@ export interface AssuranceTicket {
   createdByUserId: string;
   createdAt: string;
   updatedAt: string;
+  /** Solo en el listado (`GET /tickets`): adjuntos visibles para quien consulta. */
+  attachmentCount?: TicketListAttachmentCountField['attachmentCount'];
 }
 
-export interface AssuranceTicketComment {
+export interface AssuranceTicketComment extends TicketCommentAttachmentsField {
   id: string;
   ticketId: string;
   tenantId: string;
@@ -3451,6 +3458,26 @@ export interface AssuranceTicketComment {
   authorUserId: string;
   createdAt: string;
 }
+
+export type AssuranceTicketAttachment = TicketCommentAttachment;
+
+export type AssuranceTicketAttachmentDisposition = 'inline' | 'attachment';
+
+/** Enlace firmado de corta duración (5 min): se pide en el momento de abrir y no se guarda. */
+export interface AssuranceTicketAttachmentLink {
+  url: string;
+  expiresAt: string;
+  filename: string;
+  contentType: TicketCommentAttachment['contentType'];
+}
+
+/** Comentario nuevo con o sin archivos: con archivos viaja en multipart (spec MOD09 adjuntos §2.2). */
+export interface AssuranceCommentSubmission extends AddAssuranceCommentDto {
+  files: readonly File[];
+}
+
+/** Hasta 110 MB por comentario: el tope de 12 s de `request` cortaría la subida. */
+const TICKET_ATTACHMENTS_UPLOAD_TIMEOUT_MS = 10 * 60_000;
 
 export interface AssuranceTimelineEvent {
   id: string;
@@ -3591,6 +3618,36 @@ export interface LinkExpedienteInstallationRefsDto {
   lastRescheduleNotes?: string | null;
 }
 
+function addAssuranceComment(id: string, dto: AddAssuranceCommentDto, tenantSlug?: string) {
+  return request<AssuranceTicketComment>(
+    `/assurance/tickets/${id}/comments`,
+    { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+    tenantSlug,
+  );
+}
+
+function addAssuranceCommentWithAttachments(
+  id: string,
+  dto: AddAssuranceCommentDto,
+  files: readonly File[],
+  tenantSlug?: string,
+) {
+  const body = new FormData();
+  body.append('body', dto.body);
+  if (dto.isInternal !== undefined) body.append('isInternal', String(dto.isInternal));
+  for (const file of files) body.append('files', file);
+  return request<AssuranceTicketComment>(
+    `/assurance/tickets/${id}/comments/with-attachments`,
+    {
+      method: 'POST',
+      body,
+      returnFullResponse: true,
+      signal: AbortSignal.timeout(TICKET_ATTACHMENTS_UPLOAD_TIMEOUT_MS),
+    },
+    tenantSlug,
+  );
+}
+
 export const assuranceApi = {
   tickets: {
     list: async (
@@ -3671,16 +3728,40 @@ export const assuranceApi = {
         tenantSlug,
       ),
 
-    addComment: (id: string, dto: AddAssuranceCommentDto, tenantSlug?: string) =>
-      request<AssuranceTicketComment>(
-        `/assurance/tickets/${id}/comments`,
-        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
-        tenantSlug,
-      ),
+    addComment: addAssuranceComment,
+
+    addCommentWithAttachments: addAssuranceCommentWithAttachments,
+
+    /** Sin archivos usa el endpoint JSON de siempre; con archivos, el multipart. */
+    submitComment: (id: string, submission: AssuranceCommentSubmission, tenantSlug?: string) => {
+      const { files, ...dto } = submission;
+      return files.length > 0
+        ? addAssuranceCommentWithAttachments(id, dto, files, tenantSlug)
+        : addAssuranceComment(id, dto, tenantSlug);
+    },
 
     listComments: (id: string, tenantSlug?: string) =>
       request<AssuranceTicketComment[]>(
         `/assurance/tickets/${id}/comments`,
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    listAttachments: (id: string, tenantSlug?: string) =>
+      request<AssuranceTicketAttachment[]>(
+        `/assurance/tickets/${id}/attachments`,
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    getAttachmentLink: (
+      id: string,
+      attachmentId: string,
+      disposition: AssuranceTicketAttachmentDisposition,
+      tenantSlug?: string,
+    ) =>
+      request<AssuranceTicketAttachmentLink>(
+        `/assurance/tickets/${id}/attachments/${encodeURIComponent(attachmentId)}/link?disposition=${disposition}`,
         { returnFullResponse: true },
         tenantSlug,
       ),

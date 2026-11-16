@@ -108,6 +108,38 @@ export const MIGRATION_EXTERNAL_ID_PREFIX: Record<MigrationEntity, string> = {
   SOPORTE_DOCUMENTAL: 'document',
 };
 
+/**
+ * Adjuntos de comentarios de tickets (spec MOD09 2026-11-16 §2.3): no son una entidad del lote
+ * (no entran en `MIGRATION_ENTITIES`); se cuentan aparte en `adjuntosTickets`.
+ * `external_id` = `uisp:ticket_attachment:<id del adjunto en UISP>`.
+ */
+export const MIGRATION_TICKET_ATTACHMENT_EXTERNAL_ID_PREFIX = 'ticket_attachment' as const;
+
+export function migrationTicketAttachmentExternalId(uispAttachmentId: string | number): string {
+  return `uisp:${MIGRATION_TICKET_ATTACHMENT_EXTERNAL_ID_PREFIX}:${uispAttachmentId}`;
+}
+
+/**
+ * Motivos por los que un adjunto de un comentario importado no se importa. El comentario se
+ * importa igual. Códigos; nunca el nombre del archivo.
+ */
+export const MIGRATION_TICKET_ATTACHMENT_SKIP_REASONS = [
+  /** El comentario lo referencia y `tickets/<ticket>/<filename>` no está en el ZIP. */
+  'ARCHIVO_AUSENTE',
+  /** La firma real del archivo no es JPEG, PNG, WebP, GIF, PDF ni MP4. */
+  'TIPO_NO_PERMITIDO',
+  /** Supera el límite de su tipo (25 MB foto o PDF; 100 MB MP4). */
+  'TAMANO_EXCEDIDO',
+  /** El nombre queda vacío tras sanearlo. */
+  'NOMBRE_INVALIDO',
+  /** El comentario de UISP trae más de 10 adjuntos: se importan los 10 primeros. */
+  'EXCEDE_MAXIMO_POR_COMENTARIO',
+  /** Su comentario (o su ticket) no se importó. */
+  'COMENTARIO_NO_IMPORTADO',
+] as const;
+export type MigrationTicketAttachmentSkipReason =
+  (typeof MIGRATION_TICKET_ATTACHMENT_SKIP_REASONS)[number];
+
 /** Motivos de rechazo de un registro (código; nunca texto del titular). */
 export const MIGRATION_REJECTION_REASONS = [
   'DATOS_INVALIDOS',
@@ -310,6 +342,20 @@ export type MigrationBatchSummary = z.infer<typeof MigrationBatchSummarySchema>;
 // ── Promoción, conciliación y reversión (bloque C: D3, D6, D7) ──────────────────────────
 const moneySchema = z.string().regex(/^-?\d{1,12}\.\d{2}$/u);
 
+/** «Adjuntos de tickets no importados: N» por motivo (spec MOD09 2026-11-16 §2.3). */
+export const MigrationTicketAttachmentsReportSchema = z
+  .object({
+    /** Filas `ticket_comment_attachments` creadas. */
+    importados: countSchema,
+    /** Ya existían por `external_id` (idempotencia): no se duplican. */
+    existentes: countSchema,
+    noImportados: z.record(z.enum(MIGRATION_TICKET_ATTACHMENT_SKIP_REASONS), countSchema),
+  })
+  .strict();
+export type MigrationTicketAttachmentsReport = z.infer<
+  typeof MigrationTicketAttachmentsReportSchema
+>;
+
 /** Forma de `migration_batches.promotion` (jsonb sin PII). */
 export const MigrationPromotionReportSchema = z
   .object({
@@ -323,6 +369,12 @@ export const MigrationPromotionReportSchema = z
     etiquetasAsignadas: countSchema,
     periodosSuspension: countSchema,
     aplicaciones: countSchema,
+    /** Adjuntos de comentarios de tickets; los informes previos a la 212 leen ceros. */
+    adjuntosTickets: MigrationTicketAttachmentsReportSchema.default({
+      importados: 0,
+      existentes: 0,
+      noImportados: {},
+    }),
     iniciadoEn: z.string().datetime().nullable(),
     terminadoEn: z.string().datetime().nullable(),
   })
@@ -384,6 +436,8 @@ export const MigrationRevertResultSchema = z
     status: z.literal('REVERTIDO'),
     retirados: z.record(z.enum(MIGRATION_ENTITIES), countSchema),
     etiquetasRetiradas: countSchema,
+    /** Adjuntos de tickets retirados con su archivo; los resultados previos leen 0. */
+    adjuntosTicketsRetirados: countSchema.default(0),
   })
   .strict();
 export type MigrationRevertResult = z.infer<typeof MigrationRevertResultSchema>;

@@ -33,7 +33,8 @@ function loadUispFixture(): UispFixtureModule {
   );
   return module.exports;
 }
-const { buildSyntheticUispZip } = loadUispFixture();
+const { buildSyntheticUispZip, syntheticAttachmentBytes, syntheticTicketAttachments } =
+  loadUispFixture();
 
 /**
  * Importación desde UISP (spec 2026-11-10 v1.1, ADR-110) contra Portal, API y worker reales.
@@ -56,7 +57,15 @@ type BatchReport = {
     tareasSinFuente: number;
     titulares?: { complementados: number };
   };
-  promotion: { procesamiento: string; promovidos: Record<string, number> } | null;
+  promotion: {
+    procesamiento: string;
+    promovidos: Record<string, number>;
+    adjuntosTickets?: {
+      importados: number;
+      existentes: number;
+      noImportados: Record<string, number>;
+    };
+  } | null;
   reconciliation: { resultado: string; titulares: number; conciliados: number } | null;
 };
 type BillingDocument = {
@@ -119,7 +128,10 @@ async function expectJson<T>(
     response.status(),
     `API ${method} ${path}: HTTP ${response.status()} (${String(body.code ?? body.message ?? 'sin detalle')})`,
   ).toBe(status);
-  return body.data;
+  // Algunos endpoints (comentarios y enlace firmado de un adjunto) responden sin `{ data }`.
+  const enveloped =
+    body !== null && typeof body === 'object' && !Array.isArray(body) && 'data' in body;
+  return (enveloped ? body.data : body) as T;
 }
 
 async function cleanupQaTenants(): Promise<void> {
@@ -719,5 +731,178 @@ test.describe('Importación desde UISP — ADR-110 contra Portal, API y worker r
     expect(
       (await listDocuments(`&subscriberId=${existing.id}`)).filter((d) => d.status === 'IMPORTADO'),
     ).toHaveLength(0);
+  });
+
+  test('Adjuntos de tickets (spec MOD09 adjuntos §5 CA-5/CA-6/CA-7): importa, no duplica y revierte con sus archivos', async ({
+    page,
+  }) => {
+    // Corre después de los casos anteriores (serial): sus lotes ya se revirtieron; las
+    // equivalencias de plan y etiqueta quedan como configuración del tenant.
+    const clientId = 9301;
+    const firstAttachmentId = 930_100 + Number.parseInt(RUN_ID.slice(0, 4), 16);
+    const { ticketActivity, ticketFiles } = syntheticTicketAttachments(firstAttachmentId);
+    const zip = async () => ({
+      name: `cliente-${clientId}.zip`,
+      mimeType: 'application/zip',
+      buffer: await buildSyntheticUispZip({
+        clientId,
+        document: `100000${clientId}`,
+        lastName: 'Sintético adjuntos',
+        stratum: '3',
+        ticketActivity,
+        ticketFiles,
+      }),
+    });
+    type Attachment = { id: string; filename: string; contentType: string; status: string };
+    type Comment = { id: string; body: string; isInternal: boolean; attachments: Attachment[] };
+
+    await loginInPortal(page);
+    await page.goto('/dashboard/settings/imports');
+    await page.getByLabel('Archivos ZIP de clientes de UISP').setInputFiles([await zip()]);
+    await page.getByRole('button', { name: 'Subir y simular' }).click();
+    await expect(page).toHaveURL(/\/dashboard\/settings\/imports\/[0-9a-f-]{36}$/u);
+    const batchId = new URL(page.url()).pathname.split('/').pop()!;
+    await waitBatch(
+      batchId,
+      (r) => r.status === 'SIMULADO' && r.counts.procesamiento === 'COMPLETADO',
+    );
+    const pending = await expectJson<Array<{ kind: string }>>(
+      `/migration/batches/${batchId}/pending-mappings`,
+      'GET',
+      200,
+      { headers: tenantHeaders() },
+    );
+    expect(pending, `pendientes: ${pending.map((v) => v.kind).join(', ')}`).toEqual([]);
+
+    // ── Promoción: 3 adjuntos importados; ausente e inválido contados por motivo (CA-6) ──
+    await page.reload();
+    await page.getByRole('button', { name: 'Promover' }).click();
+    await page
+      .getByRole('dialog', { name: 'Promover el lote' })
+      .getByRole('button', { name: 'Promover', exact: true })
+      .click();
+    const promoted = await waitBatch(
+      batchId,
+      (r) => (r.status === 'PROMOVIDO' || r.status === 'CONCILIADO') && r.promotion !== null,
+    );
+    const report = `informe de promoción: ${JSON.stringify(promoted.promotion)}`;
+    expect(promoted.promotion?.adjuntosTickets, report).toEqual({
+      importados: 3,
+      existentes: 0,
+      noImportados: { ARCHIVO_AUSENTE: 1, TIPO_NO_PERMITIDO: 1 },
+    });
+    // El informe visible del lote repite los conteos y el desglose por motivo (CA-6).
+    await page.reload();
+    await expect(
+      page.getByRole('heading', { name: 'Adjuntos de tickets', exact: true }),
+    ).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(
+      page.getByText('Adjuntos de tickets importados: 3', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Adjuntos de tickets no importados: 2', { exact: true }),
+    ).toBeVisible();
+    const skippedList = page.getByRole('list', { name: 'Adjuntos de tickets no importados' });
+    // El orden de los motivos sale del JSON del informe: se comprueba sin depender de él.
+    await expect(skippedList.getByRole('listitem')).toHaveCount(2);
+    for (const line of ['El archivo no venía en el ZIP: 1', 'Tipo de archivo no permitido: 1']) {
+      await expect(skippedList.getByRole('listitem').filter({ hasText: line })).toHaveCount(1);
+    }
+
+    // ── Cada adjunto en su comentario, disponible y con su archivo (CA-5) ──
+    const [subscriberId] = await listSubscriberIds();
+    const tickets = await expectJson<Array<{ id: string; attachmentCount?: number }>>(
+      `/assurance/tickets?subscriberId=${subscriberId}&limit=100`,
+      'GET',
+      200,
+      { headers: tenantHeaders() },
+    );
+    const withFiles = tickets.filter((ticket) => (ticket.attachmentCount ?? 0) > 0);
+    expect(withFiles.map((ticket) => ticket.attachmentCount)).toEqual([3]);
+    const ticketId = withFiles[0]!.id;
+    const comments = await expectJson<Comment[]>(
+      `/assurance/tickets/${ticketId}/comments`,
+      'GET',
+      200,
+      { headers: tenantHeaders() },
+    );
+    const withAttachments = comments.find((c) => c.body.includes('con foto, acta y video'));
+    expect(withAttachments?.attachments.map((a) => [a.filename, a.contentType, a.status])).toEqual([
+      ['foto sintética.png', 'image/png', 'AVAILABLE'],
+      ['acta.pdf', 'application/pdf', 'AVAILABLE'],
+      ['video.mp4', 'video/mp4', 'AVAILABLE'],
+    ]);
+    // El comentario con el ausente y el inválido se importó igual, sin adjuntos (CA-6).
+    expect(
+      comments.find((c) => c.body.includes('adjunto ausente e inválido'))?.attachments,
+    ).toEqual([]);
+    const pdf = withAttachments!.attachments[1]!;
+    const link = await expectJson<{ url: string; filename: string }>(
+      `/assurance/tickets/${ticketId}/attachments/${pdf.id}/link?disposition=attachment`,
+      'GET',
+      200,
+      { headers: tenantHeaders() },
+    );
+    expect(link.filename).toBe('acta.pdf');
+    const stored = await api!.fetch(link.url);
+    expect(stored.status()).toBe(200);
+    expect(Buffer.from(await stored.body()).equals(syntheticAttachmentBytes.pdf())).toBe(true);
+
+    // ── Portal: clip en la ficha y sección «Adjuntos (3)» del caso (CA-4) ──
+    await page.goto(`/dashboard/crm/subscribers/${subscriberId}?tab=soporte`);
+    await expect(page.getByTestId('ticket-attachment-clip')).toHaveCount(1, { timeout: 30_000 });
+    await page.getByRole('button', { name: /, con 3 adjuntos$/u }).click();
+    await expect(
+      page.getByTestId('ticket-attachments-section').getByRole('heading', { name: 'Adjuntos (3)' }),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('button', { name: 'Abrir PDF: acta.pdf' }).first()).toBeVisible();
+
+    // ── Reimportar el mismo ZIP no duplica (CA-5) ──
+    const form = new FormData();
+    const again = await zip();
+    form.append(
+      'files',
+      new Blob([new Uint8Array(again.buffer)], { type: again.mimeType }),
+      again.name,
+    );
+    const second = await expectJson<{ id: string }>('/migration/batches', 'POST', 202, {
+      headers: tenantHeaders(),
+      multipart: form,
+    });
+    await waitBatch(second.id, (r) => r.counts.procesamiento === 'COMPLETADO');
+    const promoteAgain = await api!.fetch(`${API_PREFIX}/migration/batches/${second.id}/promote`, {
+      method: 'POST',
+      headers: tenantHeaders(),
+    });
+    expect([202, 409]).toContain(promoteAgain.status());
+    if (promoteAgain.status() === 202) {
+      await waitBatch(second.id, (r) => r.status !== 'CARGADO' && r.promotion !== null);
+    }
+    const afterRepeat = await expectJson<Array<{ attachmentCount?: number }>>(
+      `/assurance/tickets?subscriberId=${subscriberId}&limit=100`,
+      'GET',
+      200,
+      { headers: tenantHeaders() },
+    );
+    expect(afterRepeat.map((ticket) => ticket.attachmentCount ?? 0).sort()).toEqual([0, 3]);
+
+    // ── Revertir retira los adjuntos importados y sus archivos (CA-7) ──
+    const reverted = await expectJson<{ adjuntosTicketsRetirados?: number }>(
+      `/migration/batches/${batchId}/revert`,
+      'POST',
+      200,
+      { headers: tenantHeaders() },
+    );
+    expect(reverted.adjuntosTicketsRetirados).toBe(3);
+    expect((await getBatch(batchId)).status).toBe('REVERTIDO');
+    const goneTicket = await api!.fetch(`${API_PREFIX}/assurance/tickets/${ticketId}/attachments`, {
+      headers: tenantHeaders(),
+    });
+    expect(goneTicket.status()).toBe(404);
+    // El objeto ya no existe: un enlace firmado antes de revertir deja de servir.
+    const goneObject = await api!.fetch(link.url);
+    expect(goneObject.status()).toBe(404);
   });
 });

@@ -46,6 +46,7 @@ export { UserAccessProfile } from './user-access-profile.entity';
 // MOD10 — Service Assurance
 export { SupportTicket } from './support-ticket.entity';
 export { TicketComment } from './ticket-comment.entity';
+export { TicketCommentAttachment } from './ticket-comment-attachment.entity';
 export { TicketPqrRecord } from './ticket-pqr-record.entity';
 export { TicketSlaPolicy } from './ticket-sla-policy.entity';
 export { TicketTimelineEvent } from './ticket-timeline-event.entity';

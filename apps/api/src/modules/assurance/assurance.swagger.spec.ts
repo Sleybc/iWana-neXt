@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AssuranceController } from './assurance.controller';
 import { AssuranceDashboardService } from './services/assurance-dashboard.service';
+import { TicketAttachmentsService } from './services/ticket-attachments.service';
 import { CommentsService } from './services/comments.service';
 import { SlaService } from './services/sla.service';
 import { TicketsService } from './services/tickets.service';
@@ -44,6 +45,13 @@ describe('AssuranceController Swagger', () => {
         { provide: TimelineService, useValue: {} },
         { provide: SlaService, useValue: {} },
         { provide: AssuranceDashboardService, useValue: {} },
+        {
+          provide: TicketAttachmentsService,
+          useValue: {
+            decorateTicketList: jest.fn(async (result: unknown) => result),
+            decorateComments: jest.fn(async (comments: unknown) => comments),
+          },
+        },
         {
           provide: EffectivePermissionsService,
           useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
@@ -164,5 +172,69 @@ describe('AssuranceController Swagger', () => {
     for (const path of requiredPaths) {
       expect(document.paths[path]).toBeDefined();
     }
+  });
+
+  it('documenta los adjuntos de tickets: multipart, lista y enlace firmado (spec MOD09 §2.2)', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Assurance Test').setVersion('1.0').build(),
+    );
+    const upload = document.paths['/assurance/tickets/{id}/comments/with-attachments']?.post;
+    expect(upload?.requestBody).toMatchObject({
+      content: {
+        'multipart/form-data': { schema: expect.objectContaining({ required: ['body'] }) },
+      },
+    });
+    expect(Object.keys(upload?.responses ?? {})).toEqual(
+      expect.arrayContaining(['201', '400', '411', '413', '503']),
+    );
+    expect(document.paths['/assurance/tickets/{id}/attachments']?.get).toBeDefined();
+    const link = document.paths['/assurance/tickets/{id}/attachments/{attachmentId}/link']?.get;
+    expect(Object.keys(link?.responses ?? {})).toEqual(
+      expect.arrayContaining(['200', '404', '409']),
+    );
+    // S-3: el límite por minuto queda documentado.
+    expect(Object.keys(upload?.responses ?? {})).toContain('429');
+  });
+
+  it('m2: GET y POST de comentarios declaran `attachments`; el listado declara `attachmentCount`', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Assurance Test').setVersion('1.0').build(),
+    );
+    const comments = document.paths['/assurance/tickets/{id}/comments'];
+    const attachmentsProperty = expect.objectContaining({
+      type: 'array',
+      items: expect.objectContaining({
+        required: ['id', 'filename', 'contentType', 'sizeBytes', 'status'],
+      }),
+    });
+
+    const created = getResponseSchema(comments?.post as unknown as Record<string, unknown>, '201');
+    expect(created).toMatchObject({ required: expect.arrayContaining(['attachments']) });
+    expect((created?.properties as Record<string, unknown>)?.['attachments']).toEqual(
+      attachmentsProperty,
+    );
+
+    const listed = getResponseSchema(comments?.get as unknown as Record<string, unknown>, '200');
+    expect(listed).toMatchObject({ type: 'array' });
+    const item = listed?.items as Record<string, unknown> | undefined;
+    expect(item).toMatchObject({ required: expect.arrayContaining(['attachments']) });
+    expect((item?.properties as Record<string, unknown>)?.['attachments']).toEqual(
+      attachmentsProperty,
+    );
+
+    const tickets = getResponseSchema(
+      document.paths['/assurance/tickets']?.get as unknown as Record<string, unknown>,
+      '200',
+    );
+    const data = (tickets?.properties as Record<string, Record<string, unknown>> | undefined)?.[
+      'data'
+    ];
+    const ticket = data?.items as Record<string, unknown> | undefined;
+    expect(ticket).toMatchObject({ required: expect.arrayContaining(['attachmentCount']) });
+    expect((ticket?.properties as Record<string, unknown>)?.['attachmentCount']).toEqual(
+      expect.objectContaining({ type: 'integer', minimum: 0 }),
+    );
   });
 });

@@ -34,6 +34,12 @@ export interface StoredObjectSummary {
   lastModified: Date | null;
 }
 
+/** Cabeceras que la URL firmada impone a la respuesta del almacenamiento. */
+export interface SignedUrlResponseOptions {
+  responseContentType?: string;
+  responseContentDisposition?: string;
+}
+
 export interface StoragePort {
   /**
    * Sube un objeto al bucket configurado.
@@ -76,8 +82,14 @@ export interface StoragePort {
    * Genera una URL pre-firmada para acceso temporal a un objeto privado.
    * @param objectKey Clave del objeto
    * @param expiresInSeconds Tiempo de validez en segundos (máx. 604800 = 7 días)
+   * @param options Cabeceras de respuesta firmadas (opcional): fuerzan `Content-Type` y
+   *        `Content-Disposition` al descargar (adjuntos de tickets, spec MOD09 §2.2).
    */
-  getSignedUrl(objectKey: string, expiresInSeconds: number): Promise<string>;
+  getSignedUrl(
+    objectKey: string,
+    expiresInSeconds: number,
+    options?: SignedUrlResponseOptions,
+  ): Promise<string>;
 }
 
 /**

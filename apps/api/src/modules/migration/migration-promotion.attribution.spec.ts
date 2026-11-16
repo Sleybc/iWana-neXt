@@ -99,7 +99,7 @@ function build(
   };
   const support = {
     findTickets: jest.fn().mockResolvedValue(new Map()),
-    createImportedTicket: jest.fn().mockResolvedValue('ticket-1'),
+    createImportedTicket: jest.fn().mockResolvedValue({ ticketId: 'ticket-1', commentIds: [] }),
     refreshImportedAuthors: jest.fn().mockResolvedValue({
       tickets: 1,
       comments: 1,

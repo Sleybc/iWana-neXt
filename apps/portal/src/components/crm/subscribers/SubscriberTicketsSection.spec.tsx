@@ -107,7 +107,20 @@ describe('SubscriberTicketsSection', () => {
       />,
     );
 
-    const list = await screen.findByRole('list', { name: 'Tickets vinculados' });
+    // Con tickets abiertos, la lista arranca filtrada en «Abiertos» (2026-11-16).
+    let list = await screen.findByRole('list', { name: 'Tickets vinculados' });
+    expect(
+      within(list)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual(['Abrir ticket TK-1001: TK-1001', 'Abrir ticket TK-1002: TK-1002']);
+    expect(screen.getByRole('button', { name: 'Abiertos (2)' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Todos (4)' }));
+    list = screen.getByRole('list', { name: 'Tickets vinculados' });
     const labels = within(list)
       .getAllByRole('button')
       .map((button) => button.getAttribute('aria-label'));
@@ -121,6 +134,52 @@ describe('SubscriberTicketsSection', () => {
       subscriberId: subscriber.id,
       limit: 100,
     });
+  });
+
+  it('sin abiertos muestra todos; cada fila lleva apertura, responsable y resumen, sin SLA en cerrados', async () => {
+    (assuranceApi.tickets.list as jest.Mock).mockResolvedValue({
+      data: [
+        ticket({
+          id: 'ticket-imported',
+          ticketNumber: 'UISP-25790',
+          subject: 'CAMBIO DE ONU',
+          status: TicketStatus.CLOSED,
+          slaResolveByAt: null,
+          closedAt: '2026-08-03T10:00:00.000Z',
+          createdAt: '2026-06-24T20:13:00.000Z',
+          assignedUserId: 'user-1',
+          description: 'El usuario solicita un cambio de ONU por intermitencia.',
+        }),
+      ],
+    });
+
+    render(
+      <SubscriberTicketsSection
+        subscriber={subscriber}
+        canRead
+        refreshKey={0}
+        onOpenTicket={onOpenTicket}
+        users={[
+          {
+            id: 'user-1',
+            firstName: 'Numa',
+            lastName: 'Patrón',
+            email: 'numa@example.invalid',
+          } as never,
+        ]}
+      />,
+    );
+
+    const list = await screen.findByRole('list', { name: 'Tickets vinculados' });
+    expect(screen.getByRole('button', { name: 'Todos (1)' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(list).toHaveTextContent('Abierto el 24 jun 2026');
+    expect(list).toHaveTextContent('Responsable: Numa Patrón');
+    expect(list).toHaveTextContent('El usuario solicita un cambio de ONU por intermitencia.');
+    expect(list).not.toHaveTextContent('Vence');
+    expect(list).not.toHaveTextContent('SLA');
   });
 
   it('permite reintentar solo la consulta de tickets y presenta el vacío definitivo', async () => {

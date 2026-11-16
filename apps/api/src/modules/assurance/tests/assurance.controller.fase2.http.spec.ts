@@ -11,6 +11,7 @@ import { PermissionsGuard } from '../../access-control/guards/permissions.guard'
 import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 import { AssuranceController } from '../assurance.controller';
 import { AssuranceDashboardService } from '../services/assurance-dashboard.service';
+import { TicketAttachmentsService } from '../services/ticket-attachments.service';
 import { CommentsService } from '../services/comments.service';
 import { SlaService } from '../services/sla.service';
 import { TicketsService } from '../services/tickets.service';
@@ -106,6 +107,13 @@ describe('AssuranceController Fase 2 — doble guard', () => {
         { provide: TimelineService, useValue: {} },
         { provide: SlaService, useValue: {} },
         { provide: AssuranceDashboardService, useValue: {} },
+        {
+          provide: TicketAttachmentsService,
+          useValue: {
+            decorateTicketList: jest.fn(async (result: unknown) => result),
+            decorateComments: jest.fn(async (comments: unknown) => comments),
+          },
+        },
         { provide: EffectivePermissionsService, useValue: permsMock },
         Reflector,
         PermissionsGuard,

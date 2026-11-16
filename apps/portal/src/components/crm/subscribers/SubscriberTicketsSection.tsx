@@ -1,31 +1,42 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { TicketStatus } from '@iwana/shared';
 import { Badge, Button } from '@iwana/ui';
-import { ArrowUpRight } from 'lucide-react';
-import type { AssuranceTicket, SubscriberRecord } from '@/lib/api-client';
+import { ArrowUpRight, Paperclip } from 'lucide-react';
+import type { AssuranceTicket, InternalUser, SubscriberRecord } from '@/lib/api-client';
 import { assuranceApi } from '@/lib/api-client';
 import {
   formatAssuranceDateTime,
+  getAssuranceUserDisplayName,
   getAssuranceTicketPriorityLabel,
   getAssuranceTicketPriorityVariant,
   getAssuranceTicketStatusLabel,
   getAssuranceTicketStatusVariant,
 } from '@/components/assurance/assurance-labels';
+import { formatTicketAttachmentCount } from '@/components/assurance/ticket-attachments';
 import {
   PortalAlert,
   PortalEmptyState,
+  PortalFilterChip,
   PortalPanel,
   PortalSkeletonBlock,
+  portalFilterChipGroupClassName,
 } from '@/components/shared/portal-ui';
+import { formatBillingShortDate } from './billing-cycle-ui';
 
 interface SubscriberTicketsSectionProps {
   subscriber: SubscriberRecord;
   canRead: boolean;
   refreshKey: number;
   onOpenTicket: (ticket: AssuranceTicket, opener: HTMLButtonElement) => void;
+  /** Acción de la cabecera del panel (p. ej. «Crear ticket»). */
+  actions?: ReactNode;
+  /** Usuarios internos ya cargados por la pestaña: nombre del responsable en cada fila. */
+  users?: readonly InternalUser[];
 }
+
+type TicketFilter = 'abiertos' | 'cerrados' | 'todos';
 
 const CLOSED_STATUSES = new Set<TicketStatus>([
   TicketStatus.RESOLVED,
@@ -70,34 +81,62 @@ export function compareTickets(left: AssuranceTicket, right: AssuranceTicket): n
 
 function TicketRow({
   ticket,
+  assignee,
   onOpen,
 }: {
   ticket: AssuranceTicket;
+  assignee: InternalUser | null;
   onOpen: (ticket: AssuranceTicket, opener: HTMLButtonElement) => void;
 }) {
-  const slaDeadline = getTicketSlaDeadline(ticket);
-  const slaLabel = Number.isFinite(slaDeadline)
-    ? formatAssuranceDateTime(new Date(slaDeadline))
-    : 'Sin vencimiento registrado';
+  const active = isActiveTicket(ticket);
+  // El vencimiento solo informa en tickets abiertos con SLA; en cerrados o importados es ruido.
+  const slaDeadline = active ? getTicketSlaDeadline(ticket) : Number.POSITIVE_INFINITY;
+  const description = ticket.description?.trim();
+  const attachmentCount = ticket.attachmentCount ?? 0;
+  const attachmentsLabel =
+    attachmentCount > 0 ? formatTicketAttachmentCount(attachmentCount) : null;
 
   return (
     <li className="border-b border-gray-100 last:border-b-0 dark:border-dark-border">
       <button
         type="button"
         className="w-full rounded-xl px-3 py-3 text-left transition-colors hover:bg-iwana-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:hover:bg-dark-surface-3"
-        aria-label={`Abrir ticket ${ticket.ticketNumber}: ${ticket.subject}`}
+        aria-label={`Abrir ticket ${ticket.ticketNumber}: ${ticket.subject}${attachmentsLabel ? `, con ${attachmentsLabel}` : ''}`}
         onClick={(event) => onOpen(ticket, event.currentTarget)}
       >
-        <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <span className="flex items-start justify-between gap-3">
           <span className="min-w-0 flex-1">
-            <span className="block font-mono text-xs font-semibold text-iwana-secondary-700 dark:text-gray-300">
-              {ticket.ticketNumber}
+            <span className="flex flex-wrap items-center gap-x-2 text-xs text-gray-600 dark:text-gray-300">
+              <span className="font-mono font-semibold text-iwana-secondary-700 dark:text-gray-300">
+                {ticket.ticketNumber}
+              </span>
+              <span aria-hidden="true">·</span>
+              <span>Abierto el {formatBillingShortDate(ticket.createdAt)}</span>
+              {attachmentsLabel ? (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span
+                    data-testid="ticket-attachment-clip"
+                    title={`Con ${attachmentsLabel}`}
+                    className="inline-flex items-center gap-1"
+                  >
+                    <Paperclip className="h-3.5 w-3.5" aria-hidden />
+                    <span aria-hidden="true">{attachmentCount}</span>
+                    <span className="sr-only">Con {attachmentsLabel}</span>
+                  </span>
+                </>
+              ) : null}
             </span>
             <span className="mt-1 block text-sm font-medium text-gray-900 dark:text-white">
               {ticket.subject}
             </span>
+            {description ? (
+              <span className="mt-1 line-clamp-2 block text-xs text-gray-600 dark:text-gray-300">
+                {description}
+              </span>
+            ) : null}
           </span>
-          <ArrowUpRight className="h-4 w-4 shrink-0 text-gray-500" aria-hidden="true" />
+          <ArrowUpRight className="mt-1 h-4 w-4 shrink-0 text-gray-500" aria-hidden="true" />
         </span>
         <span className="mt-2 flex flex-wrap items-center gap-2">
           <Badge variant={getAssuranceTicketStatusVariant(ticket.status)}>
@@ -106,10 +145,15 @@ function TicketRow({
           <Badge variant={getAssuranceTicketPriorityVariant(ticket.priority)}>
             {getAssuranceTicketPriorityLabel(ticket.priority)}
           </Badge>
+          <span className="text-xs text-gray-600 dark:text-gray-300">
+            {assignee ? `Responsable: ${getAssuranceUserDisplayName(assignee)}` : 'Sin responsable'}
+          </span>
         </span>
-        <span className="mt-2 block text-xs text-gray-600 dark:text-gray-300">
-          Vencimiento SLA: {slaLabel}
-        </span>
+        {Number.isFinite(slaDeadline) ? (
+          <span className="mt-2 block text-xs text-gray-600 dark:text-gray-300">
+            Vence el {formatAssuranceDateTime(new Date(slaDeadline))}
+          </span>
+        ) : null}
       </button>
     </li>
   );
@@ -120,8 +164,23 @@ export function SubscriberTicketsSection({
   canRead,
   refreshKey,
   onOpenTicket,
+  actions,
+  users,
 }: SubscriberTicketsSectionProps) {
   const [tickets, setTickets] = useState<AssuranceTicket[]>([]);
+  const [filter, setFilter] = useState<TicketFilter | null>(null);
+  const usersById = useMemo(() => new Map((users ?? []).map((user) => [user.id, user])), [users]);
+  const openCount = tickets.filter(isActiveTicket).length;
+  const closedCount = tickets.length - openCount;
+  // Por defecto los abiertos, que son los que requieren atención; si no hay, todos.
+  const activeFilter: TicketFilter = filter ?? (openCount > 0 ? 'abiertos' : 'todos');
+  const visibleTickets = tickets.filter((ticket) =>
+    activeFilter === 'todos'
+      ? true
+      : activeFilter === 'abiertos'
+        ? isActiveTicket(ticket)
+        : !isActiveTicket(ticket),
+  );
   const [loading, setLoading] = useState(canRead);
   const [showSkeleton, setShowSkeleton] = useState(false);
   const [error, setError] = useState(false);
@@ -202,20 +261,68 @@ export function SubscriberTicketsSection({
         />
       );
     }
+    const filters: Array<{ id: TicketFilter; label: string; count: number }> = [
+      { id: 'abiertos', label: 'Abiertos', count: openCount },
+      { id: 'cerrados', label: 'Cerrados', count: closedCount },
+      { id: 'todos', label: 'Todos', count: tickets.length },
+    ];
     return (
-      <ul
-        aria-label="Tickets vinculados"
-        className="divide-y divide-gray-100 dark:divide-dark-border"
-      >
-        {tickets.map((ticket) => (
-          <TicketRow key={ticket.id} ticket={ticket} onOpen={onOpenTicket} />
-        ))}
-      </ul>
+      <div className="space-y-3">
+        <div role="group" aria-label="Filtrar tickets" className={portalFilterChipGroupClassName}>
+          {filters.map((item) => (
+            <PortalFilterChip
+              key={item.id}
+              active={activeFilter === item.id}
+              onClick={() => setFilter(item.id)}
+            >
+              {item.label} ({item.count})
+            </PortalFilterChip>
+          ))}
+        </div>
+        {visibleTickets.length === 0 ? (
+          <p className="text-sm text-gray-600 dark:text-gray-300" role="status">
+            {activeFilter === 'abiertos' ? 'No hay tickets abiertos.' : 'No hay tickets cerrados.'}
+          </p>
+        ) : (
+          <ul
+            aria-label="Tickets vinculados"
+            className="divide-y divide-gray-100 dark:divide-dark-border"
+          >
+            {visibleTickets.map((ticket) => (
+              <TicketRow
+                key={ticket.id}
+                ticket={ticket}
+                assignee={
+                  ticket.assignedUserId ? (usersById.get(ticket.assignedUserId) ?? null) : null
+                }
+                onOpen={onOpenTicket}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
     );
-  }, [canRead, error, loadTickets, loading, onOpenTicket, showSkeleton, tickets]);
+  }, [
+    activeFilter,
+    canRead,
+    closedCount,
+    error,
+    loadTickets,
+    loading,
+    onOpenTicket,
+    openCount,
+    showSkeleton,
+    tickets,
+    usersById,
+    visibleTickets,
+  ]);
 
   return (
-    <PortalPanel title="Tickets" description="Casos de atención vinculados a este suscriptor.">
+    <PortalPanel
+      title="Tickets"
+      description="Casos de atención vinculados a este suscriptor."
+      actions={actions}
+    >
       {content}
     </PortalPanel>
   );

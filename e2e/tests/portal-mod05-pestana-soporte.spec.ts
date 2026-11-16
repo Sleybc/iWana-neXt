@@ -195,7 +195,11 @@ async function seedSession(page: Page) {
 
 async function setupMocks(
   page: Page,
-  options: { permissions?: string[]; privacyRestricted?: boolean } = {},
+  options: {
+    permissions?: string[];
+    privacyRestricted?: boolean;
+    tickets?: Array<ReturnType<typeof buildTicket>>;
+  } = {},
 ) {
   const permissions = options.permissions ?? [
     'crm.subscribers.read',
@@ -210,7 +214,7 @@ async function setupMocks(
     events: [] as string[],
     creates: [] as Record<string, unknown>[],
   };
-  let tickets = [buildTicket()];
+  let tickets = options.tickets ?? [buildTicket()];
 
   await page.route('**/api/v1/**', async (route: Route) => {
     const request = route.request();
@@ -458,6 +462,40 @@ test.describe('MOD05 · pestaña Soporte', () => {
     expect(calls.tickets.length).toBeGreaterThanOrEqual(3);
     expect(calls.visitRequests).toHaveLength(2);
     expect(calls.events).toHaveLength(2);
+  });
+
+  test('MOD09 adjuntos CA-4: la lista de tickets marca con un clip los que tienen adjuntos', async ({
+    page,
+  }) => {
+    await seedSession(page);
+    await setupMocks(page, {
+      tickets: [
+        buildTicket({ attachmentCount: 3 }),
+        buildTicket({
+          id: '00000000-0000-4000-8000-000000000706',
+          ticketNumber: 'TK-2026-0706',
+          subject: 'Consulta sin archivos',
+          attachmentCount: 0,
+        }),
+      ],
+    });
+
+    await page.goto(`/dashboard/crm/subscribers/${SUBSCRIBER_ID}?tab=soporte`);
+    const withFiles = page.getByRole('button', {
+      name: 'Abrir ticket TK-2026-0701: Intermitencia sintética, con 3 adjuntos',
+    });
+    await expect(withFiles).toBeVisible();
+    const clip = withFiles.getByTestId('ticket-attachment-clip');
+    await expect(clip).toBeVisible();
+    await expect(clip).toHaveAttribute('title', 'Con 3 adjuntos');
+    await expect(clip).toContainText('3');
+
+    const withoutFiles = page.getByRole('button', {
+      name: 'Abrir ticket TK-2026-0706: Consulta sin archivos',
+      exact: true,
+    });
+    await expect(withoutFiles).toBeVisible();
+    await expect(withoutFiles.getByTestId('ticket-attachment-clip')).toHaveCount(0);
   });
 
   test('CA-SO-03: cada aviso de permiso evita su petición de lectura', async ({ page }) => {

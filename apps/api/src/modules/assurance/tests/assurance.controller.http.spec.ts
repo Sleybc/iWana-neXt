@@ -9,6 +9,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { AssuranceController } from '../assurance.controller';
 import { AssuranceDashboardService } from '../services/assurance-dashboard.service';
+import { TicketAttachmentsService } from '../services/ticket-attachments.service';
 import { CommentsService } from '../services/comments.service';
 import { SlaService } from '../services/sla.service';
 import { TicketsService } from '../services/tickets.service';
@@ -160,6 +161,13 @@ describe('AssuranceController HTTP', () => {
         { provide: TimelineService, useValue: timelineServiceMock },
         { provide: SlaService, useValue: slaServiceMock },
         { provide: AssuranceDashboardService, useValue: dashboardServiceMock },
+        {
+          provide: TicketAttachmentsService,
+          useValue: {
+            decorateTicketList: jest.fn(async (result: unknown) => result),
+            decorateComments: jest.fn(async (comments: unknown) => comments),
+          },
+        },
         JwtAuthGuard,
         RolesGuard,
         PermissionsGuard,

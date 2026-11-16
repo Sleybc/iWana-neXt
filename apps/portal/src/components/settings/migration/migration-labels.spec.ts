@@ -5,6 +5,7 @@ import {
   MIGRATION_REJECTION_REASONS,
   MIGRATION_REVERT_BLOCK_REASONS,
   MIGRATION_ERROR_CODES,
+  MIGRATION_TICKET_ATTACHMENT_SKIP_REASONS,
 } from '@iwana/shared';
 import { ApiError } from '@/lib/api-client';
 import {
@@ -14,10 +15,12 @@ import {
   MIGRATION_OBSERVATION_LABELS,
   MIGRATION_REJECTION_REASON_LABELS,
   MIGRATION_REVERT_BLOCK_LABELS,
+  MIGRATION_TICKET_ATTACHMENT_SKIP_LABELS,
   externalClientLabel,
   mappingActionsFor,
   migrationBatchStatusPresentation,
   migrationErrorMessage,
+  revertBlockedDetail,
   revertBlockersFromError,
   validateMigrationFiles,
 } from './migration-labels';
@@ -31,6 +34,11 @@ describe('vocabulario de importaciones', () => {
     ['rechazos de archivo', MIGRATION_FILE_REJECTION_REASONS, MIGRATION_FILE_REJECTION_LABELS],
     ['observaciones', MIGRATION_OBSERVATIONS, MIGRATION_OBSERVATION_LABELS],
     ['bloqueos de reversión', MIGRATION_REVERT_BLOCK_REASONS, MIGRATION_REVERT_BLOCK_LABELS],
+    [
+      'adjuntos de tickets no importados',
+      MIGRATION_TICKET_ATTACHMENT_SKIP_REASONS,
+      MIGRATION_TICKET_ATTACHMENT_SKIP_LABELS,
+    ],
   ] as const)('traduce todos los %s sin códigos internos', (_name, codes, labels) => {
     for (const code of codes) {
       const label = (labels as Record<string, string>)[code];
@@ -63,6 +71,18 @@ describe('vocabulario de importaciones', () => {
     expect(revertBlockersFromError(error)).toEqual([{ motivo: 'PAGO_POSTERIOR', cantidad: 3 }]);
     expect(revertBlockersFromError(new ApiError(409, 'OTRO', 'x'))).toEqual([]);
     expect(revertBlockersFromError(new Error('x'))).toEqual([]);
+  });
+
+  it('el detalle de la API solo acompaña al bloqueo por tickets o adjuntos posteriores', () => {
+    const tickets = [{ motivo: 'TICKET_POSTERIOR' as const, cantidad: 1 }];
+    const blocked = new ApiError(409, 'MIGRATION_REVERT_BLOCKED', ' Quita los adjuntos. ');
+    expect(revertBlockedDetail(blocked, tickets)).toBe('Quita los adjuntos.');
+    expect(revertBlockedDetail(blocked, [{ motivo: 'PAGO_POSTERIOR', cantidad: 1 }])).toBeNull();
+    expect(
+      revertBlockedDetail(new ApiError(409, 'MIGRATION_REVERT_BLOCKED', '  '), tickets),
+    ).toBeNull();
+    expect(revertBlockedDetail(new ApiError(409, 'OTRO', 'x'), tickets)).toBeNull();
+    expect(revertBlockedDetail(new Error('x'), tickets)).toBeNull();
   });
 
   it('traduce los códigos de error y usa el respaldo para lo desconocido', () => {

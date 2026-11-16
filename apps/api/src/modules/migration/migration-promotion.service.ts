@@ -32,6 +32,7 @@ import {
   type MigrationReconciliationDifference,
   type MigrationReconciliationReport,
   type MigrationRejectionReason,
+  type MigrationTicketAttachmentsReport,
 } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
 import { SubscriberTagAssignmentPort } from '../crm/ports/subscriber-tag-assignment.port';
@@ -55,6 +56,9 @@ import {
   type ImportedAuthorChange,
   type ImportedPaymentAuthor,
   type ImportedTicketAuthors,
+  type ImportedTicketComment,
+  type ImportedTicketCreated,
+  type MigrationReadContext,
   type MigrationWriteContext,
 } from './ports/migration-import.ports';
 import { MigrationTitularLookupPort } from './ports/migration-titular-lookup.port';
@@ -87,6 +91,15 @@ import {
   ticketAttribution,
   type UispUserResolver,
 } from './uisp/uisp-user-attribution';
+import {
+  addTicketAttachmentCount,
+  emptyTicketAttachmentsReport,
+  findTicketAttachmentFile,
+  sumTicketAttachmentReports,
+  ticketAttachmentFolder,
+  ticketAttachmentPlan,
+  type UispTicketAttachmentPlan,
+} from './uisp/uisp-ticket-attachments';
 import { SafeZipError, readZipEntries } from './zip/safe-zip-reader';
 
 export const MIGRATION_PROMOTE_ATTEMPTS = 3;
@@ -120,7 +133,7 @@ type MappingIndex = Map<
 /** Resultado de un registro dentro de la transacción del titular. */
 type Outcome =
   | { kind: 'created'; id: string; meta?: Record<string, unknown> }
-  | { kind: 'existing'; id: string }
+  | { kind: 'existing'; id: string; meta?: Record<string, unknown> }
   | { kind: 'rejected'; reason: MigrationRejectionReason };
 
 class TitularRejected extends Error {
@@ -133,6 +146,7 @@ class TitularRejected extends Error {
 const AUTHOR_CHANGE_AUDIT_ENTITY: Record<ImportedAuthorChange['entity'], string> = {
   TICKET: 'SupportTicket',
   TICKET_COMMENT: 'TicketComment',
+  TICKET_COMMENT_ATTACHMENT: 'TicketCommentAttachment',
   PAYMENT: 'BillingPayment',
 };
 
@@ -145,12 +159,28 @@ function emptyPromotion(): MigrationPromotionReport {
     etiquetasAsignadas: 0,
     periodosSuspension: 0,
     aplicaciones: 0,
+    adjuntosTickets: { importados: 0, existentes: 0, noImportados: {} },
     iniciadoEn: null,
     terminadoEn: null,
   };
 }
 
 const text = importedText;
+
+/** `promotion_meta.adjuntos` del ticket solo si hubo algún adjunto (las demás filas no cambian). */
+function withAttachments(
+  meta: Record<string, unknown>,
+  report: MigrationTicketAttachmentsReport,
+): Record<string, unknown> {
+  const touched =
+    report.importados + report.existentes + Object.values(report.noImportados).length > 0;
+  return touched ? { ...meta, adjuntos: report } : meta;
+}
+
+/** Id de UISP del registro (`uisp:<entidad>:<id>`). */
+function sourceIdOf(externalId: string): string {
+  return externalId.slice(externalId.lastIndexOf(':') + 1);
+}
 
 /** Suscriptor existente que este titular complementa (lo fija la simulación), o `null`. */
 function complementTarget(row: StagedRow): string | null {
@@ -335,6 +365,8 @@ export class MigrationPromotionService {
       // H3: un ZIP a la vez y solo las entradas que este titular referencia.
       const entries = await this.loadTitularFiles(prefix, fileCount, group);
       const uploaded: string[] = [];
+      // Activos de adjuntos de tickets subidos en esta transacción (spec MOD09 adjuntos §2.3).
+      const attachmentAssets: string[] = [];
       let continued: boolean;
       try {
         continued = await runInTenantSchema(this.dataSource, tenant.schemaName, async (qr) => {
@@ -353,12 +385,14 @@ export class MigrationPromotionService {
             entries,
             uploaded,
             resolveUser,
+            attachmentAssets,
           );
           return true;
         });
       } catch (error) {
         // Compensación: la transacción del titular no se confirmó; sus objetos no deben quedar.
         await this.deleteUploaded(uploaded);
+        await this.purgeAttachmentObjects(tenant.schemaName, attachmentAssets);
         throw error;
       }
       if (!continued) return 'OMITIDO';
@@ -392,6 +426,7 @@ export class MigrationPromotionService {
             status: 'PROMOVIDO',
             promovidos: promotion.promovidos,
             existentes: promotion.existentes,
+            adjuntosTickets: promotion.adjuntosTickets,
           },
         },
         qr.manager,
@@ -822,6 +857,7 @@ export class MigrationPromotionService {
     entries: Map<string, Buffer>,
     uploaded: string[],
     resolveUser: UispUserResolver,
+    attachmentAssets: string[] = [],
   ): Promise<void> {
     const ctx: MigrationWriteContext = {
       manager: qr.manager,
@@ -1006,11 +1042,15 @@ export class MigrationPromotionService {
 
     for (const row of byEntity('TICKET')) {
       await this.apply(qr, row, async () => {
-        const existing = await known(row, (ids) => this.support.findTickets(read, ids));
-        if (existing) return { kind: 'existing', id: existing };
         const raw = row.payload.raw ?? {};
+        const plan = ticketAttachmentPlan(raw);
+        const existing = await known(row, (ids) => this.support.findTickets(read, ids));
+        if (existing) {
+          const adjuntos = await this.existingTicketAttachments(read, plan);
+          return { kind: 'existing', id: existing, meta: withAttachments({}, adjuntos) };
+        }
         const attribution = ticketAttribution(raw, resolveUser);
-        const id = await this.support.createImportedTicket(ctx, {
+        const created = await this.support.createImportedTicket(ctx, {
           externalId: row.external_id,
           sourceId: sourceId(row),
           subscriberId,
@@ -1021,7 +1061,19 @@ export class MigrationPromotionService {
           assignedUserId: attribution.assignedUserId,
           createdByUserId: attribution.createdByUserId,
         });
-        return { kind: 'created', id, meta: { importedBy: ctx.actorId } };
+        const adjuntos = await this.importTicketAttachments(ctx, {
+          created,
+          plan,
+          comments: attribution.comments,
+          ticketSourceId: sourceId(row),
+          entries,
+          attachmentAssets,
+        });
+        return {
+          kind: 'created',
+          id: created.ticketId,
+          meta: withAttachments({ importedBy: ctx.actorId }, adjuntos),
+        };
       });
     }
 
@@ -1275,9 +1327,122 @@ export class MigrationPromotionService {
       qr,
       row,
       outcome.id,
-      outcome.kind === 'existing' ? { existing: true } : (outcome.meta ?? {}),
+      outcome.kind === 'existing'
+        ? { existing: true, ...(outcome.meta ?? {}) }
+        : (outcome.meta ?? {}),
     );
     return outcome.id;
+  }
+
+  /**
+   * Adjuntos de los comentarios de un ticket recién creado (spec MOD09 adjuntos §2.3). Cada
+   * archivo se busca solo en `tickets/<ticket>/` del ZIP; uno ausente, con nombre inseguro o
+   * rechazado por Soporte (firma, tipo, tamaño) se cuenta por motivo y su comentario queda igual.
+   */
+  private async importTicketAttachments(
+    ctx: MigrationWriteContext,
+    input: {
+      created: ImportedTicketCreated;
+      plan: UispTicketAttachmentPlan;
+      comments: ReadonlyArray<ImportedTicketComment>;
+      ticketSourceId: string;
+      entries: ReadonlyMap<string, Buffer>;
+      attachmentAssets: string[];
+    },
+  ): Promise<MigrationTicketAttachmentsReport> {
+    const report = emptyTicketAttachmentsReport();
+    addTicketAttachmentCount(
+      report,
+      { status: 'SKIPPED', reason: 'COMENTARIO_NO_IMPORTADO' },
+      input.plan.orphaned,
+    );
+    for (const [index, item] of input.plan.byComment.entries()) {
+      addTicketAttachmentCount(
+        report,
+        { status: 'SKIPPED', reason: 'NOMBRE_INVALIDO' },
+        item.invalid,
+      );
+      const commentId = input.created.commentIds[index] ?? null;
+      for (const ref of item.refs) {
+        if (!commentId) {
+          addTicketAttachmentCount(report, {
+            status: 'SKIPPED',
+            reason: 'COMENTARIO_NO_IMPORTADO',
+          });
+          continue;
+        }
+        const buffer = findTicketAttachmentFile(input.entries, input.ticketSourceId, ref.filename);
+        if (!buffer) {
+          addTicketAttachmentCount(report, { status: 'SKIPPED', reason: 'ARCHIVO_AUSENTE' });
+          continue;
+        }
+        const result = await this.support.createImportedAttachment(ctx, {
+          ticketId: input.created.ticketId,
+          commentId,
+          externalId: ref.externalId,
+          filename: ref.filename,
+          declaredContentType: ref.declaredContentType,
+          buffer,
+          uploadedByUserId: input.comments[index]?.authorUserId ?? null,
+        });
+        if (result.status === 'CREATED') input.attachmentAssets.push(result.mediaAssetId);
+        addTicketAttachmentCount(report, result);
+      }
+    }
+    return report;
+  }
+
+  /**
+   * Ticket que ya existía (reintento o reimportación): sus adjuntos no se vuelven a subir. Los
+   * que existen por `external_id` cuentan como existentes; los demás no tienen comentario de
+   * este lote donde colgarse (`COMENTARIO_NO_IMPORTADO`).
+   */
+  private async existingTicketAttachments(
+    read: MigrationReadContext,
+    plan: UispTicketAttachmentPlan,
+  ): Promise<MigrationTicketAttachmentsReport> {
+    const report = emptyTicketAttachmentsReport();
+    const refs = plan.byComment.flatMap((item) => item.refs);
+    const found =
+      refs.length === 0
+        ? new Set<string>()
+        : await this.support.findAttachments(read, [...new Set(refs.map((ref) => ref.externalId))]);
+    for (const ref of refs) {
+      addTicketAttachmentCount(
+        report,
+        found.has(ref.externalId)
+          ? { status: 'EXISTING' }
+          : { status: 'SKIPPED', reason: 'COMENTARIO_NO_IMPORTADO' },
+      );
+    }
+    addTicketAttachmentCount(
+      report,
+      { status: 'SKIPPED', reason: 'NOMBRE_INVALIDO' },
+      plan.byComment.reduce((sum, item) => sum + item.invalid, 0),
+    );
+    addTicketAttachmentCount(
+      report,
+      { status: 'SKIPPED', reason: 'COMENTARIO_NO_IMPORTADO' },
+      plan.orphaned,
+    );
+    return report;
+  }
+
+  /** Borra los objetos de adjuntos de una transacción de titular que no se confirmó. */
+  private async purgeAttachmentObjects(schemaName: string, mediaAssetIds: string[]): Promise<void> {
+    if (mediaAssetIds.length === 0) return;
+    try {
+      const failed = await this.support.purgeImportedAttachmentFiles(schemaName, mediaAssetIds);
+      if (failed > 0) {
+        this.logger.warn(
+          `[migration] No se pudieron retirar ${failed} archivos de adjuntos de un titular no confirmado.`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `[migration] No se pudieron retirar los adjuntos de un titular no confirmado: ${summarizeErrorForLog(error)}`,
+      );
+    }
   }
 
   private async markPromoted(
@@ -1452,8 +1617,16 @@ export class MigrationPromotionService {
     group: TitularGroup,
   ): Promise<Map<string, Buffer>> {
     const wanted = new Set<string>();
+    // Carpetas `tickets/<id>/` de tickets con adjuntos referenciados (spec MOD09 adjuntos §2.3):
+    // se lee la carpeta del ticket, nunca una ruta armada con el nombre del JSON.
+    const folders = new Set<string>();
     for (const row of group.rows) {
       if (row.status !== 'VALIDO') continue;
+      if (row.entity === 'TICKET') {
+        const plan = ticketAttachmentPlan(row.payload.raw);
+        const folder = ticketAttachmentFolder(sourceIdOf(row.external_id));
+        if (folder && plan.byComment.some((item) => item.refs.length > 0)) folders.add(folder);
+      }
       const path =
         row.entity === 'DOCUMENTO_COBRO'
           ? row.payload.source.pdfPath
@@ -1463,7 +1636,12 @@ export class MigrationPromotionService {
       if (path) wanted.add(path);
     }
     const index = group.subscriber.payload.source.fileIndex;
-    if (wanted.size === 0 || !Number.isInteger(index) || index < 0 || index >= fileCount) {
+    if (
+      (wanted.size === 0 && folders.size === 0) ||
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= fileCount
+    ) {
       return new Map();
     }
     const blob = await this.storage.getObject(migrationObjectKey(prefix, index));
@@ -1473,10 +1651,17 @@ export class MigrationPromotionService {
     } catch {
       throw new MigrationPermanentError('MIGRATION_OBJECT_UNREADABLE');
     }
-    const select = (path: string) =>
-      /^(?:[^/]+\/)?client\.json$/u.test(path) ||
-      wanted.has(path) ||
-      wanted.has(path.slice(path.indexOf('/') + 1));
+    const inFolder = (path: string) => [...folders].some((folder) => path.startsWith(folder));
+    const select = (path: string) => {
+      const relative = path.slice(path.indexOf('/') + 1);
+      return (
+        /^(?:[^/]+\/)?client\.json$/u.test(path) ||
+        wanted.has(path) ||
+        wanted.has(relative) ||
+        inFolder(path) ||
+        inFolder(relative)
+      );
+    };
     try {
       return packageEntries(await readZipEntries(plain, undefined, select)) ?? new Map();
     } catch (error) {
@@ -1554,6 +1739,14 @@ export class MigrationPromotionService {
       }
     }
     report.rechazados = rejected;
+    // «Adjuntos de tickets no importados: N» por motivo (spec MOD09 adjuntos §2.3).
+    const attachments = (await qr.query(
+      `SELECT promotion_meta->'adjuntos' AS adjuntos FROM migration_staging_records
+        WHERE tenant_id = $1 AND batch_id = $2 AND entity = 'TICKET' AND status = 'PROMOVIDO'
+          AND promotion_meta->'adjuntos' IS NOT NULL`,
+      [tenantId, batchId],
+    )) as Array<{ adjuntos: unknown }>;
+    for (const row of attachments) sumTicketAttachmentReports(report.adjuntosTickets, row.adjuntos);
     return report;
   }
 

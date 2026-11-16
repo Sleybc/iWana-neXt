@@ -168,6 +168,7 @@ import { BillingEmailLog2080000000208 } from './208_billing_email_log';
 import { BillingReceiptAndUnlinkGuards2090000000209 } from './209_billing_receipt_and_unlink_guards';
 import { MigrationMappingKindTitular2100000000210 } from './210_migration_mapping_kind_titular';
 import { MigrationUispUsers2110000000211 } from './211_migration_uisp_users';
+import { TicketCommentAttachments2120000000212 } from './212_ticket_comment_attachments';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -417,6 +418,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   BillingReceiptAndUnlinkGuards2090000000209,
   MigrationMappingKindTitular2100000000210,
   MigrationUispUsers2110000000211,
+  TicketCommentAttachments2120000000212,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

@@ -10,6 +10,7 @@ import type {
 interface MediaCandidateSets {
   stratum: string[];
   execution: string[];
+  ticketAttachment: string[];
 }
 
 interface MediaUpdateResult {
@@ -53,6 +54,13 @@ export class MediaTitularErasureParticipant implements TitularErasureParticipant
       'execution_evidence',
       mode,
     );
+    const ticketAttachment = await this.updateAssets(
+      qr,
+      candidates.ticketAttachment,
+      tenantSchema,
+      'ticket_attachment',
+      mode,
+    );
     return [
       {
         table: 'media_assets:privacy_evidence',
@@ -63,6 +71,11 @@ export class MediaTitularErasureParticipant implements TitularErasureParticipant
       },
       { table: 'media_assets:stratum_evidence', category: 'EVIDENCIA_DOCUMENTAL', ...stratum },
       { table: 'media_assets:execution_evidence', category: 'EVIDENCIA_DOCUMENTAL', ...execution },
+      {
+        table: 'media_assets:ticket_attachment',
+        category: 'EVIDENCIA_DOCUMENTAL',
+        ...ticketAttachment,
+      },
     ];
   }
 
@@ -79,6 +92,7 @@ export class MediaTitularErasureParticipant implements TitularErasureParticipant
     return {
       stratum: [...new Set(scope.relatedIds?.stratumEvidenceMediaIds ?? [])],
       execution: [...new Set(scope.relatedIds?.executionEvidenceMediaIds ?? [])],
+      ticketAttachment: [...new Set(scope.relatedIds?.ticketAttachmentMediaIds ?? [])],
     };
   }
 
@@ -86,7 +100,7 @@ export class MediaTitularErasureParticipant implements TitularErasureParticipant
     qr: QueryRunner,
     ids: string[],
     tenantSchema: string,
-    usage: 'stratum_evidence' | 'execution_evidence',
+    usage: 'stratum_evidence' | 'execution_evidence' | 'ticket_attachment',
     mode: 'dry-run' | 'apply',
   ): Promise<MediaUpdateResult> {
     if (ids.length === 0) return { selected: 0, changed: 0, residual: 0 };

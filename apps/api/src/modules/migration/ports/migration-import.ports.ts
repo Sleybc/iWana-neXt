@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
-import type { BillingPaymentMethod, MigrationRevertBlocker } from '@iwana/shared';
+import type {
+  BillingPaymentMethod,
+  MigrationRevertBlocker,
+  MigrationTicketAttachmentSkipReason,
+} from '@iwana/shared';
 
 /**
  * Puertos de la promoción, conciliación y reversión de la importación (ADR-110 D3, D5–D7,
@@ -310,9 +314,14 @@ export interface ImportedPaymentAuthor {
  * PII. La migración la audita fila por fila en la misma transacción.
  */
 export interface ImportedAuthorChange {
-  entity: 'TICKET' | 'TICKET_COMMENT' | 'PAYMENT';
+  entity: 'TICKET' | 'TICKET_COMMENT' | 'TICKET_COMMENT_ATTACHMENT' | 'PAYMENT';
   id: string;
-  field: 'assigned_user_id' | 'created_by_user_id' | 'author_user_id' | 'created_by';
+  field:
+    | 'assigned_user_id'
+    | 'created_by_user_id'
+    | 'author_user_id'
+    | 'uploaded_by_user_id'
+    | 'created_by';
   from: string | null;
   to: string;
 }
@@ -435,6 +444,12 @@ export interface ImportedTicketInput {
   createdByUserId?: string | null;
 }
 
+export interface ImportedTicketCreated {
+  ticketId: string;
+  /** Alineado con `ImportedTicketInput.comments`; `null` donde no se creó comentario. */
+  commentIds: Array<string | null>;
+}
+
 /** Atribución esperada de un ticket importado del lote («Actualizar autores», spec §2.7). */
 export interface ImportedTicketAuthors {
   ticketId: string;
@@ -460,10 +475,18 @@ export abstract class MigrationSupportImportPort {
     externalIds: string[],
   ): Promise<Map<string, string>>;
 
+  /**
+   * Crea el ticket y sus comentarios. `commentIds[i]` es el id del comentario creado para
+   * `input.comments[i]` o `null` si no se creó (cuerpo vacío): la promoción cuelga de él los
+   * adjuntos importados (spec MOD09 adjuntos §2.3).
+   */
   abstract createImportedTicket(
     ctx: MigrationWriteContext,
     input: ImportedTicketInput,
-  ): Promise<string>;
+  ): Promise<ImportedTicketCreated>;
+
+  /** `external_id` de adjuntos importados que ya existen (`uisp:ticket_attachment:<id>`). */
+  abstract findAttachments(ctx: MigrationReadContext, externalIds: string[]): Promise<Set<string>>;
 
   abstract revertBlockers(
     ctx: MigrationReadContext,
@@ -482,7 +505,60 @@ export abstract class MigrationSupportImportPort {
   ): Promise<ImportedTicketAuthorsResult>;
 
   abstract revertBatch(ctx: MigrationWriteContext): Promise<{ tickets: number }>;
+
+  /**
+   * Adjunto importado de un comentario (spec MOD09 adjuntos §2.3; listo en el bloque B, lo
+   * consume la promoción en el bloque C). Idempotente por `external_id`
+   * (`migrationTicketAttachmentExternalId`): si ya existe devuelve `EXISTING` sin subir nada.
+   * Valida con las mismas reglas que la subida manual (firma real, límite por tipo, nombre
+   * saneado) y, si pasa, guarda el archivo `AVAILABLE` y la fila en la transacción de `ctx`.
+   * Un archivo rechazado devuelve `SKIPPED` con su motivo y no impide importar el comentario.
+   * Si la transacción se revierte, quien llama borra los objetos con
+   * `purgeImportedAttachmentFiles(schemaName, mediaAssetIds de los CREATED)`.
+   */
+  abstract createImportedAttachment(
+    ctx: MigrationWriteContext,
+    input: ImportedTicketAttachmentInput,
+  ): Promise<ImportedTicketAttachmentResult>;
+
+  /**
+   * Retira los adjuntos de los tickets del lote (`import_batch_id = ctx.batchId`), importados o
+   * añadidos a mano después, **antes** de borrar comentarios (la FK es RESTRICT: sin esto el
+   * borrado de comentarios falla con 23001). Borra las filas y retira (soft-delete) sus activos
+   * en la transacción de `ctx`. Devuelve el conteo y los activos, para purgar sus objetos con
+   * `purgeImportedAttachmentFiles` después del commit.
+   */
+  abstract retireBatchAttachments(
+    ctx: MigrationWriteContext,
+  ): Promise<{ attachments: number; manual: number; mediaAssetIds: string[] }>;
+
+  /** Borra los objetos de activos ya retirados o revertidos (después del commit). */
+  abstract purgeImportedAttachmentFiles(
+    schemaName: string,
+    mediaAssetIds: string[],
+  ): Promise<number>;
 }
+
+export interface ImportedTicketAttachmentInput {
+  /** Ticket y comentario ya creados en iWana (el comentario debe ser del ticket). */
+  ticketId: string;
+  commentId: string;
+  /** `uisp:ticket_attachment:<id>`. */
+  externalId: string;
+  /** Nombre de UISP (no confiable: se sanea). */
+  filename: string;
+  /** `mimeType` declarado por UISP (no confiable: decide la firma). */
+  declaredContentType: string | null;
+  /** Bytes leídos de `tickets/<ticket>/<filename>` del ZIP. */
+  buffer: Buffer;
+  /** Autor resuelto del comentario; si es null, quien importa. */
+  uploadedByUserId: string | null;
+}
+
+export type ImportedTicketAttachmentResult =
+  | { status: 'CREATED'; attachmentId: string; mediaAssetId: string }
+  | { status: 'EXISTING'; attachmentId: string }
+  | { status: 'SKIPPED'; reason: MigrationTicketAttachmentSkipReason };
 
 // ── Órdenes de trabajo (solo lectura, D7) ───────────────────────────────────────────────
 

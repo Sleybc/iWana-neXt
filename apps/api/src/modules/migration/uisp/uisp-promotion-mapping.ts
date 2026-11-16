@@ -231,21 +231,27 @@ export function ticketStatus(value: unknown): ImportedTicketInput['status'] {
  */
 export function ticketCommentEntries(
   raw: Raw,
-): Array<{ comment: ImportedTicketComment; userId: unknown }> {
+): Array<{ comment: ImportedTicketComment; userId: unknown; attachments: unknown }> {
   const ticketPublic = raw?.['public'] === true;
   const activity = Array.isArray(raw?.['activity']) ? (raw['activity'] as Raw[]) : [];
-  const result: Array<{ comment: ImportedTicketComment; userId: unknown }> = [];
+  const result: Array<{ comment: ImportedTicketComment; userId: unknown; attachments: unknown }> =
+    [];
   for (const entry of activity) {
     const comment = entry?.['comment'] as Raw;
     const body = text(comment?.['body']);
-    if (!body) continue;
+    const attachments = comment?.['attachments'];
+    // Un comentario solo con adjuntos se importa con el texto vacío (D4, decisión del usuario
+    // 2026-11-16): en UISP es común subir el acta o la foto sin escribir nada.
+    if (!body && !(Array.isArray(attachments) && attachments.length > 0)) continue;
     result.push({
       comment: {
-        body: body.slice(0, 10_000),
+        body: (body ?? '').slice(0, 10_000),
         internal: !(ticketPublic && entry?.['public'] === true),
         createdAt: instant(entry?.['createdAt']),
       },
       userId: entry?.['userId'],
+      // `comment.attachments[]` sin validar (spec MOD09 adjuntos §2.3; lo lee la promoción).
+      attachments: comment?.['attachments'],
     });
   }
   return result;

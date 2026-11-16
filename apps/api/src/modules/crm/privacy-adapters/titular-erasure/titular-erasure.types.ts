@@ -26,6 +26,8 @@ export interface TitularErasureScope {
     privacyEvidenceMediaIds?: string[];
     stratumEvidenceMediaIds?: string[];
     executionEvidenceMediaIds?: string[];
+    /** Archivos de los adjuntos de tickets del titular (Soporte los publica; Media los retira). */
+    ticketAttachmentMediaIds?: string[];
     taskOriginRefIds?: string[];
   };
 }

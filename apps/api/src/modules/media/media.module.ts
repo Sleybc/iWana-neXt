@@ -11,6 +11,8 @@ import { EvidenceAssetProvider } from './evidence-asset.provider';
 import { EVIDENCE_ANALYSIS_QUEUE } from './evidence-asset.provider';
 import { EVIDENCE_ASSET_PORT } from '../tasks/ports/evidence-asset.port';
 import { MediaPrivacyModule } from './privacy/media-privacy.module';
+import { TicketAttachmentMediaPort } from '../assurance/ports/ticket-attachment-media.port';
+import { TicketAttachmentMediaProvider } from './ticket-attachment-media.provider';
 
 /**
  * Módulo Media — MOD03 Media/Assets.
@@ -79,8 +81,17 @@ import { MediaPrivacyModule } from './privacy/media-privacy.module';
       provide: EVIDENCE_ASSET_PORT,
       useExisting: EvidenceAssetProvider,
     },
+    // Adjuntos de tickets: Soporte solo ve este puerto (spec MOD09 adjuntos §2.2).
+    TicketAttachmentMediaProvider,
+    { provide: TicketAttachmentMediaPort, useExisting: TicketAttachmentMediaProvider },
   ],
   controllers: [MediaController],
-  exports: [MediaService, STORAGE_PORT, EVIDENCE_ASSET_PORT, MediaPrivacyModule],
+  exports: [
+    MediaService,
+    STORAGE_PORT,
+    EVIDENCE_ASSET_PORT,
+    TicketAttachmentMediaPort,
+    MediaPrivacyModule,
+  ],
 })
 export class MediaModule {}

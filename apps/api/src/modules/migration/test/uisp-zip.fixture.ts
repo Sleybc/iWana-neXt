@@ -34,6 +34,120 @@ export interface UispFixtureOptions {
   ticketActivity?: Array<Record<string, unknown>>;
   /** `userId` de cada pago, en orden (número de usuario de UISP que lo registró). */
   paymentUserIds?: Array<number | null>;
+  /**
+   * Archivos extra en `tickets/<id del primer ticket>/` (adjuntos sintéticos; spec MOD09
+   * adjuntos §2.3). Se referencian desde `ticketActivity[].comment.attachments[]`.
+   */
+  ticketFiles?: Record<string, Buffer>;
+}
+
+/** Id de UISP del primer ticket del fixture (su carpeta de adjuntos es `tickets/<id>/`). */
+export function syntheticFirstTicketId(clientId = 9001): number {
+  return clientId * 10_000 + 1;
+}
+
+/**
+ * Bytes sintéticos mínimos con firma real (generados aquí; nunca adjuntos de clientes). El
+ * fixture es autocontenido porque la E2E lo transpila suelto.
+ */
+export const syntheticAttachmentBytes = {
+  /** PNG 1×1 transparente. */
+  png: (): Buffer =>
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  /** PDF mínimo sin páginas. */
+  pdf: (): Buffer =>
+    Buffer.from(
+      '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n',
+      'latin1',
+    ),
+  /** MP4 mínimo: caja `ftyp` (isom; compatibles iso2/mp41) y `mdat` vacía. */
+  mp4: (): Buffer => {
+    const ftyp = Buffer.alloc(24);
+    ftyp.writeUInt32BE(24, 0);
+    ftyp.write('ftyp', 4, 'latin1');
+    ftyp.write('isom', 8, 'latin1');
+    ftyp.writeUInt32BE(0x200, 12);
+    ftyp.write('iso2', 16, 'latin1');
+    ftyp.write('mp41', 20, 'latin1');
+    const mdat = Buffer.alloc(16);
+    mdat.writeUInt32BE(16, 0);
+    mdat.write('mdat', 4, 'latin1');
+    return Buffer.concat([ftyp, mdat]);
+  },
+  /** Cabecera MZ seguida de texto: ninguna firma admitida. */
+  executable: (): Buffer =>
+    Buffer.concat([Buffer.from([0x4d, 0x5a, 0x90, 0x00]), Buffer.from('programa sintetico')]),
+};
+
+/**
+ * Actividad del primer ticket con adjuntos sintéticos: un comentario con PNG, PDF y MP4 válidos
+ * y otro con un archivo ausente del ZIP y uno de tipo no permitido. Ids de adjunto a partir de
+ * `firstAttachmentId` (únicos por corrida en un tenant compartido).
+ */
+export function syntheticTicketAttachments(firstAttachmentId: number): {
+  ticketActivity: Array<Record<string, unknown>>;
+  ticketFiles: Record<string, Buffer>;
+} {
+  const id = (offset: number) => firstAttachmentId + offset;
+  const files = {
+    png: syntheticAttachmentBytes.png(),
+    pdf: syntheticAttachmentBytes.pdf(),
+    mp4: syntheticAttachmentBytes.mp4(),
+    exe: syntheticAttachmentBytes.executable(),
+  };
+  return {
+    ticketActivity: [
+      {
+        id: 1,
+        public: true,
+        createdAt: '2023-03-01T10:00:00-0500',
+        comment: {
+          body: 'Comentario sintético con foto, acta y video',
+          attachments: [
+            {
+              id: id(0),
+              filename: 'foto sintética.png',
+              mimeType: 'image/png',
+              size: files.png.length,
+            },
+            {
+              id: id(1),
+              filename: 'acta.pdf',
+              mimeType: 'application/pdf',
+              size: files.pdf.length,
+            },
+            { id: id(2), filename: 'video.mp4', mimeType: 'video/mp4', size: files.mp4.length },
+          ],
+        },
+      },
+      {
+        id: 2,
+        public: false,
+        createdAt: '2023-03-02T10:00:00-0500',
+        comment: {
+          body: 'Comentario sintético con adjunto ausente e inválido',
+          attachments: [
+            { id: id(3), filename: 'ausente.jpg', mimeType: 'image/jpg', size: 10 },
+            {
+              id: id(4),
+              filename: 'programa.exe',
+              mimeType: 'application/octet-stream',
+              size: files.exe.length,
+            },
+          ],
+        },
+      },
+    ],
+    ticketFiles: {
+      'foto sintética.png': files.png,
+      'acta.pdf': files.pdf,
+      'video.mp4': files.mp4,
+      'programa.exe': files.exe,
+    },
+  };
 }
 
 export const SYNTHETIC_METHOD_ID = '00000000-aaaa-4bbb-8ccc-000000000001';
@@ -216,6 +330,9 @@ export async function buildSyntheticUispZip(options: UispFixtureOptions = {}): P
     ]),
   );
   put(`tickets/${clientId * 10_000 + 1}/adjunto.txt`, 'adjunto sintético');
+  for (const [name, content] of Object.entries(options.ticketFiles ?? {})) {
+    put(`tickets/${syntheticFirstTicketId(clientId)}/${name}`, content);
+  }
   put('documents/contrato-firmado.pdf', Buffer.from('%PDF-1.4\n% documento sintético\n'));
   put('documents/foto-fachada.jpg', Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]));
   put('quotes.json', '[]');

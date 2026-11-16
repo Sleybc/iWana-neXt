@@ -24,6 +24,21 @@ import {
 
 const REVERTIBLE = new Set(['CARGADO', 'PROMOVIDO', 'CONCILIADO']);
 
+const REVERT_BLOCKED_MESSAGE = 'Hay registros creados después que dependen de este lote.';
+
+/** Mensaje del 409 cuando hay adjuntos añadidos a mano en tickets importados (spec MOD09 §2.3). */
+function manualAttachmentsMessage(count: number): string {
+  return count === 1
+    ? `${REVERT_BLOCKED_MESSAGE} Hay 1 adjunto añadido a mano en un ticket importado: quítalo antes de revertir el lote.`
+    : `${REVERT_BLOCKED_MESSAGE} Hay ${count} adjuntos añadidos a mano en tickets importados: quítalos antes de revertir el lote.`;
+}
+
+/** 23001: la FK RESTRICT de `ticket_comment_attachments` impidió borrar un comentario. */
+function isRestrictViolation(error: unknown): boolean {
+  const value = error as { code?: unknown; driverError?: { code?: unknown } } | null;
+  return value?.code === '23001' || value?.driverError?.code === '23001';
+}
+
 /** Suma bloqueos del mismo motivo que reportan varios módulos. */
 function mergeBlockers(blockers: MigrationRevertBlocker[]): MigrationRevertBlocker[] {
   const byReason = new Map<MigrationRevertBlocker['motivo'], number>();
@@ -42,6 +57,10 @@ function mergeBlockers(blockers: MigrationRevertBlocker[]): MigrationRevertBlock
  * Si algo lo bloquea responde 409 con los motivos y no toca nada.
  *
  * Los archivos (PDF importados y soportes) se borran del storage después del commit.
+ *
+ * Adjuntos de tickets (spec MOD09 adjuntos §2.3): se retiran con sus activos antes de borrar los
+ * comentarios (FK RESTRICT) y sus objetos se purgan después del commit. Un adjunto añadido a mano
+ * en un ticket importado bloquea la reversión (`TICKET_POSTERIOR`) y no se borra nada.
  */
 @Injectable()
 export class MigrationRevertService {
@@ -89,7 +108,7 @@ export class MigrationRevertService {
     batchId: string,
     actorId: string,
   ): Promise<MigrationRevertResult> {
-    const { result, keys } = await runInTenantSchema(
+    const { result, keys, attachmentAssets } = await runInTenantSchema(
       this.dataSource,
       scope.schemaName,
       async (qr) => {
@@ -120,11 +139,21 @@ export class MigrationRevertService {
         }
 
         const read = { manager: qr.manager, tenantId: scope.tenantId };
+        const ctx: MigrationWriteContext = {
+          manager: qr.manager,
+          tenantId: scope.tenantId,
+          schemaName: scope.schemaName,
+          batchId,
+          actorId,
+        };
         const ids = await this.crm.batchEntityIds(read, batchId);
         // Titulares existentes complementados (spec 2026-11-15 §2.6): nunca se borran.
         const complements = await this.complementRecords(qr, scope.tenantId, batchId);
         if (complements.length > 0) ids.complements = complements;
         const workOrders = await this.workOrders.countReferences(read, ids);
+        // Antes que los comentarios (FK RESTRICT). Si algo bloquea, el throw revierte la
+        // transacción: filas y activos vuelven y ningún objeto se purga (eso es tras el commit).
+        const attachments = await this.support.retireBatchAttachments(ctx);
         const blockers = mergeBlockers([
           ...(await this.crm.revertBlockers(read, batchId, ids)),
           ...(await this.billing.revertBlockers(read, batchId, ids)),
@@ -132,11 +161,17 @@ export class MigrationRevertService {
           ...(workOrders > 0
             ? [{ motivo: 'ORDEN_DE_TRABAJO' as const, cantidad: workOrders }]
             : []),
+          ...(attachments.manual > 0
+            ? [{ motivo: 'TICKET_POSTERIOR' as const, cantidad: attachments.manual }]
+            : []),
         ]);
         if (blockers.length > 0) {
           throw new ConflictException({
             code: 'MIGRATION_REVERT_BLOCKED',
-            message: 'Hay registros creados después que dependen de este lote.',
+            message:
+              attachments.manual > 0
+                ? manualAttachmentsMessage(attachments.manual)
+                : REVERT_BLOCKED_MESSAGE,
             details: { blockers },
           });
         }
@@ -149,17 +184,22 @@ export class MigrationRevertService {
               AND (promotion_meta->>'partyCreated')::boolean IS TRUE`,
           [scope.tenantId, batchId],
         )) as Array<{ party_id: string | null }>;
-        const ctx: MigrationWriteContext = {
-          manager: qr.manager,
-          tenantId: scope.tenantId,
-          schemaName: scope.schemaName,
-          batchId,
-          actorId,
-        };
         const tags = await this.tags.removeImportBatch(scope.tenantId, batchId, {
           manager: qr.manager,
         });
-        const support = await this.support.revertBatch(ctx);
+        let support: { tickets: number };
+        try {
+          support = await this.support.revertBatch(ctx);
+        } catch (error) {
+          // Un adjunto llegó a un comentario del lote después del retiro (carrera): bloqueo
+          // explícito en vez de un 500; la transacción se revierte entera.
+          if (!isRestrictViolation(error)) throw error;
+          throw new ConflictException({
+            code: 'MIGRATION_REVERT_BLOCKED',
+            message: manualAttachmentsMessage(1),
+            details: { blockers: [{ motivo: 'TICKET_POSTERIOR', cantidad: 1 }] },
+          });
+        }
         const billing = await this.billing.revertBatch(ctx);
         if (complements.length > 0) await this.crm.revertComplement(ctx, complements);
         const crm = await this.crm.revertBatch(
@@ -200,6 +240,7 @@ export class MigrationRevertService {
               aplicaciones: billing.allocations,
               historialSuspension: crm.suspensionRows,
               etiquetas: tags.removed,
+              adjuntosTickets: attachments.attachments,
             },
           },
           qr.manager,
@@ -210,11 +251,14 @@ export class MigrationRevertService {
             status: 'REVERTIDO' as const,
             retirados,
             etiquetasRetiradas: tags.removed,
+            adjuntosTicketsRetirados: attachments.attachments,
           },
           keys: [...billing.pdfKeys, ...crm.storageKeys],
+          attachmentAssets: attachments.mediaAssetIds,
         };
       },
     );
+    await this.purgeAttachmentObjects(scope.schemaName, batchId, attachmentAssets);
     for (const key of keys) {
       // H6: solo objetos del propio schema; una clave ajena no se toca.
       if (!key.startsWith(`${scope.schemaName}/`)) {
@@ -230,5 +274,26 @@ export class MigrationRevertService {
       }
     }
     return result;
+  }
+
+  /** Objetos de los adjuntos retirados (después del commit; un fallo no deshace la reversión). */
+  private async purgeAttachmentObjects(
+    schemaName: string,
+    batchId: string,
+    mediaAssetIds: string[],
+  ): Promise<void> {
+    if (mediaAssetIds.length === 0) return;
+    try {
+      const failed = await this.support.purgeImportedAttachmentFiles(schemaName, mediaAssetIds);
+      if (failed > 0) {
+        this.logger.warn(
+          `[migration] Lote ${batchId}: no se borraron ${failed} archivos de adjuntos revertidos.`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `[migration] Lote ${batchId}: no se borraron los archivos de adjuntos revertidos (${summarizeErrorForLog(error)}).`,
+      );
+    }
   }
 }

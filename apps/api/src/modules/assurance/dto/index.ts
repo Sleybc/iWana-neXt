@@ -70,6 +70,29 @@ export const AddCommentSchema = z.object({
   isInternal: z.boolean().optional().default(false),
 });
 
+/**
+ * Campos de texto del comentario con adjuntos (`multipart/form-data`, spec MOD09 adjuntos
+ * §2.2): en multipart todo llega como texto, así que `isInternal` se lee de "true"/"false".
+ */
+export const AddCommentWithAttachmentsSchema = z
+  .object({
+    body: z.string().min(1),
+    isInternal: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform((value) => value === 'true'),
+  })
+  .strict();
+export type AddCommentWithAttachmentsInput = z.output<typeof AddCommentWithAttachmentsSchema>;
+
+/** Enlace firmado de un adjunto: `inline` abre fotos y PDF; `attachment` fuerza la descarga. */
+export const TicketAttachmentLinkQuerySchema = z
+  .object({
+    disposition: z.enum(['inline', 'attachment']).optional().default('inline'),
+  })
+  .strict();
+export type TicketAttachmentLinkQuery = z.output<typeof TicketAttachmentLinkQuerySchema>;
+
 export const RequestFieldServiceSchema = z.object({
   notes: z.string().optional().nullable(),
 });

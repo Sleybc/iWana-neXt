@@ -2,6 +2,7 @@ import {
   MIGRATION_ERROR_CODES,
   MIGRATION_IMPORT_LIMITS,
   MigrationRevertBlockerSchema,
+  TICKET_ATTACHMENTS_MAX_PER_COMMENT,
   type MigrationBatchStatus,
   type MigrationBatchSummary,
   type MigrationEntity,
@@ -14,6 +15,7 @@ import {
   type MigrationRejectionReason,
   type MigrationRevertBlockReason,
   type MigrationRevertBlocker,
+  type MigrationTicketAttachmentSkipReason,
 } from '@iwana/shared';
 import { ApiError } from '@/lib/api-client';
 
@@ -151,7 +153,8 @@ export const MIGRATION_REVERT_BLOCK_LABELS: Record<MigrationRevertBlockReason, s
   DOCUMENTO_POSTERIOR: 'Facturas emitidas después de la importación',
   CONTRATO_POSTERIOR: 'Servicios creados después de la importación',
   ORDEN_DE_TRABAJO: 'Órdenes de trabajo asociadas',
-  TICKET_POSTERIOR: 'Tickets creados después de la importación',
+  // Cuenta tickets nuevos y adjuntos añadidos a mano en tickets importados (spec MOD09 §2.3).
+  TICKET_POSTERIOR: 'Tickets o adjuntos añadidos después de la importación',
   SOPORTE_POSTERIOR: 'Soportes cargados después de la importación',
   ETIQUETA_POSTERIOR: 'Etiquetas asignadas después de la importación',
   DATO_COMPLETADO_MODIFICADO: 'Un dato que completó el lote se editó después',
@@ -167,6 +170,33 @@ export function revertBlockersFromError(error: unknown): MigrationRevertBlocker[
     return parsed.success ? [parsed.data] : [];
   });
 }
+
+/**
+ * Detalle del 409 cuando bloquea `TICKET_POSTERIOR`: la API explica en `message` si hay adjuntos
+ * añadidos a mano que quitar (spec MOD09 2026-11-16 §2.3). Los demás bloqueos no lo usan.
+ */
+export function revertBlockedDetail(
+  error: unknown,
+  blockers: MigrationRevertBlocker[],
+): string | null {
+  if (!(error instanceof ApiError) || error.code !== 'MIGRATION_REVERT_BLOCKED') return null;
+  if (!blockers.some((blocker) => blocker.motivo === 'TICKET_POSTERIOR')) return null;
+  const message = error.message.trim();
+  return message.length > 0 ? message : null;
+}
+
+/** Motivos por los que un adjunto de un comentario de ticket no se importó (spec MOD09 §2.3). */
+export const MIGRATION_TICKET_ATTACHMENT_SKIP_LABELS: Record<
+  MigrationTicketAttachmentSkipReason,
+  string
+> = {
+  ARCHIVO_AUSENTE: 'El archivo no venía en el ZIP',
+  TIPO_NO_PERMITIDO: 'Tipo de archivo no permitido',
+  TAMANO_EXCEDIDO: 'Supera el tamaño máximo permitido',
+  NOMBRE_INVALIDO: 'Nombre de archivo no válido',
+  EXCEDE_MAXIMO_POR_COMENTARIO: `Más de ${TICKET_ATTACHMENTS_MAX_PER_COMMENT} archivos en un comentario`,
+  COMENTARIO_NO_IMPORTADO: 'Su comentario no se importó',
+};
 
 /** Tamaño máximo por ZIP tomado del contrato (no un literal). */
 export const MIGRATION_MAX_ZIP_LABEL = `${Math.round(MIGRATION_IMPORT_LIMITS.maxZipBytes / (1024 * 1024))} MB`;

@@ -15,7 +15,8 @@ describe('EvidenceOrphanDetectionProcessor', () => {
         }) // SELECT de claims
         .mockResolvedValueOnce({ rows: [] }) // UPDATE de claim inválido
         .mockResolvedValueOnce({ rows: [] }) // SELECT de tenants para CLAIM_FAILED
-        .mockResolvedValueOnce({ rows: [] }), // SELECT de candidatos físicos
+        .mockResolvedValueOnce({ rows: [] }) // SELECT de candidatos físicos
+        .mockResolvedValueOnce({ rows: [] }), // SELECT de adjuntos de tickets retirados
       release: jest.fn(),
     };
     const processor = new EvidenceOrphanDetectionProcessor(
@@ -422,10 +423,164 @@ describe('EvidenceOrphanDetectionProcessor', () => {
     });
   });
 
+  describe('purgeRetiredTicketAttachments — adjuntos de tickets retirados (MOD09 S-1)', () => {
+    const assetId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const purge = (processor: EvidenceOrphanDetectionProcessor, client: unknown) =>
+      (
+        processor as unknown as {
+          purgeRetiredTicketAttachments: (client: unknown, correlationId: string) => Promise<void>;
+        }
+      ).purgeRetiredTicketAttachments(client, 'correlation-ticket');
+
+    it('borra el objeto de un adjunto retirado (supresión o reversión) y lo marca DELETED', async () => {
+      const deleteObject = jest.fn().mockResolvedValue(undefined);
+      const client = {
+        query: jest
+          .fn()
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                id: assetId,
+                object_key: `tenant_test/ticket_attachment/${assetId}`,
+                tenant_schema: 'tenant_test',
+              },
+            ],
+          })
+          .mockResolvedValueOnce({ rowCount: 1 }),
+      };
+      const processor = new EvidenceOrphanDetectionProcessor(
+        { get: jest.fn() } as unknown as ConfigService,
+        { add: jest.fn() } as unknown as Queue,
+        { deleteObject },
+      );
+
+      await purge(processor, client);
+
+      const select = String(client.query.mock.calls[0]?.[0]);
+      expect(select).toContain("usage = 'ticket_attachment'");
+      expect(select).toContain('deleted_at IS NOT NULL');
+      expect(select).toContain("asset_status <> 'DELETED'");
+      expect(deleteObject).toHaveBeenCalledWith(`tenant_test/ticket_attachment/${assetId}`);
+      expect(client.query).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining("SET asset_status = 'DELETED'"),
+        [assetId],
+      );
+      expect(String(client.query.mock.calls[1]?.[0])).toContain("usage = 'ticket_attachment'");
+      expect(deleteObject.mock.invocationCallOrder[0]).toBeLessThan(
+        client.query.mock.invocationCallOrder[1] ?? 0,
+      );
+    });
+
+    it('no borra una clave ajena al prefijo del adjunto y lo reporta como fallo', async () => {
+      const deleteObject = jest.fn();
+      const client = {
+        query: jest.fn().mockResolvedValueOnce({
+          rows: [
+            {
+              id: assetId,
+              object_key: `tenant_otro/ticket_attachment/${assetId}`,
+              tenant_schema: 'tenant_test',
+            },
+          ],
+        }),
+      };
+      const processor = new EvidenceOrphanDetectionProcessor(
+        { get: jest.fn() } as unknown as ConfigService,
+        { add: jest.fn() } as unknown as Queue,
+        { deleteObject },
+      );
+
+      await expect(purge(processor, client)).rejects.toThrow('TICKET_ATTACHMENT_PURGE_FAILED:1');
+      expect(deleteObject).not.toHaveBeenCalled();
+      expect(client.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('no marca DELETED si el almacenamiento falla; se reintenta en la siguiente corrida', async () => {
+      const client = {
+        query: jest.fn().mockResolvedValueOnce({
+          rows: [
+            {
+              id: assetId,
+              object_key: `tenant_test/ticket_attachment/${assetId}`,
+              tenant_schema: 'tenant_test',
+            },
+          ],
+        }),
+      };
+      const processor = new EvidenceOrphanDetectionProcessor(
+        { get: jest.fn() } as unknown as ConfigService,
+        { add: jest.fn() } as unknown as Queue,
+        { deleteObject: jest.fn().mockRejectedValue(new Error('storage-unavailable')) },
+      );
+
+      await expect(purge(processor, client)).rejects.toThrow('TICKET_ATTACHMENT_PURGE_FAILED:1');
+      expect(client.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('purga los adjuntos aunque la fase 3 de evidencia falle, y propaga ese fallo', async () => {
+      const deleteObject = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('storage-evidence'))
+        .mockResolvedValueOnce(undefined);
+      const client = {
+        query: jest
+          .fn()
+          .mockResolvedValueOnce(undefined) // BEGIN de soft-delete
+          .mockResolvedValueOnce({ rows: [] }) // UPDATE de soft-delete
+          .mockResolvedValueOnce(undefined) // COMMIT de soft-delete
+          .mockResolvedValueOnce({ rows: [] }) // SELECT de claims
+          .mockResolvedValueOnce({ rows: [] }) // SELECT de tenants para CLAIM_FAILED
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                object_key:
+                  'tenant_test/execution_evidence/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.jpg',
+                tenant_schema: 'tenant_test',
+              },
+            ],
+          }) // SELECT de candidatos físicos
+          .mockResolvedValueOnce(undefined) // ROLLBACK del fallo de evidencia
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                id: assetId,
+                object_key: `tenant_test/ticket_attachment/${assetId}`,
+                tenant_schema: 'tenant_test',
+              },
+            ],
+          })
+          .mockResolvedValueOnce({ rowCount: 1 }),
+        release: jest.fn(),
+      };
+      const processor = new EvidenceOrphanDetectionProcessor(
+        { get: jest.fn() } as unknown as ConfigService,
+        { add: jest.fn() } as unknown as Queue,
+        { deleteObject },
+      );
+      (processor as unknown as { pool: { connect: jest.Mock } }).pool = {
+        connect: jest.fn().mockResolvedValue(client),
+      };
+
+      await expect(
+        processor.process({
+          data: { operation: 'detect-and-clean', correlationId: 'corr-both' },
+        } as Job<{ operation: 'detect-and-clean'; correlationId: string }>),
+      ).rejects.toThrow();
+      expect(deleteObject).toHaveBeenLastCalledWith(`tenant_test/ticket_attachment/${assetId}`);
+      expect(client.release).toHaveBeenCalled();
+    });
+  });
+
   describe('process — fault injection', () => {
     it('propaga error y libera el cliente cuando una fase interna falla', async () => {
       const errorClient = {
-        query: jest.fn().mockRejectedValueOnce(new Error('DB connection lost')),
+        // La fase 1 falla; la fase 4 (MOD09 S-1) igual consulta y no encuentra nada.
+        query: jest
+          .fn()
+          .mockResolvedValue({ rows: [] })
+          .mockRejectedValueOnce(new Error('DB connection lost')),
         release: jest.fn(),
       };
       const processor = new EvidenceOrphanDetectionProcessor(
@@ -446,6 +601,12 @@ describe('EvidenceOrphanDetectionProcessor', () => {
         message: 'class=Error sqlstate=none',
       });
 
+      // MOD09 S-1 (sec-eng G7 a): la purga de adjuntos corre aunque falle la fase 1.
+      expect(
+        errorClient.query.mock.calls.some(
+          ([sql]: [unknown]) => typeof sql === 'string' && sql.includes("'ticket_attachment'"),
+        ),
+      ).toBe(true);
       expect(errorClient.release).toHaveBeenCalled();
     });
   });

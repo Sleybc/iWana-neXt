@@ -98,6 +98,38 @@ export function resolveBindHost(env = process.env, root = repoRoot) {
 }
 
 /**
+ * Variables de la raiz que `next.config.ts` necesita en dev y que Next no carga solo:
+ * S3_ENDPOINT da el origen del almacenamiento para `img-src`/`media-src` (adjuntos con
+ * enlace firmado). El shell gana; si no hay valor en ningun lado no se define (CSP cerrada).
+ */
+export const forwardedRootEnvVars = ['S3_ENDPOINT'];
+
+export function forwardRootEnv(env = process.env, root = repoRoot) {
+  for (const name of forwardedRootEnvVars) {
+    if (env[name]?.trim()) {
+      continue;
+    }
+
+    for (const fileName of bindHostEnvFiles) {
+      const filePath = join(root, fileName);
+
+      if (!existsSync(filePath)) {
+        continue;
+      }
+
+      const value = readEnvValue(readFileSync(filePath, 'utf8'), name);
+
+      if (value) {
+        env[name] = value;
+        break;
+      }
+    }
+  }
+
+  return env;
+}
+
+/**
  * Extrae el puerto de los args de `next dev` (`--port 3001`, `--port=3001`
  * o `-p 3001`). Solo dev: es para el log inicial de la convencion de
  * aislamiento de cookies por host.
@@ -121,6 +153,7 @@ export function resolveDevPort(args = process.argv.slice(2)) {
 function main() {
   const forwardedArgs = process.argv.slice(2);
   const bindHost = resolveBindHost();
+  forwardRootEnv();
   const devPort = resolveDevPort(forwardedArgs);
 
   // Convencion de aislamiento de cookies por host en dev: el portal sirve en

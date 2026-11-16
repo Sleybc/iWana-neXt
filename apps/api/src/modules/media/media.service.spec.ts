@@ -164,6 +164,22 @@ describe('MediaService', () => {
       expect(errors.some((error) => error.property === 'usage')).toBe(true);
     });
 
+    it('rechaza TICKET_ATTACHMENT en el DTO y en el servicio genérico', async () => {
+      const dto = Object.assign(new UploadMediaDto(), { usage: MediaUsage.TICKET_ATTACHMENT });
+      const errors = await validate(dto);
+      expect(errors.some((error) => error.property === 'usage')).toBe(true);
+
+      await expect(
+        service.upload(
+          'tenant_test_isp',
+          { usage: MediaUsage.TICKET_ATTACHMENT } as UploadMediaDto,
+          buildMulterFile(),
+        ),
+      ).rejects.toMatchObject({ response: { code: 'MEDIA_GENERIC_USAGE_FORBIDDEN' } });
+      expect(mockRepo.save).not.toHaveBeenCalled();
+      expect(mockStorage.putObject).not.toHaveBeenCalled();
+    });
+
     it('rechaza PRIVACY_EVIDENCE en la validación del DTO genérico', async () => {
       const dto = Object.assign(new UploadMediaDto(), {
         usage: MediaUsage.PRIVACY_EVIDENCE,
@@ -701,6 +717,13 @@ describe('MediaService', () => {
 
       await expect(service.findOne(asset.id, 'tenant_test_isp')).rejects.toThrow(NotFoundException);
     });
+
+    it('responde 404 a un adjunto de ticket: solo Soporte lo lee, con los permisos del comentario', async () => {
+      const asset = buildMediaAsset({ usage: MediaUsage.TICKET_ATTACHMENT });
+      mockRepo.findOne.mockResolvedValue(asset);
+
+      await expect(service.findOne(asset.id, 'tenant_test_isp')).rejects.toThrow(NotFoundException);
+    });
   });
 
   describe('getSignedUrl', () => {
@@ -714,6 +737,16 @@ describe('MediaService', () => {
       // Debe limitar a 3600 segundos por política de seguridad
       expect(mockStorage.getSignedUrl).toHaveBeenCalledWith(asset.objectKey, 3600);
       expect(result.signedUrl).toBe('https://minio/signed-url?...');
+    });
+
+    it('oculta los adjuntos de tickets del endpoint genérico (visibilidad del comentario)', async () => {
+      const asset = buildMediaAsset({ usage: MediaUsage.TICKET_ATTACHMENT });
+      mockRepo.findOne.mockResolvedValue(asset);
+
+      await expect(service.getSignedUrl(asset.id, 'tenant_test_isp')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockStorage.getSignedUrl).not.toHaveBeenCalled();
     });
 
     it('oculta assets STRATUM_EVIDENCE del endpoint genérico', async () => {
@@ -789,17 +822,18 @@ describe('MediaService', () => {
       );
     });
 
-    it.each([MediaUsage.STRATUM_EVIDENCE, MediaUsage.PRIVACY_EVIDENCE])(
-      'el borrado genérico no alcanza la evidencia %s',
-      async (usage) => {
-        mockRepo.findOne.mockResolvedValue(buildMediaAsset({ usage }));
+    it.each([
+      MediaUsage.STRATUM_EVIDENCE,
+      MediaUsage.PRIVACY_EVIDENCE,
+      MediaUsage.TICKET_ATTACHMENT,
+    ])('el borrado genérico no alcanza la evidencia %s', async (usage) => {
+      mockRepo.findOne.mockResolvedValue(buildMediaAsset({ usage }));
 
-        await expect(service.softDelete('asset-1', 'tenant_test_isp')).rejects.toThrow(
-          NotFoundException,
-        );
-        expect(mockRepo.update).not.toHaveBeenCalled();
-      },
-    );
+      await expect(service.softDelete('asset-1', 'tenant_test_isp')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockRepo.update).not.toHaveBeenCalled();
+    });
 
     it('el retiro dedicado borra solo soportes de estrato', async () => {
       mockRepo.findOne.mockResolvedValueOnce(

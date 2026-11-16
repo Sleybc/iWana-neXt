@@ -89,17 +89,28 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
 
     const client = await this.pool.connect();
     try {
-      // ── Fase 1: Assets no reclamados (nunca tuvieron claim) ──────────
-      await this.softDeleteUnclaimedOrphans(client, correlationId);
+      // Un fallo de las fases 1 a 3 no debe frenar la fase 4 (supresión del
+      // titular, plazo de 6 h): se propaga al final.
+      let evidenceError: unknown = null;
+      try {
+        // ── Fase 1: Assets no reclamados (nunca tuvieron claim) ──────────
+        await this.softDeleteUnclaimedOrphans(client, correlationId);
 
-      // ── Fase 2: Claims huérfanos (claim set pero evidence no existe) ───
-      await this.releaseOrphanClaims(client, correlationId);
+        // ── Fase 2: Claims huérfanos (claim set pero evidence no existe) ───
+        await this.releaseOrphanClaims(client, correlationId);
 
-      // ── Fase 2b: recuperar escrituras cuyo claim falló después del insert ─
-      await this.reconcileClaimFailed(client, correlationId);
+        // ── Fase 2b: recuperar escrituras cuyo claim falló después del insert ─
+        await this.reconcileClaimFailed(client, correlationId);
 
-      // ── Fase 3: Eliminación física de assets retenidos ────────────────
-      await this.physicalDeleteRetained(client, correlationId);
+        // ── Fase 3: Eliminación física de assets retenidos ────────────────
+        await this.physicalDeleteRetained(client, correlationId);
+      } catch (error: unknown) {
+        evidenceError = error;
+      }
+
+      // ── Fase 4: objetos de adjuntos de tickets retirados (MOD09 S-1) ──
+      await this.purgeRetiredTicketAttachments(client, correlationId);
+      if (evidenceError !== null) throw evidenceError;
     } catch (error: unknown) {
       this.logger.error(
         `Error en detección de huérfanos [correlationId=${correlationId}]: ${summarizeErrorForLog(error)}`,
@@ -475,6 +486,84 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
         `${deletedCount} assets de evidencia eliminados físicamente y marcados DELETED.`,
       );
     }
+  }
+
+  /**
+   * Fase 4 (spec MOD09 adjuntos §2.4, hallazgo S-1): borra el objeto de los adjuntos de
+   * tickets cuyo activo ya está retirado (`deleted_at`) y lo marca `DELETED`.
+   *
+   * Retiran el activo la supresión del titular (participante de Media, dentro de la
+   * transacción del orquestador, que no tiene gancho posterior al commit) y la reversión de
+   * una importación UISP (que además purga en el acto; aquí solo queda el residuo si falló).
+   * Sin periodo de retención: la fila del adjunto ya no existe y nada puede recuperarlo.
+   * `deleteObject` es idempotente para objetos ausentes; si falla, el activo sigue sin
+   * `DELETED` y se reintenta en la siguiente corrida.
+   */
+  private async purgeRetiredTicketAttachments(
+    client: PoolClient,
+    _correlationId: string,
+  ): Promise<void> {
+    if (!this.storage) {
+      throw new Error('EVIDENCE_STORAGE_CLEANUP_UNAVAILABLE');
+    }
+
+    const candidates = await client.query<{
+      id: string;
+      object_key: string;
+      tenant_schema: string;
+    }>(
+      `SELECT id::text AS id, object_key, tenant_schema
+       FROM public.media_assets
+       WHERE usage = 'ticket_attachment'
+         AND deleted_at IS NOT NULL
+         AND asset_status <> 'DELETED'
+       ORDER BY deleted_at ASC, id ASC
+       LIMIT 500`,
+    );
+
+    let deletedCount = 0;
+    let failedCount = 0;
+    for (const candidate of candidates.rows) {
+      if (!this.isTicketAttachmentObjectKey(candidate)) {
+        failedCount++;
+        this.logger.error(`Object key inválido para adjunto [assetId=${candidate.id}]`);
+        continue;
+      }
+      try {
+        await this.storage.deleteObject(candidate.object_key);
+        await client.query(
+          `UPDATE public.media_assets
+           SET asset_status = 'DELETED'
+           WHERE id = $1
+             AND usage = 'ticket_attachment'
+             AND deleted_at IS NOT NULL`,
+          [candidate.id],
+        );
+        deletedCount++;
+      } catch (error: unknown) {
+        failedCount++;
+        this.logger.error(
+          `Error al borrar el objeto del adjunto [assetId=${candidate.id}]: ${summarizeErrorForLog(error)}`,
+        );
+      }
+    }
+
+    if (deletedCount > 0) {
+      this.logger.log(`${deletedCount} objetos de adjuntos de tickets retirados borrados.`);
+    }
+    if (failedCount > 0) {
+      throw new Error(`TICKET_ATTACHMENT_PURGE_FAILED:${failedCount}`);
+    }
+  }
+
+  private isTicketAttachmentObjectKey(asset: {
+    id: string;
+    object_key: string;
+    tenant_schema: string;
+  }): boolean {
+    if (!/^tenant_[a-z0-9_]{1,56}$/.test(asset.tenant_schema)) return false;
+    if (!/^[0-9a-f-]{36}$/i.test(asset.id)) return false;
+    return asset.object_key === `${asset.tenant_schema}/ticket_attachment/${asset.id}`;
   }
 
   private async writeSoftDeleteAudit(

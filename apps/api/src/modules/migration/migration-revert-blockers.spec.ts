@@ -32,7 +32,7 @@ describe('Reversión UISP — motivos de bloqueo por adaptador', () => {
   });
   const crm = new CrmMigrationImportAdapter(config, {} as never, {} as never);
   const billing = new BillingMigrationImportAdapter();
-  const support = new AssuranceMigrationImportAdapter();
+  const support = new AssuranceMigrationImportAdapter({} as never);
 
   it('CRM: CONTRATO_POSTERIOR, SOPORTE_POSTERIOR y ETIQUETA_POSTERIOR', async () => {
     await expect(

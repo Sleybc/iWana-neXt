@@ -20,6 +20,7 @@ import {
   type MigrationPendingValue,
   type MigrationRejectionReason,
   type MigrationRevertBlocker,
+  type MigrationTicketAttachmentSkipReason,
 } from '@iwana/shared';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
@@ -38,10 +39,12 @@ import {
   MIGRATION_REJECTION_REASON_LABELS,
   MIGRATION_REVERT_BLOCK_LABELS,
   MIGRATION_SETTINGS_HREF,
+  MIGRATION_TICKET_ATTACHMENT_SKIP_LABELS,
   externalClientLabel,
   formatMigrationDate,
   migrationBatchStatusPresentation,
   migrationErrorMessage,
+  revertBlockedDetail,
   revertBlockersFromError,
 } from './migration-labels';
 import { MigrationMappingEditor } from './MigrationMappingEditor';
@@ -146,7 +149,43 @@ function EntityReport({ report }: { report: MigrationBatchReport }) {
           rejections={report.promotion.rechazados}
         />
       ) : null}
+      {report.promotion ? (
+        <TicketAttachmentsReport attachments={report.promotion.adjuntosTickets} />
+      ) : null}
     </div>
+  );
+}
+
+/** Adjuntos de comentarios de tickets: no son una entidad del lote; se cuentan aparte (§2.3). */
+function TicketAttachmentsReport({
+  attachments,
+}: {
+  attachments: NonNullable<MigrationBatchReport['promotion']>['adjuntosTickets'] | undefined;
+}) {
+  const skipped = countEntries<MigrationTicketAttachmentSkipReason>(attachments?.noImportados);
+  const skippedTotal = skipped.reduce((sum, [, count]) => sum + count, 0);
+  // Lotes sin adjuntos (o promovidos antes de esta fase) no muestran la sección.
+  if (!attachments || attachments.importados + attachments.existentes + skippedTotal === 0) {
+    return null;
+  }
+  return (
+    <section className="space-y-2 text-sm text-gray-700 dark:text-gray-200">
+      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Adjuntos de tickets</h3>
+      <p>
+        Adjuntos de tickets importados: {attachments.importados}
+        {attachments.existentes > 0 ? ` · ya existentes: ${attachments.existentes}` : ''}
+      </p>
+      <p>Adjuntos de tickets no importados: {skippedTotal}</p>
+      {skipped.length > 0 ? (
+        <ul aria-label="Adjuntos de tickets no importados" className="ml-4 list-disc">
+          {skipped.map(([reason, count]) => (
+            <li key={reason}>
+              {MIGRATION_TICKET_ATTACHMENT_SKIP_LABELS[reason]}: {count}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   );
 }
 
@@ -319,6 +358,7 @@ export function MigrationBatchDetailClient({ batchId }: { batchId: string }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [blockers, setBlockers] = useState<MigrationRevertBlocker[]>([]);
+  const [blockedDetail, setBlockedDetail] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmKind | null>(null);
   const [busy, setBusy] = useState<ConfirmKind | 'reconcile' | 'authors' | null>(null);
   const [authors, setAuthors] = useState<MigrationAuthorsRefreshResult | null>(null);
@@ -356,6 +396,7 @@ export function MigrationBatchDetailClient({ batchId }: { batchId: string }) {
     setActionNotice(null);
     setAuthors(null);
     setBlockers([]);
+    setBlockedDetail(null);
     try {
       if (kind === 'authors') {
         setAuthors(await migrationApi.refreshAuthors(batchId));
@@ -366,12 +407,21 @@ export function MigrationBatchDetailClient({ batchId }: { batchId: string }) {
         await migrationApi.reconcile(batchId);
         setActionNotice('Conciliación actualizada.');
       } else {
-        await migrationApi.revert(batchId);
-        setActionNotice('Lote revertido. Lo que trajo ya no está en iWana.');
+        const result = await migrationApi.revert(batchId);
+        const attachments = result.adjuntosTicketsRetirados ?? 0;
+        setActionNotice(
+          attachments > 0
+            ? `Lote revertido. Lo que trajo ya no está en iWana. Adjuntos de tickets retirados: ${attachments}.`
+            : 'Lote revertido. Lo que trajo ya no está en iWana.',
+        );
       }
       await load();
     } catch (error) {
-      if (kind === 'revert') setBlockers(revertBlockersFromError(error));
+      if (kind === 'revert') {
+        const nextBlockers = revertBlockersFromError(error);
+        setBlockers(nextBlockers);
+        setBlockedDetail(revertBlockedDetail(error, nextBlockers));
+      }
       const fallback = 'No pudimos completar la acción. Intenta de nuevo.';
       setActionError(
         kind === 'authors'
@@ -565,13 +615,16 @@ export function MigrationBatchDetailClient({ batchId }: { batchId: string }) {
               title={actionError}
               description={
                 blockers.length > 0 ? (
-                  <ul aria-label="Qué bloquea la reversión" className="ml-4 list-disc">
-                    {blockers.map((blocker) => (
-                      <li key={blocker.motivo}>
-                        {MIGRATION_REVERT_BLOCK_LABELS[blocker.motivo]}: {blocker.cantidad}
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="space-y-2">
+                    {blockedDetail ? <p>{blockedDetail}</p> : null}
+                    <ul aria-label="Qué bloquea la reversión" className="ml-4 list-disc">
+                      {blockers.map((blocker) => (
+                        <li key={blocker.motivo}>
+                          {MIGRATION_REVERT_BLOCK_LABELS[blocker.motivo]}: {blocker.cantidad}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ) : undefined
               }
             />

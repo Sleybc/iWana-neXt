@@ -1,4 +1,4 @@
-import { validateMagicBytes } from './magic-bytes';
+import { detectMagicMime, validateMagicBytes } from './magic-bytes';
 
 /** Rellena hasta la longitud mínima inspeccionable (12 bytes). */
 function buffer(...bytes: number[]): Buffer {
@@ -55,5 +55,51 @@ describe('validateMagicBytes', () => {
 
   it('rechaza un buffer demasiado corto para ser inspeccionado', () => {
     expect(validateMagicBytes(Buffer.from([0x89, 0x50]), 'image/png')).toBe(false);
+  });
+
+  describe('MP4 por la caja ftyp (spec MOD09 adjuntos §2.1)', () => {
+    function ftyp(major: string, compatible: string[] = [], declaredSize?: number): Buffer {
+      const size = 16 + compatible.length * 4;
+      const box = Buffer.alloc(size);
+      box.writeUInt32BE(declaredSize ?? size, 0);
+      box.write('ftyp', 4, 'latin1');
+      box.write(major, 8, 'latin1');
+      compatible.forEach((brand, index) => box.write(brand, 16 + index * 4, 'latin1'));
+      return Buffer.concat([box, Buffer.from('mdat sintetico')]);
+    }
+
+    it('acepta las marcas MP4 principales y las compatibles', () => {
+      expect(validateMagicBytes(ftyp('isom', ['iso2', 'mp41']), 'video/mp4')).toBe(true);
+      expect(validateMagicBytes(ftyp('mp42'), 'video/mp4')).toBe(true);
+      expect(validateMagicBytes(ftyp('XAVC', ['mp42']), 'video/mp4')).toBe(true);
+    });
+
+    it('rechaza QuickTime, HEIF y AVIF aunque compartan el contenedor', () => {
+      expect(validateMagicBytes(ftyp('qt  ', ['qt  ']), 'video/mp4')).toBe(false);
+      expect(validateMagicBytes(ftyp('heic', ['mif1', 'isom']), 'video/mp4')).toBe(false);
+      expect(validateMagicBytes(ftyp('avif', ['mif1', 'mp42']), 'video/mp4')).toBe(false);
+    });
+
+    it('rechaza una caja ftyp sin marca admitida o con tamaño incoherente', () => {
+      expect(validateMagicBytes(ftyp('3gp4', ['3gp4']), 'video/mp4')).toBe(false);
+      expect(validateMagicBytes(ftyp('isom', [], 8), 'video/mp4')).toBe(false);
+      expect(validateMagicBytes(ftyp('isom', [], 4096), 'video/mp4')).toBe(false);
+      expect(validateMagicBytes(ftyp('isom', [], 18), 'video/mp4')).toBe(false);
+    });
+
+    it('rechaza bytes de texto o de un ejecutable declarados como MP4', () => {
+      expect(validateMagicBytes(Buffer.from('esto no es un video mp4'), 'video/mp4')).toBe(false);
+      expect(validateMagicBytes(Buffer.from('MZ\x90\x00 ejecutable sintetico'), 'video/mp4')).toBe(
+        false,
+      );
+    });
+
+    it('detecta el tipo real entre los candidatos', () => {
+      expect(detectMagicMime(ftyp('isom'), ['image/png', 'video/mp4'])).toBe('video/mp4');
+      expect(detectMagicMime(PNG, ['application/pdf', 'image/png'])).toBe('image/png');
+      expect(
+        detectMagicMime(Buffer.from('texto plano sin firma'), ['image/png', 'video/mp4']),
+      ).toBeNull();
+    });
   });
 });

@@ -1,5 +1,7 @@
 import type { NextConfig } from 'next';
 
+import { buildContentSecurityPolicy } from './src/lib/content-security-policy';
+
 function resolvePortalApiProxyBase(): string {
   // C-4 (ADR-081): variable de URL del API por aplicacion. Sin definir, el
   // bundle del navegador resuelve mismo-origen (/api/v1) y el rewrite apunta al
@@ -29,29 +31,15 @@ function resolvePortalApiProxyBase(): string {
  * Politica baseline de CSP sin nonces (documentacion oficial de Next.js para
  * apps sin proxy.ts): 'unsafe-inline' en script-src/style-src es requerido por
  * los scripts de bootstrap inline de Next y los estilos inline de React
- * (vercel/next.js#80997). En desarrollo, webpack necesita ademas 'unsafe-eval'
- * (runtime de modulos); sin el, la hidratacion falla y AuthProvider nunca
- * dispara /auth/me (E2E queda en «Validando sesión...»).
- * Normalizada a una sola linea antes de emitirse.
+ * (vercel/next.js#80997). La construccion vive en src/lib/content-security-policy.ts;
+ * `img-src` y `media-src` admiten el origen exacto de S3_ENDPOINT (enlaces firmados
+ * de adjuntos) y nada si falta. `headers()` se resuelve en `next build`: S3_ENDPOINT
+ * debe estar definido al construir la imagen.
  */
-const scriptSrcDirective =
-  process.env.NODE_ENV === 'production'
-    ? "script-src 'self' 'unsafe-inline'"
-    : "script-src 'self' 'unsafe-inline' 'unsafe-eval'";
-
-const contentSecurityPolicy = `default-src 'self';
-  ${scriptSrcDirective};
-  style-src 'self' 'unsafe-inline';
-  img-src 'self' blob: data: https://*.tile.openstreetmap.org;
-  font-src 'self';
-  connect-src 'self';
-  object-src 'none';
-  base-uri 'self';
-  form-action 'self';
-  frame-ancestors 'none';
-  upgrade-insecure-requests;`
-  .replace(/\s+/g, ' ')
-  .trim();
+const contentSecurityPolicy = buildContentSecurityPolicy({
+  nodeEnv: process.env.NODE_ENV,
+  storageEndpoint: process.env.S3_ENDPOINT,
+});
 
 const cacheComponents = process.env.IWANA_DISABLE_CACHE_COMPONENTS !== '1';
 
