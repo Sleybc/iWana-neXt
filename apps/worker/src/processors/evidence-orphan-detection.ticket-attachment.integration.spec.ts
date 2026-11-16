@@ -41,8 +41,11 @@ describe('S-1 — purga del objeto de un adjunto de ticket retirado (PostgreSQL 
   let pool: Pool | undefined;
 
   beforeAll(async () => {
-    if (process.env.IWANA_DB_INTEGRATION_AVAILABLE !== 'true') {
-      throw new Error('[BLOCKED] Requiere IWANA_DB_INTEGRATION_AVAILABLE=true y PostgreSQL.');
+    // En CI, el job de integración del worker anuncia PostgreSQL real con `R0_3_REAL_DB=1`.
+    if (process.env.IWANA_DB_INTEGRATION_AVAILABLE !== 'true' && process.env.R0_3_REAL_DB !== '1') {
+      throw new Error(
+        '[BLOCKED] Requiere PostgreSQL real (IWANA_DB_INTEGRATION_AVAILABLE=true o R0_3_REAL_DB=1).',
+      );
     }
     if (DB_NAME !== 'test') {
       throw new Error(`[BLOCKED] Solo corre contra DB_NAME=test (recibido "${DB_NAME}").`);

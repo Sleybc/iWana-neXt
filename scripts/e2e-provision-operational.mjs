@@ -1708,6 +1708,9 @@ function createPortalSuiteEnvironment(env, reporterPath, reportPath, quarantineC
     NEXT_TELEMETRY_DISABLED: '1',
     API_BASE_URL: API_ROOT,
     PORTAL_BASE_URL: 'http://127.0.0.1:3002',
+    // El build del portal deriva `img-src`/`media-src` de la CSP de este origen, y la E2E de
+    // adjuntos (MOD09) firma sus enlaces con él: sin la variable, la miniatura no carga.
+    S3_ENDPOINT: process.env.S3_ENDPOINT,
     E2E_MARKER_REPORTER_PATH: reporterPath,
     E2E_QUARANTINE_COUNT: String(quarantineCount),
     PLAYWRIGHT_JSON_OUTPUT_NAME: reportPath,

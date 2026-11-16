@@ -1300,6 +1300,9 @@ jobs:
         shell: bash
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: /tmp/portal-e2e-report.json
+          # Origen sintético del almacenamiento: el build del portal lo pone en la CSP y la E2E
+          # de adjuntos (MOD09) simula sus enlaces firmados en él; nunca se contacta.
+          S3_ENDPOINT: http://127.0.0.1:9000
         run: |
           set -euo pipefail
           pnpm test:e2e:portal --reporter=list,json --retries=0 2>&1 | tee /tmp/portal-e2e.log
