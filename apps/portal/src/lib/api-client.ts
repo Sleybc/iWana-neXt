@@ -151,6 +151,8 @@ import {
   type StockIssuePickableItem,
   type StockIssueLineSerialRef,
   type ExecutorCustodyResponse as ExecutorCustodyResponseContract,
+  type SubscriberEquipmentQuery,
+  type SubscriberEquipmentResponse,
   type UsersBulkCreateAcceptedResponse,
   type UsersBulkJobResultResponse,
   type UsersBulkJobStatusResponse,
@@ -10186,6 +10188,34 @@ export const inventoryApi = {
         limit: params?.limit !== undefined ? String(params.limit) : undefined,
       })}`,
       { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  /**
+   * Equipos, materiales e historial de equipos de un suscriptor (contrato A1 v1.0,
+   * spec 2026-11-16 equipos del suscriptor §2.1). La primera llamada va sin parámetros;
+   * las páginas siguientes repiten la ruta con la página de la sección que se pide.
+   * Suscriptor vacío o de otro tenant: 200 con colecciones vacías.
+   */
+  getSubscriberEquipment: (
+    subscriberRefId: string,
+    params?: SubscriberEquipmentQuery,
+    tenantSlug?: string,
+  ) =>
+    request<SubscriberEquipmentResponse>(
+      `/inventory/subscribers/${encodeURIComponent(subscriberRefId)}/equipment${buildInventoryQuery(
+        {
+          materialsPage:
+            params?.materialsPage !== undefined ? String(params.materialsPage) : undefined,
+          materialsLimit:
+            params?.materialsLimit !== undefined ? String(params.materialsLimit) : undefined,
+          historyPage: params?.historyPage !== undefined ? String(params.historyPage) : undefined,
+          historyLimit:
+            params?.historyLimit !== undefined ? String(params.historyLimit) : undefined,
+          historyAssetId: params?.historyAssetId,
+        },
+      )}`,
+      undefined,
       tenantSlug,
     ),
 

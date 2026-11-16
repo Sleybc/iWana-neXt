@@ -62,6 +62,8 @@ interface SubscriberOverviewTabProps {
   accountSummary?: ReactNode;
   /** Estado de cuenta ya leído por la ficha; alimenta la insignia de deuda vencida. */
   statement?: BillingAccountStatement | null;
+  /** Tarjeta «Equipos instalados»; la arma la ficha solo con la lectura de inventario (D4). */
+  equipmentCard?: ReactNode;
 }
 
 const termClassName = 'text-xs font-medium text-gray-500 dark:text-gray-400';
@@ -175,6 +177,7 @@ export function SubscriberOverviewTab({
   onReload,
   accountSummary,
   statement = null,
+  equipmentCard,
 }: SubscriberOverviewTabProps) {
   const { subscriber, contracts, expedienteSummary } = subscriber360;
   const anonymizedAt = subscriber.anonymizedAt;
@@ -564,6 +567,7 @@ export function SubscriberOverviewTab({
       <div className="flex min-w-0 flex-col gap-4">
         {accountSummary}
         {servicesPanel}
+        {equipmentCard}
         <SubscriberActivityCard
           subscriberId={subscriber.id}
           contracts={contracts}

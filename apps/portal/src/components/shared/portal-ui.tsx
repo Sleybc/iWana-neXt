@@ -5,6 +5,7 @@ import {
   type ComponentType,
   type ReactNode,
   type Ref,
+  type RefObject,
   type ThHTMLAttributes,
   useCallback,
   useEffect,
@@ -2332,6 +2333,218 @@ export function PortalEmptyState({
 
 export function PortalSkeletonBlock({ className }: PortalSkeletonBlockProps) {
   return <SkeletonBlock className={className} />;
+}
+
+/**
+ * Línea de tiempo de solo lectura — contrato congelado v1.1 (`ds-owner`,
+ * docs/specs/2026-11-16-mod05-mod12-equipos-del-suscriptor.md §3.1).
+ * Las etiquetas de cada evento las traduce quien la usa.
+ */
+export interface PortalTimelineItem {
+  id: string;
+  /** Etiqueta ya traducida por quien la usa. */
+  title: string;
+  /** ISO 8601; va a `<time dateTime>`. */
+  at: string;
+  detail?: ReactNode | undefined;
+  meta?: ReactNode | undefined;
+  /** `Button size="sm" className="min-h-11"`, o enlace con `interactiveFocusClassName`. */
+  action?: ReactNode | undefined;
+  /** Por defecto `'past'`. */
+  tone?: 'current' | 'past' | undefined;
+}
+
+export interface PortalTimelineProps {
+  /** `aria-label` del `<ol>`. */
+  label: string;
+  items: readonly PortalTimelineItem[];
+  /** `PortalEmptyState embedded`; vacío y filtro sin resultados los decide quien la usa. */
+  empty: ReactNode;
+  busy?: boolean | undefined;
+  /** Título del `PortalAlert`. */
+  error?: string | null | undefined;
+  onRetry?: (() => void) | undefined;
+  /** Título de la sección, con `tabIndex={-1}`; recibe el foco al reintentar. */
+  headingRef?: RefObject<HTMLElement | null> | undefined;
+  hasMore?: boolean | undefined;
+  onLoadMore?: (() => void) | undefined;
+  loadingMore?: boolean | undefined;
+  /** Por defecto es-CO con `dateStyle` y `timeStyle` `'short'`. */
+  formatAt?: ((iso: string) => string) | undefined;
+  className?: string | undefined;
+}
+
+const portalTimelineDateFormatter = new Intl.DateTimeFormat('es-CO', {
+  dateStyle: 'short',
+  timeStyle: 'short',
+});
+
+/** Ante un valor no parseable devuelve el valor crudo, como `formatDateOnlyEsCo`. */
+function formatPortalTimelineAt(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : portalTimelineDateFormatter.format(date);
+}
+
+/** Lista con la línea vertical decorativa; los nodos cuelgan a su izquierda. */
+const portalTimelineListClassName = cn(
+  'relative space-y-4 pl-6',
+  'before:absolute before:inset-y-1 before:left-1.5 before:w-px before:-translate-x-1/2',
+  'before:bg-gradient-to-b before:from-gray-200 before:to-transparent dark:before:from-dark-border',
+);
+
+const portalTimelineNodeClassName =
+  'absolute -left-6 top-1 h-3 w-3 rounded-full border-4 border-white ring-1 ring-gray-100 dark:border-dark-surface-2 dark:ring-dark-border';
+
+const PORTAL_TIMELINE_SKELETON_ROWS = 3;
+
+export function PortalTimeline({
+  label,
+  items,
+  empty,
+  busy = false,
+  error,
+  onRetry,
+  headingRef,
+  hasMore = false,
+  onLoadMore,
+  loadingMore = false,
+  formatAt = formatPortalTimelineAt,
+  className,
+}: PortalTimelineProps) {
+  const listRef = useRef<HTMLOListElement>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const loadMoreRequestedRef = useRef(false);
+  const wasLoadingMoreRef = useRef(loadingMore);
+
+  // Retorno de foco de «Ver más» (v1.1): solo si la carga la pidió el botón.
+  useEffect(() => {
+    const finished = wasLoadingMoreRef.current && !loadingMore;
+    wasLoadingMoreRef.current = loadingMore;
+    if (!finished || !loadMoreRequestedRef.current) {
+      return;
+    }
+    loadMoreRequestedRef.current = false;
+    if (hasMore) {
+      loadMoreRef.current?.querySelector('button')?.focus();
+    } else {
+      listRef.current?.focus();
+    }
+  }, [loadingMore, hasMore]);
+
+  const hasItems = items.length > 0;
+
+  const handleRetry = () => {
+    onRetry?.();
+    headingRef?.current?.focus();
+  };
+
+  const errorAlert = error ? (
+    <PortalAlert
+      variant="error"
+      density="compact"
+      title={error}
+      action={
+        onRetry ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="min-h-11"
+            onClick={handleRetry}
+          >
+            Reintentar
+          </Button>
+        ) : undefined
+      }
+    />
+  ) : null;
+
+  if (!hasItems) {
+    if (busy) {
+      return (
+        <div role="status" className={className}>
+          <span className="sr-only">Cargando…</span>
+          <div aria-hidden="true" className={portalTimelineListClassName}>
+            {Array.from({ length: PORTAL_TIMELINE_SKELETON_ROWS }, (_, index) => (
+              <div key={index} data-timeline-skeleton-row="" className="relative space-y-2">
+                <PortalSkeletonBlock className="absolute -left-6 top-1 h-3 w-3 rounded-full" />
+                <PortalSkeletonBlock className="h-4 w-2/5 rounded-md" />
+                <PortalSkeletonBlock className="h-3 w-3/5 rounded-md" />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    return <div className={className}>{errorAlert ?? empty}</div>;
+  }
+
+  return (
+    <div className={cn('flex flex-col gap-3', className)}>
+      <ol
+        ref={listRef}
+        aria-label={label}
+        aria-busy={busy || undefined}
+        tabIndex={-1}
+        className={cn(
+          portalTimelineListClassName,
+          'outline-none',
+          busy && portalDataBusyRegionClassName,
+        )}
+      >
+        {items.map((item) => {
+          const isCurrent = item.tone === 'current';
+          return (
+            <li key={item.id} aria-current={isCurrent ? 'step' : undefined} className="relative">
+              <span
+                aria-hidden="true"
+                data-timeline-node=""
+                className={cn(
+                  portalTimelineNodeClassName,
+                  isCurrent
+                    ? 'bg-iwana-secondary'
+                    : 'bg-iwana-primary/20 dark:bg-iwana-primary-400/20',
+                )}
+              />
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                <p className="min-w-0 break-words text-sm font-medium text-gray-900 dark:text-white">
+                  {item.title}
+                </p>
+                <time
+                  dateTime={item.at}
+                  className="shrink-0 font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400"
+                >
+                  {formatAt(item.at)}
+                </time>
+              </div>
+              {item.detail != null ? (
+                <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">{item.detail}</div>
+              ) : null}
+              {item.meta != null ? (
+                <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">{item.meta}</div>
+              ) : null}
+              {item.action != null ? <div className="mt-2">{item.action}</div> : null}
+            </li>
+          );
+        })}
+      </ol>
+      {errorAlert}
+      {hasMore && onLoadMore ? (
+        <div ref={loadMoreRef}>
+          <PortalTablePagination
+            hasMore={hasMore}
+            loading={loadingMore}
+            loadMoreLabel="Ver más"
+            className="border-t-0 px-0 pb-0 pt-1"
+            onLoadMore={() => {
+              loadMoreRequestedRef.current = true;
+              onLoadMore();
+            }}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export interface PortalModuleSubnavItem {
