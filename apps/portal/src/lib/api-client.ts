@@ -10215,7 +10215,7 @@ export const inventoryApi = {
           historyAssetId: params?.historyAssetId,
         },
       )}`,
-      undefined,
+      { returnFullResponse: true },
       tenantSlug,
     ),
 
