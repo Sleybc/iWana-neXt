@@ -60,6 +60,10 @@ FROM deps AS builder
 # C-4 (ADR-081): cada aplicación usa su propia variable de URL del API.
 ARG NEXT_PUBLIC_PORTAL_API_URL
 ENV NEXT_PUBLIC_PORTAL_API_URL=$NEXT_PUBLIC_PORTAL_API_URL
+# Origen público del almacenamiento: `next.config.ts` lo pone en la CSP (img-src/media-src)
+# al construir, porque `headers()` se resuelve en `next build` (D2, adjuntos MOD09).
+ARG S3_PUBLIC_ENDPOINT
+ENV S3_PUBLIC_ENDPOINT=$S3_PUBLIC_ENDPOINT
 
 # Solo los workspaces de esta app. `COPY <dir> <dir>` fusiona sobre el
 # directorio existente, así que los node_modules creados en `deps` (que

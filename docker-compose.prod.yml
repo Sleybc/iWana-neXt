@@ -57,6 +57,10 @@ services:
     container_name: iwana_minio_prod
     volumes:
       - iwana_minio_data_prod:/data
+    # `storage-edge` se suma a `data` (base): nginx entrega por aquí los enlaces firmados
+    # (D2, adjuntos MOD09) sin entrar en la red de datos.
+    networks:
+      - storage-edge
 
   minio-init:
     container_name: iwana_minio_init_prod
@@ -106,9 +110,11 @@ services:
       - SETUID
       # Termina 80 y 443, ambos privilegiados.
       - NET_BIND_SERVICE
-    # El borde no toca la red de datos: no resuelve postgres, redis ni minio.
+    # El borde no toca la red de datos: no resuelve postgres ni redis. Alcanza a MinIO solo
+    # por `storage-edge`, para servir enlaces firmados de lectura (D2, adjuntos MOD09).
     networks:
       - edge
+      - storage-edge
 
   api-prod:
     build:
@@ -169,6 +175,9 @@ services:
       SMTP_FROM: ${SMTP_FROM-}
       SMTP_SECURE: ${SMTP_SECURE-}
       S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      # Origen público https con el que se firman los enlaces de descarga: el navegador no
+      # resuelve minio:9000 (D2, adjuntos MOD09). nginx lo sirve hacia MinIO.
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:?S3_PUBLIC_ENDPOINT is required}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID is required}
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY is required}
@@ -276,6 +285,8 @@ services:
       args:
         # C-4 (ADR-081): cada aplicacion bakea su propia variable de URL del API.
         NEXT_PUBLIC_PORTAL_API_URL: ${NEXT_PUBLIC_PORTAL_API_URL:?NEXT_PUBLIC_PORTAL_API_URL is required}
+        # CSP del portal: el mismo origen público con el que la API firma los enlaces.
+        S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:?S3_PUBLIC_ENDPOINT is required}
     image: ${IMAGE_REPOSITORY:-iwana}/portal:${IMAGE_TAG:-local}
     container_name: iwana_portal_prod
     profiles:
@@ -455,3 +466,8 @@ volumes:
     name: iwana_minio_data_prod
   iwana_typesense_data_prod:
     name: iwana_typesense_data_prod
+
+networks:
+  # Solo nginx-prod y MinIO (D2, adjuntos MOD09). `internal`: sin salida a otras redes.
+  storage-edge:
+    internal: true

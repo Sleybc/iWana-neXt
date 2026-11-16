@@ -2,10 +2,10 @@
 
 **Sistema:** iWana neXt — Módulo MOD03 Branding Empresarial  
 **Componente:** Almacenamiento de objetos — MinIO (dev) / S3-compatible (prod)  
-**Versión:** 1.1  
-**Cambios:** v1.1 (2026-10-30/31) añade «Usos privados» para `stratum_evidence` y `privacy_evidence` (INFORME T9 v1.1) y sustituye las credenciales literales de desarrollo por referencias a `.env.example` (decisión D-CK-4 del CTO).  
+**Versión:** 1.2  
+**Cambios:** v1.2 (2026-11-16) añade `S3_PUBLIC_ENDPOINT`, el vhost de archivos y la respuesta al evento `ticket_attachment_purge_failed` (D2 y D3 del [informe MOD09 adjuntos](../informes/INFORME-MOD09-ADJUNTOS-TICKETS-v1.0.md)). v1.1 (2026-10-30/31) añade «Usos privados» para `stratum_evidence` y `privacy_evidence` (INFORME T9 v1.1) y sustituye las credenciales literales de desarrollo por referencias a `.env.example` (decisión D-CK-4 del CTO).  
 **Ruta estable:** el sufijo `v1.0` del nombre es el del alta; la versión vigente es la de esta cabecera.  
-**Fecha:** 2026-04-30 · **Última actualización:** 2026-10-30 (sección «Usos privados», [INFORME T9 v1.1](../informes/INFORME-MOD05-IVA-PUNTO-SERVICIO-T9-v1.1.md))  
+**Fecha:** 2026-04-30 · **Última actualización:** 2026-11-16 (secciones «Enlaces firmados en producción» y «Purga de adjuntos de tickets»)  
 **Autor:** AI-SR-FULL
 
 ---
@@ -63,6 +63,7 @@ packages/storage
 |---|---|---|
 | `STORAGE_DRIVER` | `minio` | Compatible con S3 AWS también |
 | `S3_ENDPOINT` | (proveedor S3/MinIO) | Endpoint del proveedor |
+| `S3_PUBLIC_ENDPOINT` | `https://archivos.<dominio>` | Obligatorio y https. Origen con el que la API firma los enlaces y que la CSP del portal admite (build arg de la imagen del portal) |
 | `S3_REGION` | (region del bucket) | |
 | `S3_ACCESS_KEY_ID` | (secreto) | Nunca en código |
 | `S3_SECRET_ACCESS_KEY` | (secreto) | Nunca en código |
@@ -79,6 +80,28 @@ packages/storage
 - `MediaService` rechaza su carga y su firma con 503 (`STRATUM_EVIDENCE_STORAGE_MUST_BE_PRIVATE` o `PRIVACY_EVIDENCE_STORAGE_MUST_BE_PRIVATE`) si `STORAGE_DRIVER` no es `minio`, si `S3_BUCKET_PUBLIC=true` o si `S3_PUBLIC_BASE_URL` está definida en `production` o `staging`.
 - En `development` y `test` la base URL no bloquea: el bucket es privado y esa URL apunta al MinIO directo, que exige firma.
 - Ningún CDN, proxy ni política anónima debe servir los prefijos `{tenantSchema}/stratum_evidence/` ni `{tenantSchema}/privacy_evidence/`. Habilitar un CDN para la marca exige antes separar estos usos (bucket o prefijo excluido) mediante ADR.
+
+### Enlaces firmados en producción (2026-11-16)
+
+`S3_ENDPOINT` es la red interna (`http://minio:9000`) y el navegador no la resuelve. La API firma con `S3_PUBLIC_ENDPOINT`: la firma SigV4 incluye el host, así que no sirve reescribir la URL después de firmar.
+
+- nginx sirve `archivos.<dominio>` hacia MinIO por la red `storage-edge`, que solo comparten `nginx-prod` y `minio`. El borde sigue sin ver postgres ni redis.
+- El vhost solo admite `GET` y `HEAD` sobre `/iwana-media/`, reenvía el `Host` original y entrega en flujo. El bucket sigue privado: MinIO rechaza lo que no tenga firma válida y vigente.
+- Ese vhost es un proxy del bucket, incluidos los prefijos de usos privados. Activarlo en producción exige el visto bueno de `sec-eng` y del CTO (regla de «Usos privados»), junto con el dominio y el certificado de G7.
+- La imagen del portal se construye con `--build-arg S3_PUBLIC_ENDPOINT=…`: la CSP se fija en `next build`.
+
+### Purga de adjuntos de tickets (2026-11-16)
+
+La fase 4 del worker `evidence-orphan-detection` borra el objeto de los adjuntos retirados por supresión o reversión. Si algún borrado falla, emite una línea por corrida y el job falla:
+
+```
+[evidence-orphan] ticket_attachment_purge_failed error_type=TICKET_ATTACHMENT_PURGE_FAILED failed=<n> deleted=<n> batch=<n>
+```
+
+- Alerta: cualquier aparición de `error_type=TICKET_ATTACHMENT_PURGE_FAILED`. Se conecta a la herramienta de monitoreo que se elija en G7.
+- Diagnóstico: los activos pendientes son `SELECT count(*) FROM public.media_assets WHERE usage = 'ticket_attachment' AND deleted_at IS NOT NULL AND asset_status <> 'DELETED';`. Revisar conectividad y credenciales de MinIO (secciones siguientes).
+- Reintento: no hace falta acción manual. La siguiente corrida vuelve a intentarlo, porque el activo no queda `DELETED` mientras el objeto exista.
+- Mientras el archivo exista, ya no hay fila del adjunto ni enlace que lo sirva; el riesgo es de retención, no de exposición.
 
 ---
 

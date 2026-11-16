@@ -34,7 +34,9 @@ const TICKET_ID = '55555555-5555-4555-8555-555555555575';
  */
 function signedHostFromEnv(): string {
   try {
-    return new URL(process.env.S3_ENDPOINT?.trim() ?? '').origin;
+    // Mismo orden que next.config.ts: el origen público si existe, si no el directo.
+    const endpoint = process.env.S3_PUBLIC_ENDPOINT?.trim() || process.env.S3_ENDPOINT?.trim();
+    return new URL(endpoint ?? '').origin;
   } catch {
     return 'https://archivos-firmados.e2e.invalid';
   }

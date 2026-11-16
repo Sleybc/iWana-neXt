@@ -447,17 +447,20 @@ export function SerializedAssetDetailDrawer({
               title="Movimientos"
               testId="asset-detail-section-movements"
             >
-              <div className="mb-3 flex justify-end">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => onOpenKardex?.(assetId)}
-                  data-testid="asset-detail-open-kardex"
-                >
-                  Ver en kardex
-                </Button>
-              </div>
+              {/* Sin `onOpenKardex` (ficha del suscriptor) no hay a dónde ir: no se ofrece. */}
+              {onOpenKardex ? (
+                <div className="mb-3 flex justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => onOpenKardex(assetId)}
+                    data-testid="asset-detail-open-kardex"
+                  >
+                    Ver en kardex
+                  </Button>
+                </div>
+              ) : null}
               {detail.movements.total === 0 ? (
                 <PortalEmptyState
                   title="Sin movimientos registrados"

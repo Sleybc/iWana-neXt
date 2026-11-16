@@ -111,6 +111,30 @@ const productionUrlValidator: Joi.CustomValidator<string> = (value, helpers) => 
   return value;
 };
 
+/** Origen público https sin ruta (lo ve el navegador: enlaces firmados del almacenamiento). */
+const productionHttpsOriginValidator: Joi.CustomValidator<string> = (value, helpers) => {
+  const trimmed = value.trim();
+  const verdict = classifyProductionOrigin(trimmed);
+
+  if (verdict === 'not-absolute') {
+    return helpers.error('iwana.origin.notAbsolute');
+  }
+
+  if (verdict === 'development-only') {
+    return helpers.error('iwana.origin.developmentOnly');
+  }
+
+  const parsed = new URL(trimmed);
+  if (parsed.protocol !== 'https:') {
+    return helpers.error('iwana.origin.notHttps');
+  }
+  if (parsed.pathname !== '/' || parsed.search || parsed.hash) {
+    return helpers.error('iwana.origin.notAbsolute');
+  }
+
+  return trimmed.replace(/\/$/u, '');
+};
+
 /**
  * Construye las opciones efectivas del runtime de la API.
  *
@@ -418,6 +442,21 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
       otherwise: Joi.string().valid('minio', 'local').default('local'),
     }),
     S3_ENDPOINT: Joi.string().uri().optional(),
+    // Origen público con el que se firman los enlaces de descarga (adjuntos, evidencias,
+    // medios). En producción es obligatorio y HTTPS: `S3_ENDPOINT` es la red interna de Docker
+    // y un enlace firmado con él no lo abre el navegador (D2, informe MOD09 adjuntos).
+    S3_PUBLIC_ENDPOINT: Joi.when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string().trim().required().custom(productionHttpsOriginValidator).messages({
+        'any.required': 'S3_PUBLIC_ENDPOINT es obligatorio con NODE_ENV=production.',
+        'string.empty': 'S3_PUBLIC_ENDPOINT es obligatorio con NODE_ENV=production.',
+        'iwana.origin.notAbsolute': 'S3_PUBLIC_ENDPOINT debe ser un origen https absoluto.',
+        'iwana.origin.notHttps': 'S3_PUBLIC_ENDPOINT debe usar https en producción.',
+        'iwana.origin.developmentOnly':
+          'S3_PUBLIC_ENDPOINT no puede apuntar a localhost/127.0.0.1 con NODE_ENV=production.',
+      }),
+      otherwise: Joi.string().uri().optional(),
+    }),
     S3_REGION: Joi.string().default('us-east-1'),
     S3_ACCESS_KEY_ID: Joi.string()
       .allow('')

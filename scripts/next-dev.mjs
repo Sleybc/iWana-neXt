@@ -102,7 +102,7 @@ export function resolveBindHost(env = process.env, root = repoRoot) {
  * S3_ENDPOINT da el origen del almacenamiento para `img-src`/`media-src` (adjuntos con
  * enlace firmado). El shell gana; si no hay valor en ningun lado no se define (CSP cerrada).
  */
-export const forwardedRootEnvVars = ['S3_ENDPOINT'];
+export const forwardedRootEnvVars = ['S3_ENDPOINT', 'S3_PUBLIC_ENDPOINT'];
 
 export function forwardRootEnv(env = process.env, root = repoRoot) {
   for (const name of forwardedRootEnvVars) {

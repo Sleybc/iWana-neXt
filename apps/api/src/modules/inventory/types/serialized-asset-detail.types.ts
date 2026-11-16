@@ -4,9 +4,11 @@ import {
   SerializedAssetStatus,
   StockLocationType,
 } from '@iwana/shared';
+import type { SerializedAssetUsefulLife } from '@iwana/shared';
 import { StockMovementKardexRecord } from '../services/stock-movement-query.service';
 
-export type UsefulLifeStatus = 'sin-dato' | 'vigente' | 'por-vencer' | 'vencida';
+/** Fuente única en `@iwana/shared` (contrato A1 de equipos del suscriptor). */
+export type { SerializedAssetUsefulLife, UsefulLifeStatus } from '@iwana/shared';
 
 export interface SerializedAssetItemSummary {
   id: string;
@@ -30,14 +32,6 @@ export interface SerializedAssetPurchaseOrigin {
   supplierPartyRefId: string | null;
   supplierDisplayName: string | null;
   unitCost: string | null;
-}
-
-export interface SerializedAssetUsefulLife {
-  monthsTotal: number | null;
-  monthsElapsed: number | null;
-  monthsRemaining: number | null;
-  warrantyUntil: string | null;
-  status: UsefulLifeStatus;
 }
 
 export interface AssetLifecycleEventRecord {

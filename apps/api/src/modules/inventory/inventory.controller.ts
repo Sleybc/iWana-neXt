@@ -72,6 +72,8 @@ import {
   InventoryPickerSearchQuerySchema,
   ListLoansQueryDto,
   ListLoansQuerySchema,
+  GetSubscriberEquipmentQueryDto,
+  GetSubscriberEquipmentQuerySchema,
   ListSerializedAssetsQueryDto,
   ListSerializedAssetsQuerySchema,
   SerializedAssetPickerSearchQueryDto,
@@ -120,6 +122,7 @@ import {
 } from './dto';
 import { SerializedAssetDetailResponseDto } from './dto/serialized-asset-detail-response.dto';
 import { ExecutorCustodyResponseDto } from './dto/executor-custody-response.dto';
+import { SubscriberEquipmentResponseDto } from './dto/subscriber-equipment-response.dto';
 import { InventoryDashboardService } from './services/inventory-dashboard.service';
 import { ExecutorCustodyService } from './services/executor-custody.service';
 import { AssetLoanService } from './services/asset-loan.service';
@@ -462,6 +465,35 @@ export class InventoryController {
   })
   listLoans(@Query(new ZodValidationPipe(ListLoansQuerySchema)) query: ListLoansQueryDto) {
     return this.assetLoanService.list(ListLoansQuerySchema.parse(query));
+  }
+
+  @Get('subscribers/:subscriberRefId/equipment')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
+  @ApiOperation({
+    summary: 'Consultar los equipos de un suscriptor',
+    description:
+      'Consulta de solo lectura (MOD12) para la ficha del suscriptor: `equipment` trae todos los ' +
+      'comodatos (abiertos primero, luego por instalación descendente) con datos del equipo y ' +
+      'vida útil derivada; `materials` las líneas positivas no serializadas en la ubicación del ' +
+      'cliente; `history` los eventos de ciclo de vida recortados al periodo de cada comodato, ' +
+      'sin notas. La primera llamada no envía parámetros; las páginas siguientes se piden al ' +
+      'mismo endpoint con `materialsPage` o `historyPage` (+ `historyAssetId` opcional). ' +
+      'Las referencias de OT y contrato son opacas. Otro tenant o sin datos: 200 con colecciones vacías.',
+  })
+  @ApiOkResponse({ type: SubscriberEquipmentResponseDto })
+  @ApiResponse({ status: 400, description: 'UUID o paginación inválidos.' })
+  @ApiResponse({ status: 401, description: 'No autenticado.' })
+  @ApiResponse({ status: 403, description: 'Sin permisos de lectura de inventario.' })
+  getSubscriberEquipment(
+    @Param('subscriberRefId', ParseUUIDPipe) subscriberRefId: string,
+    @Query(new ZodValidationPipe(GetSubscriberEquipmentQuerySchema))
+    query: GetSubscriberEquipmentQueryDto,
+  ) {
+    return this.assetLoanService.getSubscriberEquipment(
+      subscriberRefId,
+      GetSubscriberEquipmentQuerySchema.parse(query),
+    );
   }
 
   @Get('balances')

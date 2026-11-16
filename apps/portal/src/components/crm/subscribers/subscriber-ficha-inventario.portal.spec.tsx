@@ -12,9 +12,19 @@ import {
   PersonType,
   SubscriberStatus,
   VatTreatment,
+  SerializedAssetStatus,
   type BillingAccountStatement,
+  type SubscriberEquipmentItem,
+  type SubscriberEquipmentResponse,
 } from '@iwana/shared';
-import { assuranceApi, billingApi, subscribersApi, usersApi, wfmApi } from '@/lib/api-client';
+import {
+  assuranceApi,
+  billingApi,
+  inventoryApi,
+  subscribersApi,
+  usersApi,
+  wfmApi,
+} from '@/lib/api-client';
 import type { Subscriber360Response, SubscriberRecord } from '@/lib/api-client';
 import { SubscriberDetailClient } from './SubscriberDetailClient';
 
@@ -325,5 +335,148 @@ describe('Ficha del suscriptor — inventario de no regresión (W0, CA-1)', () =
     expect(within(panel).getByRole('heading', { name: 'Visitas' })).toBeInTheDocument();
     expect(await within(panel).findByText('Este suscriptor no tiene tickets')).toBeInTheDocument();
     expect(await within(panel).findByText('Este suscriptor no tiene visitas')).toBeInTheDocument();
+  });
+});
+
+/**
+ * Equipos del suscriptor (spec 2026-11-16, D1/D4; CA-1, CA-2, CA-3, CA-9): con
+ * INVENTORY_STOCK_READ aparecen la pestaña «Equipos» después de Servicios y la tarjeta en la
+ * Vista general; sin el permiso la ficha queda como en el inventario W0 de arriba.
+ */
+describe('Ficha del suscriptor — Equipos (spec 2026-11-16)', () => {
+  const EQUIPMENT_META = {
+    nextCursor: null,
+    total: 0,
+    totalIsEstimate: false,
+    page: 1,
+    limit: 20,
+    totalPages: 0,
+    hasMore: false,
+    mode: 'page' as const,
+    capabilities: { randomAccess: true, sortableFields: [] },
+    sort: null,
+  };
+  function equipmentItem(index: number, removed = false): SubscriberEquipmentItem {
+    return {
+      loanId: `loan-${index}`,
+      assetId: `asset-${index}`,
+      itemName: 'ONT WiFi 6',
+      model: `Modelo ${index}`,
+      serialNumber: `SN-000${index}`,
+      macAddress: null,
+      status: SerializedAssetStatus.INSTALLED_COMODATO,
+      installedAt: '2026-10-01T15:00:00.000Z',
+      removedAt: removed ? '2026-10-10T15:00:00.000Z' : null,
+      executionOrderRefId: null,
+      contractRefId: null,
+      usefulLife: {
+        monthsTotal: null,
+        monthsElapsed: null,
+        monthsRemaining: null,
+        warrantyUntil: null,
+        status: 'sin-dato',
+      },
+    };
+  }
+  const RESPONSE: SubscriberEquipmentResponse = {
+    equipment: [1, 2, 3, 4].map((index) => equipmentItem(index)).concat(equipmentItem(5, true)),
+    materials: { items: [], meta: EQUIPMENT_META },
+    history: { items: [], meta: EQUIPMENT_META },
+  };
+  const ALL_PERMISSIONS = [
+    ...BASE_PERMISSIONS,
+    AccessPermissionKey.BILLING_INVOICES_READ,
+    AccessPermissionKey.INVENTORY_STOCK_READ,
+  ];
+
+  beforeEach(() => {
+    mockGranted.current = new Set(ALL_PERMISSIONS);
+    mockSubscriber();
+    jest.spyOn(billingApi, 'statement').mockResolvedValue(STATEMENT);
+    jest
+      .spyOn(billingApi, 'documents')
+      .mockResolvedValue(EMPTY_PAGE as unknown as Awaited<ReturnType<typeof billingApi.documents>>);
+    jest
+      .spyOn(assuranceApi.tickets, 'list')
+      .mockResolvedValue(
+        EMPTY_PAGE as unknown as Awaited<ReturnType<typeof assuranceApi.tickets.list>>,
+      );
+    jest
+      .spyOn(assuranceApi.slaPolicies, 'list')
+      .mockResolvedValue(
+        [] as unknown as Awaited<ReturnType<typeof assuranceApi.slaPolicies.list>>,
+      );
+    jest
+      .spyOn(usersApi, 'list')
+      .mockResolvedValue(EMPTY_PAGE as unknown as Awaited<ReturnType<typeof usersApi.list>>);
+    jest
+      .spyOn(wfmApi.visitRequests, 'list')
+      .mockResolvedValue({ items: [], total: 0 } as unknown as Awaited<
+        ReturnType<typeof wfmApi.visitRequests.list>
+      >);
+    jest
+      .spyOn(wfmApi.events, 'list')
+      .mockResolvedValue(EMPTY_PAGE as unknown as Awaited<ReturnType<typeof wfmApi.events.list>>);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('CA-1/CA-9: con INVENTORY_STOCK_READ añade «Equipos» después de Servicios y conserva las 8', async () => {
+    jest.spyOn(inventoryApi, 'getSubscriberEquipment').mockResolvedValue(RESPONSE);
+    const tablist = await renderFicha();
+    const names = within(tablist)
+      .getAllByRole('tab')
+      .map((tab) => tab.textContent?.trim());
+    expect(names).toEqual([
+      'Vista general',
+      'Servicios',
+      'Equipos',
+      'Facturación',
+      'Soporte',
+      'Documentos',
+      'Datos',
+      'Tributario',
+      'Cumplimiento',
+    ]);
+  });
+
+  it('CA-1: la Vista general muestra hasta 3 equipos instalados, debajo de Servicios', async () => {
+    jest.spyOn(inventoryApi, 'getSubscriberEquipment').mockResolvedValue(RESPONSE);
+    await renderFicha();
+    const card = await screen.findByRole('region', { name: 'Equipos instalados' });
+    expect(await within(card).findAllByRole('listitem')).toHaveLength(3);
+    expect(within(card).getByText('Y 1 equipo instalado más.')).toBeInTheDocument();
+    expect(within(card).queryByText('Serial SN-0005')).not.toBeInTheDocument();
+    const services = screen.getByRole('region', { name: 'Servicios' });
+    expect(services.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    for (const name of ['Estado de cuenta', 'Servicios', 'Contacto', 'Facturación', 'Privacidad']) {
+      expect(screen.getByRole('heading', { name })).toBeInTheDocument();
+    }
+  });
+
+  it('CA-3: una sola llamada compartida por la tarjeta y la pestaña; «Ver todo» abre la pestaña', async () => {
+    const user = userEvent.setup();
+    const spy = jest.spyOn(inventoryApi, 'getSubscriberEquipment').mockResolvedValue(RESPONSE);
+    await renderFicha();
+    const card = await screen.findByRole('region', { name: 'Equipos instalados' });
+    await within(card).findAllByRole('listitem');
+    await user.click(within(card).getByRole('button', { name: 'Ver todo' }));
+    const panel = screen.getByRole('tabpanel');
+    expect(screen.getByRole('tab', { name: 'Equipos' })).toHaveAttribute('aria-selected', 'true');
+    expect(within(panel).getByRole('table', { name: 'Equipos instalados' })).toBeInTheDocument();
+    expect(within(panel).getByRole('heading', { name: 'Materiales usados' })).toBeInTheDocument();
+    expect(within(panel).getByRole('heading', { name: 'Historial de equipos' })).toBeInTheDocument();
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith('subscriber-synthetic');
+  });
+
+  it('CA-2/CA-9: sin INVENTORY_STOCK_READ no hay pestaña ni tarjeta, ni llamada a Inventario', async () => {
+    mockGranted.current = new Set([...BASE_PERMISSIONS, AccessPermissionKey.BILLING_INVOICES_READ]);
+    const spy = jest.spyOn(inventoryApi, 'getSubscriberEquipment').mockResolvedValue(RESPONSE);
+    const tablist = await renderFicha();
+    expect(within(tablist).queryByRole('tab', { name: 'Equipos' })).not.toBeInTheDocument();
+    expect(within(tablist).getAllByRole('tab')).toHaveLength(8);
+    expect(await screen.findByRole('heading', { name: 'Servicios' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Equipos instalados' })).not.toBeInTheDocument();
+    expect(spy).not.toHaveBeenCalled();
   });
 });

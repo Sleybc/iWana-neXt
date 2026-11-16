@@ -2,9 +2,21 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, IsNull } from 'typeorm';
 import { AssetLoanAssignment, TenantContext, runInTenantSchema } from '@iwana/db';
+import type { SubscriberEquipmentResponse } from '@iwana/shared';
+import { buildPageMeta } from '../../../common/pagination/build-page-meta';
 import { clampPage } from '../../../common/pagination/clamp-page';
-import { ListLoansQueryInput, ListLoansQuerySchema } from '../dto';
+import {
+  GetSubscriberEquipmentQueryInput,
+  GetSubscriberEquipmentQuerySchema,
+  ListLoansQueryInput,
+  ListLoansQuerySchema,
+} from '../dto';
 import { AssetLoanRecord } from '../types/serialized-asset-detail.types';
+import {
+  loadSubscriberEquipment,
+  loadSubscriberHistory,
+  loadSubscriberMaterials,
+} from './subscriber-equipment.queries';
 
 export interface OpenLoanWithManagerInput {
   tenantId: string;
@@ -203,6 +215,57 @@ export class AssetLoanService {
         total,
         page,
         limit,
+      };
+    });
+  }
+
+  /**
+   * Lectura por suscriptor (contrato A1 v1.0, spec 2026-11-16 §2.1): comodatos con
+   * datos del equipo, materiales del sitio del cliente e historial recortado por
+   * periodo de comodato. Tenant y schema salen solo del `TenantContext`; otro
+   * tenant o un suscriptor sin datos responde con colecciones vacías, igual.
+   *
+   * Un control previo (p. ej. bloqueo de datos) se añadiría antes de
+   * `runInTenantSchema`, sin tocar las consultas.
+   */
+  async getSubscriberEquipment(
+    subscriberRefId: string,
+    query: GetSubscriberEquipmentQueryInput,
+  ): Promise<SubscriberEquipmentResponse> {
+    const validated = GetSubscriberEquipmentQuerySchema.parse(query);
+    const materialsPage = clampPage(validated.materialsPage, validated.materialsLimit);
+    const historyPage = clampPage(validated.historyPage, validated.historyLimit);
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      // Secuencial: las tres consultas comparten la conexión de la transacción.
+      const equipment = await loadSubscriberEquipment(qr, tenantId, subscriberRefId);
+      const materials = await loadSubscriberMaterials(
+        qr,
+        tenantId,
+        subscriberRefId,
+        materialsPage.page,
+        materialsPage.limit,
+      );
+      const history = await loadSubscriberHistory(
+        qr,
+        tenantId,
+        subscriberRefId,
+        historyPage.page,
+        historyPage.limit,
+        validated.historyAssetId,
+      );
+
+      return {
+        equipment,
+        materials: {
+          items: materials.items,
+          meta: buildPageMeta({ total: materials.total, ...materialsPage }),
+        },
+        history: {
+          items: history.items,
+          meta: buildPageMeta({ total: history.total, ...historyPage }),
+        },
       };
     });
   }

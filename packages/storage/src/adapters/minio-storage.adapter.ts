@@ -38,6 +38,13 @@ export interface MinioStorageConfig {
    * Ej: 'https://cdn.midominio.co'
    */
   publicBaseUrl?: string;
+  /**
+   * Origen público con el que se firman los enlaces de descarga (`S3_PUBLIC_ENDPOINT`), p. ej.
+   * `https://archivos.iwana.co`. La firma SigV4 incluye el host: un enlace firmado con el
+   * endpoint interno (`http://minio:9000`) no lo abre ningún navegador. Sin valor se firma con
+   * `endpoint` (desarrollo). Firmar no hace llamadas de red: el cliente público solo calcula.
+   */
+  signingEndpoint?: string;
 }
 
 /**
@@ -50,21 +57,30 @@ export interface MinioStorageConfig {
  */
 export class MinioStorageAdapter implements StoragePort {
   private readonly client: S3Client;
+  /** Solo firma enlaces con el origen público; nunca envía peticiones. */
+  private readonly signingClient: S3Client;
   private readonly bucket: string;
   private readonly publicBaseUrl: string;
 
   constructor(private readonly config: MinioStorageConfig) {
     this.bucket = config.bucket;
 
-    this.client = new S3Client({
-      endpoint: config.endpoint,
-      region: config.region,
-      credentials: {
-        accessKeyId: config.accessKeyId,
-        secretAccessKey: config.secretAccessKey,
-      },
-      forcePathStyle: config.forcePathStyle,
-    });
+    const clientFor = (endpoint: string) =>
+      new S3Client({
+        endpoint,
+        region: config.region,
+        credentials: {
+          accessKeyId: config.accessKeyId,
+          secretAccessKey: config.secretAccessKey,
+        },
+        forcePathStyle: config.forcePathStyle,
+      });
+    this.client = clientFor(config.endpoint);
+    const signingEndpoint = config.signingEndpoint?.trim();
+    this.signingClient =
+      signingEndpoint && signingEndpoint !== config.endpoint
+        ? clientFor(signingEndpoint)
+        : this.client;
 
     // URL pública: si se configura publicBaseUrl, usarla; si no, construir desde endpoint+bucket
     this.publicBaseUrl =
@@ -173,6 +189,6 @@ export class MinioStorageAdapter implements StoragePort {
         : {}),
     });
 
-    return getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
+    return getSignedUrl(this.signingClient, command, { expiresIn: expiresInSeconds });
   }
 }

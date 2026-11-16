@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Badge, Button } from '@iwana/ui';
-import { CalendarClock, LifeBuoy, ReceiptText } from 'lucide-react';
+import { CalendarClock, LifeBuoy, ReceiptText, Router } from 'lucide-react';
 import type { BillingPolicyPreview } from '@iwana/shared';
 import type { AssuranceTicket, Contract } from '@/lib/api-client';
 import { assuranceApi, billingApi } from '@/lib/api-client';
@@ -13,6 +13,10 @@ import {
 } from '@/components/assurance/assurance-labels';
 import { formatWfmDateTime } from '@/components/scheduling/scheduling-ui';
 import { formatBillingMoney } from '@/components/billing/billing-copy';
+import {
+  getSerializedAssetStatusBadgeVariant,
+  getSerializedAssetStatusLabel,
+} from '@/components/inventory/inventory-labels';
 import {
   PortalAlert,
   PortalEmptyState,
@@ -31,6 +35,7 @@ import {
 } from './SubscriberVisitsSection';
 import { formatBillingDate } from './billing-cycle-ui';
 import { useContractPlan } from './use-contract-plan';
+import type { SubscriberEquipmentLoad } from './use-subscriber-equipment';
 
 const MAX_ROWS = 3;
 
@@ -353,6 +358,82 @@ export function SubscriberOpenVisitsCard({
           />
         )
       }
+    </RemoteCard>
+  );
+}
+
+// ── Equipos instalados (spec 2026-11-16 equipos del suscriptor D1, §2.2) ───────
+
+/** Mensaje del vacío de equipos, compartido con la pestaña Equipos (§2.3). */
+export const SUBSCRIBER_EQUIPMENT_EMPTY_TITLE = 'Este suscriptor no tiene equipos registrados';
+export const SUBSCRIBER_EQUIPMENT_EMPTY_DESCRIPTION =
+  'Los equipos se registran con la orden de trabajo de instalación.';
+
+/**
+ * Hasta 3 equipos con comodato abierto. Lee la misma respuesta que la pestaña Equipos: la
+ * ficha hace una sola llamada y la comparte (CA-1, CA-3).
+ */
+export function SubscriberInstalledEquipmentCard({
+  equipment,
+  onOpenEquipment,
+}: {
+  equipment: SubscriberEquipmentLoad;
+  onOpenEquipment: () => void;
+}) {
+  const load: LoadState<SubscriberEquipmentLoad['equipment']> = {
+    data: equipment.equipment,
+    error: equipment.error !== null,
+    loading: equipment.loading,
+    reload: equipment.reload,
+  };
+  return (
+    <RemoteCard
+      title="Equipos instalados"
+      actions={<GoToLink label="Ver todo" onClick={onOpenEquipment} />}
+      load={load}
+      errorTitle="No pudimos cargar los equipos instalados"
+    >
+      {(items) => {
+        const installed = (items ?? []).filter((item) => item.removedAt === null);
+        if (!items || items.length === 0) {
+          return (
+            <PortalEmptyState
+              embedded
+              icon={Router}
+              title={SUBSCRIBER_EQUIPMENT_EMPTY_TITLE}
+              description={SUBSCRIBER_EQUIPMENT_EMPTY_DESCRIPTION}
+            />
+          );
+        }
+        if (installed.length === 0) {
+          return (
+            <PortalEmptyState
+              embedded
+              icon={Router}
+              title="Sin equipos instalados"
+              description="Los equipos retirados están en la pestaña Equipos."
+            />
+          );
+        }
+        return (
+          <OverviewList
+            total={installed.length}
+            rows={installed.slice(0, MAX_ROWS).map((item) => ({
+              key: item.loanId,
+              title: item.model ?? item.itemName,
+              detail: item.serialNumber ? `Serial ${item.serialNumber}` : 'Sin serial',
+              badge: (
+                <Badge variant={getSerializedAssetStatusBadgeVariant(item.status)}>
+                  {getSerializedAssetStatusLabel(item.status)}
+                </Badge>
+              ),
+            }))}
+            moreLabel={(count) =>
+              `Y ${count} ${count === 1 ? 'equipo instalado más' : 'equipos instalados más'}.`
+            }
+          />
+        );
+      }}
     </RemoteCard>
   );
 }

@@ -3,8 +3,9 @@
  *
  * Los adjuntos de tickets se abren con un enlace firmado que apunta al almacenamiento
  * S3/MinIO, otro origen. La miniatura (`<img>`) y el `<video>` solo cargan si ese origen
- * exacto figura en `img-src` y `media-src`. Se deriva de `S3_ENDPOINT`, el mismo valor con el
- * que la API firma los enlaces; si falta o no es una URL http(s) válida no se añade nada
+ * exacto figura en `img-src` y `media-src`. Se deriva del mismo origen con el que la API firma
+ * los enlaces: `S3_PUBLIC_ENDPOINT` (o `S3_ENDPOINT` en desarrollo, ver next.config.ts); si
+ * falta o no es una URL http(s) válida no se añade nada
  * (falla cerrado) y la miniatura y el video quedan bloqueados.
  */
 

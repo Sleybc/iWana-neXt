@@ -513,9 +513,23 @@ describe('EvidenceOrphanDetectionProcessor', () => {
         { add: jest.fn() } as unknown as Queue,
         { deleteObject: jest.fn().mockRejectedValue(new Error('storage-unavailable')) },
       );
+      const errorLog = jest
+        .spyOn(
+          (processor as unknown as { logger: { error: (msg: string) => void } }).logger,
+          'error',
+        )
+        .mockImplementation(() => undefined);
 
       await expect(purge(processor, client)).rejects.toThrow('TICKET_ATTACHMENT_PURGE_FAILED:1');
       expect(client.query).toHaveBeenCalledTimes(1);
+      // D3: una línea estable para la alerta, con conteos y sin la clave del objeto.
+      const event = errorLog.mock.calls
+        .map(([message]) => String(message))
+        .find((message) => message.includes('ticket_attachment_purge_failed'));
+      expect(event).toBe(
+        '[evidence-orphan] ticket_attachment_purge_failed error_type=TICKET_ATTACHMENT_PURGE_FAILED failed=1 deleted=0 batch=1',
+      );
+      expect(event).not.toContain('ticket_attachment/');
     });
 
     it('purga los adjuntos aunque la fase 3 de evidencia falle, y propaga ese fallo', async () => {

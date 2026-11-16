@@ -552,6 +552,13 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
       this.logger.log(`${deletedCount} objetos de adjuntos de tickets retirados borrados.`);
     }
     if (failedCount > 0) {
+      // Evento estable para la alerta (D3, adjuntos MOD09; RUNBOOK-MEDIA-MINIO): una línea por
+      // corrida, con conteos y sin claves de objeto ni nombres de archivo. La alerta se conecta
+      // a la herramienta de monitoreo que se elija en G7.
+      this.logger.error(
+        `[evidence-orphan] ticket_attachment_purge_failed error_type=TICKET_ATTACHMENT_PURGE_FAILED ` +
+          `failed=${failedCount} deleted=${deletedCount} batch=${candidates.rows.length}`,
+      );
       throw new Error(`TICKET_ATTACHMENT_PURGE_FAILED:${failedCount}`);
     }
   }

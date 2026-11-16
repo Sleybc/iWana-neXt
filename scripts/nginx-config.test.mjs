@@ -40,7 +40,9 @@ function locationBody(block, header) {
 
 test('nginx prod keeps 10M as the vhost body limit and widens only the bounded routes', async () => {
   const config = await readFile(prodConfigPath, 'utf8');
-  const tlsBlocks = serverBlocks(config).filter((block) => block.includes('listen 443'));
+  const tlsBlocks = serverBlocks(config).filter(
+    (block) => block.includes('listen 443') && !block.includes('server_name archivos.'),
+  );
   assert.equal(tlsBlocks.length, 2);
 
   for (const block of tlsBlocks) {
@@ -85,5 +87,32 @@ test('nginx prod ticket attachments location only matches a UUID ticket path', (
     `/x/api/v1/assurance/tickets/${ticketId}/comments/with-attachments`,
   ]) {
     assert.doesNotMatch(path, pattern, path);
+  }
+});
+
+test('nginx prod storage vhost only serves signed reads of the media bucket (D2 MOD09)', async () => {
+  const config = await readFile(prodConfigPath, 'utf8');
+  const blocks = serverBlocks(config).filter((block) => block.includes('server_name archivos.'));
+  assert.equal(blocks.length, 1);
+  const [block] = blocks;
+
+  assert.match(block, /listen 443 ssl;/);
+  assert.deepEqual(
+    [...block.matchAll(/client_max_body_size (\S+);/g)].map(([, size]) => size),
+    ['1k'],
+  );
+  const bucket = locationBody(block, '/iwana-media/');
+  assert.ok(bucket, 'falta la location del bucket');
+  assert.match(bucket, /limit_except GET HEAD \{\s*deny all;\s*\}/);
+  assert.match(bucket, /proxy_pass http:\/\/storage;/);
+  // La firma SigV4 incluye el host: se reenvía el que firmó la API.
+  assert.match(bucket, /proxy_set_header Host \$host;/);
+  assert.match(locationBody(block, '/') ?? '', /return 404;/);
+  assert.match(config, /upstream storage \{\s*server minio:9000;/);
+  // El resto de vhosts nunca llega a MinIO.
+  for (const other of serverBlocks(config).filter(
+    (item) => !item.includes('server_name archivos.'),
+  )) {
+    assert.doesNotMatch(other, /proxy_pass http:\/\/storage/);
   }
 });

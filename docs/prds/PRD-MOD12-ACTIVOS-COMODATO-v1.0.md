@@ -185,7 +185,9 @@ interface AssetLoanRecord {
 
 | Endpoint | Roles | Propósito |
 | --- | --- | --- |
-| `GET /api/v1/inventory/loans` | ADMIN, NOC, SUPPORT | Listar comodatos con filtros `status`, `subscriberRefId`, `contractRefId`, `serializedAssetId`, paginado `{ data, total, page, limit }` |
+| `GET /api/v1/inventory/loans` | ADMIN, NOC, SUPPORT, TECHNICIAN, AUDITOR | Listar comodatos con filtros `status`, `subscriberRefId`, `contractRefId`, `serializedAssetId`, paginado `{ data, total, page, limit }` |
+
+> **Nota (2026-11-16, D6 de la [spec de equipos del suscriptor](../specs/2026-11-16-mod05-mod12-equipos-del-suscriptor.md)):** `/loans` también admite TECHNICIAN y AUDITOR, como ya dicen el controlador y la matriz de permisos (`access-control.constants.ts:946` y `:991`, `INVENTORY_STOCK_READ`). Se corrige solo el documento; el código no cambia.
 
 **Sin endpoints de escritura.** El comodato nace y muere como efecto de operaciones existentes (`POST /inventory/movements/execution-order`, `POST /inventory/returns`, `POST /inventory/write-offs`), nunca por acción manual — coherente con la regla vigente de que `CUSTOMER_SITE` no es destino manual (informe SCM F01 §10.3).
 

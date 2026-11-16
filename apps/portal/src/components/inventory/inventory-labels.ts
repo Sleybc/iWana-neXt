@@ -351,7 +351,13 @@ export function getInventoryItemStatusLabel(value: InventoryItemStatus): string 
   return resolveLabel(value, INVENTORY_ITEM_STATUS_LABELS);
 }
 
-export type InventoryBadgeVariant = 'neutral' | 'primary' | 'warning' | 'error' | 'success';
+export type InventoryBadgeVariant =
+  | 'neutral'
+  | 'primary'
+  | 'info'
+  | 'warning'
+  | 'error'
+  | 'success';
 
 export function getInventoryItemStatusBadgeVariant(
   value: InventoryItemStatus,
@@ -473,6 +479,30 @@ export function getStockBalanceConditionLabel(value: StockBalanceCondition): str
 export function getSerializedAssetStatusLabel(value: SerializedAssetStatus): string {
   return resolveLabel(value, SERIALIZED_ASSET_STATUS_LABELS);
 }
+
+/**
+ * Variante de `Badge` por estado del equipo (spec 2026-11-16 equipos del suscriptor §2.3):
+ * en comodato → info; en reparación → warning; perdido o dado de baja → error; el resto
+ * (retirado, devuelto, en bodega o en tránsito) → neutral. Sin tokens nuevos.
+ */
+export function getSerializedAssetStatusBadgeVariant(
+  value: SerializedAssetStatus,
+): InventoryBadgeVariant {
+  switch (value) {
+    case SerializedAssetStatus.INSTALLED_COMODATO:
+      return 'info';
+    case SerializedAssetStatus.IN_REPAIR:
+      return 'warning';
+    case SerializedAssetStatus.LOST:
+    case SerializedAssetStatus.WRITTEN_OFF:
+      return 'error';
+    default:
+      return 'neutral';
+  }
+}
+
+/** Estado de un equipo cuyo comodato con el suscriptor ya se cerró (§2.4). */
+export const SUBSCRIBER_EQUIPMENT_RETIRED_LABEL = 'Retirado';
 
 export const ASSET_LIFECYCLE_EVENT_TYPE_LABELS: Record<AssetLifecycleEventType, string> = {
   [AssetLifecycleEventType.RECEIVED]: 'Recepción',

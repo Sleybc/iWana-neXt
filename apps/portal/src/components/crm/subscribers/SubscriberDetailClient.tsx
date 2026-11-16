@@ -27,6 +27,9 @@ import { TaxProfileBlock } from './TaxProfileBlock';
 import { ServiciosTab } from './ServiciosTab';
 import { SubscriberLifecycleDialog } from './SubscriberLifecycleDialog';
 import { SubscriberOverviewTab } from './SubscriberOverviewTab';
+import { SubscriberInstalledEquipmentCard } from './SubscriberOverviewCards';
+import { SubscriberEquipmentTab } from './SubscriberEquipmentTab';
+import { useSubscriberEquipment } from './use-subscriber-equipment';
 import { SubscriberDocumentsPanel } from './SubscriberDocumentsPanel';
 import { SubscriberSupportTab } from './SubscriberSupportTab';
 import { isDocumentNumberRestricted } from './subscriber-document-access';
@@ -52,6 +55,7 @@ function mapError(error: unknown): string {
 const SUBSCRIBER_TAB_IDS = [
   'vista-general',
   'servicios',
+  'equipos',
   'facturacion',
   'soporte',
   'documentos',
@@ -71,6 +75,8 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   const urlTab = SUBSCRIBER_TAB_IDS.includes(requestedTab) ? requestedTab : 'vista-general';
   const { hasPermission } = usePermissions();
   const canReadBilling = hasPermission(AccessPermissionKey.BILLING_INVOICES_READ);
+  // Equipos (spec 2026-11-16 D4): pestaña y tarjeta solo con la lectura de inventario.
+  const canReadEquipment = hasPermission(AccessPermissionKey.INVENTORY_STOCK_READ);
   const canReadPrivacy = hasPermission(AccessPermissionKey.PRIVACY_READ);
   const canManagePrivacy = hasPermission(AccessPermissionKey.PRIVACY_MANAGE);
   const canReadNetworkProvisioning = hasPermission(AccessPermissionKey.NETWORK_PROVISIONING_READ);
@@ -87,6 +93,8 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
     subscriberId,
     mode === 'detail' && canReadBilling && subscriber360 !== null && !anonymized,
   );
+  // Una sola lectura compartida por la tarjeta de la Vista general y la pestaña (CA-3).
+  const equipment = useSubscriberEquipment(subscriberId, mode === 'detail' && canReadEquipment);
   const [loading, setLoading] = useState(mode === 'detail');
   const [showLoadingSkeleton, setShowLoadingSkeleton] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -273,6 +281,14 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
                 />
               ) : undefined
             }
+            equipmentCard={
+              canReadEquipment ? (
+                <SubscriberInstalledEquipmentCard
+                  equipment={equipment}
+                  onOpenEquipment={() => selectSubscriberTab('equipos')}
+                />
+              ) : undefined
+            }
           />
         ) : null,
       },
@@ -300,6 +316,15 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
           </div>
         ) : null,
       },
+      ...(canReadEquipment
+        ? [
+            {
+              id: 'equipos',
+              label: 'Equipos',
+              content: <SubscriberEquipmentTab equipment={equipment} anonymized={anonymized} />,
+            },
+          ]
+        : []),
       ...(canReadBilling
         ? [
             {
@@ -408,6 +433,8 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
     canManagePrivacy,
     canReadPrivacy,
     canReadBilling,
+    canReadEquipment,
+    equipment,
     canReadNetworkProvisioning,
     fiscalDirty,
     statement,

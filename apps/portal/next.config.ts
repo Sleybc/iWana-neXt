@@ -38,7 +38,9 @@ function resolvePortalApiProxyBase(): string {
  */
 const contentSecurityPolicy = buildContentSecurityPolicy({
   nodeEnv: process.env.NODE_ENV,
-  storageEndpoint: process.env.S3_ENDPOINT,
+  // Producción: el origen público con el que la API firma (S3_PUBLIC_ENDPOINT, D2 MOD09).
+  // Desarrollo: sin él, el endpoint directo de MinIO, que también es el que firma la API.
+  storageEndpoint: process.env.S3_PUBLIC_ENDPOINT?.trim() || process.env.S3_ENDPOINT,
 });
 
 const cacheComponents = process.env.IWANA_DISABLE_CACHE_COMPONENTS !== '1';

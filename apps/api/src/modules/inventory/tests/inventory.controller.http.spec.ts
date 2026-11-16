@@ -166,6 +166,11 @@ jest.mock('../../auth/guards/roles.guard', () => ({
   },
 }));
 
+const assetLoanServiceMock = {
+  list: jest.fn(),
+  getSubscriberEquipment: jest.fn(),
+};
+
 describe('InventoryController HTTP', () => {
   let app: INestApplication;
 
@@ -411,7 +416,7 @@ describe('InventoryController HTTP', () => {
         { provide: ReplenishmentService, useValue: replenishmentServiceMock },
         { provide: CycleCountService, useValue: cycleCountServiceMock },
         { provide: WriteOffService, useValue: writeOffServiceMock },
-        { provide: AssetLoanService, useValue: { list: jest.fn() } },
+        { provide: AssetLoanService, useValue: assetLoanServiceMock },
         { provide: PurchasingService, useValue: purchasingServiceMock },
         { provide: PurchasingQueryService, useValue: purchasingQueryServiceMock },
         { provide: GoodsReceiptService, useValue: goodsReceiptServiceMock },
@@ -1287,6 +1292,72 @@ describe('InventoryController HTTP', () => {
         expect.objectContaining({ notes: 'Motivo de rechazo suficientemente largo' }),
         expect.any(Object),
       );
+    });
+  });
+
+  describe('GET subscribers/:subscriberRefId/equipment (spec 2026-11-16 §4)', () => {
+    const subscriberRefId = '9b2f7a10-1c2d-4e3f-8a9b-0c1d2e3f4a5b';
+
+    beforeEach(() => {
+      assetLoanServiceMock.getSubscriberEquipment.mockResolvedValue({
+        equipment: [],
+        materials: { items: [], meta: {} },
+        history: { items: [], meta: {} },
+      });
+    });
+
+    it('delega con la paginación por defecto y sin historyAssetId', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/inventory/subscribers/${subscriberRefId}/equipment`)
+        .set('Authorization', 'Bearer tech-token')
+        .expect(200);
+
+      expect(assetLoanServiceMock.getSubscriberEquipment).toHaveBeenCalledWith(subscriberRefId, {
+        materialsPage: 1,
+        materialsLimit: 20,
+        historyPage: 1,
+        historyLimit: 20,
+      });
+    });
+
+    it('rechaza con 400 un subscriberRefId que no es UUID', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/inventory/subscribers/no-es-uuid/equipment')
+        .set('Authorization', 'Bearer support-token')
+        .expect(400);
+
+      expect(assetLoanServiceMock.getSubscriberEquipment).not.toHaveBeenCalled();
+    });
+
+    it('rechaza con 400 un historyAssetId que no es UUID', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/inventory/subscribers/${subscriberRefId}/equipment`)
+        .query({ historyAssetId: '1 OR 1=1' })
+        .set('Authorization', 'Bearer support-token')
+        .expect(400);
+
+      expect(assetLoanServiceMock.getSubscriberEquipment).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['materialsLimit', '101'],
+      ['historyLimit', '101'],
+      ['materialsPage', '0'],
+      ['historyLimit', 'abc'],
+    ])('rechaza con 400 %s=%s (límite máximo 100 validado en el servidor)', async (key, value) => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/inventory/subscribers/${subscriberRefId}/equipment`)
+        .query({ [key]: value })
+        .set('Authorization', 'Bearer support-token')
+        .expect(400);
+
+      expect(assetLoanServiceMock.getSubscriberEquipment).not.toHaveBeenCalled();
+    });
+
+    it('devuelve 401 sin token', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/inventory/subscribers/${subscriberRefId}/equipment`)
+        .expect(401);
     });
   });
 });

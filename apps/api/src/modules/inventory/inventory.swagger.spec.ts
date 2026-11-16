@@ -284,4 +284,52 @@ describe('InventoryController Swagger', () => {
     expect(listLoans?.summary).toBe('Listar comodatos de activos');
     expect(listLoans?.parameters?.length).toBeGreaterThan(0);
   });
+
+  it('documenta los equipos del suscriptor (contrato A1 v1.0) sin notas en el historial', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Inventory Test').setVersion('1.0').build(),
+    );
+
+    const operation = document.paths['/inventory/subscribers/{subscriberRefId}/equipment']?.get;
+    const parameterNames = (operation?.parameters ?? []).map(
+      (parameter) => (parameter as { name: string }).name,
+    );
+    const okSchema = (
+      operation?.responses?.['200'] as
+        | { content?: Record<string, { schema?: { $ref?: string } }> }
+        | undefined
+    )?.content?.['application/json']?.schema;
+    const schemas = (document.components?.schemas ?? {}) as Record<
+      string,
+      { properties?: Record<string, unknown> }
+    >;
+
+    expect(operation?.summary).toBe('Consultar los equipos de un suscriptor');
+    expect(Object.keys(operation?.responses ?? {})).toEqual(
+      expect.arrayContaining(['200', '400', '401', '403']),
+    );
+    expect(parameterNames).toEqual(
+      expect.arrayContaining([
+        'subscriberRefId',
+        'materialsPage',
+        'materialsLimit',
+        'historyPage',
+        'historyLimit',
+        'historyAssetId',
+      ]),
+    );
+    expect(okSchema?.$ref).toBe('#/components/schemas/SubscriberEquipmentResponseDto');
+    expect(Object.keys(schemas.SubscriberEquipmentResponseDto?.properties ?? {}).sort()).toEqual([
+      'equipment',
+      'history',
+      'materials',
+    ]);
+    expect(
+      Object.keys(schemas.SubscriberEquipmentHistoryItemResponseDto?.properties ?? {}).sort(),
+    ).toEqual(['assetId', 'eventType', 'id', 'occurredAt', 'serialNumber']);
+    expect(Object.keys(schemas.SubscriberEquipmentItemResponseDto?.properties ?? {})).toContain(
+      'usefulLife',
+    );
+  });
 });

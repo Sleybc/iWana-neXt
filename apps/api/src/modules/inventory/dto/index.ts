@@ -44,6 +44,8 @@ import {
   isInventoryUnitOfMeasureCode,
   validateBarcodeValue,
   INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE,
+  SUBSCRIBER_EQUIPMENT_DEFAULT_LIMIT,
+  SUBSCRIBER_EQUIPMENT_MAX_LIMIT,
 } from '@iwana/shared';
 import type { InventoryUnitOfMeasureCode } from '@iwana/shared';
 import type {
@@ -1214,6 +1216,73 @@ export class GetSerializedAssetDetailQueryDto {
   })
   @Allow()
   movementsLimit?: number;
+}
+
+/**
+ * Query de `GET /inventory/subscribers/:subscriberRefId/equipment` (contrato A1 v1.0).
+ * La primera llamada no envía parámetros; las páginas siguientes de `materials` e
+ * `history` se piden al mismo endpoint con su página y, para el historial, el
+ * filtro opcional por equipo (mismo patrón que la ficha 360 del activo).
+ */
+export const GetSubscriberEquipmentQuerySchema = z.object({
+  materialsPage: z.coerce.number().int().min(1).optional().default(1),
+  materialsLimit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(SUBSCRIBER_EQUIPMENT_MAX_LIMIT)
+    .optional()
+    .default(SUBSCRIBER_EQUIPMENT_DEFAULT_LIMIT),
+  historyPage: z.coerce.number().int().min(1).optional().default(1),
+  historyLimit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(SUBSCRIBER_EQUIPMENT_MAX_LIMIT)
+    .optional()
+    .default(SUBSCRIBER_EQUIPMENT_DEFAULT_LIMIT),
+  historyAssetId: z.string().uuid().optional(),
+});
+
+export type GetSubscriberEquipmentQueryInput = z.infer<typeof GetSubscriberEquipmentQuerySchema>;
+
+export class GetSubscriberEquipmentQueryDto {
+  @ApiPropertyOptional({ default: 1, minimum: 1, description: 'Página 1-based de materiales.' })
+  @Allow()
+  materialsPage?: number;
+
+  @ApiPropertyOptional({
+    default: SUBSCRIBER_EQUIPMENT_DEFAULT_LIMIT,
+    minimum: 1,
+    maximum: SUBSCRIBER_EQUIPMENT_MAX_LIMIT,
+    description: 'Tamaño de página de materiales.',
+  })
+  @Allow()
+  materialsLimit?: number;
+
+  @ApiPropertyOptional({
+    default: 1,
+    minimum: 1,
+    description: 'Página 1-based del historial de equipos.',
+  })
+  @Allow()
+  historyPage?: number;
+
+  @ApiPropertyOptional({
+    default: SUBSCRIBER_EQUIPMENT_DEFAULT_LIMIT,
+    minimum: 1,
+    maximum: SUBSCRIBER_EQUIPMENT_MAX_LIMIT,
+    description: 'Tamaño de página del historial de equipos.',
+  })
+  @Allow()
+  historyLimit?: number;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Filtra el historial a un equipo del suscriptor (`assetId`).',
+  })
+  @Allow()
+  historyAssetId?: string;
 }
 
 export const ListUsefulLifeAlertsQuerySchema = z.object({

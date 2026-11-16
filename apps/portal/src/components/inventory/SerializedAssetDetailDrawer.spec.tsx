@@ -293,6 +293,15 @@ describe('SerializedAssetDetailDrawer · ficha 360 Fase 05A', () => {
     expect(onOpenKardex).toHaveBeenCalledWith('asset-001');
   });
 
+  it('sin onOpenKardex (ficha del suscriptor) no ofrece «Ver en kardex»', () => {
+    render(<SerializedAssetDetailDrawer open detail={buildAssetDetail()} onClose={jest.fn()} />);
+
+    // El drawer sí está pintado con el activo: la ausencia no es por falta de contenido.
+    expect(screen.getAllByText('SN-001').length).toBeGreaterThan(0);
+    expect(screen.queryByTestId('asset-detail-open-kardex')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Ver en kardex/i })).not.toBeInTheDocument();
+  });
+
   it('muestra skeleton mientras carga', () => {
     render(<SerializedAssetDetailDrawer open isLoading onClose={jest.fn()} detail={null} />);
     expect(screen.getByTestId('asset-detail-loading')).toBeInTheDocument();

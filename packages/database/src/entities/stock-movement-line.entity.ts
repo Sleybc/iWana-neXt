@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 
 @Index('idx_stock_movement_lines_movement', ['movementId', 'createdAt'])
+@Index('idx_stock_movement_lines_tenant_location', ['tenantId', 'locationId'])
 @Entity({ name: 'stock_movement_lines' })
 export class StockMovementLine {
   @PrimaryGeneratedColumn('uuid')

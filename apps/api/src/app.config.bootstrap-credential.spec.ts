@@ -41,6 +41,7 @@ function buildProductionEnv(): Record<string, string> {
     PII_ENCRYPTION_KEY: randomBytes(32).toString('hex'),
     PII_HASH_KEY: randomBytes(32).toString('hex'),
     STORAGE_DRIVER: 'minio',
+    S3_PUBLIC_ENDPOINT: 'https://archivos.example.test',
     S3_ACCESS_KEY_ID: 'test-only-access-key-id',
     S3_SECRET_ACCESS_KEY: 'test-only-secret-access-key',
     TYPESENSE_HOST: 'typesense',

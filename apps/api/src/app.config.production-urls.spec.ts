@@ -44,6 +44,7 @@ function buildProductionEnv(): Record<string, string> {
     PII_ENCRYPTION_KEY: randomBytes(32).toString('hex'),
     PII_HASH_KEY: randomBytes(32).toString('hex'),
     STORAGE_DRIVER: 'minio',
+    S3_PUBLIC_ENDPOINT: 'https://archivos.example.test',
     S3_ACCESS_KEY_ID: 'test-only-access-key-id',
     S3_SECRET_ACCESS_KEY: 'test-only-secret-access-key',
     TYPESENSE_HOST: 'typesense',
@@ -312,5 +313,44 @@ describe('createAppConfigurationSchema — MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS 
         'MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS',
       );
     }
+  });
+});
+
+describe('createAppConfigurationSchema — S3_PUBLIC_ENDPOINT (enlaces firmados, D2 MOD09)', () => {
+  it('es obligatorio en producción', () => {
+    const env = buildProductionEnv();
+    delete env['S3_PUBLIC_ENDPOINT'];
+    const messages = validate(env).error?.details.map((detail) => detail.message) ?? [];
+    expect(messages).toContain('S3_PUBLIC_ENDPOINT es obligatorio con NODE_ENV=production.');
+  });
+
+  it('en producción exige un origen https público, sin ruta', () => {
+    const messageFor = (value: string) =>
+      validate({ ...buildProductionEnv(), S3_PUBLIC_ENDPOINT: value }).error?.details.map(
+        (detail) => detail.message,
+      ) ?? [];
+    expect(messageFor('http://archivos.example.test')).toContain(
+      'S3_PUBLIC_ENDPOINT debe usar https en producción.',
+    );
+    expect(messageFor('https://localhost:9000')).toContain(
+      'S3_PUBLIC_ENDPOINT no puede apuntar a localhost/127.0.0.1 con NODE_ENV=production.',
+    );
+    expect(messageFor('https://archivos.example.test/media')).toContain(
+      'S3_PUBLIC_ENDPOINT debe ser un origen https absoluto.',
+    );
+    const ok = validate({
+      ...buildProductionEnv(),
+      S3_PUBLIC_ENDPOINT: 'https://archivos.example.test/',
+    });
+    expect(ok.error).toBeUndefined();
+    expect(ok.value['S3_PUBLIC_ENDPOINT']).toBe('https://archivos.example.test');
+  });
+
+  it('fuera de producción es opcional', () => {
+    const env: Record<string, string> = { ...buildProductionEnv(), NODE_ENV: 'development' };
+    delete env['S3_PUBLIC_ENDPOINT'];
+    expect(validate(env).error?.details.map((detail) => detail.path.join('.')) ?? []).not.toContain(
+      'S3_PUBLIC_ENDPOINT',
+    );
   });
 });

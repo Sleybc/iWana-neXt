@@ -62,6 +62,11 @@ import { TicketAttachmentMediaProvider } from './ticket-attachment-media.provide
               ...(config.get<string>('S3_PUBLIC_BASE_URL')
                 ? { publicBaseUrl: config.get<string>('S3_PUBLIC_BASE_URL') as string }
                 : {}),
+              // Origen público de los enlaces firmados (D2 adjuntos MOD09): el navegador no
+              // resuelve el endpoint interno. Obligatorio y HTTPS en producción (app.config).
+              ...(config.get<string>('S3_PUBLIC_ENDPOINT')
+                ? { signingEndpoint: config.get<string>('S3_PUBLIC_ENDPOINT') as string }
+                : {}),
             },
           });
         }

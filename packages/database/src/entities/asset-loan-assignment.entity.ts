@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 
 @Index('idx_asset_loan_assignments_asset', ['serializedAssetId', 'installedAt'])
+@Index('idx_asset_loan_assignments_tenant_subscriber', ['tenantId', 'subscriberRefId'])
 @Entity({ name: 'asset_loan_assignments' })
 export class AssetLoanAssignment {
   @PrimaryGeneratedColumn('uuid')

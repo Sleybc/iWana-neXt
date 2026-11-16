@@ -50,6 +50,7 @@ import {
 } from './stock-balance.service';
 import { acquireTransactionAdvisoryLock } from './inventory-postgres.util';
 import { InventoryBusinessRejection } from './inventory-business-rejection';
+import { EXECUTION_ORDER_ORIGIN_CONTEXT } from './subscriber-equipment.queries';
 
 const MOBILE_TRANSFER_LOCATION_TYPES = new Set<StockLocationType>([
   StockLocationType.MOBILE_TECHNICIAN,
@@ -758,7 +759,7 @@ export class StockLedgerService {
         if (
           !original ||
           original.origin !== StockMovementOrigin.EXECUTION_ORDER ||
-          original.originContext !== 'tasks.execution-order' ||
+          original.originContext !== EXECUTION_ORDER_ORIGIN_CONTEXT ||
           original.originRefId !== input.executionOrderId
         ) {
           throw new InventoryBusinessRejection('REVERSAL_ORIGINAL_NOT_FOUND');
@@ -892,7 +893,7 @@ export class StockLedgerService {
           tenantId,
           {
             origin: StockMovementOrigin.EXECUTION_ORDER_REVERSAL,
-            originContext: 'tasks.execution-order',
+            originContext: EXECUTION_ORDER_ORIGIN_CONTEXT,
             originRefId: original.id,
             idempotencyKey: `eo-reversal:${input.reversalRequestId}`,
             notes: 'Movimiento de reverso originado desde OT.',
@@ -1021,7 +1022,7 @@ export class StockLedgerService {
           tenantId,
           {
             origin: StockMovementOrigin.EXECUTION_ORDER,
-            originContext: 'tasks.execution-order',
+            originContext: EXECUTION_ORDER_ORIGIN_CONTEXT,
             originRefId: input.executionOrderId,
             idempotencyKey:
               input.idempotencyKey?.trim() ??
