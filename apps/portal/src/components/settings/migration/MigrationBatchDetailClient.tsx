@@ -14,6 +14,7 @@ import {
 import { ArrowLeft } from 'lucide-react';
 import {
   MIGRATION_ENTITIES,
+  type MigrationAuthorsRefreshResult,
   type MigrationBatchReport,
   type MigrationEntity,
   type MigrationPendingValue,
@@ -44,6 +45,11 @@ import {
   revertBlockersFromError,
 } from './migration-labels';
 import { MigrationMappingEditor } from './MigrationMappingEditor';
+import {
+  UISP_USERS_SECTION_HREF,
+  authorsRefreshErrorMessage,
+  authorsRefreshSentences,
+} from './migration-uisp-users-labels';
 import { MIGRATION_POLL_INTERVAL_MS, useMigrationAccess } from './useMigrationAccess';
 
 type ConfirmKind = 'promote' | 'revert';
@@ -210,6 +216,14 @@ function FileAndObservationReport({ report }: { report: MigrationBatchReport }) 
                 {MIGRATION_OBSERVATION_LABELS[observation]}:{' '}
                 {/* Las tareas se cuentan una a una, no por ticket que las referencia. */}
                 {observation === 'TAREAS_SIN_FUENTE' ? report.counts.tareasSinFuente : count}
+                {observation === 'USUARIO_UISP_SIN_ENLAZAR' ? (
+                  <>
+                    {' · '}
+                    <Link href={UISP_USERS_SECTION_HREF} className={portalInlineTextLinkClassName}>
+                      Revisar usuarios de UISP
+                    </Link>
+                  </>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -306,7 +320,8 @@ export function MigrationBatchDetailClient({ batchId }: { batchId: string }) {
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [blockers, setBlockers] = useState<MigrationRevertBlocker[]>([]);
   const [confirm, setConfirm] = useState<ConfirmKind | null>(null);
-  const [busy, setBusy] = useState<ConfirmKind | 'reconcile' | null>(null);
+  const [busy, setBusy] = useState<ConfirmKind | 'reconcile' | 'authors' | null>(null);
+  const [authors, setAuthors] = useState<MigrationAuthorsRefreshResult | null>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
 
   const load = useCallback(async () => {
@@ -334,14 +349,17 @@ export function MigrationBatchDetailClient({ batchId }: { batchId: string }) {
     return () => clearInterval(timer);
   }, [inProgress, load]);
 
-  async function runAction(kind: ConfirmKind | 'reconcile') {
+  async function runAction(kind: ConfirmKind | 'reconcile' | 'authors') {
     setConfirm(null);
     setBusy(kind);
     setActionError(null);
     setActionNotice(null);
+    setAuthors(null);
     setBlockers([]);
     try {
-      if (kind === 'promote') {
+      if (kind === 'authors') {
+        setAuthors(await migrationApi.refreshAuthors(batchId));
+      } else if (kind === 'promote') {
         await migrationApi.promote(batchId);
         setActionNotice('Promoción iniciada. El informe se actualiza solo.');
       } else if (kind === 'reconcile') {
@@ -354,8 +372,11 @@ export function MigrationBatchDetailClient({ batchId }: { batchId: string }) {
       await load();
     } catch (error) {
       if (kind === 'revert') setBlockers(revertBlockersFromError(error));
+      const fallback = 'No pudimos completar la acción. Intenta de nuevo.';
       setActionError(
-        migrationErrorMessage(error, 'No pudimos completar la acción. Intenta de nuevo.'),
+        kind === 'authors'
+          ? authorsRefreshErrorMessage(error, fallback)
+          : migrationErrorMessage(error, fallback),
       );
     } finally {
       setBusy(null);
@@ -428,6 +449,8 @@ export function MigrationBatchDetailClient({ batchId }: { batchId: string }) {
   const canReconcile =
     (report.status === 'PROMOVIDO' || report.status === 'CONCILIADO') && !inProgress;
   const canRevert = canReconcile;
+  // Re-atribuir lee las intermedias: sin ellas (purgadas) el botón no aparece (spec §2.7).
+  const canRefreshAuthors = canReconcile && !purged;
   const progress = progressMessage(report);
 
   return (
@@ -468,6 +491,18 @@ export function MigrationBatchDetailClient({ batchId }: { batchId: string }) {
                 Conciliar
               </Button>
             ) : null}
+            {canRefreshAuthors ? (
+              <Button
+                type="button"
+                variant="secondary"
+                className="min-h-11"
+                disabled={busy !== null}
+                loading={busy === 'authors'}
+                onClick={() => void runAction('authors')}
+              >
+                Actualizar autores
+              </Button>
+            ) : null}
             {canRevert ? (
               <Button
                 type="button"
@@ -491,7 +526,11 @@ export function MigrationBatchDetailClient({ batchId }: { batchId: string }) {
             <PortalAlert
               variant="info"
               title="Los archivos de este lote ya se eliminaron por retención"
-              description="El informe se conserva; el lote ya no se puede promover."
+              description={
+                canReconcile
+                  ? 'El informe se conserva; ya no se pueden actualizar los autores de tickets, comentarios y pagos de este lote.'
+                  : 'El informe se conserva; el lote ya no se puede promover.'
+              }
             />
           ) : (
             <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -506,6 +545,19 @@ export function MigrationBatchDetailClient({ batchId }: { batchId: string }) {
             />
           ) : null}
           {actionNotice ? <PortalAlert variant="success" title={actionNotice} /> : null}
+          {authors ? (
+            <PortalAlert
+              variant="success"
+              title="Autores actualizados"
+              description={
+                <ul aria-label="Resultado de actualizar autores" className="ml-4 list-disc">
+                  {authorsRefreshSentences(authors).map((sentence) => (
+                    <li key={sentence}>{sentence}</li>
+                  ))}
+                </ul>
+              }
+            />
+          ) : null}
           {actionError ? (
             <PortalAlert
               variant="error"

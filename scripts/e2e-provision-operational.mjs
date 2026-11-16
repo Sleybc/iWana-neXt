@@ -750,6 +750,10 @@ async function startApi() {
       // 429 en la preparación de las suites. Solo existe en este entorno
       // E2E (NODE_ENV=development aquí, nunca production).
       RATE_LIMIT_E2E_RELAXED: 'true',
+      // ADR-110 D15 (S-1): el cliente de UISP bloquea redes internas. El E2E de
+      // usuarios levanta un UISP falso en loopback; solo este entorno lo exime
+      // (la API rechaza la variable con NODE_ENV=production).
+      MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS: '127.0.0.1',
     },
     stdio: logFd === null ? ['ignore', 'pipe', 'pipe'] : ['ignore', logFd, logFd],
     shell: false,

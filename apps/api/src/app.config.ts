@@ -388,6 +388,29 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
       }),
       otherwise: Joi.string().uri().optional(),
     }),
+    // Base del portal empresarial (apps/portal) para los enlaces dirigidos al personal del
+    // tenant, como la invitación a crear la contraseña (spec «usuarios UISP» §2.4). Opcional:
+    // sin ella se usa FRONTEND_URL. En producción, si se define, no puede ser localhost.
+    PORTAL_URL: Joi.when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string().trim().custom(productionUrlValidator).optional().messages({
+        'string.empty': 'PORTAL_URL debe ser una URL absoluta http(s).',
+        'iwana.origin.notAbsolute': 'PORTAL_URL debe ser una URL absoluta http(s).',
+        'iwana.origin.developmentOnly':
+          'PORTAL_URL no puede apuntar a localhost/127.0.0.1 con NODE_ENV=production.',
+      }),
+      otherwise: Joi.string().uri().optional(),
+    }),
+    // S-1: excepción SSRF del cliente de UISP (hosts exactos separados por coma, p. ej.
+    // `127.0.0.1` para el UISP falso de pruebas). Prohibida en producción.
+    MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS: Joi.when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string().allow('').empty('').forbidden().messages({
+        'any.unknown':
+          'MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS no puede definirse con NODE_ENV=production: es una excepción SSRF solo para pruebas.',
+      }),
+      otherwise: Joi.string().allow('').optional(),
+    }),
     API_PUBLIC_BASE_URL: Joi.string().uri().optional(),
     STORAGE_DRIVER: Joi.when('NODE_ENV', {
       is: 'production',

@@ -2,11 +2,15 @@ import { Injectable } from '@nestjs/common';
 import type { MigrationRevertBlocker } from '@iwana/shared';
 import {
   MigrationSupportImportPort,
+  type ImportedAuthorsRefreshContext,
+  type ImportedTicketAuthors,
+  type ImportedTicketAuthorsResult,
   type ImportedTicketInput,
   type MigrationBatchEntityIds,
   type MigrationReadContext,
   type MigrationWriteContext,
 } from '../../migration/ports/migration-import.ports';
+import { matchImportedComments } from './imported-comment-matching';
 
 /**
  * Adaptador de Soporte (MOD09) de la importación desde UISP (ADR-110 D3, D7; spec §3.2).
@@ -39,10 +43,10 @@ export class AssuranceMigrationImportAdapter extends MigrationSupportImportPort 
       `INSERT INTO support_tickets (
          tenant_id, ticket_number, type, status, source, subject, requester_type,
          requester_ref_id, subject_type, subject_ref_id, created_by_user_id, created_at,
-         closed_at, external_id, import_batch_id)
+         closed_at, external_id, import_batch_id, assigned_user_id)
        VALUES ($1, $2, 'CUSTOMER_INCIDENT', $3::ticket_status, 'MIGRATION', $4, 'SUBSCRIBER',
          $5, 'SUBSCRIBER', $5, $6, COALESCE($7::timestamptz, now()),
-         CASE WHEN $8 THEN COALESCE($7::timestamptz, now()) END, $9, $10)
+         CASE WHEN $8 THEN COALESCE($7::timestamptz, now()) END, $9, $10, $11::uuid)
        RETURNING id::text`,
       [
         ctx.tenantId,
@@ -50,11 +54,13 @@ export class AssuranceMigrationImportAdapter extends MigrationSupportImportPort 
         input.status,
         (input.subject.trim() || 'Ticket importado').slice(0, 200),
         input.subscriberId,
-        ctx.actorId,
+        input.createdByUserId ?? ctx.actorId,
         input.createdAt,
         closed,
         input.externalId,
         ctx.batchId,
+        // Asignación histórica por SQL: no pasa por TicketsService, no notifica ni emite eventos.
+        input.assignedUserId ?? null,
       ],
     )) as Array<{ id: string }>;
     const ticketId = rows[0]!.id;
@@ -63,10 +69,124 @@ export class AssuranceMigrationImportAdapter extends MigrationSupportImportPort 
       await ctx.manager.query(
         `INSERT INTO ticket_comments (ticket_id, tenant_id, body, is_internal, author_user_id, created_at)
          VALUES ($1, $2, $3, $4, $5, COALESCE($6::timestamptz, now()))`,
-        [ticketId, ctx.tenantId, comment.body, comment.internal, ctx.actorId, comment.createdAt],
+        [
+          ticketId,
+          ctx.tenantId,
+          comment.body,
+          comment.internal,
+          comment.authorUserId ?? ctx.actorId,
+          comment.createdAt,
+        ],
       );
     }
     return ticketId;
+  }
+
+  /**
+   * «Actualizar autores» (spec «usuarios» §2.7). Solo tickets de este lote. El asignado se fija
+   * solo si sigue vacío (la importación lo dejaba vacío); creador y autores, solo si siguen a
+   * nombre de quien importó. Lo que alguien cambió después se respeta y se cuenta. Sin eventos,
+   * timeline ni notificaciones; `updated_at` no cambia (es atribución histórica).
+   */
+  async refreshImportedAuthors(
+    ctx: ImportedAuthorsRefreshContext,
+    tickets: ImportedTicketAuthors[],
+  ): Promise<ImportedTicketAuthorsResult> {
+    const importers = new Set(ctx.importerIds);
+    const result: ImportedTicketAuthorsResult = {
+      tickets: 0,
+      comments: 0,
+      respected: 0,
+      changes: [],
+    };
+    for (const item of tickets) {
+      const rows = (await ctx.manager.query(
+        `SELECT assigned_user_id::text AS assigned, created_by_user_id::text AS created_by
+           FROM support_tickets
+          WHERE id = $1 AND tenant_id = $2 AND import_batch_id = $3
+          FOR UPDATE`,
+        [item.ticketId, ctx.tenantId, ctx.batchId],
+      )) as Array<{ assigned: string | null; created_by: string }>;
+      const ticket = rows[0];
+      if (!ticket) continue;
+      let assigned: string | null = null;
+      if (item.assignedUserId !== null && ticket.assigned !== item.assignedUserId) {
+        if (ticket.assigned === null) assigned = item.assignedUserId;
+        else result.respected += 1;
+      }
+      let createdBy: string | null = null;
+      if (item.createdByUserId !== null && ticket.created_by !== item.createdByUserId) {
+        if (importers.has(ticket.created_by)) createdBy = item.createdByUserId;
+        else result.respected += 1;
+      }
+      if (assigned !== null || createdBy !== null) {
+        await ctx.manager.query(
+          `UPDATE support_tickets
+              SET assigned_user_id = COALESCE($4::uuid, assigned_user_id),
+                  created_by_user_id = COALESCE($5::uuid, created_by_user_id)
+            WHERE id = $1 AND tenant_id = $2 AND import_batch_id = $3`,
+          [item.ticketId, ctx.tenantId, ctx.batchId, assigned, createdBy],
+        );
+        result.tickets += 1;
+        if (assigned !== null) {
+          result.changes.push({
+            entity: 'TICKET',
+            id: item.ticketId,
+            field: 'assigned_user_id',
+            from: ticket.assigned,
+            to: assigned,
+          });
+        }
+        if (createdBy !== null) {
+          result.changes.push({
+            entity: 'TICKET',
+            id: item.ticketId,
+            field: 'created_by_user_id',
+            from: ticket.created_by,
+            to: createdBy,
+          });
+        }
+      }
+
+      if (!item.comments.some((comment) => comment.authorUserId !== null)) continue;
+      const stored = (await ctx.manager.query(
+        `SELECT id::text, body, created_at, author_user_id::text AS author
+           FROM ticket_comments WHERE ticket_id = $1 AND tenant_id = $2
+          FOR UPDATE`,
+        [item.ticketId, ctx.tenantId],
+      )) as Array<{ id: string; body: string; created_at: Date; author: string }>;
+      const matches = matchImportedComments(
+        stored.map((row) => ({
+          id: row.id,
+          body: row.body,
+          createdAt: row.created_at,
+          authorUserId: row.author,
+        })),
+        item.comments,
+        ctx.importerIds,
+      );
+      for (const match of matches) {
+        if (match.current === match.target) continue;
+        if (!importers.has(match.current)) {
+          result.respected += 1;
+          continue;
+        }
+        await ctx.manager.query(
+          `UPDATE ticket_comments SET author_user_id = $3::uuid
+            WHERE id = $1 AND tenant_id = $2`,
+          [match.id, ctx.tenantId, match.target],
+        );
+        result.comments += 1;
+        result.changes.push({
+          entity: 'TICKET_COMMENT',
+          id: match.id,
+          field: 'author_user_id',
+          from: match.current,
+          to: match.target,
+        });
+      }
+    }
+    return result;
   }
 
   async revertBlockers(

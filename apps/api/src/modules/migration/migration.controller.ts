@@ -67,6 +67,7 @@ import { MigrationPromotionService } from './migration-promotion.service';
 import { MigrationRevertService } from './migration-revert.service';
 import { MigrationUploadSizeInterceptor } from './migration-upload-size.interceptor';
 import {
+  MIGRATION_AUTHORS_REFRESH_RESULT_OPENAPI,
   MIGRATION_BATCH_REPORT_OPENAPI,
   MIGRATION_BATCH_SUMMARY_OPENAPI,
   MIGRATION_MAPPING_CREATE_OPENAPI,
@@ -219,6 +220,28 @@ export class MigrationBatchesController {
   })
   async reconcile(@CurrentUser() user: JwtPayload, @Param('id', new ParseUUIDPipe()) id: string) {
     return { data: await this.promotion.reconcile(scope(), id, user.sub) };
+  }
+
+  @Post(':id/refresh-authors')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ global: { ttl: 60_000, limit: resolveRouteRateLimit(10) } })
+  @ApiOperation({
+    summary:
+      'Actualizar autores: re-atribuye tickets, comentarios y pagos importados por la equivalencia USUARIO',
+    description:
+      'Solo cambia lo que sigue a nombre de quien importó; lo cambiado después se respeta y se cuenta. Idempotente.',
+  })
+  @ApiOkResponse({ schema: envelope(MIGRATION_AUTHORS_REFRESH_RESULT_OPENAPI) })
+  @ApiNotFoundResponse({ description: 'El lote no existe.' })
+  @ApiConflictResponse({
+    description:
+      'MIGRATION_BATCH_NOT_RECONCILABLE (no está PROMOVIDO ni CONCILIADO) o MIGRATION_BATCH_PURGED (intermedias purgadas).',
+  })
+  async refreshAuthors(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return { data: await this.promotion.refreshAuthors(scope(), id, user.sub) };
   }
 
   @Post(':id/revert')

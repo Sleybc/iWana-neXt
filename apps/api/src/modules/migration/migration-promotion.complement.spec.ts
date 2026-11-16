@@ -47,6 +47,7 @@ function build(overrides: {
     {} as never,
     tags as never,
     {} as never,
+    {} as never,
   );
   const qr = { query: jest.fn().mockResolvedValue([]), manager: {} };
   const row = {

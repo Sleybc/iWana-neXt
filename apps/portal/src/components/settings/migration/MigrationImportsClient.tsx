@@ -25,6 +25,7 @@ import {
   migrationErrorMessage,
   validateMigrationFiles,
 } from './migration-labels';
+import { MigrationUispUsersSection } from './MigrationUispUsersSection';
 import { MIGRATION_POLL_INTERVAL_MS, useMigrationAccess } from './useMigrationAccess';
 
 function filesCopy(count: number): string {
@@ -228,6 +229,8 @@ export function MigrationImportsClient() {
           </ul>
         )}
       </PortalPanel>
+
+      <MigrationUispUsersSection />
     </div>
   );
 }

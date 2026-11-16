@@ -148,6 +148,18 @@ export const PII_ENCRYPTED_TARGETS: readonly EncryptedColumnTarget[] = [
     'migration_staging_records',
     'payload_encrypted',
   ),
+  // Usuarios del personal desde la API de UISP (migración 211, ADR-110 D15).
+  piiTarget(
+    'migrationSourceConnection.appKeyEncrypted',
+    'migration_source_connections',
+    'app_key_encrypted',
+  ),
+  piiTarget(
+    'migrationUispUser.displayNameEncrypted',
+    'migration_uisp_users',
+    'display_name_encrypted',
+  ),
+  piiTarget('migrationUispUser.emailEncrypted', 'migration_uisp_users', 'email_encrypted'),
 ];
 
 export type PiiTenantRegistryQuery = (sql: string, parameters: string[]) => Promise<unknown>;

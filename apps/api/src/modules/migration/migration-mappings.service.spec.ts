@@ -219,3 +219,78 @@ describe('MigrationMappingsService — equivalencia TITULAR (spec 2026-11-15 §2
     expect(lookup).not.toHaveBeenCalled();
   });
 });
+
+describe('MigrationMappingsService — equivalencia USUARIO (spec 2026-11-15 «usuarios» §2.5)', () => {
+  const audit = { logWithin: jest.fn().mockResolvedValue(undefined) };
+  const service = new MigrationMappingsService(
+    {} as never,
+    audit as never,
+    {} as never,
+    {} as never,
+  );
+
+  beforeEach(() => jest.clearAllMocks());
+
+  async function expect400(promise: Promise<unknown>) {
+    const error = await promise.catch((caught: unknown) => caught);
+    expect((error as { getStatus?: () => number }).getStatus?.()).toBe(400);
+    expect((error as { getResponse: () => unknown }).getResponse()).toMatchObject({
+      code: 'MIGRATION_MAPPING_TARGET_INVALID',
+    });
+  }
+
+  it('el endpoint genérico no crea una equivalencia USUARIO aunque el destino sea válido', async () => {
+    await expect400(
+      service.create(
+        scope,
+        { kind: 'USUARIO', externalValue: '41', action: 'EQUIVALE', targetRef: CANDIDATE },
+        ACTOR,
+      ),
+    );
+    expect(qr.query).not.toHaveBeenCalled();
+    expect(audit.logWithin).not.toHaveBeenCalled();
+  });
+
+  it('el endpoint genérico no reapunta una equivalencia USUARIO existente', async () => {
+    qr.query.mockResolvedValue([
+      mappingRow({ kind: 'USUARIO', external_value: '41', target_ref: CANDIDATE }),
+    ]);
+    await expect400(
+      service.update(scope, mappingRow().id, { action: 'EQUIVALE', targetRef: CANDIDATE }, ACTOR),
+    );
+    expect(audit.logWithin).not.toHaveBeenCalled();
+    expect(qr.query.mock.calls.some(([sql]) => String(sql).trimStart().startsWith('UPDATE'))).toBe(
+      false,
+    );
+  });
+  it('el endpoint genérico no retira una equivalencia USUARIO', async () => {
+    qr.query.mockResolvedValue([
+      mappingRow({ kind: 'USUARIO', external_value: '41', target_ref: CANDIDATE }),
+    ]);
+    await expect400(service.remove(scope, mappingRow().id, ACTOR));
+    expect(audit.logWithin).not.toHaveBeenCalled();
+    expect(qr.query.mock.calls.some(([sql]) => String(sql).trimStart().startsWith('DELETE'))).toBe(
+      false,
+    );
+  });
+
+  it('retira una equivalencia de otro tipo con bloqueo previo y auditoría DELETE', async () => {
+    qr.query.mockResolvedValue([
+      mappingRow({ kind: 'PLAN', external_value: '501', target_ref: CANDIDATE }),
+    ]);
+    await service.remove(scope, mappingRow().id, ACTOR);
+    const sqls = qr.query.mock.calls.map(([sql]) => String(sql).trimStart());
+    expect(sqls[0]).toMatch(/^SELECT[\s\S]*FOR UPDATE/u);
+    expect(sqls.some((sql) => sql.startsWith('DELETE FROM migration_mappings'))).toBe(true);
+    expect(audit.logWithin).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'DELETE' }),
+      expect.anything(),
+    );
+  });
+
+  it('retirar una equivalencia inexistente responde 404', async () => {
+    qr.query.mockResolvedValue([]);
+    const error = await service.remove(scope, mappingRow().id, ACTOR).catch((e: unknown) => e);
+    expect((error as { getStatus: () => number }).getStatus()).toBe(404);
+  });
+});

@@ -21,6 +21,7 @@ import {
   MigrationBatchCountsSchema,
   MigrationPromotionReportSchema,
   type BillingPaymentMethod,
+  type MigrationAuthorsRefreshResult,
   type MigrationBatchRejections,
   type MigrationEntity,
   type MigrationMappingAction,
@@ -51,9 +52,13 @@ import {
   MigrationBillingImportPort,
   MigrationCrmImportPort,
   MigrationSupportImportPort,
+  type ImportedAuthorChange,
+  type ImportedPaymentAuthor,
+  type ImportedTicketAuthors,
   type MigrationWriteContext,
 } from './ports/migration-import.ports';
 import { MigrationTitularLookupPort } from './ports/migration-titular-lookup.port';
+import { MigrationUserDirectoryPort } from './ports/migration-user-directory.port';
 import { packageEntries } from './uisp/uisp-parser';
 import { importedText, titularPersonFields } from './uisp/uisp-titular-required';
 import {
@@ -74,9 +79,14 @@ import {
   serviceAlias,
   subscriberContacts,
   suspensionPeriods,
-  ticketComments,
   ticketStatus,
 } from './uisp/uisp-promotion-mapping';
+import {
+  paymentAttribution,
+  referencedUserNumbers,
+  ticketAttribution,
+  type UispUserResolver,
+} from './uisp/uisp-user-attribution';
 import { SafeZipError, readZipEntries } from './zip/safe-zip-reader';
 
 export const MIGRATION_PROMOTE_ATTEMPTS = 3;
@@ -118,6 +128,13 @@ class TitularRejected extends Error {
     super(reason);
   }
 }
+
+/** Tipo de entidad de auditoría de cada fila re-atribuida por «Actualizar autores» (S-4). */
+const AUTHOR_CHANGE_AUDIT_ENTITY: Record<ImportedAuthorChange['entity'], string> = {
+  TICKET: 'SupportTicket',
+  TICKET_COMMENT: 'TicketComment',
+  PAYMENT: 'BillingPayment',
+};
 
 function emptyPromotion(): MigrationPromotionReport {
   return {
@@ -185,6 +202,7 @@ export class MigrationPromotionService {
     private readonly support: MigrationSupportImportPort,
     private readonly tags: SubscriberTagAssignmentPort,
     private readonly audit: AuditService,
+    private readonly users: MigrationUserDirectoryPort,
   ) {}
 
   // ── Solicitud (HTTP) ────────────────────────────────────────────────────────────────
@@ -303,6 +321,9 @@ export class MigrationPromotionService {
     await this.simulation.restageForPromotion(tenant, batchId);
     const groups = await this.loadGroups(tenant, batchId);
     const mappings = await this.loadMappings(tenant);
+    const resolveUser = await runInTenantSchema(this.dataSource, tenant.schemaName, (qr) =>
+      this.userResolver(qr, tenant.tenantId, mappings),
+    );
     const prefix = batch.source_object_key;
     if (prefix !== `${tenant.schemaName}/migration/${batchId}/`) {
       throw new MigrationPermanentError('MIGRATION_OBJECT_KEY_MISMATCH');
@@ -331,6 +352,7 @@ export class MigrationPromotionService {
             mappings,
             entries,
             uploaded,
+            resolveUser,
           );
           return true;
         });
@@ -351,6 +373,13 @@ export class MigrationPromotionService {
         [batchId, tenant.tenantId, JSON.stringify(promotion)],
       );
       await this.recordDifferingObservation(qr, tenant.tenantId, batchId);
+      await this.recordUnlinkedUsers(
+        qr,
+        tenant.tenantId,
+        batchId,
+        await this.attributedRecords(qr, tenant.tenantId, batchId),
+        resolveUser,
+      );
       await this.audit.logWithin(
         {
           action: AuditAction.UPDATE,
@@ -543,6 +572,244 @@ export class MigrationPromotionService {
     });
   }
 
+  // ── «Actualizar autores» (spec 2026-11-15 «usuarios» §2.7) ──────────────────────────
+
+  /**
+   * Re-atribuye lo ya importado con las equivalencias `USUARIO` vigentes, sin reimportar: recorre
+   * las intermedias promovidas del lote (tickets y pagos que este lote creó) y, por los puertos
+   * de Soporte y Facturación, cambia asignado, creador, autores y registrador solo donde siguen
+   * a nombre de quien importó (creador o promotor del lote). Lo cambiado después se respeta y
+   * se cuenta. Idempotente. Recalcula «Usuarios de UISP sin enlazar» y audita en la misma
+   * transacción, solo con conteos.
+   */
+  async refreshAuthors(
+    scope: MigrationTenantScope,
+    batchId: string,
+    actorId: string,
+  ): Promise<MigrationAuthorsRefreshResult> {
+    return runInTenantSchema(this.dataSource, scope.schemaName, async (qr) => {
+      const rows = (await qr.query(
+        `SELECT status, purged_at, created_by::text AS created_by, promoted_by::text AS promoted_by
+           FROM migration_batches WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
+        [batchId, scope.tenantId],
+      )) as Array<{
+        status: string;
+        purged_at: unknown;
+        created_by: string | null;
+        promoted_by: string | null;
+      }>;
+      const batch = rows[0];
+      if (!batch) {
+        throw new NotFoundException({
+          code: 'MIGRATION_BATCH_NOT_FOUND',
+          message: 'El lote no existe.',
+        });
+      }
+      if (batch.purged_at) {
+        throw this.conflict(
+          'MIGRATION_BATCH_PURGED',
+          'Las intermedias del lote ya se purgaron: no se pueden actualizar los autores.',
+        );
+      }
+      if (batch.status !== 'PROMOVIDO' && batch.status !== 'CONCILIADO') {
+        throw this.conflict(
+          'MIGRATION_BATCH_NOT_RECONCILABLE',
+          'Solo se actualizan los autores de un lote promovido o conciliado.',
+        );
+      }
+      const mappings = await this.readMappings(qr, scope.tenantId);
+      const resolveUser = await this.userResolver(qr, scope.tenantId, mappings);
+      const records = await this.attributedRecords(qr, scope.tenantId, batchId);
+
+      const tickets: ImportedTicketAuthors[] = [];
+      const payments: ImportedPaymentAuthor[] = [];
+      for (const record of records) {
+        if (record.entity === 'TICKET') {
+          const attribution = ticketAttribution(record.payload.raw, resolveUser);
+          if (
+            attribution.assignedUserId === null &&
+            attribution.createdByUserId === null &&
+            attribution.comments.every((comment) => comment.authorUserId === null)
+          ) {
+            continue;
+          }
+          tickets.push({
+            ticketId: record.promotedId,
+            assignedUserId: attribution.assignedUserId,
+            createdByUserId: attribution.createdByUserId,
+            comments: attribution.comments.map((comment) => ({
+              body: comment.body,
+              createdAt: comment.createdAt,
+              authorUserId: comment.authorUserId,
+            })),
+          });
+        } else {
+          const { createdBy } = paymentAttribution(record.payload.raw, resolveUser);
+          if (createdBy !== null) payments.push({ paymentId: record.promotedId, createdBy });
+        }
+      }
+
+      // Quien subió o promovió el lote y quien quedó registrado en cada fila (un reintento de la
+      // promoción pudo correr con otro actor).
+      const importerIds = [
+        ...new Set(
+          [
+            batch.created_by,
+            batch.promoted_by,
+            ...records.map((record) => record.importedBy),
+          ].filter((id): id is string => !!id),
+        ),
+      ];
+      const ctx = {
+        manager: qr.manager,
+        tenantId: scope.tenantId,
+        schemaName: scope.schemaName,
+        batchId,
+        actorId,
+        importerIds,
+      };
+      const support = await this.support.refreshImportedAuthors(ctx, tickets);
+      const billing = await this.billing.refreshImportedPaymentAuthors(ctx, payments);
+      // S-4: cada fila cambiada queda auditada con su valor anterior y nuevo (solo ids).
+      for (const change of [...support.changes, ...billing.changes]) {
+        await this.audit.logWithin(
+          {
+            action: AuditAction.UPDATE,
+            entityType: AUTHOR_CHANGE_AUDIT_ENTITY[change.entity],
+            entityId: change.id,
+            userId: actorId,
+            tenantId: scope.tenantId,
+            schemaName: scope.schemaName,
+            oldValue: { [change.field]: change.from },
+            newValue: { [change.field]: change.to, origen: 'ACTUALIZAR_AUTORES', batchId },
+          },
+          qr.manager,
+        );
+      }
+      const sinEnlazar = await this.recordUnlinkedUsers(
+        qr,
+        scope.tenantId,
+        batchId,
+        records,
+        resolveUser,
+      );
+      const result: MigrationAuthorsRefreshResult = {
+        tickets: support.tickets,
+        comentarios: support.comments,
+        pagos: billing.payments,
+        respetados: support.respected + billing.respected,
+        sinEnlazar,
+      };
+      await this.audit.logWithin(
+        {
+          action: AuditAction.UPDATE,
+          entityType: MIGRATION_AUDIT_ENTITY,
+          entityId: batchId,
+          userId: actorId,
+          tenantId: scope.tenantId,
+          schemaName: scope.schemaName,
+          newValue: { action: 'ACTUALIZAR_AUTORES', ...result },
+        },
+        qr.manager,
+      );
+      return result;
+    });
+  }
+
+  /**
+   * Traductor número de UISP → usuario de iWana: solo equivalencias `EQUIVALE` cuyo usuario
+   * sigue vigente (Usuarios, por puerto). Un usuario borrado cuenta como sin enlazar.
+   */
+  private async userResolver(
+    qr: QueryRunner,
+    tenantId: string,
+    mappings: MappingIndex,
+  ): Promise<UispUserResolver> {
+    const byNumber = new Map<string, string>();
+    for (const [number, mapping] of mappings.get('USUARIO') ?? []) {
+      if (mapping.action === 'EQUIVALE' && mapping.target) {
+        byNumber.set(number, mapping.target.toLowerCase());
+      }
+    }
+    const targets = [...new Set(byNumber.values())];
+    const existing =
+      targets.length === 0
+        ? new Set<string>()
+        : await this.users.existingUserIds({ manager: qr.manager, tenantId }, targets);
+    return (number) => {
+      const target = byNumber.get(number);
+      return target !== undefined && existing.has(target) ? target : null;
+    };
+  }
+
+  /**
+   * Intermedias de tickets y pagos que este lote creó (promovidas y no `existing`): las únicas
+   * cuya atribución decide el lote.
+   */
+  private async attributedRecords(
+    qr: QueryRunner,
+    tenantId: string,
+    batchId: string,
+  ): Promise<Array<StagedRow & { promotedId: string; importedBy: string | null }>> {
+    const rows = (await qr.query(
+      `SELECT id, entity, external_id, status, rejection_reason, payload_encrypted,
+              promoted_entity_id::text AS promoted_id, promotion_meta->>'importedBy' AS imported_by
+         FROM migration_staging_records
+        WHERE tenant_id = $1 AND batch_id = $2 AND status = 'PROMOVIDO'
+          AND entity IN ('TICKET', 'PAGO') AND promoted_entity_id IS NOT NULL
+          AND NOT COALESCE((promotion_meta->>'existing')::boolean, false)
+        ORDER BY created_at, id`,
+      [tenantId, batchId],
+    )) as Array<
+      Omit<StagedRow, 'payload'> & {
+        payload_encrypted: string;
+        promoted_id: string;
+        imported_by: string | null;
+      }
+    >;
+    return rows.map(({ payload_encrypted, promoted_id, imported_by, ...row }) => ({
+      ...row,
+      promotedId: promoted_id,
+      importedBy: imported_by ?? null,
+      payload: this.crypto.decryptPayload<StagedPayload>(payload_encrypted),
+    }));
+  }
+
+  /**
+   * «Usuarios de UISP sin enlazar» (spec §2.6): números distintos referenciados por lo que el
+   * lote atribuye y que no resuelven a un usuario vigente. Va en `counts.observaciones` (como
+   * `DATO_DISTINTO_EN_UISP`), recalculado desde las intermedias: un reintento no lo duplica y
+   * sin pendientes la clave no aparece. Solo el conteo, sin números ni nombres.
+   */
+  private async recordUnlinkedUsers(
+    qr: QueryRunner,
+    tenantId: string,
+    batchId: string,
+    records: StagedRow[],
+    resolveUser: UispUserResolver,
+  ): Promise<number> {
+    const unlinked = new Set<string>();
+    for (const record of records) {
+      for (const number of referencedUserNumbers(record.entity, record.payload.raw)) {
+        if (resolveUser(number) === null) unlinked.add(number);
+      }
+    }
+    await qr.query(
+      `UPDATE migration_batches
+          SET counts = jsonb_set(
+                counts, '{observaciones}',
+                CASE WHEN $3::int > 0
+                     THEN COALESCE(counts->'observaciones', '{}'::jsonb)
+                          || jsonb_build_object('USUARIO_UISP_SIN_ENLAZAR', $3::int)
+                     ELSE COALESCE(counts->'observaciones', '{}'::jsonb) - 'USUARIO_UISP_SIN_ENLAZAR'
+                END),
+              updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 AND counts IS NOT NULL`,
+      [tenantId, batchId, unlinked.size],
+    );
+    return unlinked.size;
+  }
+
   // ── Promoción de un titular ─────────────────────────────────────────────────────────
 
   private async promoteTitular(
@@ -554,6 +821,7 @@ export class MigrationPromotionService {
     mappings: MappingIndex,
     entries: Map<string, Buffer>,
     uploaded: string[],
+    resolveUser: UispUserResolver,
   ): Promise<void> {
     const ctx: MigrationWriteContext = {
       manager: qr.manager,
@@ -700,8 +968,10 @@ export class MigrationPromotionService {
           method: method.target as BillingPaymentMethod,
           amount: value,
           paidAt,
+          createdBy: paymentAttribution(raw, resolveUser).createdBy,
         });
-        return { kind: 'created', id };
+        // Quién importó esta fila: «Actualizar autores» solo cambia lo que sigue a su nombre.
+        return { kind: 'created', id, meta: { importedBy: ctx.actorId } };
       });
       if (outcome) paymentsById.set(sourceId(row), outcome);
     }
@@ -739,6 +1009,7 @@ export class MigrationPromotionService {
         const existing = await known(row, (ids) => this.support.findTickets(read, ids));
         if (existing) return { kind: 'existing', id: existing };
         const raw = row.payload.raw ?? {};
+        const attribution = ticketAttribution(raw, resolveUser);
         const id = await this.support.createImportedTicket(ctx, {
           externalId: row.external_id,
           sourceId: sourceId(row),
@@ -746,9 +1017,11 @@ export class MigrationPromotionService {
           subject: text(raw['subject'], 200) ?? 'Ticket importado',
           status: ticketStatus(raw['status']),
           createdAt: instant(raw['createdAt']),
-          comments: ticketComments(raw),
+          comments: attribution.comments,
+          assignedUserId: attribution.assignedUserId,
+          createdByUserId: attribution.createdByUserId,
         });
-        return { kind: 'created', id };
+        return { kind: 'created', id, meta: { importedBy: ctx.actorId } };
       });
     }
 
@@ -1143,12 +1416,16 @@ export class MigrationPromotionService {
   }
 
   private async loadMappings(tenant: ResolvedTenant): Promise<MappingIndex> {
-    const rows = (await runInTenantSchema(this.dataSource, tenant.schemaName, (qr) =>
-      qr.query(
-        `SELECT kind, external_value, action, target_ref FROM migration_mappings
-          WHERE tenant_id = $1 AND source_system = 'UISP'`,
-        [tenant.tenantId],
-      ),
+    return runInTenantSchema(this.dataSource, tenant.schemaName, (qr) =>
+      this.readMappings(qr, tenant.tenantId),
+    );
+  }
+
+  private async readMappings(qr: QueryRunner, tenantId: string): Promise<MappingIndex> {
+    const rows = (await qr.query(
+      `SELECT kind, external_value, action, target_ref FROM migration_mappings
+        WHERE tenant_id = $1 AND source_system = 'UISP'`,
+      [tenantId],
     )) as Array<{
       kind: MigrationMappingKind;
       external_value: string;

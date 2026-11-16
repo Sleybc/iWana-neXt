@@ -294,4 +294,88 @@ describe('MigrationBatchDetailClient', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Promover' }));
     await waitFor(() => expect(promoteSpy).toHaveBeenCalledWith(BATCH_ID));
   });
+
+  it('Actualizar autores en un lote promovido muestra los cinco conteos en frases', async () => {
+    getSpy.mockResolvedValue(report({ status: 'PROMOVIDO' }));
+    const refreshSpy = jest.spyOn(migrationApi, 'refreshAuthors').mockResolvedValue({
+      tickets: 3,
+      comentarios: 1,
+      pagos: 0,
+      respetados: 2,
+      sinEnlazar: 4,
+    });
+    const user = userEvent.setup();
+    render(<MigrationBatchDetailClient batchId={BATCH_ID} />);
+    await user.click(await screen.findByRole('button', { name: 'Actualizar autores' }));
+    await waitFor(() => expect(refreshSpy).toHaveBeenCalledWith(BATCH_ID));
+    const result = await screen.findByRole('list', { name: 'Resultado de actualizar autores' });
+    const items = within(result)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent);
+    expect(items).toEqual([
+      '3 tickets quedaron con su responsable o su creador de UISP.',
+      '1 comentario quedó con su autor de UISP.',
+      '0 pagos quedaron con quien los registró en UISP.',
+      '2 registros se dejaron igual porque alguien los cambió después de importarlos.',
+      '4 usuarios de UISP de este lote siguen sin enlazar; lo suyo queda a nombre de quien importó.',
+    ]);
+  });
+
+  it('Actualizar autores: sin el botón en lotes simulados o purgados, y error traducido', async () => {
+    const { unmount } = render(<MigrationBatchDetailClient batchId={BATCH_ID} />);
+    expect(await screen.findByText('Simulado')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Actualizar autores' })).not.toBeInTheDocument();
+    unmount();
+
+    getSpy.mockResolvedValue(
+      report({ status: 'CONCILIADO', purgedAt: '2026-12-12T10:00:00.000Z' }),
+    );
+    const purged = render(<MigrationBatchDetailClient batchId={BATCH_ID} />);
+    expect(
+      await screen.findByText(/ya no se pueden actualizar los autores de tickets/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Actualizar autores' })).not.toBeInTheDocument();
+    purged.unmount();
+
+    getSpy.mockResolvedValue(report({ status: 'CONCILIADO' }));
+    jest
+      .spyOn(migrationApi, 'refreshAuthors')
+      .mockRejectedValue(new ApiError(409, 'MIGRATION_BATCH_PURGED', 'x'));
+    const user = userEvent.setup();
+    render(<MigrationBatchDetailClient batchId={BATCH_ID} />);
+    await user.click(await screen.findByRole('button', { name: 'Actualizar autores' }));
+    expect(
+      await screen.findByText('Los archivos de este lote ya se eliminaron por retención.'),
+    ).toBeInTheDocument();
+  });
+
+  it('actualizar autores en un lote no promovido explica cuándo se puede', async () => {
+    getSpy.mockResolvedValue(report({ status: 'CONCILIADO' }));
+    jest
+      .spyOn(migrationApi, 'refreshAuthors')
+      .mockRejectedValue(new ApiError(409, 'MIGRATION_BATCH_NOT_RECONCILABLE', 'x'));
+    const user = userEvent.setup();
+    render(<MigrationBatchDetailClient batchId={BATCH_ID} />);
+    await user.click(await screen.findByRole('button', { name: 'Actualizar autores' }));
+    expect(
+      await screen.findByText(
+        'Solo se pueden actualizar los autores de un lote promovido o conciliado.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Este lote todavía no se puede conciliar.')).not.toBeInTheDocument();
+  });
+
+  it('la observación de usuarios sin enlazar enlaza con «Usuarios de UISP»', async () => {
+    getSpy.mockResolvedValue(
+      report({
+        counts: { ...report().counts, observaciones: { USUARIO_UISP_SIN_ENLAZAR: 5 } },
+      }),
+    );
+    render(<MigrationBatchDetailClient batchId={BATCH_ID} />);
+    const observations = await screen.findByRole('list', { name: 'Observaciones' });
+    expect(within(observations).getByText(/Usuarios de UISP sin enlazar: 5/)).toBeInTheDocument();
+    expect(
+      within(observations).getByRole('link', { name: 'Revisar usuarios de UISP' }),
+    ).toHaveAttribute('href', '/dashboard/settings/imports#usuarios-uisp');
+  });
 });

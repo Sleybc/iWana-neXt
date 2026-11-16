@@ -50,6 +50,9 @@ function buildProductionEnv(): Record<string, string> {
     TYPESENSE_API_KEY: 'test-only-typesense-key',
     CORS_ORIGIN: `${PRODUCTION_ORIGIN},${PORTAL_ORIGIN}`,
     FRONTEND_URL: PRODUCTION_ORIGIN,
+    // PORTAL_URL es opcional, pero si llega (p. ej. heredada de .env.development en el
+    // mismo worker) se valida: el fixture declara el valor de producción.
+    PORTAL_URL: PORTAL_ORIGIN,
     // C-5 (ADR-081): en perfil producción COOKIE_SECURE no puede quedar en
     // false — el esquema lo exige. El fixture declara el valor correcto para
     // que el escenario de "arranque correcto" pruebe exactamente eso.
@@ -264,5 +267,50 @@ describe('ConfigModule.forRoot — fail-fast de arranque en perfil producción',
 
   it('restaura NODE_ENV=test tras cada arranque simulado', () => {
     expect(process.env['NODE_ENV']).toBe('test');
+  });
+});
+
+describe('createAppConfigurationSchema — PORTAL_URL (invitación al portal empresarial)', () => {
+  it('es opcional en producción: sin ella arranca (los enlaces usan FRONTEND_URL)', () => {
+    const env = buildProductionEnv();
+    delete env['PORTAL_URL'];
+    expect(validate(env).error).toBeUndefined();
+  });
+
+  it('en producción acepta el dominio del portal y rechaza localhost', () => {
+    expect(validate({ ...buildProductionEnv(), PORTAL_URL: PORTAL_ORIGIN }).error).toBeUndefined();
+    const { error } = validate({ ...buildProductionEnv(), PORTAL_URL: 'http://localhost:3002' });
+    expect(error?.message).toContain('PORTAL_URL no puede apuntar a localhost/127.0.0.1');
+  });
+
+  it('en desarrollo admite el portal local', () => {
+    const { error } = validate({ NODE_ENV: 'development', PORTAL_URL: 'http://localhost:3002' });
+    expect(error?.details.map((detail) => detail.path.join('.'))).not.toContain('PORTAL_URL');
+  });
+});
+
+describe('createAppConfigurationSchema — MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS (S-1)', () => {
+  it('está prohibida en producción: la excepción SSRF es solo para pruebas', () => {
+    const { error } = validate({
+      ...buildProductionEnv(),
+      MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS: '127.0.0.1',
+    });
+    expect(error?.message).toContain('MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS no puede definirse');
+  });
+
+  it('en producción, sin ella, arranca', () => {
+    expect(validate(buildProductionEnv()).error).toBeUndefined();
+  });
+
+  it('en desarrollo y test admite una lista de hosts', () => {
+    for (const NODE_ENV of ['development', 'test']) {
+      const { error } = validate({
+        NODE_ENV,
+        MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS: '127.0.0.1, ::1',
+      });
+      expect(error?.details.map((detail) => detail.path.join('.')) ?? []).not.toContain(
+        'MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS',
+      );
+    }
   });
 });

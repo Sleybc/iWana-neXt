@@ -10,6 +10,7 @@ import { ApiError } from '@/lib/api-client';
 import {
   MIGRATION_ENTITY_LABELS,
   MIGRATION_FILE_REJECTION_LABELS,
+  MIGRATION_MAPPING_KIND_LABELS,
   MIGRATION_OBSERVATION_LABELS,
   MIGRATION_REJECTION_REASON_LABELS,
   MIGRATION_REVERT_BLOCK_LABELS,
@@ -101,6 +102,28 @@ describe('vocabulario de importaciones', () => {
   });
   it.each(MIGRATION_ERROR_CODES)('traduce el código %s sin usar el respaldo', (code) => {
     expect(migrationErrorMessage(new ApiError(400, code, 'x'), 'RESPALDO')).not.toBe('RESPALDO');
+  });
+
+  it('usuarios de UISP: tipo, observación y errores con vocabulario sin tecnicismos', () => {
+    expect(MIGRATION_MAPPING_KIND_LABELS.USUARIO).toBe('Usuario');
+    expect(MIGRATION_OBSERVATION_LABELS.USUARIO_UISP_SIN_ENLAZAR).toBe(
+      'Usuarios de UISP sin enlazar',
+    );
+    expect(mappingActionsFor('USUARIO')).toEqual(['EQUIVALE']);
+    const message = (code: string) => migrationErrorMessage(new ApiError(400, code, 'x'), 'f');
+    expect(message('MIGRATION_SOURCE_UNREACHABLE')).toBe(
+      'No pudimos conectar con UISP. Revisa la dirección.',
+    );
+    expect(message('MIGRATION_SOURCE_UNAUTHORIZED')).toBe('UISP rechazó la clave de aplicación.');
+    expect(message('MIGRATION_SOURCE_NOT_CONFIGURED')).toBe(
+      'Configura primero la conexión con UISP.',
+    );
+    expect(message('MIGRATION_USER_ROLE_NOT_ALLOWED')).toBe(
+      'Ese rol no se puede asignar a un usuario importado.',
+    );
+    expect(message('MIGRATION_UISP_USER_NOT_FOUND')).toBe(
+      'Ese usuario de UISP ya no está en la lista.',
+    );
   });
 
   it('una promoción fallida se presenta como «Promoción fallida»', () => {

@@ -1499,6 +1499,23 @@ describe('AuthService', () => {
       ).resolves.toBeUndefined();
     });
 
+    it('S-2: no emite token a una cuenta PENDING_VERIFICATION (importado sin invitar); respuesta idéntica', async () => {
+      const user = buildUser({ status: UserStatus.PENDING_VERIFICATION });
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+      const mailerService = (service as unknown as { mailerService: { sendMail: jest.Mock } })
+        .mailerService;
+
+      await expect(service.forgotPassword({ email: 'test@example.com' })).resolves.toBeUndefined();
+
+      // Sin token no hay enlace con el que resetPassword pueda activar la cuenta: solo la
+      // invitación del administrador activa a un usuario importado de UISP.
+      expect(manager.update).not.toHaveBeenCalled();
+      expect(mailerService.sendMail).not.toHaveBeenCalled();
+    });
+
     it('genera el token de reset y envia el correo cuando el usuario existe', async () => {
       const user = buildUser();
 
@@ -1637,6 +1654,69 @@ describe('AuthService', () => {
         RefreshToken,
         expect.objectContaining({ userId: user.id }),
         expect.objectContaining({ revokeReason: 'PASSWORD_CHANGE' }),
+      );
+    });
+
+    describe('activación por invitación (crear la contraseña prueba el correo)', () => {
+      /** Corre un reset válido para un usuario en `status` y devuelve el payload del UPDATE. */
+      async function resetFrom(status: UserStatus): Promise<Record<string, unknown>> {
+        const user = buildUser({
+          status,
+          emailVerified: false,
+          emailVerificationToken: 'verificacion-vieja',
+          passwordResetRequired: true,
+          passwordResetToken: 'token-invitacion',
+          passwordResetTokenExpiresAt: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000),
+        });
+        const { manager } = setupRunInTenantSchema({
+          findOne: jest.fn().mockResolvedValue(user),
+          update: jest.fn().mockResolvedValue({ affected: 1 }),
+        });
+        await service.resetPassword({ token: 'token-invitacion', newPassword: 'NuevoPass1!' });
+        const call = (manager.update as jest.Mock).mock.calls.find(([entity]) => entity === User);
+        return call?.[2] as Record<string, unknown>;
+      }
+
+      it('PENDING_VERIFICATION queda ACTIVE, con correo verificado y sin exigir cambio', async () => {
+        const update = await resetFrom(UserStatus.PENDING_VERIFICATION);
+        expect(update).toMatchObject({
+          status: UserStatus.ACTIVE,
+          emailVerified: true,
+          emailVerificationToken: null,
+          passwordResetRequired: false,
+          passwordResetToken: null,
+          passwordResetTokenExpiresAt: null,
+        });
+      });
+
+      it('audita la activación sin el token', async () => {
+        await resetFrom(UserStatus.PENDING_VERIFICATION);
+        const auditService = (service as unknown as { auditService: { log: jest.Mock } })
+          .auditService;
+        expect(auditService.log).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: 'PASSWORD_RESET_COMPLETED',
+            newValue: { status: UserStatus.ACTIVE, emailVerified: true },
+          }),
+        );
+        expect(JSON.stringify(auditService.log.mock.calls)).not.toContain('token-invitacion');
+      });
+
+      it('un usuario ACTIVE sigue ACTIVE (olvidé mi contraseña no cambia el estado)', async () => {
+        const update = await resetFrom(UserStatus.ACTIVE);
+        expect(update).not.toHaveProperty('status');
+        expect(update).not.toHaveProperty('emailVerified');
+        expect(update).toMatchObject({ passwordResetRequired: false });
+      });
+
+      it.each([UserStatus.INACTIVE, UserStatus.SUSPENDED])(
+        'un usuario %s no se activa por esta vía',
+        async (status) => {
+          const update = await resetFrom(status);
+          expect(update).not.toHaveProperty('status');
+          expect(update).not.toHaveProperty('emailVerified');
+          expect(update).not.toHaveProperty('emailVerificationToken');
+        },
       );
     });
 

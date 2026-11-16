@@ -80,6 +80,7 @@ export const MIGRATION_BATCH_SUMMARY_OPENAPI: SchemaObject = {
     'source',
     'status',
     'processing',
+    'promotionProcessing',
     'filesReceived',
     'createdBy',
     'createdAt',
@@ -93,7 +94,7 @@ export const MIGRATION_BATCH_SUMMARY_OPENAPI: SchemaObject = {
     processing: { type: 'string', enum: [...MIGRATION_PROCESSING_STATES] },
     promotionProcessing: {
       type: 'string',
-      enum: [...MIGRATION_PROCESSING_STATES],
+      enum: [...MIGRATION_PROCESSING_STATES, null],
       nullable: true,
       description: 'Procesamiento de la promoción; null si nunca se promovió.',
     },
@@ -189,6 +190,20 @@ export const MIGRATION_REVERT_RESULT_OPENAPI: SchemaObject = {
     status: { type: 'string', enum: ['REVERTIDO'] },
     retirados: countsBy(MIGRATION_ENTITIES),
     etiquetasRetiradas: count,
+  },
+};
+
+/** `MigrationAuthorsRefreshResult` («Actualizar autores», spec 2026-11-15 «usuarios» §2.7). */
+export const MIGRATION_AUTHORS_REFRESH_RESULT_OPENAPI: SchemaObject = {
+  type: 'object',
+  required: ['tickets', 'comentarios', 'pagos', 'respetados', 'sinEnlazar'],
+  additionalProperties: false,
+  properties: {
+    tickets: count,
+    comentarios: count,
+    pagos: count,
+    respetados: count,
+    sinEnlazar: count,
   },
 };
 
@@ -314,7 +329,7 @@ export const MIGRATION_MAPPING_CREATE_OPENAPI: SchemaObject = {
       maxLength: 80,
       nullable: true,
       description:
-        'Obligatorio con EQUIVALE: UUID de plan, etiqueta o suscriptor (TITULAR), método de pago de MOD14 o día de ciclo 1–28.',
+        'Obligatorio con EQUIVALE: UUID de plan, etiqueta o suscriptor (TITULAR), método de pago de MOD14, día de ciclo 1–28 o UUID de usuario de iWana (USUARIO). Las equivalencias USUARIO solo se gestionan desde la revisión de usuarios de UISP: aquí responden 400 MIGRATION_MAPPING_TARGET_INVALID.',
     },
   },
 };
@@ -326,6 +341,12 @@ export const MIGRATION_MAPPING_UPDATE_OPENAPI: SchemaObject = {
   properties: {
     externalLabel: { type: 'string', maxLength: 120, nullable: true },
     action: { type: 'string', enum: [...MIGRATION_MAPPING_ACTIONS] },
-    targetRef: { type: 'string', maxLength: 80, nullable: true },
+    targetRef: {
+      type: 'string',
+      maxLength: 80,
+      nullable: true,
+      description:
+        'Mismo destino que al crear. Una equivalencia USUARIO no se edita ni se retira por esta ruta (400 MIGRATION_MAPPING_TARGET_INVALID).',
+    },
   },
 };

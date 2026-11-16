@@ -122,6 +122,7 @@ export const MIGRATION_OBSERVATION_LABELS: Record<MigrationObservation, string> 
   FACTURA_SIN_PDF: 'Facturas sin PDF',
   CRUCE_CON_FACTURACION_IWANA: 'Facturas que se cruzan con la facturación de iWana',
   DATO_DISTINTO_EN_UISP: 'Datos distintos en UISP (se conservó el de iWana)',
+  USUARIO_UISP_SIN_ENLAZAR: 'Usuarios de UISP sin enlazar',
 };
 
 export const MIGRATION_MAPPING_KIND_LABELS: Record<MigrationMappingKind, string> = {
@@ -130,6 +131,7 @@ export const MIGRATION_MAPPING_KIND_LABELS: Record<MigrationMappingKind, string>
   CICLO: 'Ciclo de facturación',
   ETIQUETA: 'Etiqueta',
   TITULAR: 'Titular',
+  USUARIO: 'Usuario',
 };
 
 export const MIGRATION_MAPPING_ACTION_LABELS: Record<MigrationMappingAction, string> = {
@@ -194,6 +196,12 @@ const ERROR_MESSAGES: Record<MigrationErrorCode, string> = {
   MIGRATION_REVERT_BLOCKED:
     'No se puede revertir: hay movimientos posteriores que dependen del lote.',
   MIGRATION_TITULAR_TARGET_INVALID: 'Ese suscriptor no corresponde a este cliente de UISP.',
+  MIGRATION_SOURCE_UNREACHABLE: 'No pudimos conectar con UISP. Revisa la dirección.',
+  MIGRATION_SOURCE_UNAUTHORIZED: 'UISP rechazó la clave de aplicación.',
+  MIGRATION_SOURCE_NOT_CONFIGURED: 'Configura primero la conexión con UISP.',
+  MIGRATION_USER_ROLE_NOT_ALLOWED: 'Ese rol no se puede asignar a un usuario importado.',
+  MIGRATION_UISP_USER_NOT_FOUND: 'Ese usuario de UISP ya no está en la lista.',
+  MIGRATION_UISP_USER_ALREADY_RESOLVED: 'Ese usuario de UISP ya se revisó.',
 };
 
 export function migrationErrorMessage(error: unknown, fallback: string): string {

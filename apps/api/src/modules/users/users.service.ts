@@ -63,9 +63,13 @@ import {
   UserResponseDto,
 } from './dto/user.dto';
 import type { BulkCreateUserItem } from './dto/bulk-create-users.dto';
+import {
+  USER_PASSWORD_BCRYPT_ROUNDS,
+  defaultOperationalResourceForRole,
+} from './user-account-defaults';
 
 /** Iteraciones bcrypt para hashes de password de usuarios creados por admin */
-const BCRYPT_ROUNDS = 12;
+const BCRYPT_ROUNDS = USER_PASSWORD_BCRYPT_ROUNDS;
 
 /** Longitud del password temporal en bytes (16 bytes → 32 chars hex) */
 const TEMP_PASSWORD_BYTES = 16;
@@ -198,7 +202,7 @@ export class UsersService {
   }
 
   private getDefaultOperationalResource(role: UserRole): boolean {
-    return role === UserRole.TECHNICIAN || role === UserRole.CONTRACTOR;
+    return defaultOperationalResourceForRole(role);
   }
 
   /**

@@ -334,8 +334,12 @@ describe('ChangePasswordForm', () => {
     expect(changePage).toContain('changePasswordSchema');
     expect(changePage).toContain('@iwana/shared');
 
-    // Enlace estático: reset local conserva el mismo núcleo min 10 + NIST.
-    const resetPage = fs.readFileSync(path.join(appDir, 'reset-password', 'page.tsx'), 'utf8');
+    // Enlace estático: reset local conserva el mismo núcleo min 10 + NIST. Desde la invitación
+    // de usuarios de UISP (2026-11-15) el esquema vive en el formulario que la página envuelve.
+    const resetPage = fs.readFileSync(
+      path.join(__dirname, '..', 'auth', 'ResetPasswordForm.tsx'),
+      'utf8',
+    );
     expect(resetPage).toContain('min(10');
     expect(resetPage).toContain('/[A-Z]/');
     expect(resetPage).toContain('/[a-z]/');

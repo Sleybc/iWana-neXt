@@ -61,6 +61,11 @@ function listResponse(data: MigrationBatchSummary[]) {
 }
 
 beforeEach(() => {
+  // «Usuarios de UISP» vive en la misma página; su comportamiento se prueba en su propio spec.
+  jest.spyOn(migrationApi, 'getUispConnection').mockResolvedValue(null);
+  jest
+    .spyOn(migrationApi, 'listUispUsers')
+    .mockResolvedValue({ data: [], meta: { total: 0, lastFetchedAt: null } });
   mockRole.current = UserRole.ADMIN;
   mockGranted.current = new Set([AccessPermissionKey.MIGRATION_IMPORT_MANAGE]);
   mockPush.mockReset();

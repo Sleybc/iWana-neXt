@@ -97,6 +97,18 @@ const classifications: Readonly<Record<string, TargetClassification>> = {
     excluded:
       'ADR-110 D10: la intermedia de importación se purga con su lote a los 30 días; revisión sec-eng pendiente.',
   },
+  'migrationSourceConnection.appKeyEncrypted': {
+    excluded:
+      'ADR-110 D15: credencial de solo lectura del ISP para la API de UISP, sin vínculo con un titular; se reemplaza o retira desde la conexión.',
+  },
+  'migrationUispUser.displayNameEncrypted': {
+    excluded:
+      'ADR-110 D15: dato del personal del ISP, no de un titular; la migración 211 obliga a purgarlo al enlazar, crear o descartar la fila.',
+  },
+  'migrationUispUser.emailEncrypted': {
+    excluded:
+      'ADR-110 D15: dato del personal del ISP, no de un titular; la migración 211 obliga a purgarlo al enlazar, crear o descartar la fila.',
+  },
 };
 
 function assertCoverageInvariant(

@@ -57,6 +57,8 @@ export async function loadMappingCatalogs(
     ETIQUETA: tags ? tags.map((tag) => ({ value: tag.id, label: tag.name })) : null,
     // Los titulares no usan catálogo: cada uno trae su candidato (candidateRef).
     TITULAR: null,
+    // Los usuarios de UISP se enlazan desde «Usuarios de UISP», no desde este editor.
+    USUARIO: null,
   };
 }
 

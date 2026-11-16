@@ -15,6 +15,7 @@ import {
   AccessPermissionKey,
   MIGRATION_IMPORT_LIMITS,
   MIGRATION_IMPORT_QUEUE,
+  MigrationAuthorsRefreshResultSchema,
   TenantStatus,
   UserRole,
 } from '@iwana/shared';
@@ -61,6 +62,7 @@ describe('Importación UISP — seguridad HTTP', () => {
   const promotion = {
     requestPromotion: jest.fn(async (_scope: unknown, id: string) => ({ id, status: 'CARGADO' })),
     reconcile: jest.fn(),
+    refreshAuthors: jest.fn(),
   };
   const reversion = { revert: jest.fn() };
   const queries: string[] = [];
@@ -350,6 +352,22 @@ describe('Importación UISP — seguridad HTTP', () => {
     expect(promotion.reconcile).toHaveBeenCalledWith({ tenantId, schemaName }, id, adminId);
     expect(reversion.revert).toHaveBeenCalledWith({ tenantId, schemaName }, id, adminId);
     await post('/migration/batches/no-es-uuid/revert', adminId).expect(400);
+  });
+
+  it('actualizar autores exige ADMIN con permiso y delega con el tenant del JWT', async () => {
+    const id = randomUUID();
+    const path = `/migration/batches/${id}/refresh-authors`;
+    await post(path, nocId, UserRole.NOC).expect(403);
+    await post(path, adminWithoutPermissionId).expect(403);
+    await request(app.getHttpServer()).post(path).expect(401);
+    expect(promotion.refreshAuthors).not.toHaveBeenCalled();
+
+    const result = { tickets: 2, comentarios: 3, pagos: 1, respetados: 1, sinEnlazar: 4 };
+    promotion.refreshAuthors.mockResolvedValueOnce(result);
+    const response = await post(path, adminId).expect(200);
+    expect(MigrationAuthorsRefreshResultSchema.parse(response.body.data)).toEqual(result);
+    expect(promotion.refreshAuthors).toHaveBeenCalledWith({ tenantId, schemaName }, id, adminId);
+    await post('/migration/batches/no-es-uuid/refresh-authors', adminId).expect(400);
   });
 
   it('el id de lote no UUID responde 400', async () => {

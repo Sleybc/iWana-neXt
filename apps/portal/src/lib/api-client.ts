@@ -125,8 +125,17 @@ import {
   type MigrationMappingKind,
   type MigrationMappingUpdate,
   type MigrationPendingValue,
+  type MigrationPromoteAccepted,
   type MigrationReconciliationReport,
   type MigrationRevertResult,
+  type MigrationAuthorsRefreshResult,
+  type MigrationSourceConnection,
+  type MigrationSourceConnectionUpsert,
+  type MigrationUispUser,
+  type MigrationUispUsersFetchAccepted,
+  type MigrationUispUsersListMeta,
+  type MigrationUispUsersInviteResult,
+  type MigrationUispUsersResolve,
   type SubscriberDocument,
   type CreateSubscriberTag,
   type SubscriberTag,
@@ -6927,7 +6936,7 @@ export const migrationApi = {
     ),
 
   promote: (batchId: string, tenantSlug?: string) =>
-    request<{ id: string; status: 'CARGADO' }>(
+    request<MigrationPromoteAccepted>(
       `/migration/batches/${encodeURIComponent(batchId)}/promote`,
       { method: 'POST' },
       tenantSlug,
@@ -6974,7 +6983,68 @@ export const migrationApi = {
       { method: 'DELETE' },
       tenantSlug,
     ),
+
+  /** Conexión con UISP (spec usuarios §2.1): nunca devuelve la clave; `null` si no hay. */
+  getUispConnection: (tenantSlug?: string) =>
+    request<MigrationSourceConnection | null>('/migration/uisp-connection', undefined, tenantSlug),
+
+  /** Guarda o reemplaza la conexión; la API prueba UISP antes de guardar. */
+  saveUispConnection: (payload: MigrationSourceConnectionUpsert, tenantSlug?: string) =>
+    request<MigrationSourceConnection>(
+      '/migration/uisp-connection',
+      { method: 'PUT', body: JSON.stringify(payload) },
+      tenantSlug,
+    ),
+
+  testUispConnection: (tenantSlug?: string) =>
+    request<MigrationSourceConnection>(
+      '/migration/uisp-connection/test',
+      { method: 'POST' },
+      tenantSlug,
+    ),
+
+  removeUispConnection: (tenantSlug?: string) =>
+    request<void>('/migration/uisp-connection', { method: 'DELETE' }, tenantSlug),
+
+  /** Encola la lectura de `users/admins`; el resultado se ve en `meta.lastFetchedAt`. */
+  fetchUispUsers: (tenantSlug?: string) =>
+    request<MigrationUispUsersFetchAccepted>(
+      '/migration/uisp-users/fetch',
+      { method: 'POST' },
+      tenantSlug,
+    ),
+
+  listUispUsers: (tenantSlug?: string) =>
+    request<{ data: MigrationUispUser[]; meta: MigrationUispUsersListMeta }>(
+      '/migration/uisp-users',
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  resolveUispUsers: (payload: MigrationUispUsersResolve, tenantSlug?: string) =>
+    request<MigrationUispUser[]>(
+      '/migration/uisp-users/resolve',
+      { method: 'POST', body: JSON.stringify(payload) },
+      tenantSlug,
+    ),
+
+  inviteUispUsers: (ids: string[], tenantSlug?: string) =>
+    request<MigrationUispUsersInviteResult>(
+      '/migration/uisp-users/invite',
+      { method: 'POST', body: JSON.stringify({ ids }) },
+      tenantSlug,
+    ),
+
+  refreshAuthors: (batchId: string, tenantSlug?: string) =>
+    request<MigrationAuthorsRefreshResult>(
+      `/migration/batches/${encodeURIComponent(batchId)}/refresh-authors`,
+      { method: 'POST' },
+      tenantSlug,
+    ),
 };
+
+/** Resultado de «Enviar invitación» (spec usuarios §2.4), del contrato compartido. */
+export type { MigrationUispUsersInviteResult };
 
 /** Soportes documentales del suscriptor traídos por la importación (ADR-110 D13). */
 export const subscriberDocumentsApi = {

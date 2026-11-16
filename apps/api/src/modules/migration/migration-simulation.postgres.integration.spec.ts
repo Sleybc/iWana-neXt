@@ -7,6 +7,7 @@ import { dataSourceOptions, runInTenantSchema } from '@iwana/db';
 import { MigrationBatchReportSchema, type MigrationSimulateJob } from '@iwana/shared';
 import { MigrationImportTables1940000000194 } from '../../../../../packages/database/src/migrations/tenant/194_migration_import_tables';
 import { MigrationMappingKindTitular2100000000210 } from '../../../../../packages/database/src/migrations/tenant/210_migration_mapping_kind_titular';
+import { MigrationUispUsers2110000000211 } from '../../../../../packages/database/src/migrations/tenant/211_migration_uisp_users';
 import { BillingMigrationImportAdapter } from '../billing/migration-adapters/billing-migration-import.adapter';
 import { CrmMigrationTitularLookupAdapter } from '../crm/migration-adapters/crm-migration-titular-lookup.adapter';
 import { MigrationBatchesService } from './migration-batches.service';
@@ -117,6 +118,8 @@ describeDb('Importación UISP — simulación sobre PostgreSQL real', () => {
     await runInTenantSchema(ds, schemaName, async (qr) => {
       await new MigrationImportTables1940000000194().up(qr);
       await new MigrationMappingKindTitular2100000000210().up(qr);
+      // La purga diaria también retira las filas PENDIENTE de usuarios de UISP (tabla de la 211).
+      await new MigrationUispUsers2110000000211().up(qr);
       // Columnas de promoción y conciliación del lote (199, bloque C) que lee el informe.
       await qr.query(`ALTER TABLE migration_batches
         ADD COLUMN promotion jsonb NULL, ADD COLUMN reconciliation jsonb NULL,
@@ -430,7 +433,14 @@ describeDb('Importación UISP — simulación sobre PostgreSQL real', () => {
       expect(JSON.stringify(job.data)).not.toMatch(/1000000101|Titular|tenant_/u);
       expect(job.opts.attempts).toBe(5);
 
-      const processor = new MigrationImportProcessor(ds, realQueue, simulation, purge, {} as never);
+      const processor = new MigrationImportProcessor(
+        ds,
+        realQueue,
+        simulation,
+        purge,
+        {} as never,
+        {} as never,
+      );
       await processor.process(job);
       const report = await batches.getReport(scope, summary.id);
       expect(report.processing).toBe('COMPLETADO');

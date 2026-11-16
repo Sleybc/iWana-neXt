@@ -225,22 +225,35 @@ export function ticketStatus(value: unknown): ImportedTicketInput['status'] {
   }
 }
 
-/** Comentarios del ticket. Uno privado de UISP —o de un ticket no público— queda interno. */
-export function ticketComments(raw: Raw): ImportedTicketComment[] {
+/**
+ * Comentarios del ticket con el número de UISP de su autor (`activity[].userId`, sin validar),
+ * en el orden de `activity`. Uno privado de UISP —o de un ticket no público— queda interno.
+ */
+export function ticketCommentEntries(
+  raw: Raw,
+): Array<{ comment: ImportedTicketComment; userId: unknown }> {
   const ticketPublic = raw?.['public'] === true;
   const activity = Array.isArray(raw?.['activity']) ? (raw['activity'] as Raw[]) : [];
-  const result: ImportedTicketComment[] = [];
+  const result: Array<{ comment: ImportedTicketComment; userId: unknown }> = [];
   for (const entry of activity) {
     const comment = entry?.['comment'] as Raw;
     const body = text(comment?.['body']);
     if (!body) continue;
     result.push({
-      body: body.slice(0, 10_000),
-      internal: !(ticketPublic && entry?.['public'] === true),
-      createdAt: instant(entry?.['createdAt']),
+      comment: {
+        body: body.slice(0, 10_000),
+        internal: !(ticketPublic && entry?.['public'] === true),
+        createdAt: instant(entry?.['createdAt']),
+      },
+      userId: entry?.['userId'],
     });
   }
   return result;
+}
+
+/** Comentarios del ticket. Uno privado de UISP —o de un ticket no público— queda interno. */
+export function ticketComments(raw: Raw): ImportedTicketComment[] {
+  return ticketCommentEntries(raw).map((entry) => entry.comment);
 }
 
 const EXTENSIONS: Record<string, { kind: 'PDF' | 'IMAGEN' | 'OTRO'; contentType: string }> = {

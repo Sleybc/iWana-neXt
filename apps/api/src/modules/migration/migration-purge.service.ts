@@ -8,6 +8,8 @@ import { AuditService } from '../audit/audit.service';
 import {
   MIGRATION_AUDIT_ENTITY,
   MIGRATION_PURGE_BATCH_SIZE,
+  MIGRATION_UISP_USERS_AUDIT_ENTITY,
+  MIGRATION_UISP_USERS_PENDING_RETENTION_DAYS,
   migrationObjectKey,
 } from './migration.constants';
 import type { ResolvedTenant } from './migration-simulation.service';
@@ -33,8 +35,12 @@ export class MigrationPurgeService {
     private readonly auditService: AuditService,
   ) {}
 
-  /** Purga hasta `MIGRATION_PURGE_BATCH_SIZE` lotes vencidos; devuelve cuántos purgó. */
+  /**
+   * Purga hasta `MIGRATION_PURGE_BATCH_SIZE` lotes vencidos; devuelve cuántos purgó (las filas de
+   * usuarios de UISP no cuentan: el número solo decide si hace falta otra vuelta de lotes).
+   */
   async purgeTenant(tenant: ResolvedTenant, now: Date = new Date()): Promise<number> {
+    await this.purgePendingUispUsers(tenant, now);
     const candidates = (await runInTenantSchema(this.dataSource, tenant.schemaName, (qr) =>
       qr.query(
         `SELECT id, counts, source_object_key FROM migration_batches
@@ -90,5 +96,43 @@ export class MigrationPurgeService {
       purged += 1;
     }
     return purged;
+  }
+
+  /**
+   * Filas de revisión de usuarios de UISP sin resolver cuya última lectura (o alta, si nunca se
+   * leyó) tiene más de 30 días: se borran con su nombre y correo (spec «usuarios» §4, D10). Las
+   * resueltas ya no guardan PII (CHECK de la 211) y se conservan. Auditoría solo con el conteo.
+   */
+  private async purgePendingUispUsers(tenant: ResolvedTenant, now: Date): Promise<void> {
+    const cutoff = new Date(
+      now.getTime() - MIGRATION_UISP_USERS_PENDING_RETENTION_DAYS * 86_400_000,
+    );
+    await runInTenantSchema(this.dataSource, tenant.schemaName, async (qr) => {
+      const result = (await qr.query(
+        `DELETE FROM migration_uisp_users
+          WHERE tenant_id = $1 AND status = 'PENDIENTE'
+            AND COALESCE(last_fetched_at, created_at) <= $2
+          RETURNING id`,
+        [tenant.tenantId, cutoff],
+      )) as [unknown[], number] | unknown[];
+      const deleted =
+        Array.isArray(result) && typeof result[1] === 'number' ? result[1] : result.length;
+      if (deleted === 0) return;
+      await this.auditService.logWithin(
+        {
+          action: AuditAction.DELETE,
+          entityType: MIGRATION_UISP_USERS_AUDIT_ENTITY,
+          entityId: tenant.tenantId,
+          userId: null,
+          tenantId: tenant.tenantId,
+          schemaName: tenant.schemaName,
+          newValue: { retencion: 'PENDIENTE_30_DIAS', filasBorradas: deleted },
+        },
+        qr.manager,
+      );
+      this.logger.log(
+        `[migration] Usuarios de UISP pendientes purgados por retención (tenant=${tenant.tenantId}, filas=${deleted}).`,
+      );
+    });
   }
 }

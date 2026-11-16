@@ -44,6 +44,10 @@
  * 205, spec MOD14 2026-11-13 bloque A): número de OT, identificadores, nombre y unidad del
  * catálogo de inventario, seriales del equipo (ocultos al leer si el titular está anonimizado o
  * bloqueado sin permiso) y dominios con CHECK. Sin texto libre.
+ * Las once de migration_source_connections y migration_uisp_users son de los usuarios del personal
+ * desde la API de UISP (migración 211, ADR-110 D15): la credencial del ISP y nombre y correo de
+ * empleados (no titulares), cuya purga al resolver la fila exige un CHECK; el resto son códigos y
+ * dominios con CHECK.
  */
 export type TextErasureManifestKind = 'CUBIERTA' | 'EXCLUIDA' | 'PENDIENTE-MOD14';
 
@@ -4020,7 +4024,7 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
     t: 'migration_mappings',
     c: 'external_value',
     k: 'EXCLUIDA',
-    d: 'CATALOGO: valor de catálogo del sistema de origen (plan, método, ciclo, etiqueta), sin vínculo con un titular',
+    d: 'CATALOGO: valor de catálogo del sistema de origen (plan, método, ciclo, etiqueta, número de usuario de UISP), sin vínculo con un titular',
   },
   {
     t: 'migration_mappings',
@@ -4148,6 +4152,73 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
     c: 'promotion_meta',
     k: 'EXCLUIDA',
     d: 'CODIGO: ids y contadores de lo promovido, sin PII; se purga con el lote (ADR-110 D10)',
+  },
+  // ── Usuarios del personal desde la API de UISP (migración 211, ADR-110 D15) ──
+  {
+    t: 'migration_source_connections',
+    c: 'source_system',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado (UISP)',
+  },
+  {
+    t: 'migration_source_connections',
+    c: 'base_url',
+    k: 'EXCLUIDA',
+    d: 'CATALOGO: dirección https de la instancia de UISP del ISP, sin vínculo con un titular',
+  },
+  {
+    t: 'migration_source_connections',
+    c: 'app_key_encrypted',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: credencial cifrada del ISP para leer la API de UISP (inventario K2), sin vínculo con un titular',
+  },
+  {
+    t: 'migration_source_connections',
+    c: 'trusted_certificate_sha256',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: huella hexadecimal del certificado de UISP fijada por el administrador',
+  },
+  {
+    t: 'migration_source_connections',
+    c: 'last_check_result',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado con CHECK (OK|UNREACHABLE|UNAUTHORIZED)',
+  },
+  {
+    t: 'migration_uisp_users',
+    c: 'display_name_encrypted',
+    k: 'EXCLUIDA',
+    d: 'PERSONAL: nombre cifrado de un empleado del ISP (no de un titular); el CHECK de la 211 obliga a purgarlo al resolver la fila',
+  },
+  {
+    t: 'migration_uisp_users',
+    c: 'email_encrypted',
+    k: 'EXCLUIDA',
+    d: 'PERSONAL: correo cifrado de un empleado del ISP (no de un titular); el CHECK de la 211 obliga a purgarlo al resolver la fila',
+  },
+  {
+    t: 'migration_uisp_users',
+    c: 'email_hash',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: HMAC del correo del empleado para la coincidencia; se purga con el correo al resolver la fila',
+  },
+  {
+    t: 'migration_uisp_users',
+    c: 'source',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado con CHECK (API|SIN_DATOS)',
+  },
+  {
+    t: 'migration_uisp_users',
+    c: 'status',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado con CHECK (PENDIENTE|ENLAZADO|CREADO|DESCARTADO)',
+  },
+  {
+    t: 'migration_uisp_users',
+    c: 'proposed_role',
+    k: 'EXCLUIDA',
+    d: 'ENUM: rol de tenant asignable con CHECK (sin SUBSCRIBER, PARTNER ni INVESTOR)',
   },
   {
     t: 'catalog_items',

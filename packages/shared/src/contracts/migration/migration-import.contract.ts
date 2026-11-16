@@ -147,6 +147,11 @@ export const MIGRATION_OBSERVATIONS = [
   'CRUCE_CON_FACTURACION_IWANA',
   /** Titular complementado: UISP trae un dato distinto; se conservó el de iWana. */
   'DATO_DISTINTO_EN_UISP',
+  /**
+   * Números de usuario de UISP del lote sin equivalencia `USUARIO` (o con una que apunta a un
+   * usuario borrado): su historial queda a nombre de quien importa. Solo el conteo, sin nombres.
+   */
+  'USUARIO_UISP_SIN_ENLAZAR',
 ] as const;
 export type MigrationObservation = (typeof MIGRATION_OBSERVATIONS)[number];
 
@@ -164,13 +169,18 @@ export const MIGRATION_FILE_REJECTION_REASONS = [
 ] as const;
 export type MigrationFileRejectionReason = (typeof MIGRATION_FILE_REJECTION_REASONS)[number];
 
-/** `TITULAR`: enlaza un cliente de UISP con un suscriptor existente de iWana (ADR-110 D11). */
+/**
+ * `TITULAR`: enlaza un cliente de UISP con un suscriptor existente de iWana (ADR-110 D11).
+ * `USUARIO`: número de usuario de UISP → id del usuario de iWana (ADR-110 D15); solo `EQUIVALE`
+ * y nunca guarda PII (`externalLabel` siempre `null`).
+ */
 export const MIGRATION_MAPPING_KINDS = [
   'PLAN',
   'METODO_PAGO',
   'CICLO',
   'ETIQUETA',
   'TITULAR',
+  'USUARIO',
 ] as const;
 export type MigrationMappingKind = (typeof MIGRATION_MAPPING_KINDS)[number];
 
@@ -198,6 +208,13 @@ export const MIGRATION_ERROR_CODES = [
   'MIGRATION_BATCH_NOT_REVERTIBLE',
   'MIGRATION_REVERT_BLOCKED',
   'MIGRATION_TITULAR_TARGET_INVALID',
+  // Usuarios del personal por API de UISP (ADR-110 D15).
+  'MIGRATION_SOURCE_UNREACHABLE',
+  'MIGRATION_SOURCE_UNAUTHORIZED',
+  'MIGRATION_SOURCE_NOT_CONFIGURED',
+  'MIGRATION_USER_ROLE_NOT_ALLOWED',
+  'MIGRATION_UISP_USER_NOT_FOUND',
+  'MIGRATION_UISP_USER_ALREADY_RESOLVED',
 ] as const;
 export type MigrationErrorCode = (typeof MIGRATION_ERROR_CODES)[number];
 
@@ -399,7 +416,7 @@ const externalValueSchema = z
 
 const targetRefSchema = z.string().trim().min(1).max(80);
 
-/** Plan, etiqueta y titular: UUID; método de pago: `BILLING_PAYMENT_METHODS`; ciclo: día 1–28 (ADR-102). */
+/** Plan, etiqueta, titular y usuario: UUID; método de pago: `BILLING_PAYMENT_METHODS`; ciclo: día 1–28 (ADR-102). */
 export const MIGRATION_MAPPING_TARGET_FORMAT: Record<MigrationMappingKind, RegExp> = {
   PLAN: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu,
   ETIQUETA: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu,
@@ -407,6 +424,7 @@ export const MIGRATION_MAPPING_TARGET_FORMAT: Record<MigrationMappingKind, RegEx
   METODO_PAGO: new RegExp(`^(${BILLING_PAYMENT_METHODS.join('|')})$`, 'u'),
   CICLO: /^([1-9]|1\d|2[0-8])$/u,
   TITULAR: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu,
+  USUARIO: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu,
 };
 
 export const MigrationMappingCreateSchema = z

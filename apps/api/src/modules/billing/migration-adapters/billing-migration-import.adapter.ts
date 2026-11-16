@@ -4,7 +4,10 @@ import {
   MigrationBillingImportPort,
   type BillingRevertResult,
   type BillingTotals,
+  type ImportedAuthorChange,
+  type ImportedAuthorsRefreshContext,
   type ImportedBillingDocumentInput,
+  type ImportedPaymentAuthor,
   type ImportedPaymentInput,
   type MigrationBatchEntityIds,
   type MigrationReadContext,
@@ -123,11 +126,56 @@ export class BillingMigrationImportAdapter extends MigrationBillingImportPort {
         money(input.amount),
         input.paidAt,
         input.externalId,
-        ctx.actorId,
+        input.createdBy ?? ctx.actorId,
         ctx.batchId,
       ],
     )) as Array<{ id: string }>;
     return rows[0]!.id;
+  }
+
+  /**
+   * «Actualizar autores» (spec «usuarios» §2.7): `created_by` de los pagos de este lote, solo si
+   * sigue a nombre de quien importó. Un registrador cambiado después se respeta y se cuenta.
+   * Las aplicaciones conservan su `created_by` (las registró la promoción).
+   */
+  async refreshImportedPaymentAuthors(
+    ctx: ImportedAuthorsRefreshContext,
+    payments: ImportedPaymentAuthor[],
+  ): Promise<{ payments: number; respected: number; changes: ImportedAuthorChange[] }> {
+    const result = { payments: 0, respected: 0, changes: [] as ImportedAuthorChange[] };
+    if (payments.length === 0) return result;
+    const rows = rowsOf<{ id: string; created_by: string }>(
+      await ctx.manager.query(
+        `SELECT id::text, created_by::text FROM billing_payments
+          WHERE tenant_id = $1 AND import_batch_id = $2 AND id = ANY($3::uuid[])
+          FOR UPDATE`,
+        [ctx.tenantId, ctx.batchId, payments.map((payment) => payment.paymentId)],
+      ),
+    );
+    const current = new Map(rows.map((row) => [row.id, row.created_by]));
+    const importers = new Set(ctx.importerIds);
+    for (const payment of payments) {
+      const createdBy = current.get(payment.paymentId);
+      if (createdBy === undefined || createdBy === payment.createdBy) continue;
+      if (!importers.has(createdBy)) {
+        result.respected += 1;
+        continue;
+      }
+      await ctx.manager.query(
+        `UPDATE billing_payments SET created_by = $4::uuid
+          WHERE id = $1 AND tenant_id = $2 AND import_batch_id = $3`,
+        [payment.paymentId, ctx.tenantId, ctx.batchId, payment.createdBy],
+      );
+      result.payments += 1;
+      result.changes.push({
+        entity: 'PAYMENT',
+        id: payment.paymentId,
+        field: 'created_by',
+        from: createdBy,
+        to: payment.createdBy,
+      });
+    }
+    return result;
   }
 
   async allocateImported(

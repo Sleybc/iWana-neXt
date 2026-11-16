@@ -27,6 +27,7 @@ import {
 import { ensureIdempotencyKey } from '@/lib/idempotency-key';
 import { getAccessProfileDisplayName } from '@/lib/system-vocabulary';
 import {
+  getDefaultOperationalResource,
   getPortalUserRoleLabel,
   getPortalUserStatusLabel,
   PORTAL_USER_STATUSES,
@@ -61,10 +62,6 @@ const editUserSchema = z.object({
 });
 
 type EditUserFormValues = z.infer<typeof editUserSchema>;
-
-function getDefaultOperationalResource(role: string | UserRole | undefined): boolean {
-  return role === UserRole.TECHNICIAN || role === UserRole.CONTRACTOR;
-}
 
 function buildProfileSummary(user: InternalUser): string {
   const name = formatFullName(user.firstName, user.lastName);

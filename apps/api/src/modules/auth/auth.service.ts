@@ -33,6 +33,7 @@ import { isAccountLocked, remainingLockoutMinutes } from '../../common/account-l
 import { MailerService } from '../mailer/mailer.service';
 import { emailVerificationTemplate } from '../mailer/templates/email-verification.template';
 import { forgotPasswordTemplate } from '../mailer/templates/forgot-password.template';
+import { hashOpaqueToken } from '../../common/crypto/hash-opaque-token.util';
 import { passwordResetConfirmTemplate } from '../mailer/templates/password-reset-confirm.template';
 import {
   ChangePasswordDto,
@@ -987,6 +988,11 @@ export class AuthService {
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const user = await qr.manager.findOne(User, { where: { emailHash } });
       if (!user) return; // No revelar si el email existe
+      // S-2: una cuenta PENDING_VERIFICATION no recibe enlace. El alta manual entra con su
+      // contraseña temporal y verifica el correo por su propio flujo; un usuario importado de
+      // UISP solo se activa con la invitación del administrador (spec «usuarios» §2.4, U3).
+      // Misma respuesta que un correo inexistente: no revela el estado.
+      if (user.status === UserStatus.PENDING_VERIFICATION) return;
 
       const token = crypto.randomBytes(32).toString('hex');
       const tokenExpiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS);
@@ -1051,6 +1057,11 @@ export class AuthService {
 
       const newHash = await bcrypt.hash(dto.newPassword, 12);
 
+      // Invitación (spec «usuarios UISP» §2.4): abrir el enlace enviado al correo prueba su
+      // propiedad, así que una cuenta PENDING_VERIFICATION queda verificada y ACTIVE. Solo
+      // desde ese estado: ACTIVE sigue igual e INACTIVE/SUSPENDED nunca se reactivan aquí.
+      const activatesAccount = user.status === UserStatus.PENDING_VERIFICATION;
+
       await qr.manager.update(User, user.id, {
         passwordHash: newHash,
         passwordResetToken: null,
@@ -1059,6 +1070,9 @@ export class AuthService {
         passwordResetExpiresAt: null,
         failedLoginAttempts: 0,
         lockedUntil: null,
+        ...(activatesAccount
+          ? { status: UserStatus.ACTIVE, emailVerified: true, emailVerificationToken: null }
+          : {}),
       });
 
       // Revocar todos los refresh tokens activos del usuario
@@ -1074,6 +1088,9 @@ export class AuthService {
         entityType: 'User',
         entityId: user.id,
         userId: user.id,
+        ...(activatesAccount
+          ? { newValue: { status: UserStatus.ACTIVE, emailVerified: true } }
+          : {}),
       });
     });
 
@@ -1644,7 +1661,7 @@ export class AuthService {
    * Los refresh tokens NUNCA se almacenan en texto plano.
    */
   private hashToken(token: string): string {
-    return crypto.createHash('sha256').update(token).digest('hex');
+    return hashOpaqueToken(token);
   }
 
   /**

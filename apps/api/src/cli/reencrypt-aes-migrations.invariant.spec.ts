@@ -201,6 +201,10 @@ const PII_KEY_CONSUMERS: Readonly<Record<string, readonly string[]>> = {
   // Importación UISP (ADR-110 D2): ZIP en storage (no es columna) y carga útil de intermedias.
   'apps/api/src/modules/migration/migration-crypto.ts': [
     'migration_staging_records.payload_encrypted',
+    // Usuarios del personal desde UISP (ADR-110 D15, migración 211).
+    'migration_source_connections.app_key_encrypted',
+    'migration_uisp_users.display_name_encrypted',
+    'migration_uisp_users.email_encrypted',
   ],
   'apps/api/src/common/crypto/fiscal-document.util.ts': [
     'contracts.fiscal_document_encrypted',

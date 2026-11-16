@@ -318,6 +318,41 @@ describe('MailerService', () => {
         expect(mockSendMail).not.toHaveBeenCalled();
       });
 
+      describe('dominio reservado .invalid (usuarios importados desde UISP)', () => {
+        it.each([
+          ['de un importado sin correo', 'uisp-41@importado.invalid'],
+          ['en mayúsculas', 'UISP-41@IMPORTADO.INVALID'],
+          ['de un subdominio de invalid', 'persona@correo.sub.invalid'],
+        ])('no entrega un correo %s y no lo registra', async (_nombre, to) => {
+          const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+          await expect(service.sendMail({ to, ...contenido })).resolves.toBeUndefined();
+
+          expect(mockSendMail).not.toHaveBeenCalled();
+          expect(warn).toHaveBeenCalledTimes(1);
+          expect(String(warn.mock.calls[0]?.[0])).not.toContain('@');
+          warn.mockRestore();
+        });
+
+        it('en una lista entrega solo a los destinatarios reales', async () => {
+          await service.sendMail({
+            to: 'titular.uno@prueba.co, uisp-7@importado.invalid, titular.dos@prueba.co',
+            ...contenido,
+          });
+
+          expect(mockSendMail).toHaveBeenCalledWith(
+            expect.objectContaining({ to: 'titular.uno@prueba.co, titular.dos@prueba.co' }),
+          );
+        });
+
+        it('no confunde un dominio que solo contiene la palabra invalid', async () => {
+          await service.sendMail({ to: 'a@invalidos.co', ...contenido });
+          expect(mockSendMail).toHaveBeenCalledWith(
+            expect.objectContaining({ to: 'a@invalidos.co' }),
+          );
+        });
+      });
+
       it('no incluye el destinatario en el mensaje de error (PII)', async () => {
         const destinatario = 'pii-ficticio sin-arroba@prueba.co';
         const error = await service

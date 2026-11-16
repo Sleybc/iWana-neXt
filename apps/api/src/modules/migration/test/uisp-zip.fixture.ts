@@ -28,6 +28,12 @@ export interface UispFixtureOptions {
   rootFolder?: string;
   /** Contactos adicionales de UISP, después del principal (`isContact: true`). */
   extraContacts?: Array<Record<string, unknown>>;
+  /** `assignedUserId` del primer ticket (número de usuario de UISP). */
+  ticketAssignedUserId?: number | null;
+  /** `activity` del primer ticket; por defecto, un comentario privado sin usuario. */
+  ticketActivity?: Array<Record<string, unknown>>;
+  /** `userId` de cada pago, en orden (número de usuario de UISP que lo registró). */
+  paymentUserIds?: Array<number | null>;
 }
 
 export const SYNTHETIC_METHOD_ID = '00000000-aaaa-4bbb-8ccc-000000000001';
@@ -175,6 +181,7 @@ export async function buildSyntheticUispZip(options: UispFixtureOptions = {}): P
         currencyCode: 'COP',
         note: null,
         paymentCovers: [{ invoiceId: clientId * 100 + n, amount: 80 }],
+        ...(options.paymentUserIds ? { userId: options.paymentUserIds[n - 1] ?? null } : {}),
       })),
     ),
   );
@@ -189,7 +196,12 @@ export async function buildSyntheticUispZip(options: UispFixtureOptions = {}): P
         public: true,
         createdAt: '2023-03-01T00:00:00-0500',
         assignedJobIds: [71, 72, 73],
-        activity: [{ id: 1, public: false, comment: { body: 'Comentario sintético' } }],
+        ...(options.ticketAssignedUserId !== undefined
+          ? { assignedUserId: options.ticketAssignedUserId }
+          : {}),
+        activity: options.ticketActivity ?? [
+          { id: 1, public: false, comment: { body: 'Comentario sintético' } },
+        ],
       },
       {
         id: clientId * 10_000 + 2,

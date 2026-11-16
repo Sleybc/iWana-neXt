@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { isEmail } from 'class-validator';
 import { createTransport, Transporter } from 'nodemailer';
 import { MailOptions } from './interfaces/mail-options.interface';
+import { isReservedRecipient } from './reserved-recipient';
 
 /** Longitud maxima de una direccion de correo (RFC 5321). */
 const MAX_RECIPIENT_LENGTH = 254;
@@ -102,6 +103,15 @@ export class MailerService {
       throw new Error('Destinatario de correo inválido');
     }
 
+    // Dominio reservado `.invalid` (usuarios importados sin correo propio): nunca se entrega.
+    const recipients = options.to.split(',').map((direccion) => direccion.trim());
+    const deliverable = recipients.filter((direccion) => !isReservedRecipient(direccion));
+    if (deliverable.length === 0) {
+      this.logger.warn(`Envío omitido: destinatario de dominio reservado (.invalid).`);
+      return;
+    }
+    const to = deliverable.length === recipients.length ? options.to : deliverable.join(', ');
+
     if (this.devMode) {
       // En desarrollo: no exponer destinatarios ni contenido, que puede incluir
       // enlaces de recuperación o tokens de un solo uso.
@@ -118,7 +128,7 @@ export class MailerService {
     }
     await this.transporter.sendMail({
       from: this.fromAddress,
-      to: options.to,
+      to,
       subject: options.subject,
       html: options.html,
       text: options.text,

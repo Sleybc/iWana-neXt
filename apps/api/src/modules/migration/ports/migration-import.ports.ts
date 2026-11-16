@@ -292,6 +292,37 @@ export interface ImportedPaymentInput {
   method: BillingPaymentMethod;
   amount: number;
   paidAt: string;
+  /**
+   * Registrador por la equivalencia `USUARIO` de `payments[].userId` (spec «usuarios» §2.6).
+   * `null` o ausente: quien importa (`ctx.actorId`).
+   */
+  createdBy?: string | null;
+}
+
+/** Registrador esperado de un pago importado del lote («Actualizar autores», spec §2.7). */
+export interface ImportedPaymentAuthor {
+  paymentId: string;
+  createdBy: string;
+}
+
+/**
+ * Una columna re-atribuida por «Actualizar autores» (S-4): solo ids de fila y de usuario, sin
+ * PII. La migración la audita fila por fila en la misma transacción.
+ */
+export interface ImportedAuthorChange {
+  entity: 'TICKET' | 'TICKET_COMMENT' | 'PAYMENT';
+  id: string;
+  field: 'assigned_user_id' | 'created_by_user_id' | 'author_user_id' | 'created_by';
+  from: string | null;
+  to: string;
+}
+
+/**
+ * Re-atribución de lo importado (spec «usuarios» §2.7). `importerIds`: quien creó o promovió el
+ * lote; solo se cambian las filas que aún están a su nombre.
+ */
+export interface ImportedAuthorsRefreshContext extends MigrationWriteContext {
+  importerIds: string[];
 }
 
 export interface BillingTotals {
@@ -368,6 +399,15 @@ export abstract class MigrationBillingImportPort {
     ids: MigrationBatchEntityIds,
   ): Promise<MigrationRevertBlocker[]>;
 
+  /**
+   * Re-atribuye `created_by` de pagos del lote (`import_batch_id = ctx.batchId`) solo donde sigue
+   * siendo quien importó. Idempotente.
+   */
+  abstract refreshImportedPaymentAuthors(
+    ctx: ImportedAuthorsRefreshContext,
+    payments: ImportedPaymentAuthor[],
+  ): Promise<{ payments: number; respected: number; changes: ImportedAuthorChange[] }>;
+
   abstract revertBatch(ctx: MigrationWriteContext): Promise<BillingRevertResult>;
 }
 
@@ -377,6 +417,8 @@ export interface ImportedTicketComment {
   body: string;
   internal: boolean;
   createdAt: string | null;
+  /** Autor por la equivalencia `USUARIO` (spec «usuarios» §2.6); `null`/ausente: quien importa. */
+  authorUserId?: string | null;
 }
 
 export interface ImportedTicketInput {
@@ -387,6 +429,28 @@ export interface ImportedTicketInput {
   status: 'OPEN' | 'PENDING_CUSTOMER' | 'CLOSED';
   createdAt: string | null;
   comments: ImportedTicketComment[];
+  /** Asignado por la equivalencia `USUARIO`; nunca notifica ni emite eventos. */
+  assignedUserId?: string | null;
+  /** Creador = autor del primer comentario si tiene equivalencia; `null`/ausente: quien importa. */
+  createdByUserId?: string | null;
+}
+
+/** Atribución esperada de un ticket importado del lote («Actualizar autores», spec §2.7). */
+export interface ImportedTicketAuthors {
+  ticketId: string;
+  assignedUserId: string | null;
+  createdByUserId: string | null;
+  /** Comentarios del ticket en UISP, en el orden en que se importaron. */
+  comments: Array<{ body: string; createdAt: string | null; authorUserId: string | null }>;
+}
+
+/** Filas cambiadas y respetadas (alguien las cambió después de importar). Solo conteos. */
+export interface ImportedTicketAuthorsResult {
+  tickets: number;
+  comments: number;
+  respected: number;
+  /** Columnas cambiadas, para la auditoría por fila (S-4). */
+  changes: ImportedAuthorChange[];
 }
 
 @Injectable()
@@ -406,6 +470,16 @@ export abstract class MigrationSupportImportPort {
     batchId: string,
     ids: MigrationBatchEntityIds,
   ): Promise<MigrationRevertBlocker[]>;
+
+  /**
+   * Re-atribuye asignado, creador y autores de comentarios de tickets del lote
+   * (`import_batch_id = ctx.batchId`) solo donde el valor sigue siendo el importado. Sin eventos
+   * ni notificaciones. Idempotente.
+   */
+  abstract refreshImportedAuthors(
+    ctx: ImportedAuthorsRefreshContext,
+    tickets: ImportedTicketAuthors[],
+  ): Promise<ImportedTicketAuthorsResult>;
 
   abstract revertBatch(ctx: MigrationWriteContext): Promise<{ tickets: number }>;
 }

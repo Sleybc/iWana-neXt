@@ -61,7 +61,8 @@ function assertTarget(
   action: MigrationMapping['action'],
   targetRef: string | null | undefined,
 ): void {
-  if (migrationMappingTargetError(kind, action, targetRef)) {
+  // `USUARIO` solo lo crean «Enlazar» y «Crear» de usuarios de UISP (spec «usuarios» §2.5).
+  if (kind === 'USUARIO' || migrationMappingTargetError(kind, action, targetRef)) {
     throw new BadRequestException({
       code: 'MIGRATION_MAPPING_TARGET_INVALID',
       message:
@@ -222,6 +223,15 @@ export class MigrationMappingsService {
 
   async remove(scope: MigrationTenantScope, id: string, actorId: string): Promise<void> {
     await runInTenantSchema(this.dataSource, scope.schemaName, async (qr) => {
+      const [current] = (await qr.query(
+        `SELECT ${COLUMNS} FROM migration_mappings WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
+        [id, scope.tenantId],
+      )) as MappingRow[];
+      if (!current) throw notFound();
+      // `USUARIO` lo gestiona solo la revisión de usuarios de UISP (spec «usuarios» §2.5): el
+      // endpoint genérico tampoco lo retira, igual que no lo crea ni lo reapunta.
+      if (current.kind === 'USUARIO')
+        assertTarget(current.kind, current.action, current.target_ref);
       const [row] = returningRows(
         await qr.query(
           `DELETE FROM migration_mappings WHERE id = $1 AND tenant_id = $2 RETURNING ${COLUMNS}`,

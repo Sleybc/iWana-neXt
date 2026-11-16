@@ -190,6 +190,9 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
     contractSnapshot: 'synthetic-contract-snapshot',
     contractSigner: 'synthetic-contract-signer',
     stagingPayload: 'synthetic-staging-payload',
+    uispAppKey: 'synthetic-uisp-app-key',
+    uispUserName: 'synthetic-uisp-user-name',
+    uispUserEmail: 'synthetic-uisp-user-email',
   } as const;
 
   async function seedFixture(): Promise<void> {
@@ -366,6 +369,25 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
         (tenant_id, batch_id, entity, external_id, payload_encrypted)
        VALUES ($1, $2, 'SUSCRIPTOR', 'uisp:client:1', $3)`,
       [tenantId, importBatchId, encryptLegacy(synthetic.stagingPayload)],
+    );
+    // Usuarios del personal desde UISP (211, ADR-110 D15): clave de UISP, nombre y correo.
+    await dataSource.query(
+      `INSERT INTO ${q}.migration_source_connections
+        (tenant_id, source_system, base_url, app_key_encrypted, created_by)
+       VALUES ($1, 'UISP', 'https://uisp.example.test', $2, $3)`,
+      [tenantId, encryptLegacy(synthetic.uispAppKey), actorId],
+    );
+    await dataSource.query(
+      `INSERT INTO ${q}.migration_uisp_users
+        (tenant_id, uisp_user_id, display_name_encrypted, email_encrypted, email_hash,
+         is_active_in_uisp, source)
+       VALUES ($1, 7, $2, $3, $4, true, 'API')`,
+      [
+        tenantId,
+        encryptLegacy(synthetic.uispUserName),
+        encryptLegacy(synthetic.uispUserEmail),
+        'd'.repeat(64),
+      ],
     );
     await dataSource.query(
       `INSERT INTO ${q}.users (id, email, password_hash, role, tenant_id, email_hmac, mfa_secret)
@@ -939,7 +961,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
       keys,
     });
     expect(dryRun.hasBlockingIssues).toBe(false);
-    expect(dryRun.totals.reencrypted).toBe(25);
+    expect(dryRun.totals.reencrypted).toBe(28);
     expect(dryRun.totals.nonCiphertext).toBe(0);
     expect(
       dryRun.targets.filter((metric) => metric.candidates === 0).map((m) => m.entityType),
@@ -971,7 +993,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
       keys,
     });
     expect(apply.hasBlockingIssues).toBe(false);
-    expect(apply.totals.reencrypted).toBe(25);
+    expect(apply.totals.reencrypted).toBe(28);
 
     const repeated = await runMfaToPii(db, {
       mode: 'apply',
@@ -1063,6 +1085,9 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
       UNION ALL SELECT 'contract_signer', id, signer_encrypted FROM ${quoteIdentifier(schemaName)}.contract_signatures
       UNION ALL SELECT 'request', id, requester_name_encrypted FROM ${quoteIdentifier(schemaName)}.data_subject_requests
       UNION ALL SELECT 'staging', id, payload_encrypted FROM ${quoteIdentifier(schemaName)}.migration_staging_records
+      UNION ALL SELECT 'uisp_app_key', id, app_key_encrypted FROM ${quoteIdentifier(schemaName)}.migration_source_connections
+      UNION ALL SELECT 'uisp_user_name', id, display_name_encrypted FROM ${quoteIdentifier(schemaName)}.migration_uisp_users
+      UNION ALL SELECT 'uisp_user_email', id, email_encrypted FROM ${quoteIdentifier(schemaName)}.migration_uisp_users
     `);
     expect(allPiiRows.length).toBeGreaterThan(0);
     expect(JSON.stringify(allPiiRows)).not.toContain('synthetic-');

@@ -28,6 +28,10 @@ describe('MigrationImportProcessor', () => {
     promote: jest.fn().mockResolvedValue('CONCILIADO'),
     markFailed: jest.fn().mockResolvedValue(undefined),
   };
+  const uispUsers = {
+    fetch: jest.fn().mockResolvedValue({}),
+    recordFetchFailure: jest.fn().mockResolvedValue(undefined),
+  };
   const dataSource = { query: jest.fn() };
   const processor = new MigrationImportProcessor(
     dataSource as never,
@@ -35,6 +39,7 @@ describe('MigrationImportProcessor', () => {
     simulation as unknown as MigrationSimulationService,
     purge as unknown as MigrationPurgeService,
     promotion as never,
+    uispUsers as never,
   );
 
   beforeEach(() => jest.clearAllMocks());
@@ -176,6 +181,96 @@ describe('MigrationImportProcessor', () => {
 
   it('ignora jobs desconocidos', async () => {
     await expect(processor.process(job('otro', {}))).resolves.toBeUndefined();
+  });
+
+  describe('lectura de usuarios de UISP (ADR-110 D15)', () => {
+    const actorId = '69000000-0000-4000-8000-000000000003';
+
+    it('resuelve el tenant y ejecuta la lectura con el actor del payload', async () => {
+      await processor.process(job('fetch-uisp-users', { version: 1, tenantId, actorId }));
+
+      expect(simulation.resolveTenant).toHaveBeenCalledWith(tenantId);
+      expect(uispUsers.fetch).toHaveBeenCalledWith({ tenantId, schemaName: 'tenant_x' }, actorId);
+    });
+
+    it('un payload con más que ids es irrecuperable y no lee nada', async () => {
+      await expect(
+        processor.process(
+          job('fetch-uisp-users', { version: 1, tenantId, actorId, appKey: 'secreta' }),
+        ),
+      ).rejects.toBeInstanceOf(UnrecoverableError);
+      expect(uispUsers.fetch).not.toHaveBeenCalled();
+    });
+
+    it('un error permanente (clave rechazada) no se reintenta', async () => {
+      uispUsers.fetch.mockRejectedValueOnce(
+        new MigrationPermanentError('MIGRATION_SOURCE_UNAUTHORIZED'),
+      );
+
+      await expect(
+        processor.process(job('fetch-uisp-users', { version: 1, tenantId, actorId })),
+      ).rejects.toBeInstanceOf(UnrecoverableError);
+    });
+
+    it('un error transitorio se propaga para que BullMQ reintente', async () => {
+      uispUsers.fetch.mockRejectedValueOnce(new Error('pool agotado'));
+
+      const error = await processor
+        .process(job('fetch-uisp-users', { version: 1, tenantId, actorId }))
+        .catch((caught: unknown) => caught);
+
+      expect(error).not.toBeInstanceOf(UnrecoverableError);
+      // Quedan reintentos: todavía no se registra el fallo (el portal sigue esperando).
+      expect(uispUsers.recordFetchFailure).not.toHaveBeenCalled();
+    });
+
+    it('en el último intento registra el fallo para que el portal deje de sondear', async () => {
+      const failure = new Error('pool agotado');
+      uispUsers.fetch.mockRejectedValueOnce(failure);
+
+      await expect(
+        processor.process(job('fetch-uisp-users', { version: 1, tenantId, actorId }, 2, 3)),
+      ).rejects.not.toBeInstanceOf(UnrecoverableError);
+      expect(uispUsers.recordFetchFailure).toHaveBeenCalledWith(
+        { tenantId, schemaName: 'tenant_x' },
+        actorId,
+        failure,
+      );
+    });
+
+    it('un error permanente también pasa por el registro del fallo', async () => {
+      const failure = new MigrationPermanentError('MIGRATION_SOURCE_NOT_CONFIGURED');
+      uispUsers.fetch.mockRejectedValueOnce(failure);
+
+      await expect(
+        processor.process(job('fetch-uisp-users', { version: 1, tenantId, actorId })),
+      ).rejects.toBeInstanceOf(UnrecoverableError);
+      expect(uispUsers.recordFetchFailure).toHaveBeenCalledWith(
+        { tenantId, schemaName: 'tenant_x' },
+        actorId,
+        failure,
+      );
+    });
+
+    it('si registrar el fallo falla, se conserva el error original', async () => {
+      const failure = new Error('pool agotado');
+      uispUsers.fetch.mockRejectedValueOnce(failure);
+      uispUsers.recordFetchFailure.mockRejectedValueOnce(new Error('sin base'));
+
+      await expect(
+        processor.process(job('fetch-uisp-users', { version: 1, tenantId, actorId }, 2, 3)),
+      ).rejects.not.toBeInstanceOf(UnrecoverableError);
+    });
+
+    it('sin tenant resuelto no intenta registrar nada', async () => {
+      simulation.resolveTenant.mockRejectedValueOnce(
+        new MigrationPermanentError('MIGRATION_BATCH_NOT_FOUND'),
+      );
+      await expect(
+        processor.process(job('fetch-uisp-users', { version: 1, tenantId, actorId })),
+      ).rejects.toBeInstanceOf(UnrecoverableError);
+      expect(uispUsers.recordFetchFailure).not.toHaveBeenCalled();
+    });
   });
 });
 

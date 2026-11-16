@@ -10,6 +10,8 @@ import {
   MIGRATION_IMPORT_PURGE_TENANT_JOB,
   MIGRATION_IMPORT_QUEUE,
   MIGRATION_IMPORT_SIMULATE_JOB,
+  MIGRATION_IMPORT_FETCH_UISP_USERS_JOB,
+  MigrationFetchUispUsersJobSchema,
   MigrationPromoteJobSchema,
   MigrationPurgeTenantJobSchema,
   MigrationSimulateJobSchema,
@@ -17,6 +19,7 @@ import {
 } from '@iwana/shared';
 import { SanitizeFailedReason } from '../../common/sanitize-failed-reason.decorator';
 import {
+  MIGRATION_FETCH_UISP_USERS_ATTEMPTS,
   MIGRATION_PURGE_ATTEMPTS,
   MIGRATION_PURGE_BATCH_SIZE,
   MIGRATION_PURGE_CRON_PATTERN,
@@ -29,6 +32,7 @@ import {
   MigrationPromotionService,
 } from './migration-promotion.service';
 import { MigrationPurgeService } from './migration-purge.service';
+import { MigrationUispUsersService } from './migration-uisp-users.service';
 import {
   MigrationPermanentError,
   MigrationSimulationService,
@@ -50,6 +54,7 @@ export class MigrationImportProcessor extends WorkerHost implements OnApplicatio
     private readonly simulation: MigrationSimulationService,
     private readonly purge: MigrationPurgeService,
     private readonly promotion: MigrationPromotionService,
+    private readonly uispUsers: MigrationUispUsersService,
   ) {
     super();
   }
@@ -72,6 +77,8 @@ export class MigrationImportProcessor extends WorkerHost implements OnApplicatio
         return this.processSimulation(job);
       case MIGRATION_IMPORT_PROMOTE_JOB:
         return this.processPromotion(job);
+      case MIGRATION_IMPORT_FETCH_UISP_USERS_JOB:
+        return this.processFetchUispUsers(job);
       case MIGRATION_IMPORT_PURGE_SWEEP_JOB:
         return this.enqueueTenants();
       case MIGRATION_IMPORT_PURGE_TENANT_JOB:
@@ -111,6 +118,33 @@ export class MigrationImportProcessor extends WorkerHost implements OnApplicatio
       const permanent = error instanceof MigrationPermanentError;
       if (permanent || lastAttempt) {
         await this.promotion.markFailed(tenantId, batchId).catch(() => undefined);
+      }
+      if (permanent) throw new UnrecoverableError(error.code);
+      throw error;
+    }
+  }
+
+  /**
+   * Lectura de `users/admins` de UISP (ADR-110 D15): payload solo de ids, sin la clave. Si falla
+   * de forma definitiva (permanente o último intento), el servicio deja constancia en la
+   * conexión para que el portal deje de sondear; ese registro nunca tapa el error original.
+   */
+  private async processFetchUispUsers(job: Job<unknown>): Promise<void> {
+    const parsed = MigrationFetchUispUsersJobSchema.safeParse(job.data);
+    if (!parsed.success) throw new UnrecoverableError('Payload de lectura de usuarios inválido.');
+    const attempts = job.opts.attempts ?? MIGRATION_FETCH_UISP_USERS_ATTEMPTS;
+    const lastAttempt = job.attemptsMade + 1 >= attempts;
+    let scope: { tenantId: string; schemaName: string } | null = null;
+    try {
+      const tenant = await this.simulation.resolveTenant(parsed.data.tenantId);
+      scope = { tenantId: tenant.tenantId, schemaName: tenant.schemaName };
+      await this.uispUsers.fetch(scope, parsed.data.actorId);
+    } catch (error) {
+      const permanent = error instanceof MigrationPermanentError;
+      if (scope && (permanent || lastAttempt)) {
+        await this.uispUsers
+          .recordFetchFailure(scope, parsed.data.actorId, error)
+          .catch(() => undefined);
       }
       if (permanent) throw new UnrecoverableError(error.code);
       throw error;

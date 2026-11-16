@@ -71,6 +71,14 @@ export function getPortalUserRoleLabel(role: string): string {
 }
 
 /**
+ * Sugerencia de «aparece en Programación» según la categoría base: técnicos de campo y
+ * contratistas sí; el resto no. La usan el alta, la edición y la creación desde UISP.
+ */
+export function getDefaultOperationalResource(role: string | UserRole | '' | undefined): boolean {
+  return role === UserRole.TECHNICIAN || role === UserRole.CONTRACTOR;
+}
+
+/**
  * Resuelve un rol de CSV: acepta enum (`ADMIN`) o etiqueta amigable (`Administrador`).
  * Devuelve `null` si no hay coincidencia con `UserRole`.
  */

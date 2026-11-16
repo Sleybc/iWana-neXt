@@ -23,7 +23,7 @@ import type {
   AccessProfileView,
   CreateInternalUserDto,
 } from '@/lib/api-client';
-import { getPortalUserRoleLabel } from '@/lib/user-labels';
+import { getDefaultOperationalResource, getPortalUserRoleLabel } from '@/lib/user-labels';
 import {
   PortalAlert,
   portalFieldClassName,
@@ -46,10 +46,6 @@ const createUserSchema = z.object({
 });
 
 type CreateUserFormValues = z.infer<typeof createUserSchema>;
-
-function getDefaultOperationalResource(role: string | UserRole | ''): boolean {
-  return role === UserRole.TECHNICIAN || role === UserRole.CONTRACTOR;
-}
 
 interface CreateUserModalProps {
   isOpen: boolean;

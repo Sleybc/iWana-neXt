@@ -34,7 +34,12 @@ import {
 } from '../../common/crypto/aes-gcm.util';
 import { hmacPii, resolvePiiHashKey } from '../../common/crypto/pii-hash-key.util';
 import { MigrationTitularErasureParticipant } from './privacy/migration-titular-erasure.participant';
-import { SYNTHETIC_METHOD_ID, buildSyntheticUispZip } from './test/uisp-zip.fixture';
+import {
+  SYNTHETIC_METHOD_ID,
+  buildSyntheticUispZip,
+  type UispFixtureOptions,
+} from './test/uisp-zip.fixture';
+import { UsersMigrationDirectoryAdapter } from '../users/migration-adapters/users-migration-directory.adapter';
 
 /**
  * Bloque C contra PostgreSQL real (ADR-110 D3, D5–D7, D13; spec CA-2, CA-3, CA-4, CA-6): el
@@ -126,7 +131,11 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
   });
   const documentFor = (offset: number) => String(1_000_000_000 + run * 10 + offset);
 
-  async function simulatedBatch(clientIds: number[], methods: string[] = []): Promise<string> {
+  async function simulatedBatch(
+    clientIds: number[],
+    methods: string[] = [],
+    extra: UispFixtureOptions = {},
+  ): Promise<string> {
     const files = [];
     for (const [index, clientId] of clientIds.entries()) {
       files.push(
@@ -138,6 +147,7 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
             tagIds: [tagExternal],
             cycleDay,
             methodId: methods[index] ?? methodId,
+            ...extra,
           }),
           `${clientId}.zip`,
         ),
@@ -263,6 +273,7 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
       support,
       tags,
       audit as never,
+      new UsersMigrationDirectoryAdapter(),
     );
     reversion = new MigrationRevertService(
       ds,
@@ -1317,6 +1328,307 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
     await sql(`UPDATE migration_batches SET purged_at = now() WHERE id = $1`, [summary.id]);
     await expect(promotion.requestPromotion(scope(), summary.id, actorId)).rejects.toMatchObject({
       response: { code: 'MIGRATION_BATCH_PURGED' },
+    });
+    // «Actualizar autores» solo en lotes promovidos o conciliados con intermedias.
+    await expect(promotion.refreshAuthors(scope(), summary.id, actorId)).rejects.toMatchObject({
+      response: { code: 'MIGRATION_BATCH_PURGED' },
+    });
+    await sql(`UPDATE migration_batches SET purged_at = NULL WHERE id = $1`, [summary.id]);
+    await expect(promotion.refreshAuthors(scope(), summary.id, actorId)).rejects.toMatchObject({
+      response: { code: 'MIGRATION_BATCH_NOT_RECONCILABLE' },
+    });
+    await expect(promotion.refreshAuthors(scope(), randomUUID(), actorId)).rejects.toMatchObject({
+      response: { code: 'MIGRATION_BATCH_NOT_FOUND' },
+    });
+  });
+
+  describe('spec 2026-11-15 «usuarios» §2.6–§2.8: atribución al personal de iWana', () => {
+    const userIds: string[] = [];
+    // Números de UISP únicos por corrida (enteros que caben en integer).
+    const uisp = (offset: number) => run * 100 + offset;
+    const T1 = '2023-03-01T08:00:00-0500';
+    const T2 = '2023-03-02T09:30:00-0500';
+
+    async function seedUser(): Promise<string> {
+      const id = randomUUID();
+      await sql(
+        `INSERT INTO users (
+           id, email, email_hmac, password_hash, role, status, tenant_id,
+           mfa_enabled, mfa_required, is_operational_resource,
+           password_reset_required, failed_login_attempts, locked_until,
+           email_verified, created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, 'SUPPORT', 'ACTIVE', $5,
+                   false, false, false, false, 0, NULL, false, now(), now())`,
+        [
+          id,
+          `uisp-attr-${id.slice(0, 8)}@example.invalid`,
+          createHash('sha256').update(id).digest('hex'),
+          '!'.repeat(60),
+          tenantId,
+        ],
+      );
+      userIds.push(id);
+      return id;
+    }
+
+    const linkUser = (number: number, userId: string) =>
+      sql(
+        `INSERT INTO migration_mappings
+           (tenant_id, source_system, kind, external_value, action, target_ref, created_by)
+         VALUES ($1, 'UISP', 'USUARIO', $2, 'EQUIVALE', $3, $4)`,
+        [tenantId, String(number), userId, actorId],
+      );
+
+    async function ticketState(batchId: string) {
+      const [ticket] = await sql<{ id: string; assigned: string | null; created_by: string }>(
+        `SELECT id::text, assigned_user_id::text AS assigned, created_by_user_id::text AS created_by
+           FROM support_tickets WHERE import_batch_id = $1 AND subject = 'Ticket sintético con tareas'`,
+        [batchId],
+      );
+      const comments = await sql<{ body: string; author: string }>(
+        `SELECT body, author_user_id::text AS author FROM ticket_comments
+          WHERE ticket_id = $1 ORDER BY body`,
+        [ticket!.id],
+      );
+      const payments = await sql<{ external_id: string; created_by: string }>(
+        `SELECT external_id, created_by::text FROM billing_payments
+          WHERE import_batch_id = $1 ORDER BY external_id`,
+        [batchId],
+      );
+      return {
+        ticket: ticket!,
+        authors: Object.fromEntries(comments.map((c) => [c.body, c.author])),
+        payments: payments.map((p) => p.created_by),
+      };
+    }
+
+    async function unlinkedObservation(batchId: string): Promise<number | undefined> {
+      const [row] = await sql<{ n: number | null }>(
+        `SELECT (counts->'observaciones'->>'USUARIO_UISP_SIN_ENLAZAR')::int AS n
+           FROM migration_batches WHERE id = $1`,
+        [batchId],
+      );
+      return row?.n ?? undefined;
+    }
+
+    afterAll(async () => {
+      if (!ds?.isInitialized || userIds.length === 0) return;
+      await sql(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [userIds]);
+    });
+
+    it('promueve con asignado, autores, creador y registrador enlazados; cuenta los no enlazados', async () => {
+      const ana = await seedUser();
+      const luis = await seedUser();
+      const deleted = await seedUser();
+      await sql(`UPDATE users SET deleted_at = now() WHERE id = $1`, [deleted]);
+      await linkUser(uisp(1), ana);
+      await linkUser(uisp(2), luis);
+      await linkUser(uisp(3), deleted);
+      const batchId = await simulatedBatch([run * 10 + 20], [], {
+        ticketAssignedUserId: uisp(2),
+        ticketActivity: [
+          { id: 1, userId: uisp(1), public: true, createdAt: T1, comment: { body: 'Abre' } },
+          { id: 2, userId: uisp(4), public: false, comment: { body: 'Sin enlazar' } },
+          { id: 3, userId: uisp(3), public: true, createdAt: T2, comment: { body: 'Borrado' } },
+        ],
+        paymentUserIds: [uisp(2), uisp(4)],
+      });
+      await expect(promoteNow(batchId)).resolves.toBe('CONCILIADO');
+
+      const state = await ticketState(batchId);
+      expect(state.ticket.assigned).toBe(luis);
+      expect(state.ticket.created_by).toBe(ana);
+      expect(state.authors).toEqual({ Abre: ana, 'Sin enlazar': actorId, Borrado: actorId });
+      expect(state.payments).toEqual([luis, actorId]);
+      const [other] = await sql<{ assigned: string | null; created_by: string }>(
+        `SELECT assigned_user_id::text AS assigned, created_by_user_id::text AS created_by
+           FROM support_tickets WHERE import_batch_id = $1 AND subject = 'Ticket sintético sin tareas'`,
+        [batchId],
+      );
+      expect(other).toEqual({ assigned: null, created_by: actorId });
+      // uisp(3) apunta a un usuario borrado y uisp(4) no tiene equivalencia.
+      expect(await unlinkedObservation(batchId)).toBe(2);
+      const report = MigrationBatchReportSchema.parse(await batches.getReport(scope(), batchId));
+      expect(report.counts?.observaciones).toMatchObject({ USUARIO_UISP_SIN_ENLAZAR: 2 });
+      expect(JSON.stringify(report.counts)).not.toContain(String(uisp(4)));
+    });
+
+    it('sin equivalencias queda como hoy; «Actualizar autores» corrige, respeta y es idempotente', async () => {
+      const ana = await seedUser();
+      const luis = await seedUser();
+      const someone = await seedUser();
+      const batchId = await simulatedBatch([run * 10 + 21], [], {
+        ticketAssignedUserId: uisp(12),
+        ticketActivity: [
+          { id: 1, userId: uisp(11), public: true, createdAt: T1, comment: { body: 'Abre' } },
+          { id: 2, userId: uisp(13), public: false, comment: { body: 'Otro' } },
+          { id: 3, userId: null, public: true, createdAt: T2, comment: { body: 'Cliente' } },
+        ],
+        paymentUserIds: [uisp(12), uisp(11)],
+      });
+      await expect(promoteNow(batchId)).resolves.toBe('CONCILIADO');
+      const before = await ticketState(batchId);
+      expect(before.ticket).toMatchObject({ assigned: null, created_by: actorId });
+      expect(before.authors).toEqual({ Abre: actorId, Otro: actorId, Cliente: actorId });
+      expect(before.payments).toEqual([actorId, actorId]);
+      expect(await unlinkedObservation(batchId)).toBe(3);
+
+      // Sin equivalencias todavía: no cambia nada.
+      await expect(promotion.refreshAuthors(scope(), batchId, actorId)).resolves.toEqual({
+        tickets: 0,
+        comentarios: 0,
+        pagos: 0,
+        respetados: 0,
+        sinEnlazar: 3,
+      });
+
+      await linkUser(uisp(11), ana);
+      await linkUser(uisp(12), luis);
+      await linkUser(uisp(13), luis);
+      // Alguien lo asignó a mano después de importar: se respeta.
+      await sql(`UPDATE support_tickets SET assigned_user_id = $2 WHERE id = $1`, [
+        before.ticket.id,
+        someone,
+      ]);
+
+      await expect(promotion.refreshAuthors(scope(), batchId, actorId)).resolves.toEqual({
+        tickets: 1,
+        comentarios: 2,
+        pagos: 2,
+        respetados: 1,
+        sinEnlazar: 0,
+      });
+      const after = await ticketState(batchId);
+      expect(after.ticket).toMatchObject({ assigned: someone, created_by: ana });
+      expect(after.authors).toEqual({ Abre: ana, Otro: luis, Cliente: actorId });
+      expect(after.payments).toEqual([luis, ana]);
+      expect(await unlinkedObservation(batchId)).toBeUndefined();
+
+      // Repetir no cambia nada nuevo y vuelve a contar lo respetado.
+      await expect(promotion.refreshAuthors(scope(), batchId, actorId)).resolves.toEqual({
+        tickets: 0,
+        comentarios: 0,
+        pagos: 0,
+        respetados: 1,
+        sinEnlazar: 0,
+      });
+      expect(await ticketState(batchId)).toEqual(after);
+
+      // §2.8: revertir el lote retira lo importado pero no borra usuarios.
+      await reversion.revert(scope(), batchId, actorId);
+      const [left] = await sql<{ n: number }>(
+        `SELECT COUNT(*)::int AS n FROM users WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`,
+        [[ana, luis, someone]],
+      );
+      expect(left!.n).toBe(3);
+      const [mappings] = await sql<{ n: number }>(
+        `SELECT COUNT(*)::int AS n FROM migration_mappings
+          WHERE tenant_id = $1 AND kind = 'USUARIO' AND external_value = ANY($2::varchar[])`,
+        [tenantId, [String(uisp(11)), String(uisp(12)), String(uisp(13))]],
+      );
+      expect(mappings!.n).toBe(3);
+    });
+
+    it('«Actualizar autores» respeta cambios manuales en creador, autor de comentario y registrador, y audita cada fila', async () => {
+      const ana = await seedUser();
+      const luis = await seedUser();
+      const someone = await seedUser();
+      const batchId = await simulatedBatch([run * 10 + 22], [], {
+        ticketAssignedUserId: uisp(22),
+        ticketActivity: [
+          { id: 1, userId: uisp(21), public: true, createdAt: T1, comment: { body: 'Abre' } },
+          { id: 2, userId: uisp(23), public: false, comment: { body: 'Otro' } },
+        ],
+        paymentUserIds: [uisp(22), uisp(21)],
+      });
+      await expect(promoteNow(batchId)).resolves.toBe('CONCILIADO');
+      const before = await ticketState(batchId);
+      expect(before.ticket).toMatchObject({ assigned: null, created_by: actorId });
+      expect(before.authors).toEqual({ Abre: actorId, Otro: actorId });
+      expect(before.payments).toEqual([actorId, actorId]);
+
+      await linkUser(uisp(21), ana);
+      await linkUser(uisp(22), luis);
+      await linkUser(uisp(23), luis);
+      // Cambios manuales posteriores a la importación, uno por columna re-atribuible.
+      await sql(`UPDATE support_tickets SET created_by_user_id = $2 WHERE id = $1`, [
+        before.ticket.id,
+        someone,
+      ]);
+      await sql(
+        `UPDATE ticket_comments SET author_user_id = $2 WHERE ticket_id = $1 AND body = 'Otro'`,
+        [before.ticket.id, someone],
+      );
+      const [firstPayment] = await sql<{ id: string }>(
+        `SELECT id::text FROM billing_payments WHERE import_batch_id = $1 ORDER BY external_id LIMIT 1`,
+        [batchId],
+      );
+      await sql(`UPDATE billing_payments SET created_by = $2 WHERE id = $1`, [
+        firstPayment!.id,
+        someone,
+      ]);
+      audit.logWithin.mockClear();
+
+      await expect(promotion.refreshAuthors(scope(), batchId, actorId)).resolves.toEqual({
+        tickets: 1,
+        comentarios: 1,
+        pagos: 1,
+        respetados: 3,
+        sinEnlazar: 0,
+      });
+      const after = await ticketState(batchId);
+      // Asignado vacío se completa; creador, comentario «Otro» y primer pago se respetan.
+      expect(after.ticket).toMatchObject({ assigned: luis, created_by: someone });
+      expect(after.authors).toEqual({ Abre: ana, Otro: someone });
+      expect(after.payments).toEqual([someone, ana]);
+
+      // S-4: una entrada de auditoría por fila cambiada, con ids de usuario y sin PII.
+      const rowEntries = audit.logWithin.mock.calls
+        .map(
+          ([entry]) =>
+            entry as { entityType: string; entityId: string; oldValue: unknown; newValue: unknown },
+        )
+        .filter((entry) => entry.entityType !== 'MigrationBatch');
+      expect(rowEntries).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            entityType: 'SupportTicket',
+            entityId: before.ticket.id,
+            oldValue: { assigned_user_id: null },
+            newValue: expect.objectContaining({
+              assigned_user_id: luis,
+              origen: 'ACTUALIZAR_AUTORES',
+              batchId,
+            }),
+          }),
+          expect.objectContaining({
+            entityType: 'TicketComment',
+            oldValue: { author_user_id: actorId },
+            newValue: expect.objectContaining({ author_user_id: ana }),
+          }),
+          expect.objectContaining({
+            entityType: 'BillingPayment',
+            oldValue: { created_by: actorId },
+            newValue: expect.objectContaining({ created_by: ana }),
+          }),
+        ]),
+      );
+      expect(rowEntries).toHaveLength(3);
+      expect(JSON.stringify(rowEntries)).not.toContain('Abre');
+
+      // Repetir: nada nuevo, ninguna entrada por fila.
+      audit.logWithin.mockClear();
+      await expect(promotion.refreshAuthors(scope(), batchId, actorId)).resolves.toMatchObject({
+        tickets: 0,
+        comentarios: 0,
+        pagos: 0,
+        respetados: 3,
+      });
+      expect(
+        audit.logWithin.mock.calls.filter(
+          ([entry]) => (entry as { entityType: string }).entityType !== 'MigrationBatch',
+        ),
+      ).toHaveLength(0);
     });
   });
 });
