@@ -13,6 +13,7 @@ import {
 } from '@/components/shared/portal-ui';
 import type {
   AssuranceDashboardSummary,
+  BillingDashboardSummary,
   InventoryDashboardSummary,
   WfmDashboardSummary,
 } from '@/lib/api-client';
@@ -27,6 +28,7 @@ import {
   DashboardBars,
   DashboardStackBar,
   DashboardStackLegend,
+  formatDashboardMoneyCompact,
   formatDashboardNumber,
   type DashboardSegment,
 } from './dashboard-visuals';
@@ -61,6 +63,33 @@ export function casePrioritySegments(byPriority: Record<string, number>): Dashbo
     label: getAssuranceTicketPriorityLabel(priority),
     value: byPriority[priority] ?? 0,
     className,
+  }));
+}
+
+/**
+ * Cartera vencida por antigüedad (N1 `overdue.buckets`, siempre los cuatro tramos en orden).
+ * La mora nunca va en lima: los tramos recientes en series neutras y los viejos en advertencia
+ * y error (CA-PA-03).
+ */
+const OVERDUE_BUCKET_SEGMENTS: Record<
+  BillingDashboardSummary['overdue']['buckets'][number]['bucket'],
+  { label: string; className: string }
+> = {
+  '1_30': { label: '1 a 30 días', className: 'bg-(--chart-4)' },
+  '31_60': { label: '31 a 60 días', className: 'bg-(--chart-3)' },
+  '61_90': { label: '61 a 90 días', className: 'bg-amber-500' },
+  '90_plus': { label: 'Más de 90 días', className: 'bg-error-600' },
+};
+
+export function overdueBucketSegments(
+  buckets: BillingDashboardSummary['overdue']['buckets'],
+): DashboardSegment[] {
+  return buckets.map((bucket) => ({
+    key: bucket.bucket,
+    label: OVERDUE_BUCKET_SEGMENTS[bucket.bucket].label,
+    // Texto decimal → número solo para pintar la proporción.
+    value: Number(bucket.amount),
+    className: OVERDUE_BUCKET_SEGMENTS[bucket.bucket].className,
   }));
 }
 
@@ -114,6 +143,7 @@ export interface DashboardAreaCardsProps {
   wfm: DashboardAreaSource<WfmDashboardSummary>;
   /** Conteo por etapa solo de oportunidades en seguimiento. */
   pipeline: DashboardAreaSource<{ openByStatus: Record<string, number>; open: number }>;
+  billing: DashboardAreaSource<BillingDashboardSummary>;
   subscribers: DashboardAreaSource<SubscriberQueueCounts>;
   provisioning: DashboardAreaSource<DashboardProvisioningCounts>;
   inventory: DashboardAreaSource<InventoryDashboardSummary>;
@@ -208,6 +238,33 @@ function resolveAreaContent(id: DashboardAreaId, props: DashboardAreaCardsProps)
           </>
         ),
         footer: null,
+      };
+    }
+    case 'billing': {
+      const overdue = props.billing.data?.overdue;
+      const amount = Number(overdue?.amount ?? 0);
+      const segments = overdue ? overdueBucketSegments(overdue.buckets) : [];
+      return {
+        source: props.billing,
+        sourceId: 'billing-summary',
+        body: (
+          <>
+            <AreaLead
+              figure={formatDashboardMoneyCompact(amount)}
+              caption={amount > 0 ? 'vencidos por antigüedad' : 'sin cartera vencida'}
+            />
+            <DashboardStackBar
+              segments={segments}
+              ariaLabel="Cartera vencida por antigüedad"
+              className="h-2.5"
+              formatValue={formatDashboardMoneyCompact}
+            />
+            <DashboardStackLegend segments={segments} formatValue={formatDashboardMoneyCompact} />
+          </>
+        ),
+        footer: overdue
+          ? `${formatDashboardNumber(overdue.subscriberCount)} ${overdue.subscriberCount === 1 ? 'suscriptor' : 'suscriptores'} en mora · ${formatDashboardNumber(overdue.documentCount)} ${overdue.documentCount === 1 ? 'factura vencida' : 'facturas vencidas'}`
+          : null,
       };
     }
     case 'subscribers': {
@@ -316,7 +373,7 @@ export function DashboardAreaCards(props: DashboardAreaCardsProps) {
   return (
     <section aria-label="Por área" className="space-y-2">
       <p className="portal-eyebrow">Por área</p>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {props.areaIds.map((id) => {
           const health = props.health[id];
           const content = resolveAreaContent(id, props);

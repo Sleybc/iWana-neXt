@@ -14,10 +14,12 @@ import {
   ClipboardList,
   HandCoins,
   LifeBuoy,
+  ReceiptText,
   Timer,
   UserCheck,
   UserRound,
   Users,
+  Wallet,
 } from 'lucide-react';
 
 export type DashboardActionId =
@@ -29,8 +31,21 @@ export type DashboardActionId =
   | 'review-plans-without-price'
   | 'view-profile';
 
-/** `P-1` = base activa de suscriptores (franja de pulso, dirección «Pulso y atención»). */
-export type DashboardMetricId = 'P-1' | 'I-1' | 'I-2' | 'I-3' | 'I-4' | 'I-5' | 'I-6' | 'I-7';
+/**
+ * Celdas de la franja de pulso (dirección «Pulso y atención» §5.1): `P-1` base activa de
+ * suscriptores, `P-2` recaudo del mes y `P-3` cartera vencida (HLD-MOD02 v3.0 §6).
+ */
+export type DashboardMetricId =
+  | 'P-1'
+  | 'P-2'
+  | 'P-3'
+  | 'I-1'
+  | 'I-2'
+  | 'I-3'
+  | 'I-4'
+  | 'I-5'
+  | 'I-6'
+  | 'I-7';
 
 export type DashboardMetricSourceStatus = 'idle' | 'loading' | 'updating' | 'success' | 'error';
 
@@ -70,9 +85,13 @@ export type DashboardAreaId =
   | 'help-desk'
   | 'scheduling'
   | 'opportunities'
+  | 'billing'
   | 'subscribers'
   | 'provisioning'
   | 'inventory';
+
+/** Pestañas del bloque Tendencia (contrato DS de gráficas §6). */
+export type DashboardTrendId = 'subscribers' | 'collections' | 'cases';
 
 export interface DashboardRoleComposition {
   primaryActionId: DashboardActionId;
@@ -83,6 +102,8 @@ export interface DashboardRoleComposition {
   attentionIds: readonly DashboardAttentionId[];
   /** Cards «Por área» (B3). */
   areaIds: readonly DashboardAreaId[];
+  /** Pestañas de Tendencia (B2 izquierda), en el orden en que se ofrecen. */
+  trendIds: readonly DashboardTrendId[];
   /** Chips de navegación: solo roles de ejecución en campo. */
   moduleHealthIds: readonly DashboardModuleHealthId[];
   dominantBlockId: DashboardBlockId | null;
@@ -134,7 +155,13 @@ export type DashboardDataSourceId =
   | 'subscribers'
   | 'cutoff'
   | 'provisioning'
-  | 'replenishment';
+  | 'replenishment'
+  /** N1 · `GET /billing/dashboard/summary`. */
+  | 'billing-summary'
+  /** N2 · `GET /crm/subscribers/dashboard/summary`. */
+  | 'subscribers-summary'
+  /** N3 · `GET /assurance/dashboard/series`. */
+  | 'cases-series';
 
 /**
  * Techo de autorización HLD §5.2 (no composición).
@@ -146,13 +173,14 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
     metricIds: readonly DashboardMetricId[];
     attentionIds: readonly DashboardAttentionId[];
     areaIds: readonly DashboardAreaId[];
+    trendIds: readonly DashboardTrendId[];
     moduleHealthIds: readonly DashboardModuleHealthId[];
     blockIds: readonly DashboardBlockId[];
     actionIds: readonly DashboardActionId[];
   }
 > = {
   [UserRole.ADMIN]: {
-    metricIds: ['P-1', 'I-1', 'I-2', 'I-3', 'I-4', 'I-5', 'I-6', 'I-7'],
+    metricIds: ['P-1', 'P-2', 'P-3', 'I-1', 'I-2', 'I-3', 'I-4', 'I-5', 'I-6', 'I-7'],
     attentionIds: [
       'cases-breached',
       'visits-overdue',
@@ -172,10 +200,12 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
       'help-desk',
       'scheduling',
       'opportunities',
+      'billing',
       'subscribers',
       'provisioning',
       'inventory',
     ],
+    trendIds: ['subscribers', 'collections', 'cases'],
     moduleHealthIds: [],
     blockIds: ['field-attention', 'commercial-attention', 'change-history'],
     actionIds: [
@@ -202,6 +232,7 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
       'stock-below-minimum',
     ],
     areaIds: ['help-desk', 'scheduling', 'provisioning', 'inventory'],
+    trendIds: ['cases'],
     moduleHealthIds: [],
     blockIds: ['field-attention'],
     actionIds: ['schedule-visit', 'view-today-agenda', 'view-profile'],
@@ -217,6 +248,7 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
       'requests-ready',
     ],
     areaIds: ['help-desk', 'scheduling'],
+    trendIds: ['cases'],
     moduleHealthIds: [],
     blockIds: ['field-attention'],
     actionIds: ['register-case', 'register-subscriber', 'view-profile'],
@@ -225,14 +257,16 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
     metricIds: ['P-1', 'I-5', 'I-6', 'I-7'],
     attentionIds: ['offers-at-risk', 'plans-without-price'],
     areaIds: ['opportunities', 'subscribers'],
+    trendIds: ['subscribers'],
     moduleHealthIds: [],
     blockIds: ['commercial-attention'],
     actionIds: ['register-subscriber', 'new-opportunity', 'view-profile'],
   },
   [UserRole.ACCOUNTANT]: {
-    metricIds: ['P-1', 'I-5'],
+    metricIds: ['P-1', 'P-2', 'P-3', 'I-5'],
     attentionIds: ['plans-without-price', 'fiscal-incomplete', 'cutoff-today'],
-    areaIds: ['subscribers'],
+    areaIds: ['billing', 'subscribers'],
+    trendIds: ['collections', 'subscribers'],
     moduleHealthIds: [],
     blockIds: ['commercial-attention'],
     actionIds: ['review-plans-without-price', 'view-profile'],
@@ -241,6 +275,7 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
     metricIds: [],
     attentionIds: [],
     areaIds: [],
+    trendIds: [],
     moduleHealthIds: ['scheduling'],
     blockIds: [],
     actionIds: ['view-today-agenda', 'view-profile'],
@@ -249,6 +284,7 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
     metricIds: [],
     attentionIds: [],
     areaIds: [],
+    trendIds: [],
     moduleHealthIds: ['scheduling'],
     blockIds: [],
     actionIds: ['view-today-agenda', 'view-profile'],
@@ -258,6 +294,7 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
     metricIds: [],
     attentionIds: [],
     areaIds: [],
+    trendIds: [],
     moduleHealthIds: [],
     blockIds: ['change-history'],
     actionIds: ['view-profile'],
@@ -266,6 +303,7 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
     metricIds: [],
     attentionIds: [],
     areaIds: [],
+    trendIds: [],
     moduleHealthIds: [],
     blockIds: [],
     actionIds: ['view-profile'],
@@ -274,6 +312,7 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
     metricIds: [],
     attentionIds: [],
     areaIds: [],
+    trendIds: [],
     moduleHealthIds: [],
     blockIds: [],
     actionIds: ['view-profile'],
@@ -282,6 +321,7 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
     metricIds: [],
     attentionIds: [],
     areaIds: [],
+    trendIds: [],
     moduleHealthIds: [],
     blockIds: [],
     actionIds: ['view-profile'],
@@ -290,6 +330,7 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
     metricIds: [],
     attentionIds: [],
     areaIds: [],
+    trendIds: [],
     moduleHealthIds: [],
     blockIds: [],
     actionIds: ['view-profile'],
@@ -343,6 +384,24 @@ export const DASHBOARD_METRIC_REGISTRY: Record<DashboardMetricId, DashboardMetri
     icon: UserCheck,
     buildHref: () => '/dashboard/crm/subscribers?queue=active',
     sources: ['subscribers'],
+  },
+  'P-2': {
+    id: 'P-2',
+    label: 'Recaudo del mes',
+    description: 'Pagos registrados en el mes',
+    accent: 'primary',
+    icon: Wallet,
+    buildHref: () => '/dashboard/billing/payments',
+    sources: ['billing-summary'],
+  },
+  'P-3': {
+    id: 'P-3',
+    label: 'Cartera vencida',
+    description: 'Saldo de facturas vencidas',
+    accent: 'warning',
+    icon: ReceiptText,
+    buildHref: () => '/dashboard/billing/documents?paymentState=VENCIDO',
+    sources: ['billing-summary'],
   },
   'I-1': {
     id: 'I-1',
@@ -456,6 +515,12 @@ export const DASHBOARD_AREA_REGISTRY: Record<DashboardAreaId, DashboardAreaDefin
     sources: ['crm'],
     href: '/dashboard/crm/expedientes?view=open',
   },
+  billing: {
+    id: 'billing',
+    label: 'Facturación',
+    sources: ['billing-summary'],
+    href: '/dashboard/billing/documents',
+  },
   subscribers: {
     id: 'subscribers',
     label: 'Suscriptores',
@@ -474,6 +539,21 @@ export const DASHBOARD_AREA_REGISTRY: Record<DashboardAreaId, DashboardAreaDefin
     sources: ['inventory'],
     href: '/dashboard/inventory',
   },
+};
+
+export interface DashboardTrendDefinition {
+  id: DashboardTrendId;
+  /** Rótulo de la pestaña. */
+  label: string;
+  /** Una fuente por pestaña: si falla o no está autorizada, la pestaña no se ofrece. */
+  source: DashboardDataSourceId;
+}
+
+/** Pestañas de Tendencia y su contrato (HLD-MOD02 v3.0 §3; contrato DS de gráficas §6). */
+export const DASHBOARD_TREND_REGISTRY: Record<DashboardTrendId, DashboardTrendDefinition> = {
+  subscribers: { id: 'subscribers', label: 'Suscriptores', source: 'subscribers-summary' },
+  collections: { id: 'collections', label: 'Recaudo', source: 'billing-summary' },
+  cases: { id: 'cases', label: 'Casos', source: 'cases-series' },
 };
 
 /** Fuente remota que sostiene cada fila de la cola de atención (una por fila). */
@@ -560,7 +640,7 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
   [UserRole.ADMIN]: {
     primaryActionId: 'register-subscriber',
     secondaryActionId: 'schedule-visit',
-    metricIds: ['P-1', 'I-3', 'I-1', 'I-2', 'I-7'],
+    metricIds: ['P-1', 'P-2', 'P-3', 'I-3', 'I-1'],
     attentionIds: [
       'cases-breached',
       'visits-overdue',
@@ -576,14 +656,8 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
       'stock-below-minimum',
       'configuration-pending',
     ],
-    areaIds: [
-      'help-desk',
-      'scheduling',
-      'opportunities',
-      'subscribers',
-      'provisioning',
-      'inventory',
-    ],
+    areaIds: ['help-desk', 'scheduling', 'opportunities', 'billing', 'provisioning', 'inventory'],
+    trendIds: ['subscribers', 'collections', 'cases'],
     moduleHealthIds: [],
     dominantBlockId: 'field-attention',
     supportBlockIds: ['change-history'],
@@ -605,6 +679,7 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
       'stock-below-minimum',
     ],
     areaIds: ['help-desk', 'scheduling', 'provisioning', 'inventory'],
+    trendIds: ['cases'],
     moduleHealthIds: [],
     dominantBlockId: 'field-attention',
     supportBlockIds: [],
@@ -623,6 +698,7 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
       'requests-ready',
     ],
     areaIds: ['help-desk', 'scheduling'],
+    trendIds: ['cases'],
     moduleHealthIds: [],
     dominantBlockId: 'field-attention',
     supportBlockIds: [],
@@ -634,6 +710,7 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     metricIds: ['I-7', 'P-1', 'I-6', 'I-5'],
     attentionIds: ['offers-at-risk', 'plans-without-price'],
     areaIds: ['opportunities', 'subscribers'],
+    trendIds: ['subscribers'],
     moduleHealthIds: [],
     dominantBlockId: 'commercial-attention',
     supportBlockIds: [],
@@ -642,9 +719,10 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
   [UserRole.ACCOUNTANT]: {
     primaryActionId: 'review-plans-without-price',
     secondaryActionId: null,
-    metricIds: ['P-1', 'I-5'],
+    metricIds: ['P-2', 'P-3', 'P-1', 'I-5'],
     attentionIds: ['plans-without-price', 'fiscal-incomplete', 'cutoff-today'],
-    areaIds: ['subscribers'],
+    areaIds: ['billing', 'subscribers'],
+    trendIds: ['collections', 'subscribers'],
     moduleHealthIds: [],
     dominantBlockId: 'commercial-attention',
     supportBlockIds: [],
@@ -656,6 +734,7 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     metricIds: [],
     attentionIds: [],
     areaIds: [],
+    trendIds: [],
     moduleHealthIds: ['scheduling'],
     dominantBlockId: null,
     supportBlockIds: [],
@@ -667,6 +746,7 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     metricIds: [],
     attentionIds: [],
     areaIds: [],
+    trendIds: [],
     moduleHealthIds: ['scheduling'],
     dominantBlockId: null,
     supportBlockIds: [],
@@ -678,6 +758,7 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     metricIds: [],
     attentionIds: [],
     areaIds: [],
+    trendIds: [],
     moduleHealthIds: [],
     dominantBlockId: null,
     // UX §4.9 B2b — historial minimizado (últimos N, sin «ver todo»).
@@ -690,6 +771,7 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     metricIds: [],
     attentionIds: [],
     areaIds: [],
+    trendIds: [],
     moduleHealthIds: [],
     dominantBlockId: null,
     supportBlockIds: [],
@@ -701,6 +783,7 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     metricIds: [],
     attentionIds: [],
     areaIds: [],
+    trendIds: [],
     moduleHealthIds: [],
     dominantBlockId: null,
     supportBlockIds: [],
@@ -712,6 +795,7 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     metricIds: [],
     attentionIds: [],
     areaIds: [],
+    trendIds: [],
     moduleHealthIds: [],
     dominantBlockId: null,
     supportBlockIds: [],
@@ -723,6 +807,7 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     metricIds: [],
     attentionIds: [],
     areaIds: [],
+    trendIds: [],
     moduleHealthIds: [],
     dominantBlockId: null,
     supportBlockIds: [],
@@ -766,10 +851,44 @@ export function toLocalDayKey(date: Date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
+/** Piezas de una composición (o del techo) que piden datos remotos. */
+export interface DashboardSourceParts {
+  metricIds: readonly DashboardMetricId[];
+  attentionIds: readonly DashboardAttentionId[];
+  areaIds: readonly DashboardAreaId[];
+  trendIds: readonly DashboardTrendId[];
+  blockIds: readonly DashboardBlockId[];
+}
+
 /**
- * Fuentes a pedir en el fan-out para un rol (R-1): solo contratos autorizados
- * y usados por el pulso, la cola de atención, las áreas y los bloques de detalle.
- * Los chips de navegación no añaden peticiones (técnico no pide el resumen de campo).
+ * Fuentes que exigen las piezas dadas. Los chips de navegación no añaden peticiones (técnico no
+ * pide el resumen de campo). Sirve a la composición y, en pruebas, al techo de autorización.
+ */
+export function collectDashboardPartSources(
+  parts: DashboardSourceParts,
+): ReadonlySet<DashboardDataSourceId> {
+  const sources = new Set<DashboardDataSourceId>();
+  for (const metricId of parts.metricIds) {
+    for (const source of resolveDashboardMetric(metricId).sources) sources.add(source);
+  }
+  for (const attentionId of parts.attentionIds) {
+    sources.add(DASHBOARD_ATTENTION_SOURCES[attentionId]);
+  }
+  for (const areaId of parts.areaIds) {
+    for (const source of DASHBOARD_AREA_REGISTRY[areaId].sources) sources.add(source);
+  }
+  for (const trendId of parts.trendIds) {
+    sources.add(DASHBOARD_TREND_REGISTRY[trendId].source);
+  }
+  for (const blockId of parts.blockIds) {
+    for (const source of resolveDashboardBlock(blockId).sources) sources.add(source);
+  }
+  return sources;
+}
+
+/**
+ * Fuentes a pedir en el fan-out para un rol (R-1): solo contratos autorizados y usados por el
+ * pulso, la cola de atención, la tendencia, las áreas y los bloques de detalle.
  */
 export function resolveDashboardDataSources(role: UserRole): readonly DashboardDataSourceId[] {
   const composition = getDashboardRoleComposition(role);
@@ -781,18 +900,11 @@ export function resolveDashboardDataSources(role: UserRole): readonly DashboardD
     sources.add('tenant-me');
   }
 
-  for (const metricId of composition.metricIds) {
-    for (const source of resolveDashboardMetric(metricId).sources) sources.add(source);
-  }
-  for (const attentionId of composition.attentionIds) {
-    sources.add(DASHBOARD_ATTENTION_SOURCES[attentionId]);
-  }
-  for (const areaId of composition.areaIds) {
-    for (const source of DASHBOARD_AREA_REGISTRY[areaId].sources) sources.add(source);
-  }
-  for (const blockId of listCompositionBlockIds(composition)) {
-    for (const source of resolveDashboardBlock(blockId).sources) sources.add(source);
-  }
+  const parts = collectDashboardPartSources({
+    ...composition,
+    blockIds: listCompositionBlockIds(composition),
+  });
+  for (const source of parts) sources.add(source);
 
   return Array.from(sources);
 }

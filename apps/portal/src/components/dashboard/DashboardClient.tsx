@@ -12,7 +12,7 @@ import {
   type Ref,
 } from 'react';
 import { ExpedienteStatus, UserRole, type SubscriberQueueCounts } from '@iwana/shared';
-import { Badge, cn } from '@iwana/ui';
+import { Badge, ProgressMeter, cn } from '@iwana/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   PortalAlert,
@@ -34,23 +34,33 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { resolveTenantSlug } from '@/lib/tenant-resolution';
 import { loadAuditFeed } from '@/lib/audit-feed-cache';
 import {
+  clearDashboardSessionCache,
+  readDashboardSessionCache,
+  writeDashboardSessionCache,
+  type DashboardSessionCacheKey,
+} from '@/lib/dashboard-session-cache';
+import {
   ApiError,
   assuranceApi,
   billingCyclesApi,
   commercialApi,
   crmApi,
   dashboardApi,
+  dashboardSeriesApi,
   inventoryApi,
   networkApi,
   subscribersApi,
   tenantSelfApi,
   wfmApi,
+  type AssuranceDashboardSeries,
   type AssuranceDashboardSummary,
   type AuditLogEntry,
+  type BillingDashboardSummary,
   type CommercialDashboardSummary,
   type DashboardSummary,
   type DashboardSummaryTenant,
   type InventoryDashboardSummary,
+  type SubscribersDashboardSummary,
   type TenantPublicBranding,
   type TenantSelf,
   type TenantSelfSettings,
@@ -62,6 +72,7 @@ import { RecentActivityPanel } from './RecentActivityPanel';
 import {
   DASHBOARD_AREA_REGISTRY,
   DASHBOARD_ATTENTION_SOURCES,
+  DASHBOARD_TREND_REGISTRY,
   getDashboardRoleComposition,
   isUserRole,
   resolveDashboardBlock,
@@ -83,12 +94,19 @@ import { DashboardAttentionQueue } from './DashboardAttentionQueue';
 import {
   DashboardAreaCards,
   casePrioritySegments,
+  overdueBucketSegments,
   subscriberBaseSegments,
   type DashboardAreaHealth,
   type DashboardProvisioningCounts,
 } from './DashboardAreaCards';
 import { DashboardPulse, type DashboardPulseCell } from './DashboardPulse';
-import { DashboardStackBar, formatDashboardNumber } from './dashboard-visuals';
+import {
+  DashboardStackBar,
+  formatDashboardMoneyCompact,
+  formatDashboardNumber,
+} from './dashboard-visuals';
+import { DashboardTrend } from './DashboardTrend';
+import { buildDashboardTrendTabs } from './dashboard-trend';
 
 type LoadStatus = 'idle' | 'loading' | 'updating' | 'success' | 'error';
 
@@ -117,6 +135,9 @@ interface DashboardSourcesState {
   provisioning: SourceState<DashboardProvisioningCounts>;
   /** Productos con sugerencia de reposición. */
   replenishment: SourceState<number>;
+  'billing-summary': SourceState<BillingDashboardSummary>;
+  'subscribers-summary': SourceState<SubscribersDashboardSummary>;
+  'cases-series': SourceState<AssuranceDashboardSeries>;
 }
 
 const CLOSED_PIPELINE_STATUSES = new Set<string>([
@@ -145,7 +166,29 @@ function createInitialSources(): DashboardSourcesState {
     cutoff: emptySource(),
     provisioning: emptySource(),
     replenishment: emptySource(),
+    'billing-summary': emptySource(),
+    'subscribers-summary': emptySource(),
+    'cases-series': emptySource(),
   };
+}
+
+/**
+ * Dato vigente de una fuente de la Fase 2: si la última lectura falló, no hay dato que mostrar
+ * (HLD-MOD02 v3.0 §2: sin dato o en error, el bloque no se monta o lo dice).
+ */
+function currentData<T>(source: SourceState<T>): T | null {
+  return source.status === 'error' ? null : source.data;
+}
+
+/** Recaudado sobre facturado del mes, en entero; `null` si no hubo facturación. */
+function collectedPercent(summary: BillingDashboardSummary): number | null {
+  const invoiced = Number(summary.invoicedAmount);
+  if (!(invoiced > 0)) return null;
+  return Math.round((Number(summary.collectedAmount) / invoiced) * 100);
+}
+
+function pluralCount(count: number, singular: string, plural: string): string {
+  return `${formatDashboardNumber(count)} ${count === 1 ? singular : plural}`;
 }
 
 function assignSource(
@@ -228,6 +271,14 @@ function metricValue(metricId: DashboardMetricId, sources: DashboardSourcesState
   switch (metricId) {
     case 'P-1':
       return sources.subscribers.data?.active ?? null;
+    case 'P-2': {
+      const billing = sources['billing-summary'].data;
+      return billing ? Number(billing.collectedAmount) : null;
+    }
+    case 'P-3': {
+      const billing = sources['billing-summary'].data;
+      return billing ? Number(billing.overdue.amount) : null;
+    }
     case 'I-1':
       return sources.wfm.data?.todayCount ?? null;
     case 'I-2':
@@ -253,6 +304,32 @@ function metricDelta(
   metricId: DashboardMetricId,
   sources: DashboardSourcesState,
 ): { label: string; tone: 'warning' | 'danger' | 'neutral' | 'progress' } | undefined {
+  if (metricId === 'P-1') {
+    // Neto del mes: altas menos retiros (N2). El lima solo cuando la base crece.
+    const movement = currentData(sources['subscribers-summary']);
+    if (!movement) return undefined;
+    const net = movement.activations - movement.cancellations;
+    if (net > 0) return { label: `+${formatDashboardNumber(net)} este mes`, tone: 'progress' };
+    if (net < 0) return { label: `${formatDashboardNumber(net)} este mes`, tone: 'warning' };
+    return { label: 'Sin cambio neto este mes', tone: 'neutral' };
+  }
+  if (metricId === 'P-2') {
+    // El porcentaje va en la señal; la barra compacta solo muestra el avance (y no pasa de 100).
+    const billing = sources['billing-summary'].data;
+    const percent = billing ? collectedPercent(billing) : null;
+    if (percent !== null) {
+      return { label: `${formatDashboardNumber(percent)} % de lo facturado`, tone: 'progress' };
+    }
+  }
+  if (metricId === 'P-3') {
+    const overdue = sources['billing-summary'].data?.overdue;
+    if (overdue && overdue.subscriberCount > 0) {
+      return {
+        label: `${pluralCount(overdue.subscriberCount, 'suscriptor', 'suscriptores')} en mora`,
+        tone: 'warning',
+      };
+    }
+  }
   if (metricId === 'I-1') {
     const overdue = sources.wfm.data?.overdueCount ?? 0;
     if (overdue > 0) return { label: `${overdue} vencidas`, tone: 'danger' };
@@ -284,8 +361,33 @@ function metricHint(
   const n = formatDashboardNumber;
   switch (metricId) {
     case 'P-1': {
+      const movement = currentData(sources['subscribers-summary']);
+      if (movement) {
+        return `${pluralCount(movement.activations, 'alta', 'altas')} · ${pluralCount(
+          movement.cancellations,
+          'retiro',
+          'retiros',
+        )}`;
+      }
       const data = sources.subscribers.data;
       return data ? `${n(data.suspended)} suspendidos` : undefined;
+    }
+    case 'P-2': {
+      const billing = sources['billing-summary'].data;
+      if (!billing) return undefined;
+      return Number(billing.invoicedAmount) > 0
+        ? `Facturado ${formatDashboardMoneyCompact(Number(billing.invoicedAmount))}`
+        : 'Sin facturas emitidas este mes';
+    }
+    case 'P-3': {
+      const overdue = sources['billing-summary'].data?.overdue;
+      if (!overdue) return undefined;
+      if (Number(overdue.amount) === 0) return 'Sin cartera vencida';
+      const oldest = overdue.buckets.find((bucket) => bucket.bucket === '90_plus');
+      const oldestAmount = Number(oldest?.amount ?? 0);
+      return oldestAmount > 0
+        ? `${formatDashboardMoneyCompact(oldestAmount)} con más de 90 días`
+        : 'Nada con más de 90 días';
     }
     case 'I-1': {
       const data = sources.wfm.data;
@@ -326,6 +428,28 @@ function metricVisual(metricId: DashboardMetricId, sources: DashboardSourcesStat
       <DashboardStackBar
         segments={subscriberBaseSegments(sources.subscribers.data)}
         ariaLabel="Base de suscriptores"
+      />
+    );
+  }
+  if (metricId === 'P-2' && sources['billing-summary'].data) {
+    const percent = collectedPercent(sources['billing-summary'].data);
+    // Avance del recaudo: único uso del degradado azul→lima en el inicio (CA-PA-04).
+    if (percent === null || percent > 100) return null;
+    return (
+      <ProgressMeter
+        compact
+        value={percent}
+        label="De lo facturado"
+        ariaLabel={`Recaudo: ${percent} % de lo facturado`}
+      />
+    );
+  }
+  if (metricId === 'P-3' && sources['billing-summary'].data) {
+    return (
+      <DashboardStackBar
+        segments={overdueBucketSegments(sources['billing-summary'].data.overdue.buckets)}
+        ariaLabel="Cartera vencida por antigüedad"
+        formatValue={formatDashboardMoneyCompact}
       />
     );
   }
@@ -444,6 +568,17 @@ function subscribersAreaHealth(sources: DashboardSourcesState): DashboardAreaHea
   return { label, status: 'ok', href };
 }
 
+function billingAreaHealth(sources: DashboardSourcesState): DashboardAreaHealth {
+  const { label, href } = DASHBOARD_AREA_REGISTRY.billing;
+  const overdue = sources['billing-summary'].data?.overdue;
+  if (!overdue) return { label, status: 'unknown', href };
+  if (Number(overdue.amount) === 0) return { label, status: 'ok', href };
+  const overdueHref = `${href}?paymentState=VENCIDO`;
+  const oldest = overdue.buckets.find((bucket) => bucket.bucket === '90_plus');
+  if (Number(oldest?.amount ?? 0) > 0) return { label, status: 'at-risk', href: overdueHref };
+  return { label, status: 'attention', href: overdueHref };
+}
+
 function provisioningAreaHealth(sources: DashboardSourcesState): DashboardAreaHealth {
   const { label, href } = DASHBOARD_AREA_REGISTRY.provisioning;
   const data = sources.provisioning.data;
@@ -455,15 +590,12 @@ function provisioningAreaHealth(sources: DashboardSourcesState): DashboardAreaHe
   return { label, status: 'ok', href };
 }
 
+/** R-5 · última lectura del inicio; la clave (persona, perfil y empresa) vive en el módulo de caché. */
 interface DashboardCacheEntry {
-  role: UserRole;
-  slug: string;
   sources: DashboardSourcesState;
   lastFetchedAt: string | null;
   partialStale: boolean;
 }
-
-let dashboardSessionCache: DashboardCacheEntry | null = null;
 
 async function fetchSource(sourceId: DashboardDataSourceId, slug: string): Promise<unknown> {
   switch (sourceId) {
@@ -512,6 +644,12 @@ async function fetchSource(sourceId: DashboardDataSourceId, slug: string): Promi
     }
     case 'replenishment':
       return (await inventoryApi.listReplenishmentSuggestions(slug)).length;
+    case 'billing-summary':
+      return dashboardSeriesApi.billingSummary(slug);
+    case 'subscribers-summary':
+      return dashboardSeriesApi.subscribersSummary(slug);
+    case 'cases-series':
+      return dashboardSeriesApi.casesSeries(slug);
     default: {
       const _exhaustive: never = sourceId;
       return _exhaustive;
@@ -965,6 +1103,8 @@ function ModuleHealthBand({
 export function DashboardClient() {
   const { user } = useAuth();
   const role = isUserRole(user?.role) ? user.role : null;
+  /** `sub` de la sesión: parte de la clave de la caché del inicio (P2-2). */
+  const userId = user?.id ?? '';
   const composition = role ? getDashboardRoleComposition(role) : null;
 
   const [sources, setSources] = useState<DashboardSourcesState>(() => createInitialSources());
@@ -981,9 +1121,9 @@ export function DashboardClient() {
       sourceIds: readonly DashboardDataSourceId[];
       silent: boolean;
       slug: string;
-      role: UserRole;
+      cacheKey: DashboardSessionCacheKey;
     }) => {
-      const { sourceIds, silent, slug, role: loadRole } = options;
+      const { sourceIds, silent, slug, cacheKey } = options;
       if (sourceIds.length === 0) {
         setInitialLoadDone(true);
         return;
@@ -1038,14 +1178,12 @@ export function DashboardClient() {
         const previousComplete = lastFetchedAtRef.current;
         const nextLastFetchedAt = allSucceeded ? fetchedAt : previousComplete;
         const nextPartialStale = !allSucceeded && Boolean(nextLastFetchedAt);
-        // R-5 · snapshot de sesión para volver con «Atrás» sin refetch.
-        dashboardSessionCache = {
-          role: loadRole,
-          slug,
+        // R-5 · snapshot de sesión para volver con «Atrás» sin refetch (clave con la persona).
+        writeDashboardSessionCache<DashboardCacheEntry>(cacheKey, {
           sources: next,
           lastFetchedAt: nextLastFetchedAt,
           partialStale: nextPartialStale,
-        };
+        });
         return next;
       });
 
@@ -1066,9 +1204,14 @@ export function DashboardClient() {
       if (!role) return;
       const slug = resolveTenantSlug().slug;
       if (!slug) return;
-      void loadSources({ sourceIds: [sourceId], silent: true, slug, role });
+      void loadSources({
+        sourceIds: [sourceId],
+        silent: true,
+        slug,
+        cacheKey: { userId, role, slug },
+      });
     },
-    [loadSources, role],
+    [loadSources, role, userId],
   );
 
   useEffect(() => {
@@ -1083,8 +1226,9 @@ export function DashboardClient() {
       return;
     }
 
-    const cached = dashboardSessionCache;
-    if (cached && cached.role === role && cached.slug === slug) {
+    const cacheKey: DashboardSessionCacheKey = { userId, role, slug };
+    const cached = readDashboardSessionCache<DashboardCacheEntry>(cacheKey);
+    if (cached) {
       // R-5 · restaurar último estado leído; no disparar red.
       setSources(cached.sources);
       lastFetchedAtRef.current = cached.lastFetchedAt;
@@ -1095,8 +1239,8 @@ export function DashboardClient() {
     }
 
     const sourceIds = resolveDashboardDataSources(role);
-    void loadSources({ sourceIds, silent: false, slug, role });
-  }, [loadSources, role]);
+    void loadSources({ sourceIds, silent: false, slug, cacheKey });
+  }, [loadSources, role, userId]);
 
   useEffect(() => {
     const onVisibility = () => {
@@ -1109,11 +1253,16 @@ export function DashboardClient() {
         (id) => id !== 'public-branding' && id !== 'tenant-summary' && id !== 'tenant-me',
       );
       if (operational.length === 0) return;
-      void loadSources({ sourceIds: operational, silent: true, slug, role });
+      void loadSources({
+        sourceIds: operational,
+        silent: true,
+        slug,
+        cacheKey: { userId, role, slug },
+      });
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [lastFetchedAt, loadSources, role]);
+  }, [lastFetchedAt, loadSources, role, userId]);
 
   useLayoutEffect(() => {
     if (!highlightCommercial) return;
@@ -1171,11 +1320,19 @@ export function DashboardClient() {
         return [id, { label: chip.label, status: chip.status, href: chip.href }];
       }),
     ),
+    billing: billingAreaHealth(sources),
     subscribers: subscribersAreaHealth(sources),
     provisioning: provisioningAreaHealth(sources),
   } as Record<DashboardAreaId, DashboardAreaHealth>;
 
-  const pulseCells: DashboardPulseCell[] = composition.metricIds.map((metricId) => {
+  // Sin permiso sobre su fuente, la celda no se monta: no es un fallo ni un cero (HLD v3.0 §2).
+  const isForbidden = (sourceId: DashboardDataSourceId) =>
+    sources[sourceId].status === 'error' && sources[sourceId].error === FORBIDDEN_SUMMARY_MESSAGE;
+  const pulseMetricIds = composition.metricIds.filter(
+    (metricId) => !resolveDashboardMetric(metricId).sources.every(isForbidden),
+  );
+
+  const pulseCells: DashboardPulseCell[] = pulseMetricIds.map((metricId) => {
     const def = resolveDashboardMetric(metricId);
     const status = metricSourceStatus(metricId, sources);
     const href = def.buildHref(today);
@@ -1183,6 +1340,9 @@ export function DashboardClient() {
       id: metricId,
       label: def.label,
       value: metricValue(metricId, sources),
+      formatValue: def.sources.includes('billing-summary')
+        ? formatDashboardMoneyCompact
+        : undefined,
       delta: metricDelta(metricId, sources),
       hint: metricHint(metricId, sources),
       visual: metricVisual(metricId, sources),
@@ -1200,6 +1360,32 @@ export function DashboardClient() {
   const hasAreas = composition.areaIds.length > 0;
   const hasSupport = composition.supportBlockIds.length > 0;
 
+  // B2 izquierda · solo las pestañas cuya fuente respondió con dato.
+  const trendSourceOf = (id: (typeof composition.trendIds)[number]) =>
+    sources[DASHBOARD_TREND_REGISTRY[id].source];
+  const trendTabs = buildDashboardTrendTabs({
+    trendIds: composition.trendIds,
+    subscribers: {
+      data: currentData(sources['subscribers-summary']),
+      updating: sources['subscribers-summary'].status === 'updating',
+    },
+    collections: {
+      data: currentData(sources['billing-summary']),
+      updating: sources['billing-summary'].status === 'updating',
+    },
+    cases: {
+      data: currentData(sources['cases-series']),
+      updating: sources['cases-series'].status === 'updating',
+    },
+  });
+  const trendLoading =
+    firstLoadPending ||
+    composition.trendIds.some((id) => {
+      const { status } = trendSourceOf(id);
+      return status === 'idle' || status === 'loading';
+    });
+  const hasTrend = trendTabs.length > 0 || (trendLoading && composition.trendIds.length > 0);
+
   const renderBlock = (blockId: DashboardBlockId) =>
     renderDashboardBlock({
       blockId,
@@ -1212,7 +1398,7 @@ export function DashboardClient() {
     });
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* B0 · Identidad (U-B0bis: sin controles en el encabezado) */}
       <PageHeader
         title={companyTitle}
@@ -1262,12 +1448,12 @@ export function DashboardClient() {
         />
       ) : null}
 
-      {/* B2 · Por área (8) + Requiere tu atención (4) */}
-      {hasAttention || hasAreas ? (
+      {/* B2 · Tendencia (8) + Requiere tu atención (4) */}
+      {hasAttention || hasTrend ? (
         <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-12">
           {hasAttention ? (
             // Primera en el DOM (lectura y móvil); a la derecha en escritorio.
-            <div className={hasAreas ? 'xl:order-last xl:col-span-4' : 'xl:col-span-12'}>
+            <div className={hasTrend ? 'xl:order-last xl:col-span-4' : 'xl:col-span-12'}>
               <DashboardAttentionQueue
                 queue={attentionQueue}
                 onRetry={() => {
@@ -1276,26 +1462,32 @@ export function DashboardClient() {
               />
             </div>
           ) : null}
-          {hasAreas ? (
+          {hasTrend ? (
             <div className={hasAttention ? 'xl:col-span-8' : 'xl:col-span-12'}>
-              <DashboardAreaCards
-                areaIds={composition.areaIds}
-                health={areaHealth}
-                assurance={sources.assurance}
-                wfm={sources.wfm}
-                pipeline={{
-                  status: sources.crm.status,
-                  data: openPipelineByStatus(sources.crm.data),
-                  error: sources.crm.error,
-                }}
-                subscribers={sources.subscribers}
-                provisioning={sources.provisioning}
-                inventory={sources.inventory}
-                onRetrySource={retrySource}
-              />
+              <DashboardTrend tabs={trendTabs} loading={trendLoading} />
             </div>
           ) : null}
         </div>
+      ) : null}
+
+      {/* B3 · Por área, en una fila de tres columnas */}
+      {hasAreas ? (
+        <DashboardAreaCards
+          areaIds={composition.areaIds}
+          health={areaHealth}
+          assurance={sources.assurance}
+          wfm={sources.wfm}
+          pipeline={{
+            status: sources.crm.status,
+            data: openPipelineByStatus(sources.crm.data),
+            error: sources.crm.error,
+          }}
+          billing={sources['billing-summary']}
+          subscribers={sources.subscribers}
+          provisioning={sources.provisioning}
+          inventory={sources.inventory}
+          onRetrySource={retrySource}
+        />
       ) : null}
 
       {/* B4 · Detalle del rol (7) + historial (5) */}
@@ -1380,5 +1572,5 @@ export function DashboardClient() {
 
 /** Expone limpieza de caché de sesión para pruebas. */
 export function __resetDashboardSessionCacheForTests(): void {
-  dashboardSessionCache = null;
+  clearDashboardSessionCache();
 }

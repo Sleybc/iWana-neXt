@@ -8,6 +8,8 @@ import {
   DASHBOARD_MODULE_HEALTH_REGISTRY,
   DASHBOARD_ROLE_AUTHORIZATION_CEILING,
   DASHBOARD_ROLE_COMPOSITION,
+  DASHBOARD_TREND_REGISTRY,
+  collectDashboardPartSources,
   getDashboardRoleComposition,
   isUserRole,
   listCompositionBlockIds,
@@ -21,6 +23,7 @@ import {
   toLocalDayKey,
   type DashboardActionId,
   type DashboardBlockId,
+  type DashboardDataSourceId,
   type DashboardMetricId,
 } from './dashboard-role-composition';
 
@@ -141,9 +144,12 @@ describe('dashboard-role-composition', () => {
         'cutoff',
         'provisioning',
         'replenishment',
+        'billing-summary',
+        'subscribers-summary',
+        'cases-series',
       ]),
     );
-    expect(sources).toHaveLength(12);
+    expect(sources).toHaveLength(15);
     expect(sources).not.toContain('tenant-me');
   });
 
@@ -152,9 +158,20 @@ describe('dashboard-role-composition', () => {
     expect(sources).toEqual(['public-branding']);
   });
 
-  it('cada métrica del registro tiene id estable I-1…I-7 y P-1', () => {
+  it('cada métrica del registro tiene id estable I-1…I-7 y P-1…P-3', () => {
     const ids = Object.keys(DASHBOARD_METRIC_REGISTRY) as DashboardMetricId[];
-    expect(ids.sort()).toEqual(['I-1', 'I-2', 'I-3', 'I-4', 'I-5', 'I-6', 'I-7', 'P-1']);
+    expect(ids.sort()).toEqual([
+      'I-1',
+      'I-2',
+      'I-3',
+      'I-4',
+      'I-5',
+      'I-6',
+      'I-7',
+      'P-1',
+      'P-2',
+      'P-3',
+    ]);
   });
 
   it('reconoce roles válidos y rechaza valores nulos o desconocidos', () => {
@@ -190,9 +207,11 @@ describe('dashboard-role-composition', () => {
     expect(toLocalDayKey(new Date(2026, 1, 1, 0, 1))).toBe('2026-02-01');
   });
 
-  it('ADMIN compone el pulso con base activa, casos, visitas y embudo', () => {
+  it('ADMIN compone el pulso con base activa, recaudo, cartera, casos y visitas (dirección §5.1)', () => {
     const metricIds = getDashboardRoleComposition(UserRole.ADMIN).metricIds;
-    expect(metricIds).toEqual(['P-1', 'I-3', 'I-1', 'I-2', 'I-7']);
+    expect(metricIds).toEqual(['P-1', 'P-2', 'P-3', 'I-3', 'I-1']);
+    expect(DASHBOARD_METRIC_REGISTRY['P-2'].sources).toEqual(['billing-summary']);
+    expect(DASHBOARD_METRIC_REGISTRY['P-3'].sources).toEqual(['billing-summary']);
     expect(DASHBOARD_METRIC_REGISTRY['P-1'].sources).toEqual(['subscribers']);
     // Cada par de apariencia similar usa iconos distintos para no confundir la tarjeta.
     expect(DASHBOARD_METRIC_REGISTRY['I-3'].icon).not.toBe(DASHBOARD_METRIC_REGISTRY['I-4'].icon);
@@ -221,7 +240,12 @@ describe('dashboard-role-composition', () => {
       'I-6',
       'I-5',
     ]);
-    expect(getDashboardRoleComposition(UserRole.ACCOUNTANT).metricIds).toEqual(['P-1', 'I-5']);
+    expect(getDashboardRoleComposition(UserRole.ACCOUNTANT).metricIds).toEqual([
+      'P-2',
+      'P-3',
+      'P-1',
+      'I-5',
+    ]);
   });
 
   it('roles sin ficha operativa no componen métricas en B1', () => {
@@ -315,7 +339,7 @@ describe('resolveDashboardMetricAccent', () => {
       'help-desk',
       'scheduling',
       'opportunities',
-      'subscribers',
+      'billing',
       'provisioning',
       'inventory',
     ]);
@@ -361,5 +385,165 @@ describe('resolveDashboardMetricAccent', () => {
     expect(split.visibleIds).not.toContain('operations');
     expect(split.overflowIds).toEqual(['operations']);
     expect(split.visibleIds).toHaveLength(8);
+  });
+});
+
+/**
+ * P3-5 (AI-SEC-ENG, HLD-MOD02 v3.0 §5) · Espejo del guard real del API: roles de tenant que el
+ * `@Roles` de cada endpoint admite. Si un controlador cambia, esta tabla se actualiza a mano en
+ * el mismo cambio; el techo y la composición nunca piden una fuente fuera de ella.
+ */
+const API_GUARD_ROLES: Record<DashboardDataSourceId, readonly UserRole[]> = {
+  // GET /tenants/public/branding — público.
+  'public-branding': Object.values(UserRole),
+  // tenant.controller.ts · GET /tenants/me/summary
+  'tenant-summary': [UserRole.ADMIN],
+  // tenant.controller.ts · GET /tenants/me y /tenants/me/settings
+  'tenant-me': [UserRole.ADMIN, UserRole.NOC, UserRole.ACCOUNTANT, UserRole.SUPPORT],
+  // wfm.controller.ts · GET /wfm/dashboard/summary
+  wfm: [UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT],
+  // assurance.controller.ts · GET /assurance/dashboard/summary
+  assurance: [UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR],
+  // commercial-dashboard.controller.ts · COMMERCIAL_CATALOG_READ_ROLES + AUDITOR
+  commercial: [
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.NOC,
+    UserRole.ACCOUNTANT,
+    UserRole.AUDITOR,
+  ],
+  // inventory.controller.ts · GET /inventory/dashboard
+  inventory: [
+    UserRole.ADMIN,
+    UserRole.NOC,
+    UserRole.SUPPORT,
+    UserRole.TECHNICIAN,
+    UserRole.AUDITOR,
+  ],
+  // expedientes.controller.ts · GET /crm/pipeline/summary
+  crm: [UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.AUDITOR],
+  // audit.controller.ts · GET /audit
+  audit: [UserRole.ADMIN, UserRole.AUDITOR],
+  // subscribers.controller.ts · GET /crm/subscribers/queue-counts
+  subscribers: [
+    UserRole.ADMIN,
+    UserRole.NOC,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.ACCOUNTANT,
+  ],
+  // billing-cycles.controller.ts · GET /crm/billing-cycles/cutoff-agenda (SUBSCRIBER_READ_ROLES)
+  cutoff: [
+    UserRole.ADMIN,
+    UserRole.NOC,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.ACCOUNTANT,
+    UserRole.AUDITOR,
+  ],
+  // network-provisioning.controller.ts · GET /network/provisioning/inbox
+  provisioning: [UserRole.ADMIN, UserRole.NOC],
+  // inventory.controller.ts · GET /inventory/replenishment/suggestions
+  replenishment: [
+    UserRole.ADMIN,
+    UserRole.NOC,
+    UserRole.SUPPORT,
+    UserRole.TECHNICIAN,
+    UserRole.AUDITOR,
+  ],
+  // N1 · billing-dashboard.controller.ts · GET /billing/dashboard/summary
+  'billing-summary': [UserRole.ADMIN, UserRole.ACCOUNTANT],
+  // N2 · subscribers-dashboard.controller.ts · GET /crm/subscribers/dashboard/summary
+  'subscribers-summary': [UserRole.ADMIN, UserRole.SALES, UserRole.ACCOUNTANT],
+  // N3 · assurance-dashboard-series.controller.ts · GET /assurance/dashboard/series
+  'cases-series': [UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT],
+};
+
+function sourcesOutsideGuard(role: UserRole, sources: Iterable<DashboardDataSourceId>) {
+  return Array.from(sources).filter((source) => !API_GUARD_ROLES[source].includes(role));
+}
+
+describe('techo de autorización frente al guard del API (P3-5)', () => {
+  it.each(ALL_ROLES)('%s: el fan-out solo pide fuentes cuyo guard admite el rol', (role) => {
+    expect(sourcesOutsideGuard(role, resolveDashboardDataSources(role))).toEqual([]);
+  });
+
+  it.each(ALL_ROLES)('%s: el techo completo no deriva fuentes fuera del guard', (role) => {
+    const ceiling = DASHBOARD_ROLE_AUTHORIZATION_CEILING[role];
+    expect(sourcesOutsideGuard(role, collectDashboardPartSources(ceiling))).toEqual([]);
+  });
+
+  it('el espejo cubre todas las fuentes del fan-out', () => {
+    const all = new Set<DashboardDataSourceId>();
+    for (const role of ALL_ROLES) {
+      for (const source of resolveDashboardDataSources(role)) all.add(source);
+      for (const source of collectDashboardPartSources(
+        DASHBOARD_ROLE_AUTHORIZATION_CEILING[role],
+      )) {
+        all.add(source);
+      }
+    }
+    for (const source of all) expect(API_GUARD_ROLES[source]).toBeDefined();
+  });
+
+  it('el dinero (N1) solo lo piden Administradora y Contadora (HLD v3.0 §5)', () => {
+    const asking = ALL_ROLES.filter((role) =>
+      resolveDashboardDataSources(role).includes('billing-summary'),
+    );
+    expect(asking.sort()).toEqual([UserRole.ACCOUNTANT, UserRole.ADMIN].sort());
+  });
+
+  it('N2 lo piden ADMIN, SALES y ACCOUNTANT; N3, ADMIN, NOC y SUPPORT', () => {
+    const askingFor = (source: DashboardDataSourceId) =>
+      ALL_ROLES.filter((role) => resolveDashboardDataSources(role).includes(source)).sort();
+    expect(askingFor('subscribers-summary')).toEqual(
+      [UserRole.ADMIN, UserRole.SALES, UserRole.ACCOUNTANT].sort(),
+    );
+    expect(askingFor('cases-series')).toEqual(
+      [UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT].sort(),
+    );
+  });
+});
+
+describe('Tendencia por rol (contrato DS de gráficas §6)', () => {
+  it.each(ALL_ROLES)('%s: compone solo pestañas de su techo', (role) => {
+    const composition = getDashboardRoleComposition(role);
+    for (const trendId of composition.trendIds) {
+      expect(DASHBOARD_ROLE_AUTHORIZATION_CEILING[role].trendIds).toContain(trendId);
+      expect(resolveDashboardDataSources(role)).toContain(DASHBOARD_TREND_REGISTRY[trendId].source);
+    }
+  });
+
+  it('reparte Suscriptores, Recaudo y Casos según la tabla de roles', () => {
+    expect(getDashboardRoleComposition(UserRole.ADMIN).trendIds).toEqual([
+      'subscribers',
+      'collections',
+      'cases',
+    ]);
+    expect(getDashboardRoleComposition(UserRole.NOC).trendIds).toEqual(['cases']);
+    expect(getDashboardRoleComposition(UserRole.SUPPORT).trendIds).toEqual(['cases']);
+    expect(getDashboardRoleComposition(UserRole.SALES).trendIds).toEqual(['subscribers']);
+    expect(getDashboardRoleComposition(UserRole.ACCOUNTANT).trendIds).toEqual([
+      'collections',
+      'subscribers',
+    ]);
+    for (const role of [
+      UserRole.TECHNICIAN,
+      UserRole.CONTRACTOR,
+      UserRole.AUDITOR,
+      UserRole.HR,
+      UserRole.SUBSCRIBER,
+      UserRole.PARTNER,
+      UserRole.INVESTOR,
+    ]) {
+      expect(getDashboardRoleComposition(role).trendIds).toEqual([]);
+    }
+  });
+
+  it('cada pestaña lee una sola fuente N1–N3', () => {
+    expect(DASHBOARD_TREND_REGISTRY.subscribers.source).toBe('subscribers-summary');
+    expect(DASHBOARD_TREND_REGISTRY.collections.source).toBe('billing-summary');
+    expect(DASHBOARD_TREND_REGISTRY.cases.source).toBe('cases-series');
   });
 });

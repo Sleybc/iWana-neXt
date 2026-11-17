@@ -14,6 +14,11 @@ interface ProgressMeterProps {
   ariaLabel?: string;
   /** Desglose por dimensión (opcional) */
   dimensions?: DimensionBadgeProps[];
+  /**
+   * Solo la barra (h-2), sin rótulo ni porcentaje visibles, para celdas densas donde la cifra ya
+   * se lee al lado. El nombre accesible sigue siendo `ariaLabel` o `label` con el porcentaje.
+   */
+  compact?: boolean;
   className?: string;
 }
 
@@ -28,9 +33,25 @@ function ProgressMeter({
   label = 'Progreso',
   ariaLabel,
   dimensions,
+  compact = false,
   className,
 }: ProgressMeterProps) {
   const pct = Math.max(0, Math.min(100, value));
+  const bar = (
+    <progress
+      className={cn(
+        'w-full overflow-hidden rounded-full [&::-webkit-progress-bar]:bg-[#d9dde5] [&::-webkit-progress-value]:bg-gradient-to-r [&::-webkit-progress-value]:from-iwana-primary [&::-webkit-progress-value]:to-iwana-secondary [&::-moz-progress-bar]:bg-iwana-primary dark:[&::-webkit-progress-bar]:bg-dark-surface-4',
+        compact ? 'block h-2' : 'h-3.5',
+      )}
+      aria-label={ariaLabel ?? `${label}: ${pct}%`}
+      value={pct}
+      max={100}
+    />
+  );
+
+  if (compact) {
+    return <div className={className}>{bar}</div>;
+  }
 
   return (
     <div className={cn('space-y-4', className)}>
@@ -41,12 +62,7 @@ function ProgressMeter({
         </span>
       </div>
 
-      <progress
-        className="h-3.5 w-full overflow-hidden rounded-full [&::-webkit-progress-bar]:bg-[#d9dde5] [&::-webkit-progress-value]:bg-gradient-to-r [&::-webkit-progress-value]:from-iwana-primary [&::-webkit-progress-value]:to-iwana-secondary [&::-moz-progress-bar]:bg-iwana-primary dark:[&::-webkit-progress-bar]:bg-dark-surface-4"
-        aria-label={ariaLabel ?? `${label}: ${pct}%`}
-        value={pct}
-        max={100}
-      />
+      {bar}
 
       {dimensions && dimensions.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-x-5 gap-y-2 text-xs">

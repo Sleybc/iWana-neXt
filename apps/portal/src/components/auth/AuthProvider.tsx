@@ -23,6 +23,7 @@ import {
   type JwtProfile,
 } from '@/lib/api-client';
 import { resolveTenantSlug } from '@/lib/tenant-resolution';
+import { clearDashboardSessionCache } from '@/lib/dashboard-session-cache';
 
 interface AuthUser {
   id: string;
@@ -272,7 +273,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async (tenantSlug?: string) => {
-    await authApi.logout(tenantSlug);
+    try {
+      await authApi.logout(tenantSlug);
+    } finally {
+      // Las cifras del inicio no sobreviven a la sesión, aunque el cierre falle en el servidor.
+      clearDashboardSessionCache();
+    }
     setUser(null);
   }, []);
 

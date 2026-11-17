@@ -10,6 +10,11 @@ import { NotificationBell } from '@/components/layout/NotificationBell';
 import { __resetAuditFeedCacheForTests } from '@/lib/audit-feed-cache';
 import type { DashboardSummary } from '@/lib/api-client';
 import type { WfmDashboardAlert } from '@/lib/api-client';
+import {
+  billingSummaryFixture,
+  casesSeriesFixture,
+  subscribersSummaryFixture,
+} from './dashboard-series-test-fixtures';
 
 const useAuthMock = jest.fn();
 
@@ -49,6 +54,9 @@ const queueCounts = jest.fn();
 const cutoffAgenda = jest.fn();
 const listProvisioningInbox = jest.fn();
 const listReplenishmentSuggestions = jest.fn();
+const billingSummary = jest.fn();
+const subscribersSummary = jest.fn();
+const casesSeries = jest.fn();
 
 jest.mock('@/lib/api-client', () => {
   class MockApiError extends Error {
@@ -103,8 +111,20 @@ jest.mock('@/lib/api-client', () => {
     auditApi: {
       list: (...args: unknown[]) => auditList(...args),
     },
+    dashboardSeriesApi: {
+      billingSummary: (...args: unknown[]) => billingSummary(...args),
+      subscribersSummary: (...args: unknown[]) => subscribersSummary(...args),
+      casesSeries: (...args: unknown[]) => casesSeries(...args),
+    },
   };
 });
+
+// La gráfica real (Recharts, carga diferida) se prueba en `@iwana/ui`; aquí basta su resumen.
+jest.mock('@/components/shared/portal-chart', () => ({
+  PortalChart: ({ summary, tableCaption }: { summary: string; tableCaption: string }) => (
+    <div role="img" aria-label={summary} data-caption={tableCaption} />
+  ),
+}));
 
 jest.mock('./RecentActivityPanel', () => ({
   RecentActivityPanel: ({
@@ -259,6 +279,9 @@ function mockAdminApis() {
   cutoffAgenda.mockResolvedValue({ date: '2026-11-16', items: [], meta: { total: 0 } });
   listProvisioningInbox.mockResolvedValue({ data: [], meta: { total: 0 } });
   listReplenishmentSuggestions.mockResolvedValue([]);
+  billingSummary.mockResolvedValue(billingSummaryFixture());
+  subscribersSummary.mockResolvedValue(subscribersSummaryFixture());
+  casesSeries.mockResolvedValue(casesSeriesFixture());
 }
 
 describe('DashboardClient', () => {
@@ -802,10 +825,10 @@ describe('DashboardClient', () => {
         .map((link) => link.getAttribute('aria-label')),
     ).toEqual([
       'Suscriptores activos',
+      'Recaudo del mes',
+      'Cartera vencida',
       'Casos abiertos',
       'Visitas de hoy',
-      'Solicitudes por programar',
-      'Oportunidades en seguimiento',
     ]);
     // Una sola superficie: la sombra vive en la franja, no en cada celda.
     expect(pulse.className).toMatch(/shadow-iwana-soft/);
@@ -833,7 +856,7 @@ describe('DashboardClient', () => {
       'Mesa de ayuda',
       'Programación',
       'Oportunidades',
-      'Suscriptores',
+      'Facturación',
       'Aprovisionamiento',
       'Inventario',
     ]);
@@ -857,9 +880,13 @@ describe('DashboardClient', () => {
     expect(screen.getByRole('link', { name: 'Visitas de hoy' }).getAttribute('href')).toMatch(
       /^\/dashboard\/scheduling\/agenda\?view=day&fromDate=\d{4}-\d{2}-\d{2}$/,
     );
-    expect(screen.getByRole('link', { name: 'Oportunidades en seguimiento' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Recaudo del mes' })).toHaveAttribute(
       'href',
-      '/dashboard/crm/expedientes?view=open',
+      '/dashboard/billing/payments',
+    );
+    expect(screen.getByRole('link', { name: 'Cartera vencida' })).toHaveAttribute(
+      'href',
+      '/dashboard/billing/documents?paymentState=VENCIDO',
     );
   });
 
@@ -1006,7 +1033,7 @@ describe('DashboardClient', () => {
     ).toEqual(['Mesa de ayuda', 'Programación']);
   });
 
-  it('ACCOUNTANT: pulso de dos celdas, solo sus señales y atención comercial filtrada a precio', async () => {
+  it('ACCOUNTANT: pulso de dinero, solo sus señales y atención comercial filtrada a precio', async () => {
     setRole(UserRole.ACCOUNTANT);
     queueCounts.mockResolvedValue({
       active: 120,
@@ -1028,8 +1055,18 @@ describe('DashboardClient', () => {
     render(<DashboardClient />);
 
     const pulse = await screen.findByRole('region', { name: 'Indicadores núcleo' });
-    await waitFor(() => expect(within(pulse).getAllByRole('link')).toHaveLength(2));
-    expect(pulse.className).toMatch(/xl:grid-cols-2/);
+    await waitFor(() => expect(within(pulse).getAllByRole('link')).toHaveLength(4));
+    expect(pulse.className).toMatch(/xl:grid-cols-4/);
+    expect(
+      within(pulse)
+        .getAllByRole('link')
+        .map((link) => link.getAttribute('aria-label')),
+    ).toEqual([
+      'Recaudo del mes',
+      'Cartera vencida',
+      'Suscriptores activos',
+      'Planes sin precio vigente',
+    ]);
 
     expect(attentionRows().map((row) => row.getAttribute('aria-label'))).toEqual([
       'Atención: 2 planes sin precio vigente. Comercial',
@@ -1044,7 +1081,7 @@ describe('DashboardClient', () => {
       within(areas)
         .getAllByRole('heading')
         .map((heading) => heading.textContent),
-    ).toEqual(['Suscriptores']);
+    ).toEqual(['Facturación', 'Suscriptores']);
     expect(within(areas).getByRole('link', { name: 'Abrir Suscriptores' })).toHaveAttribute(
       'href',
       '/dashboard/crm/subscribers?queue=fiscalIncomplete',
@@ -1083,8 +1120,9 @@ describe('DashboardClient', () => {
       'href',
       '/dashboard/assurance?slaBreachStatus=AT_RISK',
     );
-    // Mesa de ayuda (caso fuera de tiempo) y Programación (visita vencida).
-    expect(within(areas).getAllByText('En riesgo')).toHaveLength(2);
+    // Mesa de ayuda (caso fuera de tiempo), Programación (visita vencida) y Facturación
+    // (cartera con más de 90 días).
+    expect(within(areas).getAllByText('En riesgo')).toHaveLength(3);
   });
 
   it('área sin acceso muestra el mensaje de negocio, no un cero, y permite reintentar', async () => {
@@ -1131,5 +1169,271 @@ describe('DashboardClient', () => {
 
     expect(await screen.findByRole('link', { name: 'Visitas de hoy' })).toHaveTextContent('3');
     expect(screen.queryByRole('link', { name: /solicitud/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('DashboardClient · Fase 2 (recaudo, cartera, neto y tendencia)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    __resetDashboardSessionCacheForTests();
+    __resetAuditFeedCacheForTests();
+    useAuthMock.mockReturnValue({
+      user: { id: 'u-1', role: UserRole.ADMIN, tenantId: 't-1', displayName: 'Admin' },
+      isLoading: false,
+    });
+    mockAdminApis();
+  });
+
+  function asRole(role: UserRole, id = 'u-1') {
+    useAuthMock.mockReturnValue({
+      user: { id, role, tenantId: 't-1', displayName: 'Persona' },
+      isLoading: false,
+    });
+  }
+
+  function forbidden() {
+    const { ApiError } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+    };
+    return new ApiError(403, 'Forbidden');
+  }
+
+  const TREND_TITLE = 'Tendencia';
+
+  it('Recaudo del mes: recaudado, lo facturado y la barra de avance con su porcentaje', async () => {
+    render(<DashboardClient />);
+
+    const cell = await screen.findByRole('link', { name: 'Recaudo del mes' });
+    await waitFor(() => expect(cell).toHaveTextContent(/\$148,2\sM/));
+    expect(within(cell).getByText(/^Facturado \$182,6\sM$/)).toBeInTheDocument();
+    // Presentación compacta (CA-PA-01): el porcentaje en la señal y solo la barra debajo.
+    expect(within(cell).getByText('81 % de lo facturado')).toBeInTheDocument();
+    expect(
+      within(cell).getByRole('progressbar', { name: 'Recaudo: 81 % de lo facturado' }),
+    ).toHaveAttribute('value', '81');
+    expect(within(cell).queryByText('De lo facturado')).not.toBeInTheDocument();
+    expect(within(cell).queryByText('81%')).not.toBeInTheDocument();
+  });
+
+  it('Cartera vencida: monto, suscriptores en mora, tramo de más de 90 días y barra sin lima', async () => {
+    render(<DashboardClient />);
+
+    const cell = await screen.findByRole('link', { name: 'Cartera vencida' });
+    await waitFor(() => expect(cell).toHaveTextContent(/\$36,9\sM/));
+    expect(within(cell).getByText('214 suscriptores en mora')).toBeInTheDocument();
+    expect(within(cell).getByText(/^\$6,4\sM con más de 90 días$/)).toBeInTheDocument();
+    const bar = within(cell).getByRole('img', { name: /^Cartera vencida por antigüedad: / });
+    expect(bar.getAttribute('aria-label')).toMatch(/Más de 90 días \$6,4\sM/);
+    // La mora nunca va en lima (CA-PA-03): ni la barra ni la señal.
+    expect(cell.innerHTML).not.toMatch(/iwana-secondary|bg-lime/);
+  });
+
+  it('Suscriptores activos: neto del mes con altas y retiros (N2)', async () => {
+    render(<DashboardClient />);
+
+    const cell = await screen.findByRole('link', { name: 'Suscriptores activos' });
+    expect(await within(cell).findByText('+38 este mes')).toBeInTheDocument();
+    expect(within(cell).getByText('61 altas · 23 retiros')).toBeInTheDocument();
+  });
+
+  it('neto negativo: la señal es advertencia, no lima', async () => {
+    subscribersSummary.mockResolvedValue(
+      subscribersSummaryFixture({ activations: 3, cancellations: 8 }),
+    );
+    render(<DashboardClient />);
+
+    const cell = await screen.findByRole('link', { name: 'Suscriptores activos' });
+    const badge = await within(cell).findByText('-5 este mes');
+    expect(badge.className).not.toMatch(/iwana-secondary|lime/);
+  });
+
+  it('recaudo por encima de lo facturado: lo dice la señal y no se pinta una barra llena', async () => {
+    const base = billingSummaryFixture();
+    billingSummary.mockResolvedValue(
+      billingSummaryFixture({
+        invoicedAmount: '100000.00',
+        collectedAmount: '112000.00',
+        series: base.series.map((month, index, all) =>
+          index === all.length - 1
+            ? { ...month, invoicedAmount: '100000.00', collectedAmount: '112000.00' }
+            : month,
+        ),
+      }),
+    );
+    render(<DashboardClient />);
+
+    const cell = await screen.findByRole('link', { name: 'Recaudo del mes' });
+    expect(await within(cell).findByText('112 % de lo facturado')).toBeInTheDocument();
+    expect(within(cell).queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+
+  it('Tendencia ADMIN: tres pestañas conmutables con resumen de datos reales', async () => {
+    const user = userEvent.setup();
+    render(<DashboardClient />);
+
+    const tabs = await screen.findByRole('tablist', { name: 'Serie de la tendencia' });
+    expect(
+      within(tabs)
+        .getAllByRole('tab')
+        .map((tab) => tab.textContent),
+    ).toEqual(['Suscriptores', 'Recaudo', 'Casos']);
+    expect(
+      screen.getByRole('img', {
+        name: 'Altas y retiros de suscriptores por mes. En noviembre: 61 altas y 23 retiros.',
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(within(tabs).getByRole('tab', { name: 'Recaudo' }));
+    expect(within(tabs).getByRole('tab', { name: 'Recaudo' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(
+      screen.getByRole('img', { name: /^Facturado y recaudado por mes\. En noviembre/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Facturado frente a recaudado · últimos 12 meses')).toBeInTheDocument();
+
+    await user.click(within(tabs).getByRole('tab', { name: 'Casos' }));
+    expect(
+      screen.getByRole('img', {
+        name: 'Casos creados y resueltos por día. Hoy: 11 creados y 9 resueltos.',
+      }),
+    ).toBeInTheDocument();
+    expect(casesSeries).toHaveBeenCalledWith('demo-isp');
+  });
+
+  it('fuente de recaudo caída: sin pestaña, celdas «No disponible» y nunca un cero', async () => {
+    billingSummary.mockRejectedValue(new Error('caída'));
+    render(<DashboardClient />);
+
+    const tabs = await screen.findByRole('tablist', { name: 'Serie de la tendencia' });
+    expect(
+      within(tabs)
+        .getAllByRole('tab')
+        .map((tab) => tab.textContent),
+    ).toEqual(['Suscriptores', 'Casos']);
+    const pulse = screen.getByRole('region', { name: 'Indicadores núcleo' });
+    await waitFor(() => expect(within(pulse).getAllByText('No disponible')).toHaveLength(2));
+    expect(within(pulse).queryByText(/\$\s?0/)).not.toBeInTheDocument();
+    const areas = screen.getByRole('region', { name: 'Por área' });
+    expect(within(areas).queryByText(/vencidos por antigüedad|sin cartera vencida/)).toBeNull();
+  });
+
+  it('sin permiso sobre N1: las celdas de dinero y su pestaña no se montan', async () => {
+    billingSummary.mockRejectedValue(forbidden());
+    render(<DashboardClient />);
+
+    const pulse = await screen.findByRole('region', { name: 'Indicadores núcleo' });
+    await waitFor(() =>
+      expect(
+        within(pulse)
+          .getAllByRole('link')
+          .map((link) => link.getAttribute('aria-label')),
+      ).toEqual(['Suscriptores activos', 'Casos abiertos', 'Visitas de hoy']),
+    );
+    expect(screen.queryByRole('tab', { name: 'Recaudo' })).not.toBeInTheDocument();
+  });
+
+  it('si ninguna serie tiene dato, Tendencia no se monta y la cola sigue', async () => {
+    billingSummary.mockRejectedValue(new Error('caída'));
+    subscribersSummary.mockRejectedValue(new Error('caída'));
+    casesSeries.mockRejectedValue(new Error('caída'));
+    render(<DashboardClient />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Requiere tu atención' }),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(casesSeries).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: TREND_TITLE })).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('img', { name: /por mes|por día/ })).not.toBeInTheDocument();
+  });
+
+  it('Facturación: cartera por antigüedad con leyenda en pesos y enlace a las vencidas', async () => {
+    render(<DashboardClient />);
+
+    const areas = await screen.findByRole('region', { name: 'Por área' });
+    expect(await within(areas).findByText('vencidos por antigüedad')).toBeInTheDocument();
+    expect(
+      within(areas).getByText('214 suscriptores en mora · 260 facturas vencidas'),
+    ).toBeInTheDocument();
+    expect(within(areas).getByText('Más de 90 días')).toBeInTheDocument();
+    expect(within(areas).getByRole('link', { name: 'Abrir Facturación' })).toHaveAttribute(
+      'href',
+      '/dashboard/billing/documents?paymentState=VENCIDO',
+    );
+  });
+
+  it('SUPPORT: solo Casos, sin conmutador, y no pide dinero ni altas', async () => {
+    asRole(UserRole.SUPPORT);
+    render(<DashboardClient />);
+
+    expect(
+      await screen.findByRole('img', { name: /^Casos creados y resueltos por día/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(billingSummary).not.toHaveBeenCalled();
+    expect(subscribersSummary).not.toHaveBeenCalled();
+  });
+
+  it('SALES: pide altas y retiros, nunca el resumen de facturación ni los casos', async () => {
+    asRole(UserRole.SALES);
+    render(<DashboardClient />);
+
+    expect(
+      await screen.findByRole('img', { name: /^Altas y retiros de suscriptores por mes/ }),
+    ).toBeInTheDocument();
+    expect(billingSummary).not.toHaveBeenCalled();
+    expect(casesSeries).not.toHaveBeenCalled();
+    expect(screen.queryByRole('link', { name: 'Recaudo del mes' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['caído', () => new Error('caída')],
+    ['sin permiso', () => forbidden()],
+  ])(
+    'N2 %s: Suscriptores activos conserva la base y los suspendidos, sin neto ni altas',
+    async (_case, makeError) => {
+      queueCounts.mockResolvedValue({
+        active: 120,
+        suspended: 4,
+        contactPending: 0,
+        fiscalIncomplete: 0,
+        withoutLiveServices: 0,
+      });
+      subscribersSummary.mockRejectedValue(makeError());
+      render(<DashboardClient />);
+
+      const cell = await screen.findByRole('link', { name: 'Suscriptores activos' });
+      await waitFor(() => expect(subscribersSummary).toHaveBeenCalled());
+      await waitFor(() => expect(within(cell).getByText('4 suspendidos')).toBeInTheDocument());
+      expect(cell).toHaveTextContent('120');
+      expect(within(cell).queryByText(/este mes/)).not.toBeInTheDocument();
+      expect(within(cell).queryByText(/altas|retiros/)).not.toBeInTheDocument();
+      expect(within(cell).queryByText('No disponible')).not.toBeInTheDocument();
+      expect(within(cell).queryByText(/^\+?0 este mes$/)).not.toBeInTheDocument();
+    },
+  );
+
+  it('Oportunidades de la Administradora abre el embudo en seguimiento', async () => {
+    render(<DashboardClient />);
+
+    const areas = await screen.findByRole('region', { name: 'Por área' });
+    expect(await within(areas).findByRole('link', { name: 'Abrir Oportunidades' })).toHaveAttribute(
+      'href',
+      '/dashboard/crm/expedientes?view=open',
+    );
+  });
+
+  it('P2-2: otra persona con el mismo perfil y empresa no reutiliza la caché del inicio', async () => {
+    const { unmount } = render(<DashboardClient />);
+    await screen.findByRole('link', { name: 'Recaudo del mes' });
+    expect(billingSummary).toHaveBeenCalledTimes(1);
+    unmount();
+
+    asRole(UserRole.ADMIN, 'u-2');
+    render(<DashboardClient />);
+    await waitFor(() => expect(billingSummary).toHaveBeenCalledTimes(2));
   });
 });

@@ -106,13 +106,15 @@ export function DashboardAttentionQueue({
                   href={row.href}
                   aria-label={`${severityLabel[row.severity]}: ${row.title}. ${row.area}`}
                   className={cn(
-                    'flex min-h-14 items-center gap-3 rounded-xl px-1.5 py-2 hover:bg-iwana-surface-soft dark:hover:bg-dark-surface-3',
+                    // Fila compacta (≥44 px de área táctil): seis filas y «Ver los restantes» caben
+                    // en el primer viewport a 1440 × 900 junto a la tendencia (CA-PA-01).
+                    'flex min-h-12 items-center gap-3 rounded-xl px-1.5 py-1.5 hover:bg-iwana-surface-soft dark:hover:bg-dark-surface-3',
                     interactiveFocusClassName,
                   )}
                 >
                   <span
                     className={cn(
-                      'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl',
+                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-xl',
                       severityToneClassName[row.severity],
                     )}
                   >
@@ -139,7 +141,7 @@ export function DashboardAttentionQueue({
           type="button"
           onClick={() => setExpanded((open) => !open)}
           aria-expanded={expanded}
-          className={cn(portalInlineTextLinkClassName, interactiveFocusClassName, 'mt-2')}
+          className={cn(portalInlineTextLinkClassName, interactiveFocusClassName, 'mt-1')}
         >
           {expanded
             ? 'Ver menos'

@@ -14,6 +14,8 @@ export interface DashboardPulseCell {
   label: string;
   /** `null` = la fuente no entregó el dato: se dice, no se pinta cero. */
   value: number | null;
+  /** Cómo se pinta la cifra (importes con moneda); por defecto, número entero. */
+  formatValue?: ((value: number) => string) | undefined;
   /** Señal de la misma fuente; lima solo en `progress`. */
   delta?: { label: string; tone: DashboardPulseTone } | undefined;
   /** Frase que interpreta la cifra con datos de la misma fuente. */
@@ -100,7 +102,7 @@ export function DashboardPulse({
               </span>
             ) : (
               <span className="font-thin-exo text-4xl leading-none tabular-nums text-iwana-primary dark:text-white">
-                {formatDashboardNumber(cell.value)}
+                {(cell.formatValue ?? formatDashboardNumber)(cell.value)}
               </span>
             )}
             {!isError && cell.delta ? (

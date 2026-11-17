@@ -11280,3 +11280,70 @@ export const privacyApi = {
     return privacyEvidenceResponseSchema.parse(response);
   },
 };
+
+// ─── Inicio del portal · resúmenes N1–N3 (HLD-MOD02 v3.0 §3 y §8; Fase 2 «Pulso y atención») ───
+import {
+  AssuranceDashboardSeriesSchema,
+  BillingDashboardSummarySchema,
+  SubscribersDashboardSummarySchema,
+  type AssuranceDashboardSeries,
+  type BillingDashboardSummary,
+  type SubscribersDashboardSummary,
+} from '@iwana/shared';
+
+export type { AssuranceDashboardSeries, BillingDashboardSummary, SubscribersDashboardSummary };
+
+/** La respuesta no cumple el contrato congelado: el bloque no pinta nada (HLD v3.0 §2). */
+export class DashboardContractError extends Error {
+  constructor() {
+    super('No pudimos leer este resumen. Reintenta en unos minutos.');
+    this.name = 'DashboardContractError';
+  }
+}
+
+type DashboardContractSchema<T> = {
+  safeParse: (input: unknown) => { success: true; data: T } | { success: false };
+};
+
+/**
+ * Lee `{ data }` sin depender de cómo `request` desenvuelve el sobre y valida `data` con el
+ * esquema de `@iwana/shared`. Sin query: N1 y N2 responden 400 a cualquier parámetro.
+ */
+async function requestDashboardContract<T>(
+  path: string,
+  schema: DashboardContractSchema<T>,
+  tenantSlug?: string,
+): Promise<T> {
+  const body = await request<unknown>(path, { returnFullResponse: true }, tenantSlug);
+  const envelope = body !== null && typeof body === 'object' ? (body as { data?: unknown }) : {};
+  const parsed = schema.safeParse(envelope.data);
+  if (!parsed.success) throw new DashboardContractError();
+  return parsed.data;
+}
+
+/** Días de la serie de casos del inicio (contrato DS §6: 14 días). */
+export const DASHBOARD_CASES_SERIES_DAYS = 14;
+
+export const dashboardSeriesApi = {
+  /** N1 · facturado, recaudado y cartera vencida del mes con serie de 12 meses. */
+  billingSummary: (tenantSlug?: string): Promise<BillingDashboardSummary> =>
+    requestDashboardContract(
+      '/billing/dashboard/summary',
+      BillingDashboardSummarySchema,
+      tenantSlug,
+    ),
+  /** N2 · altas y retiros del mes con serie de 12 meses. */
+  subscribersSummary: (tenantSlug?: string): Promise<SubscribersDashboardSummary> =>
+    requestDashboardContract(
+      '/crm/subscribers/dashboard/summary',
+      SubscribersDashboardSummarySchema,
+      tenantSlug,
+    ),
+  /** N3 · casos creados y resueltos por día. */
+  casesSeries: (tenantSlug?: string): Promise<AssuranceDashboardSeries> =>
+    requestDashboardContract(
+      `/assurance/dashboard/series?days=${DASHBOARD_CASES_SERIES_DAYS}`,
+      AssuranceDashboardSeriesSchema,
+      tenantSlug,
+    ),
+};
