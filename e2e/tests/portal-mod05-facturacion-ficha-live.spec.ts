@@ -1361,7 +1361,8 @@ test.describe('MOD05↔MOD14 Facturación en la ficha estilo UISP — E2E vivo',
     // R6 / W0 2-3: Facturas lista los IMPORTADO y su PDF se nombra con el número de origen.
     const facturas = await openBilling(page, importedSubscriberId, 'facturas');
     const withPdf = facturas.getByRole('row').filter({ hasText: 'SINT-2023-1' });
-    await expect(withPdf).toContainText('Importada de UISP', { timeout: 30_000 });
+    // La tabla compacta usa una sola columna de estado con «Importada» (19d7c25f).
+    await expect(withPdf).toContainText('Importada', { timeout: 30_000 });
     await expect(withPdf.getByRole('button', { name: /^Enviar por correo/u })).toHaveCount(0);
     const pdf = page.waitForEvent('download');
     await withPdf.getByRole('button', { name: 'Descargar PDF' }).click();

@@ -1543,7 +1543,8 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await expect(page.getByRole('heading', { name: 'Oportunidades', exact: true })).toBeVisible();
     await expect(page.getByRole('tablist', { name: 'Vistas de oportunidades' })).toBeVisible();
     await expect(page.getByText('Empresa Demo SAS')).toBeVisible();
-    await page.getByRole('link', { name: /empresa demo sas/i }).click();
+    // La fila tiene además «Abrir oportunidad de …» (1e16ac4d); se abre por el nombre.
+    await page.getByRole('link', { name: 'Empresa Demo SAS', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/dashboard/crm/expedientes/${mockExpediente.id}`));
     await expect(page.getByRole('heading', { name: /empresa demo sas/i })).toBeVisible();
     await page.getByRole('tab', { name: 'Gestión' }).click();
@@ -1632,8 +1633,10 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await page.goto(`/dashboard/crm/expedientes/${mockExpediente.id}`);
 
     await expect(page.getByRole('heading', { name: 'Consentimientos (Ley 1581)' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Autorización de prueba' })).toBeVisible();
+    // El texto vigente se lee en el diálogo de registro, antes de capturar (1e16ac4d).
     await page.getByRole('button', { name: 'Registrar autorización' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'Registrar autorización' });
+    await expect(dialog.getByRole('heading', { name: 'Autorización de prueba' })).toBeVisible();
     await page
       .getByRole('combobox', { name: 'Medio por el que la persona otorgó la autorización' })
       .click();
@@ -1655,7 +1658,8 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await page.waitForLoadState('networkidle');
 
     await expect(page.getByText('1012345678')).toHaveCount(0);
-    await page.getByRole('link', { name: /empresa demo sas/i }).click();
+    // La fila tiene además «Abrir oportunidad de …» (1e16ac4d); se abre por el nombre.
+    await page.getByRole('link', { name: 'Empresa Demo SAS', exact: true }).click();
     await page.getByRole('tab', { name: 'Gestión' }).click();
     await expect(page.getByRole('tablist', { name: 'Secciones de la oportunidad' })).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Número de documento' })).toHaveValue(
@@ -1849,7 +1853,7 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await expect(page.getByText('Empresa convertida SAS')).toBeVisible();
 
     // Abrir detalle del expediente convertido
-    await page.getByRole('link', { name: /empresa convertida sas/i }).click();
+    await page.getByRole('link', { name: 'Empresa convertida SAS', exact: true }).click();
 
     // Banner de conversión visible
     await expect(page.getByText('Esta oportunidad ya fue convertida a suscriptor.')).toBeVisible();

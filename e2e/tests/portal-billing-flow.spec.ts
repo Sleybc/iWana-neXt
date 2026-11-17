@@ -1132,8 +1132,15 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
 
     const before = auditCount('BillingSubscriberStatement', 'RECORD_ACCESS');
     await page.goto(`/dashboard/crm/subscribers/${blockedSubscriberId}?tab=facturacion`);
-    await expect(page.getByText('Titular Bloqueado')).toBeVisible();
     await expect(page.getByText('Total facturado')).toBeVisible();
+    // En la ficha la tabla ya no repite la columna Cliente (19d7c25f): el dato se lee en el detalle.
+    await page
+      .getByRole('button', { name: /^Ver detalle de la factura/u })
+      .first()
+      .click();
+    await expect(
+      page.getByRole('dialog').getByText('Titular Bloqueado', { exact: true }),
+    ).toBeVisible();
     await expect(page.getByText('[Dato protegido por custodia legal]')).not.toBeVisible();
     await expect
       .poll(() => auditCount('BillingSubscriberStatement', 'RECORD_ACCESS'), { timeout: 15_000 })

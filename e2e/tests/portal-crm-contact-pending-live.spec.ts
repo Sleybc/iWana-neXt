@@ -3,6 +3,14 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { expect, request, test, type APIRequestContext, type Page } from '@playwright/test';
 
+/** «Estado actual» es un campo de «Datos del caso» con su insignia (1e16ac4d), no una frase. */
+function currentStatusValue(page: Page) {
+  return page
+    .getByRole('term')
+    .filter({ hasText: /^Estado actual$/u })
+    .locator('xpath=following-sibling::dd[1]');
+}
+
 type PgResult = { rowCount: number | null; rows: Array<Record<string, unknown>> };
 type PgClient = {
   connect(): Promise<void>;
@@ -575,9 +583,7 @@ test.describe('MOD05 E3 — contacto pendiente contra Portal y API reales', () =
       { headers: apiHeaders(tenantAdminToken!, TENANT_SLUG) },
     );
     expect(unchangedExpediente.status).toBe('LISTO_PARA_INSTALACION');
-    await expect(
-      page.getByText('Estado actual: Listo para instalación', { exact: true }),
-    ).toBeVisible();
+    await expect(currentStatusValue(page)).toHaveText('Listo para instalación');
     await assertNoPlaceholderOrRawEnum(page);
 
     // Agregar contacto al suscriptor realmente convertido sin canales y
@@ -705,7 +711,7 @@ test.describe('MOD05 E3 — contacto pendiente contra Portal y API reales', () =
     );
     await page.getByRole('button', { name: 'Aplicar transición' }).click();
     expect((await expedienteActivationPromise).status()).toBe(200);
-    await expect(page.getByText('Estado actual: Activo', { exact: true })).toBeVisible();
+    await expect(currentStatusValue(page)).toHaveText('Activo');
     const finalLegacyExpediente = await expectJson<{ status: string }>(
       api!,
       `/crm/expedientes/${legacy.id}`,

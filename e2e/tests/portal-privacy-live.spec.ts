@@ -1,6 +1,14 @@
 import { createHmac, randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 
+/** «Estado actual» es un campo de «Datos del caso» con su insignia (1e16ac4d), no una frase. */
+function currentStatusValue(page: Page) {
+  return page
+    .getByRole('term')
+    .filter({ hasText: /^Estado actual$/u })
+    .locator('xpath=following-sibling::dd[1]');
+}
+
 const privacyFixtureTenant = process.env.E2E_PRIVACY_1B_TENANT_SLUG;
 const privacyFixtureAdminEmail = process.env.E2E_PRIVACY_ADMIN_EMAIL;
 const privacyFixtureAdminPassword = process.env.E2E_PRIVACY_ADMIN_PASSWORD;
@@ -187,7 +195,8 @@ async function createConvertedSubscriberFixture(page: Page): Promise<{
   await channel.click();
   await page.getByRole('option', { name: 'Teléfono' }).click();
   await authorizationForm.getByRole('button', { name: 'Registrar autorización' }).click();
-  await expect(page.getByText('Medio: Teléfono', { exact: true })).toBeVisible();
+  // La lista une fecha y medio en una línea («… · Medio: Teléfono») desde 1e16ac4d.
+  await expect(page.getByText(/Medio: Teléfono$/u)).toBeVisible();
 
   for (const label of [
     'Precalificado',
@@ -199,7 +208,7 @@ async function createConvertedSubscriberFixture(page: Page): Promise<{
     await newStatus.click();
     await page.getByRole('option', { name: label }).click();
     await page.getByRole('button', { name: 'Aplicar transición' }).click();
-    await expect(page.getByText(`Estado actual: ${label}`, { exact: true })).toBeVisible();
+    await expect(currentStatusValue(page)).toHaveText(label);
   }
 
   await expect
