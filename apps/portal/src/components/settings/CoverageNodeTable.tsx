@@ -24,7 +24,7 @@ export function CoverageNodeTable({
   onToggle,
 }: CoverageNodeTableProps) {
   return (
-    <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-dark-border">
+    <div className="iwana-scroll-inset overflow-x-auto rounded-2xl border border-slate-200 dark:border-dark-border">
       <table className="w-full min-w-[760px] border-collapse" data-testid="coverage-node-table">
         <thead className="bg-[#f6f8f4] dark:bg-dark-surface-3">
           <tr>

@@ -347,7 +347,7 @@ export function StockIssueDetailDrawer({
                   />
                 </div>
               ) : (
-                <div className="mt-3 overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-2">
+                <div className="mt-3 iwana-scroll-inset overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-2">
                   <table className="w-full min-w-[480px] text-sm">
                     <caption className="sr-only">Líneas de la salida</caption>
                     <thead>

@@ -229,7 +229,7 @@ export function NetworkSettingsClient() {
           />
         ) : (
           <div
-            className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border"
+            className="iwana-scroll-inset overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border"
             role="region"
             aria-label="Planes y listas de direcciones PCQ"
             tabIndex={0}

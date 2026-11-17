@@ -65,7 +65,7 @@ export const portalTableRowHoverClassName =
   'transition-colors hover:bg-iwana-surface-soft/80 dark:hover:bg-dark-surface-3';
 
 export const portalDataTableShellClassName =
-  'overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-2';
+  'iwana-scroll-inset overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-2';
 
 /** Fila `<thead>` / `<tr>` de tablas operativas (fondo soft). */
 export const portalDataTableHeadRowClassName =
@@ -294,8 +294,9 @@ export function PortalSearchField({
       <label htmlFor={id} className="sr-only">
         {label ?? placeholder ?? 'Buscar'}
       </label>
+      {/* z-10: el campo es `relative` y su fondo tapaba la lupa. */}
       <Search
-        className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+        className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-gray-400"
         aria-hidden="true"
       />
       <Input
@@ -2586,7 +2587,7 @@ export interface PortalModuleSubnavProps {
 }
 
 export const portalModuleSubnavRailClassName = cn(
-  'flex flex-row items-stretch gap-4 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-3 shadow-iwana-soft',
+  'flex flex-row items-stretch gap-4 iwana-scroll-inset overflow-x-auto rounded-2xl border border-gray-200 bg-white p-3 shadow-iwana-soft',
   'dark:border-dark-border dark:bg-dark-surface-2',
   'lg:sticky lg:top-(--portal-sticky-offset) lg:z-(--z-sticky)',
 );

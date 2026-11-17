@@ -250,6 +250,14 @@ body {
   background: color-mix(in srgb, var(--color-iwana-primary) 35%, transparent);
 }
 
+/* Contenedores redondeados con desplazamiento horizontal (tablas): la barra arranca y termina
+   después de la curva de las esquinas y su riel es transparente, para que no se salga del borde.
+   Sin `scrollbar-width`/`scrollbar-color`: en Chromium anulan los pseudo-elementos de arriba. */
+.iwana-scroll-inset::-webkit-scrollbar-track {
+  margin-inline: var(--radius-2xl);
+  background: transparent;
+}
+
 /* ================================================================
    Utilidades de marca iWana (Manual Implementacion secc. 3.2)
    ================================================================ */

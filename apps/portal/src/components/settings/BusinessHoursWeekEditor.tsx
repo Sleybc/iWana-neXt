@@ -316,7 +316,7 @@ export function BusinessHoursWeekEditor({
 
   return (
     <div
-      className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border"
+      className="iwana-scroll-inset overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border"
       data-testid="bh-layout-desktop"
     >
       <div className="grid min-w-0 grid-cols-[auto_auto_minmax(0,1fr)_minmax(0,1fr)] gap-px bg-gray-200 dark:bg-dark-border">
