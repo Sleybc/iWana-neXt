@@ -72,7 +72,7 @@ Veredicto de `sec-eng`: GO en G1 (con condiciones) y en G3. Condiciones cumplida
 | Sev. | Deuda | Dueño |
 | --- | --- | --- |
 | P2 | `network-provisioning.controller.ts:143` declara `@Permissions(NETWORK_PROVISIONING_READ)` sin `PermissionsGuard` (preexistente, lo consume el inicio) | `sr-backend`, encargo aparte |
-| P2 | La tabla del wrapper usa `iwana-scroll-inset`, que hoy solo existe en un cambio sin commit de otra sesión en `globals.css`; sin él, la barra de scroll pierde el ajuste | `fe-platform` al publicar esa sesión |
+| ~~P2~~ | ~~La tabla del wrapper usaba `iwana-scroll-inset`, que solo existe en un cambio sin commit de otra sesión~~ — **cerrado 2026-11-17**: el contenedor de la tabla usa solo `overflow-x-auto` (no es redondeado, no necesita el ajuste); contrato DS y spec del wrapper actualizados | — |
 | P2 | Mini serie en la celda Suscriptores activos sin contrato DS (desviación §13) | `ds-owner` |
 | P3 | `audit-feed-cache.ts` guarda el historial sin la persona en la clave y no se vacía al cerrar sesión | `fe-platform` / `sec-eng` |
 | P3 | `PAID_SQL` duplicada en N1 (prueba que detecta divergencia y reconciliación con la lista) hasta poder extraerla de `billing-documents.service.ts` | `sr-backend` |

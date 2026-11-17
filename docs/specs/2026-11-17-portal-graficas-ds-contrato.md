@@ -162,7 +162,7 @@ No aplican: disabled, readonly, success, active (la gráfica no es control).
 | Pieza | Regla |
 | --- | --- |
 | `summary` | Lo redacta la pantalla con los datos: «{qué} por {unidad}. {último punto}: {valor serie A} y {valor serie B}.» Ej.: «Altas y retiros de suscriptores por mes. En noviembre: 61 altas y 23 retiros.» Prohibido un texto genérico |
-| Tabla | `<table>` con `<caption>` (`tableCaption`), `<thead>`: `<th scope="col">` `xHeader` + una por serie (`label`); filas `<th scope="row">` `formatXLong(x)` y `<td>` con `formatValue`; `null` → «Sin dato». Números alineados a la derecha, `font-mono tabular-nums`. Envuelta en `iwana-scroll-inset` si desborda |
+| Tabla | `<table>` con `<caption>` (`tableCaption`), `<thead>`: `<th scope="col">` `xHeader` + una por serie (`label`); filas `<th scope="row">` `formatXLong(x)` y `<td>` con `formatValue`; `null` → «Sin dato». Números alineados a la derecha, `font-mono tabular-nums`. Envuelta en un contenedor `overflow-x-auto` si desborda (sin `iwana-scroll-inset`: esa utilidad no está publicada en `globals.css` y el contenedor no es redondeado) |
 | Conmutador | Un `<button type="button">` cuyo texto alterna «Ver como tabla» / «Ver como gráfica» (sin `aria-pressed`, el nombre ya cambia); `aria-controls` al cuerpo. Enter y Espacio nativos. El foco **se queda** en el botón al conmutar |
 | Lectores | En vista gráfica, el lector oye `summary`; los valores completos están a un Tab, en la tabla |
 

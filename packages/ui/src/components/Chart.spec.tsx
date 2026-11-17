@@ -90,7 +90,8 @@ describe('Chart (marco)', () => {
       '61 u',
       'Sin dato',
     ]);
-    expect(table.closest('.iwana-scroll-inset')).not.toBeNull();
+    // La tabla desborda dentro de su propio contenedor, sin utilidades fuera de `globals.css`.
+    expect(table.parentElement?.className).toBe('overflow-x-auto');
   });
 
   it('loading: skeleton a la misma altura con aria-busy y texto para lectores; sin conmutador', () => {

@@ -370,7 +370,8 @@ export function Chart<K extends string>(props: ChartProps<K>) {
       {showTable ? (
         <div
           id={bodyId}
-          className="iwana-scroll-inset overflow-x-auto"
+          // Solo desplazamiento propio: el contenedor no es redondeado, no necesita ajuste de riel.
+          className="overflow-x-auto"
           style={{ minHeight: height }}
         >
           <table className="w-full border-collapse text-sm">
