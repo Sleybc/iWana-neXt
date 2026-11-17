@@ -8,6 +8,15 @@ import tsParser from '@typescript-eslint/parser';
 import tsEslintPlugin from '@typescript-eslint/eslint-plugin';
 import reactHooks from 'eslint-plugin-react-hooks';
 
+const rechartsRestriction = {
+  name: 'recharts',
+  message: 'Recharts solo se importa en packages/ui/src/chart (ADR-112 D2): usa Chart/PortalChart.',
+};
+const rechartsSubpathRestriction = {
+  group: ['recharts/*'],
+  message: 'Recharts solo se importa en packages/ui/src/chart (ADR-112 D2): usa Chart/PortalChart.',
+};
+
 /** @type {import('eslint').Linter.Config[]} */
 export default [
   {
@@ -37,6 +46,39 @@ export default [
     rules: {
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
+    },
+  },
+  {
+    // ADR-112 D2: Recharts solo en la entrada `@iwana/ui/chart` (packages/ui/src/chart/**).
+    files: ['**/*.ts', '**/*.tsx'],
+    ignores: ['packages/ui/src/chart/**'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        { paths: [rechartsRestriction], patterns: [rechartsSubpathRestriction] },
+      ],
+    },
+  },
+  {
+    // ADR-112 D4: en las apps, `@iwana/ui/chart` solo por `import()` dinámico (PortalChart) o `import type`.
+    // Este bloque reemplaza la regla del anterior para apps/**: repite la restricción de Recharts.
+    files: ['apps/**/*.ts', 'apps/**/*.tsx'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            rechartsRestriction,
+            {
+              name: '@iwana/ui/chart',
+              allowTypeImports: true,
+              message:
+                'Carga diferida obligatoria (ADR-112 D4): usa PortalChart de components/shared/portal-chart.tsx.',
+            },
+          ],
+          patterns: [rechartsSubpathRestriction],
+        },
+      ],
     },
   },
   {

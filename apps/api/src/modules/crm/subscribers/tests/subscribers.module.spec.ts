@@ -10,6 +10,8 @@ jest.mock('../../../inventory/inventory.module', () => ({
   InventoryModule: class InventoryModule {},
 }));
 jest.mock('../../../tasks/tasks.module', () => ({ TasksModule: class TasksModule {} }));
+// TenantModule (zona horaria del resumen N2) arrastra AuthModule y otplib (ESM).
+jest.mock('../../../tenant/tenant.module', () => ({ TenantModule: class TenantModule {} }));
 jest.mock('../../../tasks/execution-order-scheduling.module', () => ({
   ExecutionOrderSchedulingModule: class ExecutionOrderSchedulingModule {},
 }));

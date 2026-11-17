@@ -53,6 +53,20 @@ export * from './components/Calendar';
 export * from './components/DatePicker';
 export * from './components/MultiSelect';
 export * from './components/SearchHighlight';
+// Marco de gráficas sin Recharts; el SVG va en la entrada `@iwana/ui/chart` (ADR-112).
+export { Chart, ChartSkeleton } from './components/Chart';
+export type {
+  BarSeries,
+  ChartKind,
+  ChartPlotProps,
+  ChartPoint,
+  ChartProps,
+  ChartSeries,
+  ChartSkeletonProps,
+  ChartStatus,
+  ChartToken,
+  LineSeries,
+} from './components/Chart';
 
 // Providers
 export * from './theme-bootstrap';

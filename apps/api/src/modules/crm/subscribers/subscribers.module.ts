@@ -35,6 +35,9 @@ import {
 import { SubscriberTagsService } from './tags/subscriber-tags.service';
 import { SubscriberTagAssignmentPort } from '../ports/subscriber-tag-assignment.port';
 import { ContractPendingSignatureReadModule } from '../pending-signature/contract-pending-signature-read.module';
+import { TenantModule } from '../../tenant/tenant.module';
+import { SubscribersDashboardController } from './dashboard/subscribers-dashboard.controller';
+import { SubscribersDashboardService } from './dashboard/subscribers-dashboard.service';
 
 @Module({
   imports: [
@@ -54,8 +57,12 @@ import { ContractPendingSignatureReadModule } from '../pending-signature/contrac
     CommercialModule,
     QuotesModule,
     ContractPendingSignatureReadModule,
+    // Zona horaria del tenant para el resumen del inicio (HLD-MOD02 v3.0 §3 N2).
+    TenantModule,
   ],
   controllers: [
+    // Antes que SubscribersController: `crm/subscribers/:id` no debe capturar `dashboard/summary`.
+    SubscribersDashboardController,
     SubscribersController,
     SubscriberTaxController,
     SubscriberNotesController,
@@ -75,6 +82,7 @@ import { ContractPendingSignatureReadModule } from '../pending-signature/contrac
     SubscribersBlockedTitularGuard,
     SubscriberNotesService,
     SubscriberTagsService,
+    SubscribersDashboardService,
     { provide: SubscriberTagAssignmentPort, useExisting: SubscriberTagsService },
     { provide: CrmSubscriberReadPort, useExisting: SubscribersService },
   ],

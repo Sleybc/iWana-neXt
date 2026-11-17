@@ -5,7 +5,7 @@ description: "API e inventario real de @iwana/ui y criterios para nuevas primiti
 
 ## Inventario real de @iwana/ui (verificado 2026-11-08)
 
-> Fuente única: `packages/ui/src/index.ts` (138 exportaciones públicas: 93 valores y 45 tipos). Importar solo desde `@iwana/ui`; el paquete expone además `@iwana/ui/styles/globals.css` (`packages/ui/package.json`). Si este inventario discrepa de `index.ts`, manda `index.ts`.
+> Fuente única: `packages/ui/src/index.ts` (150 exportaciones públicas: 95 valores y 55 tipos). Importar solo desde `@iwana/ui`; el paquete expone además `@iwana/ui/styles/globals.css` y `@iwana/ui/chart` (`ChartPlot`, único módulo con Recharts; en las apps solo por `import()` dinámico vía `PortalChart`, ADR-112) (`packages/ui/package.json`). Si este inventario discrepa de `index.ts`, manda `index.ts`.
 
 ### Componentes (por archivo de `packages/ui/src/components/`)
 
@@ -17,6 +17,7 @@ description: "API e inventario real de @iwana/ui y criterios para nuevas primiti
 | `Button.tsx` | `Button`, `buttonVariants` |
 | `Calendar.tsx` | `Calendar` |
 | `Card.tsx` | `Card`, `CardHeader`, `CardTitle`, `CardContent`, `CardFooter` |
+| `Chart.tsx` | `Chart`, `ChartSkeleton` (tipos `ChartProps`, `ChartPlotProps`, `ChartPoint`, `BarSeries`, `LineSeries`…; contrato `docs/specs/2026-11-17-portal-graficas-ds-contrato.md`) |
 | `CheckboxCard.tsx` | `CheckboxCard` |
 | `DatePicker.tsx` | `DatePicker` |
 | `Dialog.tsx` | `Dialog`, `DialogTrigger`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription`, `DialogClose` |
@@ -102,6 +103,7 @@ Este skill gobierna el uso del sistema de componentes del frontend web de iWana 
 | Superficies y bordes oscuros (`--color-dark-surface*`, `--color-dark-border*`) | `globals.css:127-133` |
 | Sombras (`--shadow-iwana*`) | `globals.css:137-142` |
 | Capas de apilamiento (`--z-*`, ADR-075 Adenda A) | `globals.css:144-181` |
+| Series de gráficas (`--chart-1..4`, alias de la escala de marca; contrato `2026-11-17-portal-graficas-ds-contrato.md` §1) | `globals.css`, al final de `@theme` (claro) y en la regla `.dark` (oscuro), junto a `--color-veil` |
 | Velo modal (`--color-veil`) | `globals.css:188` (claro) y `globals.css:218` (oscuro, regla `.dark` de la l.217) |
 | Tipografía (`--font-sans`, `--font-display`, `--font-mono`) | `globals.css:192-194`; fuentes en `packages/ui/src/styles/fonts/` |
 | Variante `dark` (clase `.dark` en `<html>`) | `globals.css:318`; arranque en `packages/ui/src/theme-bootstrap.ts` |

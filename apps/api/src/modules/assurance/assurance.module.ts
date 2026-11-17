@@ -31,6 +31,7 @@ import { SlaService } from './services/sla.service';
 import { TicketsService } from './services/tickets.service';
 import { TimelineService } from './services/timeline.service';
 import { TicketAttachmentsService } from './services/ticket-attachments.service';
+import { AssuranceDashboardSeriesModule } from './dashboard/assurance-dashboard-series.module';
 
 @Module({
   imports: [
@@ -55,6 +56,8 @@ import { TicketAttachmentsService } from './services/ticket-attachments.service'
     AccessControlModule,
     // Solo por el puerto TicketAttachmentMediaPort (adjuntos de tickets, spec MOD09 §2.2).
     MediaModule,
+    // Serie diaria de casos del inicio del portal (HLD-MOD02 v3.0 §3 N3).
+    AssuranceDashboardSeriesModule,
   ],
   controllers: [AssuranceController],
   providers: [

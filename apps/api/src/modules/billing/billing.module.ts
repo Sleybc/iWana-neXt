@@ -45,6 +45,8 @@ import { BillingEmailsService } from './emails/billing-emails.service';
 import { BillingEmailProcessor } from './emails/billing-email.processor';
 import { BILLING_EMAIL_QUEUE } from './emails/billing-email.constants';
 import { BillingReceiptPdfSource } from './emails/billing-receipt-pdf.source';
+import { BillingDashboardController } from './dashboard/billing-dashboard.controller';
+import { BillingDashboardService } from './dashboard/billing-dashboard.service';
 
 @Module({
   imports: [
@@ -81,6 +83,8 @@ import { BillingReceiptPdfSource } from './emails/billing-receipt-pdf.source';
     BillingWithholdingsController,
     BillingStatementLedgerController,
     BillingEmailsController,
+    // Resumen del inicio del portal (HLD-MOD02 v3.0 §3 N1).
+    BillingDashboardController,
   ],
   providers: [
     BillingPolicyService,
@@ -101,6 +105,7 @@ import { BillingReceiptPdfSource } from './emails/billing-receipt-pdf.source';
     BillingEmailsService,
     BillingEmailProcessor,
     { provide: BillingReceiptPdfSource, useExisting: BillingReceiptsService },
+    BillingDashboardService,
   ],
   exports: [
     BillingPolicyService,
