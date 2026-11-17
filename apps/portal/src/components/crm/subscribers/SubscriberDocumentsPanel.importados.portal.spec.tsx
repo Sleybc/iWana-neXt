@@ -64,9 +64,9 @@ function renderPanel(props: Partial<Parameters<typeof SubscriberDocumentsPanel>[
 }
 
 async function rows() {
-  const list = await screen.findByRole('list', { name: 'Documentos del suscriptor' });
-  await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(1));
-  return within(list).getAllByRole('listitem');
+  const list = await screen.findByRole('region', { name: 'Documentos del suscriptor' });
+  await waitFor(() => expect(within(list).getAllByRole('row').slice(1)).toHaveLength(1));
+  return within(list).getAllByRole('row').slice(1);
 }
 
 describe('SubscriberDocumentsPanel — importados', () => {
@@ -74,8 +74,9 @@ describe('SubscriberDocumentsPanel — importados', () => {
     renderPanel();
     const [support] = await rows();
     expect(support).toHaveTextContent('Soporte importado (PDF)');
-    expect(support).toHaveTextContent('Origen:Importado');
-    expect(support).toHaveTextContent('Fecha:');
+    expect(support).toHaveTextContent('Importado');
+    // La fecha va en su columna (tabla estilo UISP).
+    expect(screen.getByRole('columnheader', { name: /Subido/ })).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/IMPORTADO|INTERNA/);
   });
 

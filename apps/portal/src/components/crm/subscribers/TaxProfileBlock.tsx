@@ -29,6 +29,7 @@ import {
   PortalPanel,
   PortalSkeletonBlock,
   interactiveFocusClassName,
+  portalFieldClassName,
 } from '@/components/shared/portal-ui';
 
 // ── Constantes de UI ──────────────────────────────────────────────────────────
@@ -41,10 +42,14 @@ function formatReviewDate(value: string): string {
   });
 }
 
-const ASSIGNMENT_STATUS_META: Record<string, { label: string; dotClass: string }> = {
-  SUGGESTED: { label: 'Sugerido', dotClass: 'bg-amber-400' },
-  CONFIRMED: { label: 'Confirmado', dotClass: 'bg-emerald-500' },
-  MANUAL_ADJUSTMENT: { label: 'Ajuste manual', dotClass: 'bg-iwana-primary' },
+// El estado de cada tributo se muestra como etiqueta (Firma iWana: los estados van en badge).
+const ASSIGNMENT_STATUS_META: Record<
+  string,
+  { label: string; variant: 'warning' | 'success' | 'info' }
+> = {
+  SUGGESTED: { label: 'Sugerido', variant: 'warning' },
+  CONFIRMED: { label: 'Confirmado', variant: 'success' },
+  MANUAL_ADJUSTMENT: { label: 'Ajuste manual', variant: 'info' },
 };
 
 const TREATMENT_LABELS: Record<string, string> = {
@@ -275,6 +280,8 @@ function AssignmentRow({ assignment, subscriberId, onUpdated }: AssignmentRowPro
   const [savingAdjust, setSavingAdjust] = useState(false);
   const [manualRate, setManualRate] = useState(assignment.effectiveRate ?? '');
   const [reason, setReason] = useState('');
+  // Un fallo al confirmar o ajustar se informa en la fila; antes se descartaba en silencio.
+  const [rowError, setRowError] = useState<string | null>(null);
 
   const statusMeta =
     ASSIGNMENT_STATUS_META[assignment.status] ?? ASSIGNMENT_STATUS_META['SUGGESTED']!;
@@ -283,20 +290,22 @@ function AssignmentRow({ assignment, subscriberId, onUpdated }: AssignmentRowPro
 
   const handleConfirm = useCallback(async () => {
     setSavingConfirm(true);
+    setRowError(null);
     try {
       const result = await subscriberTaxApi.updateAssignment(subscriberId, assignment.id, {
         status: 'CONFIRMED',
       });
       onUpdated(result);
     } catch {
-      /* mantiene estado previo */
+      setRowError(`No fue posible confirmar ${assignment.taxName}. Intenta de nuevo.`);
     } finally {
       setSavingConfirm(false);
     }
-  }, [subscriberId, assignment.id, onUpdated]);
+  }, [subscriberId, assignment.id, assignment.taxName, onUpdated]);
 
   const handleSaveAdjust = useCallback(async () => {
     setSavingAdjust(true);
+    setRowError(null);
     try {
       const rateValue = manualRate.trim() !== '' ? parseFloat(manualRate) : null;
       const result = await subscriberTaxApi.updateAssignment(subscriberId, assignment.id, {
@@ -307,68 +316,75 @@ function AssignmentRow({ assignment, subscriberId, onUpdated }: AssignmentRowPro
       onUpdated(result);
       setAdjusting(false);
     } catch {
-      /* mantiene estado previo */
+      setRowError('No fue posible guardar el ajuste. Revisa la tasa e intenta de nuevo.');
     } finally {
       setSavingAdjust(false);
     }
   }, [subscriberId, assignment.id, manualRate, reason, onUpdated]);
 
   return (
-    <li className="flex flex-col gap-2 rounded-2xl border border-gray-100 px-4 py-3 dark:border-dark-border">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex flex-1 flex-col gap-0.5">
-          <div className="flex items-center gap-2">
-            <span
-              className={`mt-1 h-2 w-2 shrink-0 rounded-full ${statusMeta.dotClass}`}
-              aria-hidden="true"
-            />
-            <span className="text-sm font-medium text-gray-900 dark:text-white">
+    <li className="flex flex-col gap-3 rounded-2xl border border-gray-100 px-4 py-3 dark:border-dark-border">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-gray-900 dark:text-white">
               {assignment.taxName}
             </span>
+            <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
           </div>
-          <div className="ml-4 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500 dark:text-gray-400">
-            <span>Tratamiento: {treatmentLabel}</span>
-            {assignment.effectiveRate != null && (
-              <span>Tasa efectiva: {assignment.effectiveRate}%</span>
-            )}
-            <span>{statusMeta.label}</span>
-          </div>
-          {assignment.reason && (
-            <p className="ml-4 mt-0.5 text-xs italic text-gray-400 dark:text-gray-400">
-              {assignment.reason}
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            Tratamiento: {treatmentLabel}
+            {assignment.effectiveRate != null ? (
+              <>
+                {' · '}Tasa efectiva:{' '}
+                <span className="tabular-nums">{assignment.effectiveRate}%</span>
+              </>
+            ) : null}
+          </p>
+          {assignment.reason ? (
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              Motivo del ajuste: {assignment.reason}
             </p>
-          )}
+          ) : null}
         </div>
 
-        {assignment.status !== 'CONFIRMED' && !adjusting && (
-          <div className="flex shrink-0 items-center gap-2">
+        {assignment.status !== 'CONFIRMED' && !adjusting ? (
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <Button
+              type="button"
+              variant="secondary"
               loading={savingConfirm}
               aria-label={`Confirmar tributo ${assignment.taxName}`}
               disabled={savingConfirm}
               onClick={() => void handleConfirm()}
-              className="min-h-11"
+              className="min-h-11 gap-1.5"
             >
-              {!savingConfirm && <Check className="h-3 w-3" aria-hidden="true" />}
+              {!savingConfirm && <Check className="h-4 w-4" aria-hidden="true" />}
               Confirmar
             </Button>
-            <button
+            <Button
+              type="button"
+              variant="ghost"
               aria-label={`Ajustar tributo ${assignment.taxName}`}
-              onClick={() => setAdjusting(true)}
-              className="flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-surface-3"
+              disabled={savingConfirm}
+              onClick={() => {
+                setRowError(null);
+                setAdjusting(true);
+              }}
+              className="min-h-11 gap-1.5"
             >
-              <Pencil className="h-3 w-3" aria-hidden="true" />
+              <Pencil className="h-4 w-4" aria-hidden="true" />
               Ajustar
-            </button>
+            </Button>
           </div>
-        )}
+        ) : null}
       </div>
 
-      {adjusting && (
-        <div className="ml-4 mt-1 flex flex-col gap-2 rounded-xl border border-iwana-primary/20 bg-iwana-primary/3 px-3 py-2 dark:border-iwana-primary/30 dark:bg-iwana-primary/10">
-          <div className="flex flex-wrap gap-3">
+      {adjusting ? (
+        <div className="flex flex-col gap-3 rounded-xl border border-gray-100 bg-iwana-surface-soft p-3 dark:border-dark-border dark:bg-dark-surface-3">
+          <div className="grid gap-3 sm:grid-cols-[8rem_1fr]">
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
                 Tasa efectiva (%)
               </span>
               <input
@@ -377,14 +393,15 @@ function AssignmentRow({ assignment, subscriberId, onUpdated }: AssignmentRowPro
                 min="0"
                 max="100"
                 step="0.01"
+                inputMode="decimal"
                 value={manualRate}
                 onChange={(e) => setManualRate(e.target.value)}
-                className="w-28 rounded-lg border border-gray-300 px-2.5 py-1 text-sm dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white"
-                placeholder="Ej: 19.00"
+                className={portalFieldClassName}
+                placeholder="Ej: 2.5"
               />
             </label>
-            <label className="flex flex-1 flex-col gap-1">
-              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
                 Motivo del ajuste
               </span>
               <input
@@ -393,37 +410,48 @@ function AssignmentRow({ assignment, subscriberId, onUpdated }: AssignmentRowPro
                 maxLength={300}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-2.5 py-1 text-sm dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white"
+                className={portalFieldClassName}
                 placeholder="Ej: Cliente gobierno con estampilla aprobada"
               />
             </label>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button
+              type="button"
+              variant="ghost"
+              aria-label="Cancelar ajuste"
+              disabled={savingAdjust}
+              onClick={() => {
+                setAdjusting(false);
+                setRowError(null);
+                setManualRate(assignment.effectiveRate ?? '');
+                setReason('');
+              }}
+              className="min-h-11 gap-1.5"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+              Cancelar
+            </Button>
+            <Button
+              type="button"
               loading={savingAdjust}
               aria-label="Guardar ajuste"
               disabled={savingAdjust}
               onClick={() => void handleSaveAdjust()}
-              className="min-h-11"
+              className="min-h-11 gap-1.5"
             >
-              {!savingAdjust && <Check className="h-3 w-3" aria-hidden="true" />}
+              {!savingAdjust && <Check className="h-4 w-4" aria-hidden="true" />}
               Guardar ajuste
             </Button>
-            <button
-              aria-label="Cancelar ajuste"
-              onClick={() => {
-                setAdjusting(false);
-                setManualRate(assignment.effectiveRate ?? '');
-                setReason('');
-              }}
-              className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-surface-3"
-            >
-              <X className="h-3 w-3" aria-hidden="true" />
-              Cancelar
-            </button>
           </div>
         </div>
-      )}
+      ) : null}
+
+      {rowError ? (
+        <p role="alert" className="text-sm text-red-700 dark:text-red-300">
+          {rowError}
+        </p>
+      ) : null}
     </li>
   );
 }

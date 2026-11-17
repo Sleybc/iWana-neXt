@@ -38,7 +38,10 @@ jest.mock('@/components/access-control/permissions-context', () => {
   };
 });
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { push: jest.fn() });
+  })(),
 }));
 
 function subscriberFixture(contactPending: boolean): SubscriberRecord {
@@ -338,8 +341,11 @@ describe('MOD05 E3 contacto pendiente', () => {
       );
 
     render(<SubscriberSections subscriber={subscriberFixture(true)} onSave={onSave} />);
+    const contact = screen.getByRole('region', { name: 'Contacto' });
+    // «Guardar cambios» solo se habilita con un cambio pendiente en la sección.
+    await userEvent.type(within(contact).getByLabelText('Contacto alternativo'), 'Vecina');
     await userEvent.click(
-      within(screen.getByRole('region', { name: 'Contacto' })).getByRole('button', {
+      within(contact).getByRole('button', {
         name: 'Guardar cambios',
       }),
     );

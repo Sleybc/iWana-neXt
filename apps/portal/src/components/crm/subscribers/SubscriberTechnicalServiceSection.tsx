@@ -137,7 +137,12 @@ export function SubscriberTechnicalServiceSection({
                   <Field label="Router" value={service.router.name} />
                   <Field
                     label="Red"
-                    value={`${service.network.name} · ${service.network.cidr}`}
+                    value={
+                      // Si la red se llama igual que su rango, no se repite.
+                      service.network.name.trim() === service.network.cidr
+                        ? service.network.cidr
+                        : `${service.network.name} · ${service.network.cidr}`
+                    }
                     mono
                   />
                   <Field
@@ -153,21 +158,29 @@ export function SubscriberTechnicalServiceSection({
                     }
                     mono
                   />
-                  <Field
-                    label="Certificó"
-                    value={
-                      service.certifiedBy?.name?.trim() ||
-                      (service.certifiedBy
-                        ? 'Nombre no disponible'
-                        : service.origin === 'REGULARIZED'
-                          ? 'Regularización directa'
-                          : 'Pendiente')
-                    }
-                  />
-                  <Field
-                    label="Fecha de certificación"
-                    value={formatNetworkDate(service.certifiedAt)}
-                  />
+                  {/* Un servicio regularizado sin certificación no repite «Regularización directa» ni
+                      una fecha vacía: lo cuentan los datos de la regularización. */}
+                  {service.origin !== 'REGULARIZED' ||
+                  service.certifiedBy ||
+                  service.certifiedAt ? (
+                    <>
+                      <Field
+                        label="Certificó"
+                        value={
+                          service.certifiedBy?.name?.trim() ||
+                          (service.certifiedBy
+                            ? 'Nombre no disponible'
+                            : service.origin === 'REGULARIZED'
+                              ? 'Regularización directa'
+                              : 'Pendiente')
+                        }
+                      />
+                      <Field
+                        label="Fecha de certificación"
+                        value={formatNetworkDate(service.certifiedAt)}
+                      />
+                    </>
+                  ) : null}
                   {service.origin === 'REGULARIZED' ? (
                     <>
                       <Field

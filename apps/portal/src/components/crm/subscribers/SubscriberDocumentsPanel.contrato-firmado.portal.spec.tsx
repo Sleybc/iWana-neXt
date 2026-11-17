@@ -67,8 +67,8 @@ function renderPanel(props: Partial<Parameters<typeof SubscriberDocumentsPanel>[
 }
 
 async function signedRow() {
-  const list = await screen.findByRole('list', { name: 'Documentos del suscriptor' });
-  const [row] = within(list).getAllByRole('listitem');
+  const list = await screen.findByRole('region', { name: 'Documentos del suscriptor' });
+  const [row] = within(list).getAllByRole('row').slice(1);
   if (!row) throw new Error('Sin fila');
   return row;
 }
@@ -80,7 +80,7 @@ describe('Documentos — contrato firmado', () => {
     expect(signedSpy).toHaveBeenCalledWith(SUBSCRIBER_ID);
     expect(within(row).getByText(/^Contrato firmado · /)).toBeInTheDocument();
     expect(within(row).getByText('Plantilla 1.0')).toBeInTheDocument();
-    expect(within(row).queryByText('Sin dato', { selector: 'dd > span' })).not.toBeNull();
+    expect(within(row).getAllByText('Sin dato').length).toBeGreaterThan(0);
     expect(
       within(row).getByRole('button', { name: /Descargar PDF de Contrato firmado/ }),
     ).toBeEnabled();

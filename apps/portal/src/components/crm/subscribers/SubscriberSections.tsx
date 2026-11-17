@@ -2,13 +2,20 @@
 
 import { useEffect, useId, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Button, FormStatus, Input, Select } from '@iwana/ui';
+import { Pencil } from 'lucide-react';
+import { Button, FormStatus, Input, Select, cn } from '@iwana/ui';
 import { DocumentType, isRutResponsibilitiesRequired, PersonType } from '@iwana/shared';
 import type { UpdateSubscriberPayload } from '@iwana/shared';
 import type { SubscriberRecord } from '@/lib/api-client';
 import { ApiError } from '@/lib/api-client';
 import { privacyDisplayValue } from '@/components/privacy/privacy-display';
-import { PortalPanel } from '@/components/shared/portal-ui';
+import {
+  PortalFieldList,
+  PortalFieldRow,
+  PortalPanel,
+  portalPanelDenseActionClassName,
+} from '@/components/shared/portal-ui';
+import { formatBillingDate } from './billing-cycle-ui';
 import { DOCUMENT_TYPE_OPTIONS, PERSON_TYPE_OPTIONS } from './subscriber-ui';
 import { validateNitVerificationDigit } from './subscriber-fiscal';
 import {
@@ -36,6 +43,9 @@ interface SubscriberSectionsProps {
  * Sección editable de la ficha sobre `PortalPanel` (receta de panel del portal): misma cabecera
  * y superficie que el resto de bloques, sin tile decorativa. Con `dirty`, «Guardar cambios» solo
  * se habilita si hay cambios pendientes y aparece «Descartar».
+ *
+ * Con `readView` la sección abre en lectura (etiqueta : valor, como UISP) y «Editar» muestra el
+ * formulario; «Cancelar» descarta y vuelve a la lectura (usuario 2026-11-14).
  */
 export function SectionCard({
   title,
@@ -45,6 +55,9 @@ export function SectionCard({
   error,
   dirty,
   onDiscard,
+  readView,
+  editing = true,
+  onEdit,
   children,
 }: {
   title: string;
@@ -55,32 +68,96 @@ export function SectionCard({
   /** Ausente: el botón queda siempre habilitado (comportamiento previo). */
   dirty?: boolean;
   onDiscard?: () => void;
+  /** Vista de lectura; sin ella la sección es siempre un formulario (comportamiento previo). */
+  readView?: React.ReactNode;
+  editing?: boolean;
+  onEdit?: () => void;
   children: React.ReactNode;
 }) {
+  const reading = readView !== undefined && !editing;
   return (
-    <PortalPanel as="section" labelled title={title} description={description}>
-      {children}
+    <PortalPanel
+      as="section"
+      labelled
+      title={title}
+      description={description}
+      actions={
+        reading && onEdit ? (
+          <button
+            type="button"
+            className={cn(portalPanelDenseActionClassName, 'gap-1.5')}
+            aria-label={`Editar ${title.toLowerCase()}`}
+            onClick={onEdit}
+          >
+            <Pencil className="h-3.5 w-3.5" aria-hidden />
+            Editar
+          </button>
+        ) : undefined
+      }
+    >
+      {reading ? readView : children}
 
-      <div className="mt-3">
-        <FormStatus status={error ? 'error' : 'idle'} message={error ?? undefined} />
-      </div>
+      {reading ? null : (
+        <>
+          <div className="mt-3">
+            <FormStatus status={error ? 'error' : 'idle'} message={error ?? undefined} />
+          </div>
 
-      <div className="mt-5 flex flex-wrap justify-end gap-2">
-        {dirty && onDiscard ? (
-          <Button type="button" variant="ghost" disabled={saving} onClick={onDiscard}>
-            Descartar
-          </Button>
-        ) : null}
-        <Button
-          type="button"
-          loading={saving}
-          disabled={dirty === false || saving}
-          onClick={onSave}
-        >
-          {saving ? 'Guardando sección...' : 'Guardar cambios'}
-        </Button>
-      </div>
+          <div className="mt-5 flex flex-wrap justify-end gap-2">
+            {readView !== undefined && onDiscard ? (
+              <Button type="button" variant="ghost" disabled={saving} onClick={onDiscard}>
+                Cancelar
+              </Button>
+            ) : dirty && onDiscard ? (
+              <Button type="button" variant="ghost" disabled={saving} onClick={onDiscard}>
+                Descartar
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              loading={saving}
+              disabled={dirty === false || saving}
+              onClick={onSave}
+            >
+              {saving ? 'Guardando sección...' : 'Guardar cambios'}
+            </Button>
+          </div>
+        </>
+      )}
     </PortalPanel>
+  );
+}
+
+function optionLabel(options: readonly { value: string; label: string }[], value: string) {
+  return options.find((option) => option.value === value)?.label ?? value;
+}
+
+/** Mapa de la dirección: el mismo contenedor en lectura y en edición. */
+function AddressMapPreview({
+  coordinates,
+}: {
+  coordinates: { latitude: number; longitude: number } | null | undefined;
+}) {
+  return (
+    <div className="rounded-xl border border-gray-100 p-3 dark:border-dark-border">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+        Vista del mapa
+      </p>
+      {coordinates ? (
+        <div className="space-y-2">
+          <div className="h-56 overflow-hidden rounded-lg border border-gray-200 dark:border-dark-border">
+            <LocationPreviewMap latitude={coordinates.latitude} longitude={coordinates.longitude} />
+          </div>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">
+            © Colaboradores de OpenStreetMap
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Ingresa coordenadas en formato latitud, longitud para visualizar el mapa.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -155,22 +232,8 @@ function normalizeMunicipalityValue(
   return municipality;
 }
 
-export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsProps) {
-  // ── Estado sección Identificación ────────────────────────────────────────────
-  const [ident, setIdent] = useState<{
-    personType: PersonType;
-    documentType: string;
-    documentNumber: string;
-    firstName: string;
-    lastName: string;
-    nit: string;
-    nitVerificationDigit: string;
-    businessName: string;
-    commercialName: string;
-    legalRepresentativeFullName: string;
-    legalRepresentativeDocumentType: string;
-    legalRepresentativeDocumentNumber: string;
-  }>({
+function identFrom(subscriber: SubscriberRecord) {
+  return {
     personType: subscriber.personType ?? PersonType.NATURAL,
     documentType: subscriber.documentType ?? '',
     documentNumber: subscriber.documentNumber ?? '',
@@ -183,22 +246,20 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
     legalRepresentativeFullName: '',
     legalRepresentativeDocumentType: '',
     legalRepresentativeDocumentNumber: '',
-  });
-  const [savingIdent, setSavingIdent] = useState(false);
-  const [errorIdent, setErrorIdent] = useState<string | null>(null);
+  };
+}
 
-  // ── Estado sección Contacto ──────────────────────────────────────────────────
-  const [contact, setContact] = useState({
+function contactFrom(subscriber: SubscriberRecord) {
+  return {
     email: subscriber.email ?? '',
     phone: subscriber.phone ?? '',
     altContactName: subscriber.altContactName ?? '',
     altContactPhone: subscriber.altContactPhone ?? '',
-  });
-  const [savingContact, setSavingContact] = useState(false);
-  const [errorContact, setErrorContact] = useState<string | null>(null);
+  };
+}
 
-  // ── Estado sección Dirección ─────────────────────────────────────────────────
-  const [addressDraft, setAddressDraft] = useState({
+function addressFrom(subscriber: SubscriberRecord) {
+  return {
     address: subscriber.address ?? '',
     neighborhood: subscriber.neighborhood ?? '',
     municipality: normalizeMunicipalityValue(subscriber.department ?? '', subscriber.city),
@@ -208,44 +269,48 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
       subscriber.latitude != null && subscriber.longitude != null
         ? `${subscriber.latitude}, ${subscriber.longitude}`
         : '',
-  });
+  };
+}
+
+/** Hay cambios sin guardar si algún campo difiere de lo que trae el servidor. */
+function differs<T extends Record<string, string>>(draft: T, saved: T): boolean {
+  return (Object.keys(saved) as (keyof T)[]).some((key) => draft[key] !== saved[key]);
+}
+
+export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsProps) {
+  // ── Estado sección Identificación ────────────────────────────────────────────
+  const [ident, setIdent] = useState(() => identFrom(subscriber));
+  const [savingIdent, setSavingIdent] = useState(false);
+  const [errorIdent, setErrorIdent] = useState<string | null>(null);
+
+  // ── Estado sección Contacto ──────────────────────────────────────────────────
+  const [contact, setContact] = useState(() => contactFrom(subscriber));
+  const [savingContact, setSavingContact] = useState(false);
+  const [errorContact, setErrorContact] = useState<string | null>(null);
+
+  // ── Estado sección Dirección ─────────────────────────────────────────────────
+  const [addressDraft, setAddressDraft] = useState(() => addressFrom(subscriber));
   const [savingAddress, setSavingAddress] = useState(false);
   const [errorAddress, setErrorAddress] = useState<string | null>(null);
 
+  // Lectura por defecto; Contacto abre en edición si no hay ningún canal (hay que registrarlo).
+  const [editingIdent, setEditingIdent] = useState(false);
+  const [editingContact, setEditingContact] = useState(
+    () => !subscriber.email && !subscriber.phone,
+  );
+  const [editingAddress, setEditingAddress] = useState(false);
+
   // Re-sincronizar cuando el suscriptor se recarga desde el servidor
   useEffect(() => {
-    setIdent({
-      personType: subscriber.personType ?? PersonType.NATURAL,
-      documentType: subscriber.documentType ?? '',
-      documentNumber: subscriber.documentNumber ?? '',
-      firstName: subscriber.firstName ?? '',
-      lastName: subscriber.lastName ?? '',
-      nit: subscriber.nit ?? '',
-      nitVerificationDigit: subscriber.nitVerificationDigit ?? '',
-      businessName: subscriber.businessName ?? '',
-      commercialName: subscriber.commercialName ?? '',
-      legalRepresentativeFullName: '',
-      legalRepresentativeDocumentType: '',
-      legalRepresentativeDocumentNumber: '',
-    });
-    setContact({
-      email: subscriber.email ?? '',
-      phone: subscriber.phone ?? '',
-      altContactName: subscriber.altContactName ?? '',
-      altContactPhone: subscriber.altContactPhone ?? '',
-    });
-    setAddressDraft({
-      address: subscriber.address ?? '',
-      neighborhood: subscriber.neighborhood ?? '',
-      municipality: normalizeMunicipalityValue(subscriber.department ?? '', subscriber.city),
-      department: subscriber.department ?? '',
-      postalCode: subscriber.postalCode ?? '',
-      coordinates:
-        subscriber.latitude != null && subscriber.longitude != null
-          ? `${subscriber.latitude}, ${subscriber.longitude}`
-          : '',
-    });
+    setIdent(identFrom(subscriber));
+    setContact(contactFrom(subscriber));
+    setAddressDraft(addressFrom(subscriber));
   }, [subscriber]);
+
+  // «Guardar cambios» solo se habilita con cambios pendientes en esa sección (patrón SectionCard).
+  const identDirty = differs(ident, identFrom(subscriber));
+  const contactDirty = differs(contact, contactFrom(subscriber));
+  const addressDirty = differs(addressDraft, addressFrom(subscriber));
 
   const isJuridica = ident.personType === PersonType.JURIDICA;
   // Sin acceso al documento el valor llega enmascarado: solo lectura y nunca se envía.
@@ -319,6 +384,7 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
       }
 
       await onSave(partial);
+      setEditingIdent(false);
     } catch (error) {
       setErrorIdent(
         isDocumentWriteForbidden(error)
@@ -341,6 +407,7 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
         altContactName: contact.altContactName || undefined,
         altContactPhone: contact.altContactPhone || undefined,
       });
+      setEditingContact(false);
     } catch (error) {
       if (
         error instanceof ApiError &&
@@ -376,6 +443,7 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
         latitude: parsedCoordinates?.latitude,
         longitude: parsedCoordinates?.longitude,
       });
+      setEditingAddress(false);
     } catch {
       setErrorAddress('No fue posible guardar la dirección.');
     } finally {
@@ -385,6 +453,92 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
 
   const parsedMapCoordinates = parseLatLngPair(addressDraft.coordinates);
   const municipalityOptions = getMunicipiosByDepartamento(addressDraft.department);
+  const departmentOptions =
+    DEPARTAMENTOS.some((depto) => depto.value === addressDraft.department) ||
+    !addressDraft.department
+      ? DEPARTAMENTOS
+      : [
+          ...DEPARTAMENTOS,
+          { value: addressDraft.department, label: addressDraft.department, municipios: [] },
+        ];
+
+  // ── Vistas de lectura (lo guardado, no el borrador) ─────────────────────────
+  const savedIdent = identFrom(subscriber);
+  const savedContact = contactFrom(subscriber);
+  const savedAddress = addressFrom(subscriber);
+  const savedJuridica = savedIdent.personType === PersonType.JURIDICA;
+  // Fecha de alta: la conversión a cliente (en importados, la fecha de registro de UISP).
+  const customerSince = subscriber.convertedAt ?? subscriber.activatedAt ?? null;
+  const textRow = (label: string, value: string, mono = false) => (
+    <PortalFieldRow label={label} empty={!value.trim()} mono={mono}>
+      {value}
+    </PortalFieldRow>
+  );
+
+  const identReadView = (
+    <PortalFieldList>
+      {textRow('Tipo de persona', optionLabel(PERSON_TYPE_OPTIONS, savedIdent.personType))}
+      {savedJuridica ? (
+        <>
+          {textRow(
+            'NIT',
+            savedIdent.nit
+              ? `${savedIdent.nit}${savedIdent.nitVerificationDigit ? `-${savedIdent.nitVerificationDigit}` : ''}`
+              : '',
+            true,
+          )}
+          {textRow('Razón social', savedIdent.businessName)}
+          {textRow('Nombre comercial', savedIdent.commercialName)}
+          {textRow('Representante legal', subscriber.legalRepresentative?.displayName ?? '')}
+        </>
+      ) : (
+        <>
+          {textRow(
+            'Tipo de documento',
+            savedIdent.documentType
+              ? optionLabel(DOCUMENT_TYPE_OPTIONS, savedIdent.documentType)
+              : '',
+          )}
+          {textRow('Número de documento', savedIdent.documentNumber, true)}
+          {textRow('Nombre', savedIdent.firstName)}
+          {textRow('Apellido', savedIdent.lastName)}
+        </>
+      )}
+      {textRow('Cliente desde', customerSince ? formatBillingDate(customerSince) : '')}
+    </PortalFieldList>
+  );
+
+  const contactReadView = (
+    <PortalFieldList>
+      {textRow('Correo principal', savedContact.email)}
+      {textRow('Teléfono principal', savedContact.phone, true)}
+      {textRow('Contacto alternativo', savedContact.altContactName)}
+      {textRow('Teléfono alternativo', savedContact.altContactPhone, true)}
+    </PortalFieldList>
+  );
+
+  const savedDepartment = DEPARTAMENTOS.find((depto) => depto.value === savedAddress.department);
+  const addressReadView = (
+    <div className="space-y-4">
+      <PortalFieldList>
+        {textRow('Dirección', savedAddress.address)}
+        {textRow('Barrio o sector', savedAddress.neighborhood)}
+        {textRow(
+          'Municipio',
+          savedAddress.municipality
+            ? optionLabel(
+                getMunicipiosByDepartamento(savedAddress.department),
+                savedAddress.municipality,
+              )
+            : '',
+        )}
+        {textRow('Departamento', savedDepartment?.label ?? savedAddress.department)}
+        {textRow('Código postal', savedAddress.postalCode, true)}
+        {textRow('Coordenadas', savedAddress.coordinates, true)}
+      </PortalFieldList>
+      <AddressMapPreview coordinates={parseLatLngPair(savedAddress.coordinates)} />
+    </div>
+  );
 
   if (subscriber.privacyRestricted) {
     return (
@@ -440,28 +594,25 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
 
   return (
     <div className="space-y-6">
-      {/* Encabezado de secciones */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-gray-50 bg-white px-6 py-5 shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2">
-        <div>
-          <h2 className="text-lg font-bold text-iwana-primary dark:text-white">
-            Datos del suscriptor
-          </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Actualiza cada bloque de forma independiente.
-          </p>
-        </div>
-      </div>
-
-      {/* Grid 2 columnas: Identificación | Contacto + Dirección */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      {/* Cada sección se guarda por separado. Grid 2 columnas: Identificación + Contacto | Dirección */}
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
         {/* Columna izquierda: Identificación + Contacto */}
         <div className="space-y-6">
           <SectionCard
             title="Identificación"
-            description="Datos base del titular o razón social."
+            description="Datos base del cliente o razón social."
             saving={savingIdent}
             onSave={saveIdent}
             error={errorIdent}
+            dirty={identDirty}
+            onDiscard={() => {
+              setErrorIdent(null);
+              setIdent(identFrom(subscriber));
+              setEditingIdent(false);
+            }}
+            readView={identReadView}
+            editing={editingIdent}
+            onEdit={() => setEditingIdent(true)}
           >
             <div className="space-y-4">
               {/* Fila 1: tipo persona + documento */}
@@ -624,13 +775,13 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
                   <Input
                     label="Nombre"
                     value={ident.firstName}
-                    placeholder="Nombre del titular"
+                    placeholder="Nombre del cliente"
                     onChange={(e) => setIdent((prev) => ({ ...prev, firstName: e.target.value }))}
                   />
                   <Input
                     label="Apellido"
                     value={ident.lastName}
-                    placeholder="Apellido del titular"
+                    placeholder="Apellido del cliente"
                     onChange={(e) => setIdent((prev) => ({ ...prev, lastName: e.target.value }))}
                   />
                 </div>
@@ -644,6 +795,15 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
             saving={savingContact}
             onSave={saveContact}
             error={errorContact}
+            dirty={contactDirty}
+            onDiscard={() => {
+              setErrorContact(null);
+              setContact(contactFrom(subscriber));
+              setEditingContact(false);
+            }}
+            readView={contactReadView}
+            editing={editingContact}
+            onEdit={() => setEditingContact(true)}
           >
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
@@ -672,7 +832,7 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
                   }
                 />
                 <Input
-                  label="Teléfono"
+                  label="Teléfono alternativo"
                   type="tel"
                   value={contact.altContactPhone}
                   placeholder="3001234567"
@@ -693,20 +853,46 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
             saving={savingAddress}
             onSave={saveAddress}
             error={errorAddress}
+            dirty={addressDirty}
+            onDiscard={() => {
+              setErrorAddress(null);
+              setAddressDraft(addressFrom(subscriber));
+              setEditingAddress(false);
+            }}
+            readView={addressReadView}
+            editing={editingAddress}
+            onEdit={() => setEditingAddress(true)}
           >
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
-                <Input
+                <Select
                   label="Departamento"
                   value={addressDraft.department}
-                  placeholder="Departamento"
-                  onChange={(e) =>
-                    setAddressDraft((prev) => ({ ...prev, department: e.target.value }))
-                  }
-                />
+                  onChange={(e) => {
+                    const department = e.target.value;
+                    setAddressDraft((prev) => ({
+                      ...prev,
+                      department,
+                      // El municipio solo se conserva si pertenece al nuevo departamento.
+                      municipality: getMunicipiosByDepartamento(department).some(
+                        (m) => m.value === prev.municipality,
+                      )
+                        ? prev.municipality
+                        : '',
+                    }));
+                  }}
+                >
+                  <option value="">Selecciona un departamento</option>
+                  {departmentOptions.map((depto) => (
+                    <option key={depto.value} value={depto.value}>
+                      {depto.label}
+                    </option>
+                  ))}
+                </Select>
                 <Select
                   label="Municipio"
                   value={addressDraft.municipality}
+                  disabled={!addressDraft.department}
                   onChange={(e) =>
                     setAddressDraft((prev) => ({ ...prev, municipality: e.target.value }))
                   }
@@ -720,41 +906,36 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
                 </Select>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-12">
-                <div className="md:col-span-5">
+              <Input
+                label="Dirección"
+                value={addressDraft.address}
+                placeholder="Calle, carrera o avenida y número"
+                onChange={(e) => setAddressDraft((prev) => ({ ...prev, address: e.target.value }))}
+              />
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="md:col-span-2">
                   <Input
-                    label="Barrio / Sector"
+                    label="Barrio o sector"
                     value={addressDraft.neighborhood}
-                    placeholder="Sector o barrio"
+                    placeholder="Barrio, vereda o sector"
                     onChange={(e) =>
                       setAddressDraft((prev) => ({ ...prev, neighborhood: e.target.value }))
                     }
                   />
                 </div>
-                <div className="md:col-span-4">
-                  <Input
-                    label="Dirección"
-                    value={addressDraft.address}
-                    placeholder="Calle / Carrera / Avenida..."
-                    onChange={(e) =>
-                      setAddressDraft((prev) => ({ ...prev, address: e.target.value }))
-                    }
-                  />
-                </div>
-                <div className="md:col-span-3">
-                  <Input
-                    label="Código postal"
-                    value={addressDraft.postalCode}
-                    placeholder="Ej: 110111"
-                    onChange={(e) =>
-                      setAddressDraft((prev) => ({ ...prev, postalCode: e.target.value }))
-                    }
-                  />
-                </div>
+                <Input
+                  label="Código postal"
+                  value={addressDraft.postalCode}
+                  placeholder="Ej: 110111"
+                  onChange={(e) =>
+                    setAddressDraft((prev) => ({ ...prev, postalCode: e.target.value }))
+                  }
+                />
               </div>
 
               <Input
-                label="Coordenadas (Lat, Lng)"
+                label="Coordenadas (latitud, longitud)"
                 value={addressDraft.coordinates}
                 placeholder="4.6097100, -74.0817500"
                 onChange={(e) =>
@@ -762,28 +943,7 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
                 }
               />
 
-              <div className="rounded-xl border border-gray-100 p-3 dark:border-dark-border">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                  Vista del mapa
-                </p>
-                {parsedMapCoordinates && parsedMapCoordinates !== null ? (
-                  <div className="space-y-2">
-                    <div className="h-56 overflow-hidden rounded-lg border border-gray-200 dark:border-dark-border">
-                      <LocationPreviewMap
-                        latitude={parsedMapCoordinates.latitude}
-                        longitude={parsedMapCoordinates.longitude}
-                      />
-                    </div>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                      © Colaboradores de OpenStreetMap
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Ingresa coordenadas en formato latitud, longitud para visualizar el mapa.
-                  </p>
-                )}
-              </div>
+              <AddressMapPreview coordinates={parsedMapCoordinates} />
             </div>
           </SectionCard>
         </div>

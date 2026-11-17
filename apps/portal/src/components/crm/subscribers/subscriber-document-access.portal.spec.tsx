@@ -197,6 +197,7 @@ describe('acceso al número de documento — pestaña Datos', () => {
     render(<SubscriberSections subscriber={subscriberFixture(RESTRICTED)} onSave={onSave} />);
 
     const identification = screen.getByRole('region', { name: 'Identificación' });
+    await user.click(within(identification).getByRole('button', { name: 'Editar identificación' }));
     const documentInput = within(identification).getByLabelText('Número de documento');
     expect(documentInput).toHaveValue('••••••4050');
     expect(documentInput).toHaveAttribute('readonly');
@@ -222,6 +223,7 @@ describe('acceso al número de documento — pestaña Datos', () => {
     render(<SubscriberSections subscriber={subscriberFixture()} onSave={onSave} />);
 
     const identification = screen.getByRole('region', { name: 'Identificación' });
+    await user.click(within(identification).getByRole('button', { name: 'Editar identificación' }));
     const documentInput = within(identification).getByLabelText('Número de documento');
     expect(documentInput).toHaveValue('1234564050');
     expect(documentInput).not.toHaveAttribute('readonly');
@@ -244,6 +246,9 @@ describe('acceso al número de documento — pestaña Datos', () => {
     render(<SubscriberSections subscriber={subscriberFixture()} onSave={onSave} />);
 
     const identification = screen.getByRole('region', { name: 'Identificación' });
+    await user.click(within(identification).getByRole('button', { name: 'Editar identificación' }));
+    // «Guardar cambios» solo se habilita con un cambio pendiente en la sección.
+    await user.type(within(identification).getByLabelText('Apellido'), ' Prueba');
     await user.click(within(identification).getByRole('button', { name: 'Guardar cambios' }));
 
     expect(

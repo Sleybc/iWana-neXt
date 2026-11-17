@@ -7,9 +7,14 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AccessPermissionKey } from '@iwana/shared';
-import { ApiError, billingApi, crmApi } from '@/lib/api-client';
+import { ApiError, billingApi, contractsApi, crmApi } from '@/lib/api-client';
 import type { Contract, ExpedienteDocumentSupportResponse } from '@/lib/api-client';
-import { SubscriberDocumentsPanel, safeDocumentHref } from './SubscriberDocumentsPanel';
+import {
+  SubscriberDocumentsPanel,
+  formatDocumentSize,
+  safeDocumentHref,
+  safeSignedUrl,
+} from './SubscriberDocumentsPanel';
 
 const mockGranted = { current: new Set<AccessPermissionKey>() };
 jest.mock('@/components/access-control/permissions-context', () => ({
@@ -90,23 +95,70 @@ function renderPanel(props: Partial<Parameters<typeof SubscriberDocumentsPanel>[
 }
 
 async function rows() {
-  const list = await screen.findByRole('list', { name: 'Documentos del suscriptor' });
-  return within(list).getAllByRole('listitem');
+  const list = await screen.findByRole('region', { name: 'Documentos del suscriptor' });
+  return within(list).getAllByRole('row').slice(1);
 }
 
 describe('SubscriberDocumentsPanel', () => {
   it('reúne soportes del expediente y estrato con tipo, fecha, autor, versión y visibilidad', async () => {
     renderPanel();
     const items = await rows();
-    expect(items).toHaveLength(3);
+    // Una fila por soporte: la versión anterior queda plegada bajo la vigente (tabla estilo UISP).
+    expect(items).toHaveLength(2);
     expect(items[0]).toHaveTextContent('Documento de identidad');
-    expect(items[0]).toHaveTextContent('Autor:Asesora comercial');
-    expect(items[0]).toHaveTextContent('Versión:Versión 2 (vigente)');
-    expect(items[0]).toHaveTextContent('Visible para el titular:No');
-    // Un identificador interno no se muestra como autor.
-    expect(items[1]).toHaveTextContent('Autor:Sin dato');
-    expect(items[2]).toHaveTextContent('Soporte de estrato · Sede Norte');
+    expect(items[0]).toHaveTextContent('Asesora comercial');
+    expect(items[0]).toHaveTextContent('Versión 2 (vigente)');
+    expect(items[0]).toHaveTextContent('cedula-2.pdf');
+    expect(items[1]).toHaveTextContent('Soporte de estrato · Sede Norte');
+    const table = screen.getByRole('region', { name: 'Documentos del suscriptor' });
+    expect(
+      within(table).getByRole('columnheader', { name: 'Visible al cliente' }),
+    ).toBeInTheDocument();
+    // La versión anterior se despliega; un identificador interno no se muestra como autor.
+    await userEvent.click(
+      within(items[0]!).getByRole('button', { name: 'Ver 1 versión anterior' }),
+    );
+    const expanded = within(table).getAllByRole('row').slice(1);
+    expect(expanded).toHaveLength(3);
+    expect(expanded[1]).toHaveTextContent('Versión 1');
+    expect(expanded[1]).toHaveTextContent('Sin dato');
     expect(screen.queryByText(/borrador/i)).not.toBeInTheDocument();
+  });
+
+  it('filtra por origen con pestañas y ordena por columna', async () => {
+    // El encabezado ordenable muestra su botón desde `sm` (en móvil el primitive no lo pinta).
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: jest.fn().mockReturnValue({
+        matches: true,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      }),
+    });
+    renderPanel();
+    await rows();
+    const table = screen.getByRole('region', { name: 'Documentos del suscriptor' });
+    await userEvent.click(screen.getByRole('button', { name: 'Estrato (1)' }));
+    let shown = within(table).getAllByRole('row').slice(1);
+    expect(shown).toHaveLength(1);
+    expect(shown[0]).toHaveTextContent('Soporte de estrato');
+    await userEvent.click(screen.getByRole('button', { name: 'Todos' }));
+    await userEvent.click(
+      within(table).getByRole('button', { name: 'Ordenar por Documento, ascendente' }),
+    );
+    shown = within(table).getAllByRole('row').slice(1);
+    expect(shown[0]).toHaveTextContent('Documento de identidad');
+    expect(within(table).getByRole('columnheader', { name: /Documento/ })).toHaveAttribute(
+      'aria-sort',
+      'ascending',
+    );
+  });
+
+  it('presenta el tamaño en unidades legibles', () => {
+    expect(formatDocumentSize(512)).toBe('512 B');
+    expect(formatDocumentSize(340 * 1024)).toBe('340 KB');
+    expect(formatDocumentSize(1.25 * 1024 * 1024)).toMatch(/^1[,.]3 MB$|^1[,.]2 MB$/u);
+    expect(formatDocumentSize(null)).toBeNull();
   });
 
   it('solo enlaza descargas seguras y abre en pestaña nueva sin referer', async () => {
@@ -122,11 +174,63 @@ describe('SubscriberDocumentsPanel', () => {
     expect(safeDocumentHref('https://cdn.example.test/x')).toBe('https://cdn.example.test/x');
   });
 
+  it('abre el soporte de estrato con una URL firmada en una pestaña nueva', async () => {
+    const target = { opener: {} as unknown, location: { href: '' }, close: jest.fn() };
+    const openSpy = jest.spyOn(window, 'open').mockReturnValue(target as unknown as Window);
+    const urlSpy = jest.spyOn(contractsApi, 'stratumEvidenceSignedUrl').mockResolvedValue({
+      signedUrl: 'https://media.example.test/estrato?firma=1',
+      expiresAt: '2026-11-14T12:05:00.000Z',
+    });
+    renderPanel();
+    const items = await rows();
+    await userEvent.click(
+      within(items[1]!).getByRole('button', { name: 'Abrir Soporte de estrato · Sede Norte' }),
+    );
+    await waitFor(() =>
+      expect(target.location.href).toBe('https://media.example.test/estrato?firma=1'),
+    );
+    expect(urlSpy).toHaveBeenCalledWith(CONTRACT.id);
+    expect(openSpy).toHaveBeenCalledWith('', '_blank');
+    expect(target.opener).toBeNull();
+  });
+
+  it('si el soporte de estrato no está disponible cierra la pestaña y lo informa', async () => {
+    const target = { opener: {} as unknown, location: { href: '' }, close: jest.fn() };
+    jest.spyOn(window, 'open').mockReturnValue(target as unknown as Window);
+    jest
+      .spyOn(contractsApi, 'stratumEvidenceSignedUrl')
+      .mockRejectedValue(new ApiError(404, 'NOT_FOUND', 'x'));
+    renderPanel();
+    const items = await rows();
+    await userEvent.click(
+      within(items[1]!).getByRole('button', { name: 'Abrir Soporte de estrato · Sede Norte' }),
+    );
+    expect(
+      await screen.findByText('El soporte de estrato ya no está disponible.'),
+    ).toBeInTheDocument();
+    expect(target.close).toHaveBeenCalled();
+  });
+
+  it('la URL firmada solo se acepta por https o por http contra el propio equipo', () => {
+    expect(safeSignedUrl('https://media.example.test/x')).toBe('https://media.example.test/x');
+    expect(safeSignedUrl('http://localhost:9000/x')).toBe('http://localhost:9000/x');
+    expect(safeSignedUrl('http://127.0.0.1:9000/x')).toBe('http://127.0.0.1:9000/x');
+    expect(safeSignedUrl('http://media.example.test/x')).toBeNull();
+    expect(safeSignedUrl('javascript:alert(1)')).toBeNull();
+    expect(safeSignedUrl('/relativa')).toBeNull();
+  });
+
+  it('no ofrece abrir el soporte de estrato si los datos están restringidos', async () => {
+    renderPanel({ restricted: true });
+    const items = await rows();
+    expect(within(items[1]!).queryByRole('button')).not.toBeInTheDocument();
+  });
+
   it('D1, CA-1: no lista documentos de cobro ni ofrece su PDF', async () => {
     const pdfSpy = jest.spyOn(billingApi, 'documentPdf');
     renderPanel();
     const items = await rows();
-    expect(items).toHaveLength(3);
+    expect(items).toHaveLength(2);
     expect(screen.queryByText(/Documento de cobro|\bFactura\b/u)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Descargar PDF/ })).not.toBeInTheDocument();
     expect(pdfSpy).not.toHaveBeenCalled();
@@ -167,7 +271,7 @@ describe('SubscriberDocumentsPanel', () => {
     renderPanel();
     expect(await screen.findByText('No pudimos cargar los documentos')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Reintentar' }));
-    expect(await rows()).toHaveLength(3);
+    expect(await rows()).toHaveLength(2);
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Documentos' })).toHaveFocus());
   });
 

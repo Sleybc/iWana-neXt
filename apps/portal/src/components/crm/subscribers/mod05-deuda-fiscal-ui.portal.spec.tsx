@@ -60,7 +60,10 @@ const mockSearchPlansForPicker = jest.fn();
 const mockGetPlanById = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { push: jest.fn() });
+  })(),
 }));
 
 jest.mock('@/lib/api-client', () => {
@@ -593,10 +596,15 @@ describe('MOD05 deuda B3 — punto 2: persona jurídica con DV y representante l
     expect(payload).not.toHaveProperty('legalRepresentativeId');
   });
 
-  it('el detalle muestra el nombre del representante y nunca su documento', () => {
+  it('el detalle muestra el nombre del representante y nunca su documento', async () => {
+    const user = userEvent.setup();
     render(<SubscriberSections subscriber={juridicaFixture()} onSave={jest.fn()} />);
 
     const identification = screen.getByRole('region', { name: 'Identificación' });
+    // En lectura y en edición: el nombre sí, el documento y el id del representante nunca.
+    expect(within(identification).getByText('Representante Sintético')).toBeInTheDocument();
+    expect(identification).not.toHaveTextContent('1000000009');
+    await user.click(within(identification).getByRole('button', { name: 'Editar identificación' }));
     expect(within(identification).getByText('Representante Sintético')).toBeInTheDocument();
     expect(identification).not.toHaveTextContent('1000000009');
     expect(identification).not.toHaveTextContent('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
@@ -610,6 +618,7 @@ describe('MOD05 deuda B3 — punto 2: persona jurídica con DV y representante l
     const onSave = jest.fn().mockResolvedValue(undefined);
     render(<SubscriberSections subscriber={juridicaFixture()} onSave={onSave} />);
     const identification = screen.getByRole('region', { name: 'Identificación' });
+    await user.click(within(identification).getByRole('button', { name: 'Editar identificación' }));
 
     await user.type(
       within(identification).getByLabelText(/^Nombre completo del representante legal/),
@@ -648,6 +657,7 @@ describe('MOD05 deuda B3 — punto 2: persona jurídica con DV y representante l
     const onSave = jest.fn().mockResolvedValue(undefined);
     render(<SubscriberSections subscriber={juridicaFixture()} onSave={onSave} />);
     const identification = screen.getByRole('region', { name: 'Identificación' });
+    await user.click(within(identification).getByRole('button', { name: 'Editar identificación' }));
 
     const digit = within(identification).getByLabelText('Dígito de verificación');
     await user.clear(digit);
@@ -1037,6 +1047,18 @@ describe('QW6 — carga de acciones y bloques', () => {
     expect(
       screen.getByRole('button', { name: 'Confirmar tributo Retención municipal' }),
     ).toHaveAttribute('aria-busy', 'true');
+  });
+  it('informa en la fila cuando no se puede confirmar el tributo', async () => {
+    mockProfile();
+    jest.spyOn(subscriberTaxApi, 'updateAssignment').mockRejectedValue(new Error('caída'));
+    render(<TaxProfileBlock subscriberId="subscriber-1" onNavigateToServices={jest.fn()} />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Confirmar tributo Retención municipal' }),
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No fue posible confirmar Retención municipal. Intenta de nuevo.',
+    );
+    expect(screen.getByText('Sugerido')).toBeInTheDocument();
   });
   it('guardar el ajuste expone aria-busy', async () => {
     mockProfile();

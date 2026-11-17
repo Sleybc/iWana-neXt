@@ -10,7 +10,11 @@ import {
   VatTreatment,
 } from '@iwana/shared';
 import type { Contract, Subscriber360Response, SubscriberRecord } from '@/lib/api-client';
-import { SubscriberOverviewTab } from './SubscriberOverviewTab';
+import {
+  activeBillingCycleLabel,
+  lastPaymentLabel,
+  SubscriberOverviewTab,
+} from './SubscriberOverviewTab';
 
 function buildContract(overrides: Partial<Contract>): Contract {
   return {
@@ -158,7 +162,10 @@ describe('SubscriberOverviewTab', () => {
   it('sin servicios ni oportunidad muestra los estados vacíos y no ofrece editar facturación', async () => {
     const { container } = renderTab(build360());
     expect(screen.getByText('Aún no tiene servicios')).toBeInTheDocument();
-    expect(screen.getByText('Facturación no disponible')).toBeInTheDocument();
+    // Sin oportunidad, la tarjeta igual muestra cómo se factura hoy (decisión del usuario 2026-11-14).
+    const billing = screen.getByRole('region', { name: 'Facturación' });
+    expect(within(billing).getByText('Sin servicio activo')).toBeInTheDocument();
+    expect(within(billing).queryByText('Registrado en la venta')).not.toBeInTheDocument();
     expect(screen.getByText('Sin oportunidad vinculada')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Editar facturación' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Privacidad' })).not.toBeInTheDocument();
@@ -194,6 +201,8 @@ describe('SubscriberOverviewTab', () => {
     const contact = screen.getByRole('region', { name: 'Contacto' });
     expect(within(contact).getByText('titular@example.test')).toBeInTheDocument();
     const billing = screen.getByRole('region', { name: 'Facturación' });
+    // Lo anotado en la venta queda como referencia, debajo de los datos reales.
+    expect(within(billing).getByText('Registrado en la venta')).toBeInTheDocument();
     expect(within(billing).getByText('PSE')).toBeInTheDocument();
     expect(within(billing).getByText('Sin configurar')).toBeInTheDocument();
     const origin = screen.getByRole('region', { name: /Oportunidad de origen/ });
@@ -225,5 +234,43 @@ describe('SubscriberOverviewTab', () => {
     expect(within(panel).getByText('1 vencida')).toBeInTheDocument();
     await userEvent.click(within(panel).getByRole('button', { name: 'Ver cumplimiento' }));
     expect(onNavigate).toHaveBeenCalledWith('cumplimiento');
+  });
+});
+
+describe('SubscriberOverviewTab — facturación real', () => {
+  it('resume los días de corte de los servicios activos', () => {
+    const contract = (day: number | null, status: string) =>
+      ({ status, billingCycleDay: day }) as unknown as Parameters<
+        typeof activeBillingCycleLabel
+      >[0][number];
+    expect(activeBillingCycleLabel([])).toBeNull();
+    expect(activeBillingCycleLabel([contract(1, 'ACTIVE')])).toBe('Día 1 de cada mes');
+    expect(
+      activeBillingCycleLabel([
+        contract(15, 'ACTIVE'),
+        contract(1, 'ACTIVE'),
+        contract(1, 'ACTIVE'),
+        contract(5, 'SUSPENDED'),
+      ]),
+    ).toBe('Días 1 y 15 de cada mes');
+  });
+
+  it('el último pago es el vigente más reciente, con medio y fecha', () => {
+    const payment = (paidAt: string, method: string, status: string) => ({
+      paidAt,
+      method,
+      status,
+    });
+    const statement = {
+      payments: [
+        payment('2026-10-01', 'EFECTIVO', 'REGISTRADO'),
+        payment('2026-11-20', 'TRANSFERENCIA', 'ANULADO'),
+        payment('2026-11-13', 'EFECTIVO', 'REGISTRADO'),
+      ],
+    } as unknown as Parameters<typeof lastPaymentLabel>[0];
+    expect(lastPaymentLabel(statement)).toBe('Efectivo · 13 de noviembre de 2026');
+    expect(
+      lastPaymentLabel({ payments: [] } as unknown as Parameters<typeof lastPaymentLabel>[0]),
+    ).toBeNull();
   });
 });

@@ -132,8 +132,8 @@ async function renderFicha() {
 }
 
 async function documentRows() {
-  const list = await screen.findByRole('list', { name: 'Documentos del suscriptor' });
-  return within(list).getAllByRole('listitem');
+  const list = await screen.findByRole('region', { name: 'Documentos del suscriptor' });
+  return within(list).getAllByRole('row').slice(1);
 }
 
 describe('Ficha del suscriptor — pestaña Documentos', () => {

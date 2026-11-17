@@ -7592,6 +7592,14 @@ export const contractsApi = {
     );
   },
 
+  /** URL firmada (vigencia máxima de cinco minutos) para ver el soporte de estrato del contrato. */
+  stratumEvidenceSignedUrl: (id: string, tenantSlug?: string) =>
+    request<{ signedUrl: string; expiresAt: string }>(
+      `/crm/contracts/${encodeURIComponent(id)}/stratum-evidence/signed-url`,
+      {},
+      tenantSlug,
+    ),
+
   /** Quita el soporte de estrato del contrato. */
   deleteStratumEvidence: (id: string, tenantSlug?: string) =>
     request<Contract>(

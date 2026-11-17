@@ -32,7 +32,10 @@ jest.mock('@/components/access-control/permissions-context', () => ({
 
 jest.mock('next/navigation', () => ({
   usePathname: () => '/dashboard/network/provisioning',
-  useRouter: () => ({ replace: mockRouterReplace }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { replace: mockRouterReplace });
+  })(),
   useSearchParams: () => mockSearchParams,
 }));
 
@@ -302,6 +305,21 @@ describe('network provisioning portal surfaces', () => {
     expect(screen.getByText('Nombre no disponible')).toBeInTheDocument();
     expect(screen.getByText('Faltan datos fiscales')).toBeInTheDocument();
     expect(screen.queryByText('operator-1')).not.toBeInTheDocument();
+    // Regularizado sin certificación: no repite «Regularización directa» ni una fecha vacía.
+    expect(screen.queryByText('Certificó')).not.toBeInTheDocument();
+    expect(screen.queryByText('Regularización directa')).not.toBeInTheDocument();
+  });
+
+  it('no repite la red cuando su nombre es su mismo rango', async () => {
+    jest.spyOn(networkApi, 'listSubscriberProvisioning').mockResolvedValue([
+      {
+        ...provisioningService,
+        network: { id: 'network-1', name: '192.0.2.0/24', cidr: '192.0.2.0/24' },
+      },
+    ]);
+    render(<SubscriberTechnicalServiceSection subscriberId="subscriber-1" />);
+    expect(await screen.findByText('192.0.2.0/24')).toBeInTheDocument();
+    expect(screen.queryByText('192.0.2.0/24 · 192.0.2.0/24')).not.toBeInTheDocument();
   });
 
   it('limita la vista técnica de la OT a estado e IP y no muestra controles de ejecución', async () => {

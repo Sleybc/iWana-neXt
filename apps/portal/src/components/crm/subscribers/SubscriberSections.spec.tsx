@@ -193,6 +193,7 @@ describe('Datos fiscales (pestaña Tributario) — RUT condicional', () => {
 
     const identification = screen.getByRole('region', { name: 'Identificación' });
     expect(screen.queryByRole('region', { name: 'Datos fiscales' })).toBeNull();
+    await user.click(within(identification).getByRole('button', { name: 'Editar identificación' }));
     await user.click(within(identification).getByRole('combobox', { name: 'Tipo de persona' }));
     await user.click(screen.getByRole('option', { name: 'Persona jurídica' }));
     await user.click(within(identification).getByRole('button', { name: 'Guardar cambios' }));
@@ -229,5 +230,88 @@ describe('Datos fiscales (pestaña Tributario) — RUT condicional', () => {
     expect(within(fiscal).getByRole('radio', { name: 'No responsable' })).toBeChecked();
     expect(within(fiscal).getByRole('button', { name: 'Guardar cambios' })).toBeDisabled();
     expect(onSave).not.toHaveBeenCalled();
+  });
+});
+
+describe('SubscriberSections — lectura y edición por sección', () => {
+  it('abre en lectura con los datos guardados y la fecha de alta', () => {
+    render(
+      <SubscriberSections
+        subscriber={buildSubscriber({
+          firstName: 'Ana',
+          lastName: 'Rojas',
+          phone: '3001112233',
+          address: 'CR 2 2 02',
+          convertedAt: '2018-02-10T05:00:00.000Z',
+        })}
+        onSave={jest.fn(async () => undefined)}
+      />,
+    );
+    const identification = screen.getByRole('region', { name: 'Identificación' });
+    expect(within(identification).getByText('Ana')).toBeInTheDocument();
+    expect(within(identification).getByText('Cliente desde')).toBeInTheDocument();
+    expect(within(identification).getByText('10 de febrero de 2018')).toBeInTheDocument();
+    expect(within(identification).queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Guardar cambios' })).toBeNull();
+    for (const section of ['identificación', 'contacto', 'dirección']) {
+      expect(screen.getByRole('button', { name: `Editar ${section}` })).toBeInTheDocument();
+    }
+    expect(
+      within(screen.getByRole('region', { name: 'Contacto' })).getByText('3001112233'),
+    ).toBeInTheDocument();
+  });
+
+  it('abre Contacto en edición cuando no hay correo ni teléfono', () => {
+    render(
+      <SubscriberSections subscriber={buildSubscriber()} onSave={jest.fn(async () => undefined)} />,
+    );
+    const contact = screen.getByRole('region', { name: 'Contacto' });
+    expect(within(contact).getByLabelText('Correo principal')).toBeInTheDocument();
+    expect(within(contact).queryByRole('button', { name: 'Editar contacto' })).toBeNull();
+  });
+
+  it('«Guardar cambios» solo se habilita con cambios y «Cancelar» descarta y vuelve a la lectura', async () => {
+    const user = userEvent.setup();
+    const onSave = jest.fn(async () => undefined);
+    render(
+      <SubscriberSections subscriber={buildSubscriber({ phone: '3001112233' })} onSave={onSave} />,
+    );
+    const contact = screen.getByRole('region', { name: 'Contacto' });
+    await user.click(within(contact).getByRole('button', { name: 'Editar contacto' }));
+    const save = within(contact).getByRole('button', { name: 'Guardar cambios' });
+    expect(save).toBeDisabled();
+
+    await user.type(within(contact).getByLabelText('Contacto alternativo'), 'Vecina');
+    expect(save).toBeEnabled();
+    await user.click(within(contact).getByRole('button', { name: 'Cancelar' }));
+
+    expect(within(contact).queryByLabelText('Contacto alternativo')).toBeNull();
+    expect(within(contact).queryByText('Vecina')).toBeNull();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('guarda la sección y vuelve a la lectura; si falla, sigue en edición con el error', async () => {
+    const user = userEvent.setup();
+    const onSave = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('falla'))
+      .mockResolvedValueOnce(undefined);
+    render(
+      <SubscriberSections subscriber={buildSubscriber({ phone: '3001112233' })} onSave={onSave} />,
+    );
+    const contact = screen.getByRole('region', { name: 'Contacto' });
+    await user.click(within(contact).getByRole('button', { name: 'Editar contacto' }));
+    await user.type(within(contact).getByLabelText('Contacto alternativo'), 'Vecina');
+    await user.click(within(contact).getByRole('button', { name: 'Guardar cambios' }));
+    expect(
+      await within(contact).findByText('No fue posible guardar el contacto.'),
+    ).toBeInTheDocument();
+    expect(within(contact).getByLabelText('Contacto alternativo')).toHaveValue('Vecina');
+
+    await user.click(within(contact).getByRole('button', { name: 'Guardar cambios' }));
+    await waitFor(() =>
+      expect(within(contact).getByRole('button', { name: 'Editar contacto' })).toBeInTheDocument(),
+    );
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ altContactName: 'Vecina' }));
   });
 });

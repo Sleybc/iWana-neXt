@@ -14,7 +14,8 @@ import {
   type Subscriber360Response,
 } from '@/lib/api-client';
 import { usePermissions } from '@/components/access-control/permissions-context';
-import { formatBillingMoney } from '@/components/billing/billing-copy';
+import { formatBillingMoney, PAYMENT_METHODS } from '@/components/billing/billing-copy';
+import { formatBillingDate } from './billing-cycle-ui';
 import {
   formatExpedienteStatus,
   getStatusBadgeVariant,
@@ -34,6 +35,7 @@ import {
   formatContractAlias,
   formatSubscriberDate,
   formatSubscriberLocation,
+  formatSubscriberName,
 } from './subscriber-ui';
 import { deriveSubscriberBadges } from './subscriber-badges';
 import { SubscriberActivityCard } from './SubscriberActivityCard';
@@ -107,6 +109,28 @@ function mapError(error: unknown): string {
   return error instanceof ApiError
     ? error.message
     : 'No fue posible completar la operación del suscriptor.';
+}
+
+/** Días de corte de los servicios activos: «Día 1 de cada mes» o «Días 1 y 15 de cada mes». */
+export function activeBillingCycleLabel(contracts: readonly Contract[]): string | null {
+  const days = [
+    ...new Set(
+      contracts
+        .filter((contract) => contract.status === 'ACTIVE' && contract.billingCycleDay != null)
+        .map((contract) => contract.billingCycleDay as number),
+    ),
+  ].sort((a, b) => a - b);
+  if (!days.length) return null;
+  if (days.length === 1) return `Día ${days[0]} de cada mes`;
+  return `Días ${days.slice(0, -1).join(', ')} y ${days[days.length - 1]} de cada mes`;
+}
+
+/** Medio y fecha del pago vigente más reciente del estado de cuenta. */
+export function lastPaymentLabel(statement: BillingAccountStatement): string | null {
+  const latest = statement.payments
+    .filter((payment) => payment.status === 'REGISTRADO')
+    .sort((a, b) => b.paidAt.localeCompare(a.paidAt))[0];
+  return latest ? `${PAYMENT_METHODS[latest.method]} · ${formatBillingDate(latest.paidAt)}` : null;
 }
 
 function pluralize(count: number, singular: string, plural: string): string {
@@ -340,6 +364,26 @@ export function SubscriberOverviewTab({
     </PortalPanel>
   );
 
+  const cycleLabel = activeBillingCycleLabel(contracts);
+  const paymentLabel = statement ? lastPaymentLabel(statement) : null;
+  // Lo que rige la facturación hoy: ciclo de los servicios, nombre del cliente y último pago.
+  const currentBillingList = (
+    <PortalFieldList>
+      <PortalFieldRow label="Ciclo de facturación">
+        {cycleLabel ?? <span className={emptyValueClassName}>Sin servicio activo</span>}
+      </PortalFieldRow>
+      <PortalFieldRow label="Nombre fiscal">
+        {anonymizedAt
+          ? privacyDisplayValue(null, { anonymizedAt })
+          : formatSubscriberName(subscriber)}
+      </PortalFieldRow>
+      {statement ? (
+        <PortalFieldRow label="Último pago">
+          {paymentLabel ?? <span className={emptyValueClassName}>Sin pagos registrados</span>}
+        </PortalFieldRow>
+      ) : null}
+    </PortalFieldList>
+  );
   const billingPanel = (
     <PortalPanel
       as="section"
@@ -374,7 +418,7 @@ export function SubscriberOverviewTab({
         <p className={bodyNoteClassName}>
           {anonymizedAt
             ? 'Datos anonimizados: la facturación ya no se puede editar.'
-            : 'Datos tomados de la oportunidad de origen.'}
+            : 'Así se le factura hoy. Debajo, lo que se anotó en la venta como referencia.'}
         </p>
       ) : null}
       <p
@@ -396,12 +440,7 @@ export function SubscriberOverviewTab({
         />
       )}
       {!expedienteSummary ? (
-        <PortalEmptyState
-          embedded
-          icon={FileText}
-          title="Facturación no disponible"
-          description="Este suscriptor no tiene una oportunidad de origen de donde tomar los datos de facturación."
-        />
+        currentBillingList
       ) : billingEditing && canEditBilling ? (
         <div className="space-y-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -447,18 +486,26 @@ export function SubscriberOverviewTab({
           </div>
         </div>
       ) : (
-        <PortalFieldList>
-          {BILLING_FIELDS.map(({ key, label }) => {
-            const value = expedienteSummary[key];
-            return (
-              <PortalFieldRow key={key} label={label}>
-                {key === 'fiscalName' && anonymizedAt
-                  ? privacyDisplayValue(null, { anonymizedAt })
-                  : value || <span className={emptyValueClassName}>Sin configurar</span>}
-              </PortalFieldRow>
-            );
-          })}
-        </PortalFieldList>
+        <div className="space-y-3">
+          {currentBillingList}
+          <div className="border-t border-gray-100 pt-3 dark:border-dark-border">
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Registrado en la venta
+            </p>
+            <PortalFieldList>
+              {BILLING_FIELDS.map(({ key, label }) => {
+                const value = expedienteSummary[key];
+                return (
+                  <PortalFieldRow key={key} label={label}>
+                    {key === 'fiscalName' && anonymizedAt
+                      ? privacyDisplayValue(null, { anonymizedAt })
+                      : value || <span className={emptyValueClassName}>Sin configurar</span>}
+                  </PortalFieldRow>
+                );
+              })}
+            </PortalFieldList>
+          </div>
+        </div>
       )}
     </PortalPanel>
   );

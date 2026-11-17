@@ -15,6 +15,8 @@ import {
   ArrowLeft,
   ChevronDown,
   MoreHorizontal,
+  PauseCircle,
+  PlayCircle,
   Plus,
   RefreshCw,
 } from 'lucide-react';
@@ -152,14 +154,16 @@ export function SubscriberHeader({
           )}
           {canEditSubscriber && subscriber.status === SubscriberStatus.ACTIVE && (
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              {/* Suspender corta el servicio: tono de peligro suave, no la acción principal. */}
               <Button
                 type="button"
-                variant="primary"
-                className={touch}
+                variant="softDestructive"
+                className={`${touch} gap-1.5`}
                 disabled={!hasActiveServices}
                 aria-describedby={!hasActiveServices ? 'subscriber-suspend-disabled' : undefined}
                 onClick={() => onOpenLifecycle('SUSPEND')}
               >
+                <PauseCircle className="h-4 w-4" aria-hidden="true" />
                 Suspender servicios
               </Button>
               {!hasActiveServices && (
@@ -175,16 +179,18 @@ export function SubscriberHeader({
           )}
           {canEditSubscriber && subscriber.status === SubscriberStatus.SUSPENDED && (
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              {/* «Registrar» es la única acción principal del encabezado. */}
               <Button
                 type="button"
-                variant="primary"
-                className={touch}
+                variant="secondary"
+                className={`${touch} gap-1.5`}
                 disabled={!hasSuspendedServices}
                 aria-describedby={
                   !hasSuspendedServices ? 'subscriber-reactivate-disabled' : undefined
                 }
                 onClick={() => onOpenLifecycle('REACTIVATE')}
               >
+                <PlayCircle className="h-4 w-4" aria-hidden="true" />
                 Reactivar servicios
               </Button>
               {!hasSuspendedServices && (
@@ -245,6 +251,7 @@ export function SubscriberHeader({
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem
+                  variant="danger"
                   disabled={subscriber.hasLiveContracts}
                   aria-describedby={
                     subscriber.hasLiveContracts ? 'subscriber-cancellation-disabled' : undefined

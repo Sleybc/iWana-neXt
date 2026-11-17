@@ -50,8 +50,8 @@ describe('SubscriberDocumentsPanel — sin documentos de cobro (CA-1)', () => {
         restricted={false}
       />,
     );
-    const list = await screen.findByRole('list', { name: 'Documentos del suscriptor' });
-    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(1));
+    const list = await screen.findByRole('region', { name: 'Documentos del suscriptor' });
+    await waitFor(() => expect(within(list).getAllByRole('row').slice(1)).toHaveLength(1));
     expect(within(list).getByText('Contrato firmado')).toBeInTheDocument();
     expect(screen.queryByText(/Documento de cobro|\bFactura\b/u)).not.toBeInTheDocument();
     expect(screen.queryByText(/Histórico importado|Factura histórica/u)).not.toBeInTheDocument();
