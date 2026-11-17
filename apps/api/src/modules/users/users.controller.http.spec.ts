@@ -240,9 +240,29 @@ describe('UsersController HTTP', () => {
     );
   });
 
+  it.each(['page=0', 'page=2&cursor=00000000-0000-4000-8000-000000000001'])(
+    'GET /api/v1/users rechaza paginación inválida %s',
+    async (query) => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/users?${query}`)
+        .set('Authorization', 'Bearer admin-token')
+        .expect(400);
+    },
+  );
+
   it('GET /api/v1/users retorna 401 sin JWT', async () => {
     await request(app.getHttpServer()).get('/api/v1/users').expect(401);
   });
+
+  it.each(['sortBy=role&sortDir=desc', 'page=1&sortBy=email&sortDir=asc', 'page=1&sortBy=user'])(
+    'GET /api/v1/users rechaza un orden inválido %s',
+    async (query) => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/users?${query}`)
+        .set('Authorization', 'Bearer admin-token')
+        .expect(400);
+    },
+  );
 
   it('GET /api/v1/users retorna 403 con rol no autorizado', async () => {
     await request(app.getHttpServer())

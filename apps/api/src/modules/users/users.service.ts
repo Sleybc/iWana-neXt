@@ -40,6 +40,7 @@ import { AuditService } from '../audit/audit.service';
 import { hashEmail } from '../../common/crypto/hash-email.util';
 import {
   buildCursorMeta,
+  buildPageMeta,
   clampPickerSearchLimit,
   type PickerSearchResult,
 } from '../../common/pagination';
@@ -82,6 +83,30 @@ const BULK_RESULT_TTL_SECONDS = 24 * 60 * 60;
 
 /** Umbral de similitud trigram (typos leves; p. ej. lilina↔liliana). */
 const TRGM_SIMILARITY_THRESHOLD = 0.35;
+
+// Mismo orden alfabético que las etiquetas de rol del directorio en español.
+const USER_ROLES_BY_LABEL = [
+  UserRole.ADMIN,
+  UserRole.PARTNER,
+  UserRole.AUDITOR,
+  UserRole.ACCOUNTANT,
+  UserRole.CONTRACTOR,
+  UserRole.INVESTOR,
+  UserRole.NOC,
+  UserRole.SUPPORT,
+  UserRole.SUBSCRIBER,
+  UserRole.HR,
+  UserRole.TECHNICIAN,
+  UserRole.SALES,
+];
+
+const USER_SORT_EXPRESSIONS = {
+  user: "lower(coalesce(nullif(btrim(concat_ws(' ', first_name, last_name)), ''), email))",
+  role: `array_position(ARRAY[${USER_ROLES_BY_LABEL.map((role) => `'${role}'`).join(', ')}]::text[], role::text)`,
+  created: 'created_at',
+} as const;
+export const USER_SORT_FIELDS = Object.keys(USER_SORT_EXPRESSIONS);
+type UserSortField = keyof typeof USER_SORT_EXPRESSIONS;
 
 interface IdempotencyRecord {
   fingerprint: string;
@@ -314,10 +339,12 @@ export class UsersService {
    */
   async findAll(params: {
     cursor?: string;
+    page?: number;
     limit?: number;
     status?: UserStatus;
     role?: UserRole;
     search?: string;
+    sort?: { by: string; dir: 'asc' | 'desc' };
   }): Promise<ListResponse<UserResponseDto>> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
     const requested = params.limit ?? 50;
@@ -325,6 +352,21 @@ export class UsersService {
       Number.isFinite(requested) && requested > 0 ? Math.min(Math.floor(requested), 100) : 50;
 
     const normalizedSearch = this.normalizeSearchValue(params.search ?? '');
+    const sort =
+      params.page !== undefined && params.sort && USER_SORT_FIELDS.includes(params.sort.by)
+        ? params.sort
+        : null;
+    const pageMeta = (total: number) =>
+      params.page === undefined
+        ? null
+        : buildPageMeta({
+            total,
+            page: Math.min(params.page, Math.max(1, Math.ceil(total / limit))),
+            limit,
+            sortableFields: USER_SORT_FIELDS,
+            sortBy: sort?.by,
+            sortDir: sort?.dir,
+          });
 
     // Designacion de admin principal (ADR-063): una sola lectura para toda la
     // pagina. Vive en `public.tenants`, fuera del schema del tenant, asi que se
@@ -332,39 +374,38 @@ export class UsersService {
     const principalAdminUserId = await this.tenantService.getPrincipalAdminUserId(tenantId);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      if (!normalizedSearch) {
+      if (!normalizedSearch && !sort) {
         const where: FindOptionsWhere<User> = {};
         if (params.cursor) where.id = MoreThan(params.cursor);
         if (params.status) where.status = params.status;
         if (params.role) where.role = params.role;
 
-        const users = await qr.manager.find(User, {
-          where,
-          order: { id: 'ASC' },
-          take: limit + 1,
-        });
-
         const totalWhere: FindOptionsWhere<User> = {};
         if (params.status) totalWhere.status = params.status;
         if (params.role) totalWhere.role = params.role;
         const total = await qr.manager.count(User, { where: totalWhere });
+        const numbered = pageMeta(total);
+        const users = await qr.manager.find(User, {
+          where,
+          order: { id: 'ASC' },
+          ...(numbered ? { skip: ((numbered.page ?? 1) - 1) * limit } : {}),
+          take: numbered ? limit : limit + 1,
+        });
 
         const hasNext = users.length > limit;
         const items = hasNext ? users.slice(0, limit) : users;
 
         return {
           data: items.map((u) => this.toDto(u, principalAdminUserId)),
-          meta: buildCursorMeta({
-            nextCursor: hasNext ? (items[items.length - 1]?.id ?? null) : null,
-            total,
-            limit,
-          }),
+          meta:
+            numbered ??
+            buildCursorMeta({
+              nextCursor: hasNext ? (items[items.length - 1]?.id ?? null) : null,
+              total,
+              limit,
+            }),
         };
       }
-
-      await qr.query(`SELECT set_config('pg_trgm.similarity_threshold', $1, true)`, [
-        String(TRGM_SIMILARITY_THRESHOLD),
-      ]);
 
       const filterClauses: string[] = ['deleted_at IS NULL'];
       const filterParams: unknown[] = [];
@@ -378,22 +419,27 @@ export class UsersService {
         filterClauses.push(`role = $${filterParams.length}`);
       }
 
-      filterParams.push(normalizedSearch);
-      const qIdx = filterParams.length;
-      filterParams.push(`%${this.escapeLikePattern(normalizedSearch)}%`);
-      const likeIdx = filterParams.length;
+      if (normalizedSearch) {
+        await qr.query(`SELECT set_config('pg_trgm.similarity_threshold', $1, true)`, [
+          String(TRGM_SIMILARITY_THRESHOLD),
+        ]);
+        filterParams.push(normalizedSearch);
+        const qIdx = filterParams.length;
+        filterParams.push(`%${this.escapeLikePattern(normalizedSearch)}%`);
+        const likeIdx = filterParams.length;
 
-      filterClauses.push(`(
+        filterClauses.push(`(
         email ILIKE $${likeIdx} ESCAPE '\\'
         OR coalesce(first_name, '') ILIKE $${likeIdx} ESCAPE '\\'
         OR coalesce(last_name, '') ILIKE $${likeIdx} ESCAPE '\\'
         OR coalesce(job_title, '') ILIKE $${likeIdx} ESCAPE '\\'
-        OR email % $${qIdx}
-        OR coalesce(first_name, '') % $${qIdx}
-        OR coalesce(last_name, '') % $${qIdx}
-        OR coalesce(job_title, '') % $${qIdx}
-        OR (coalesce(first_name, '') || ' ' || coalesce(last_name, '')) % $${qIdx}
+        OR email OPERATOR(public.%) $${qIdx}
+        OR coalesce(first_name, '') OPERATOR(public.%) $${qIdx}
+        OR coalesce(last_name, '') OPERATOR(public.%) $${qIdx}
+        OR coalesce(job_title, '') OPERATOR(public.%) $${qIdx}
+        OR (coalesce(first_name, '') || ' ' || coalesce(last_name, '')) OPERATOR(public.%) $${qIdx}
       )`);
+      }
 
       const filterSql = filterClauses.join(' AND ');
 
@@ -402,6 +448,7 @@ export class UsersService {
         filterParams,
       )) as Array<{ total: number }>;
       const total = countRows[0]?.total ?? 0;
+      const numbered = pageMeta(total);
 
       const pageParams = [...filterParams];
       let pageSql = `SELECT * FROM users WHERE ${filterSql}`;
@@ -409,8 +456,15 @@ export class UsersService {
         pageParams.push(params.cursor);
         pageSql += ` AND id > $${pageParams.length}`;
       }
-      pageParams.push(limit + 1);
-      pageSql += ` ORDER BY id ASC LIMIT $${pageParams.length}`;
+      pageParams.push(numbered ? limit : limit + 1);
+      const order = sort
+        ? `${USER_SORT_EXPRESSIONS[sort.by as UserSortField]} ${sort.dir === 'desc' ? 'DESC' : 'ASC'}, id ASC`
+        : 'id ASC';
+      pageSql += ` ORDER BY ${order} LIMIT $${pageParams.length}`;
+      if (numbered) {
+        pageParams.push(((numbered.page ?? 1) - 1) * limit);
+        pageSql += ` OFFSET $${pageParams.length}`;
+      }
 
       const rows = (await qr.query(pageSql, pageParams)) as Array<Record<string, unknown>>;
       const users = rows.map((row) => this.mapUserRow(row));
@@ -419,11 +473,13 @@ export class UsersService {
 
       return {
         data: items.map((u) => this.toDto(u, principalAdminUserId)),
-        meta: buildCursorMeta({
-          nextCursor: hasNext ? (items[items.length - 1]?.id ?? null) : null,
-          total,
-          limit,
-        }),
+        meta:
+          numbered ??
+          buildCursorMeta({
+            nextCursor: hasNext ? (items[items.length - 1]?.id ?? null) : null,
+            total,
+            limit,
+          }),
       };
     });
   }
@@ -470,11 +526,11 @@ export class UsersService {
         OR coalesce(first_name, '') ILIKE $${likeIdx} ESCAPE '\\'
         OR coalesce(last_name, '') ILIKE $${likeIdx} ESCAPE '\\'
         OR coalesce(job_title, '') ILIKE $${likeIdx} ESCAPE '\\'
-        OR email % $${qIdx}
-        OR coalesce(first_name, '') % $${qIdx}
-        OR coalesce(last_name, '') % $${qIdx}
-        OR coalesce(job_title, '') % $${qIdx}
-        OR (coalesce(first_name, '') || ' ' || coalesce(last_name, '')) % $${qIdx}
+        OR email OPERATOR(public.%) $${qIdx}
+        OR coalesce(first_name, '') OPERATOR(public.%) $${qIdx}
+        OR coalesce(last_name, '') OPERATOR(public.%) $${qIdx}
+        OR coalesce(job_title, '') OPERATOR(public.%) $${qIdx}
+        OR (coalesce(first_name, '') || ' ' || coalesce(last_name, '')) OPERATOR(public.%) $${qIdx}
       )`);
 
       const filterSql = filterClauses.join(' AND ');
@@ -492,10 +548,10 @@ export class UsersService {
         WHERE ${filterSql}
         ORDER BY
           GREATEST(
-            similarity(email, $${qIdx}),
-            similarity(coalesce(first_name, ''), $${qIdx}),
-            similarity(coalesce(last_name, ''), $${qIdx}),
-            similarity(coalesce(first_name, '') || ' ' || coalesce(last_name, ''), $${qIdx})
+            public.similarity(email, $${qIdx}),
+            public.similarity(coalesce(first_name, ''), $${qIdx}),
+            public.similarity(coalesce(last_name, ''), $${qIdx}),
+            public.similarity(coalesce(first_name, '') || ' ' || coalesce(last_name, ''), $${qIdx})
           ) DESC,
           id ASC
         LIMIT $${pageParams.length}

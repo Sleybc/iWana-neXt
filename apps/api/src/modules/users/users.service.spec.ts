@@ -26,6 +26,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
 import * as bcrypt from 'bcryptjs';
 import { DataSource } from 'typeorm';
+import { User } from '@iwana/db';
 import {
   BadRequestException,
   ConflictException,
@@ -305,6 +306,72 @@ describe('UsersService', () => {
       expect(result.meta.mode).toBe('cursor');
       expect(result.meta.limit).toBe(2);
       expect(result.meta.hasMore).toBe(true);
+    });
+
+    it('limita la página al último resultado disponible con el filtro aplicado', async () => {
+      const find = jest.fn().mockResolvedValue([buildUserEntity()]);
+      const count = jest.fn().mockResolvedValue(21);
+      setupRunInTenantSchema({ find, count });
+
+      const result = await service.findAll({ page: 3, limit: 20, status: UserStatus.ACTIVE });
+
+      expect(count).toHaveBeenCalledWith(User, { where: { status: UserStatus.ACTIVE } });
+      expect(find).toHaveBeenCalledWith(User, {
+        where: { status: UserStatus.ACTIVE },
+        order: { id: 'ASC' },
+        skip: 20,
+        take: 20,
+      });
+      expect(result.meta).toMatchObject({
+        mode: 'page',
+        page: 2,
+        totalPages: 2,
+        total: 21,
+        nextCursor: null,
+        capabilities: { randomAccess: true },
+      });
+    });
+
+    it('aplica el límite y desplazamiento después de contar la búsqueda', async () => {
+      const query = jest
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce([{ total: 42 }])
+        .mockResolvedValueOnce([]);
+      setupRunInTenantSchema({}, query);
+
+      const result = await service.findAll({ page: 2, limit: 20, search: 'nombre' });
+
+      expect(query).toHaveBeenLastCalledWith(
+        expect.stringContaining('ORDER BY id ASC LIMIT $3 OFFSET $4'),
+        ['nombre', '%nombre%', 20, 20],
+      );
+      expect(result.meta).toMatchObject({ page: 2, totalPages: 3, total: 42, hasMore: true });
+    });
+
+    it('ordena por fecha antes de paginar y conserva el filtro de estado', async () => {
+      const query = jest
+        .fn()
+        .mockResolvedValueOnce([{ total: 41 }])
+        .mockResolvedValueOnce([]);
+      setupRunInTenantSchema({}, query);
+
+      const result = await service.findAll({
+        page: 2,
+        limit: 20,
+        status: UserStatus.ACTIVE,
+        sort: { by: 'created', dir: 'desc' },
+      });
+
+      expect(query).toHaveBeenLastCalledWith(
+        expect.stringContaining('status = $1 ORDER BY created_at DESC, id ASC LIMIT $2 OFFSET $3'),
+        [UserStatus.ACTIVE, 20, 20],
+      );
+      expect(result.meta).toMatchObject({
+        page: 2,
+        sort: { by: 'created', dir: 'desc' },
+        capabilities: { sortableFields: ['user', 'role', 'created'] },
+      });
     });
 
     it('busca por nombre en SQL (pg_trgm) y pagina después del filtro', async () => {

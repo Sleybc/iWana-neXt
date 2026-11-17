@@ -53,6 +53,12 @@ La revisión fue estática y mecánica sobre el código fuente. No constituye un
 - Mensajes y labels visibles del módulo.
 - Controles de accesibilidad estructural presentes en acciones y estados.
 
+**Actualización del 2026-11-16.** El directorio solicita páginas numeradas a `GET /api/v1/users` y usa el paginador compartido, con 20 filas por defecto. El parámetro `page` es opcional y excluyente con `cursor`. La búsqueda, los filtros y el tamaño de página se guardan en la URL y sus cambios vuelven a la primera página. Verificado en el portal de desarrollo con 62 usuarios, navegación entre las páginas 1 y 2 y reinicio al aplicar «Inactivo».
+
+Pruebas dirigidas sin caché de Turbo. API, 95 pruebas en 2 suites. Portal, 22 pruebas en 2 suites. Pendiente la cobertura completa del módulo.
+
+El directorio permite ordenar por nombre de usuario, etiqueta de rol y fecha de creación. El servidor aplica el orden antes de paginar y usa el ID para desempatar. Los encabezados alternan ascendente, descendente y orden por defecto. En pantallas pequeñas se puede ordenar desde la barra de filtros. La verificación dirigida del cambio pasó con 99 pruebas de la API y 23 del portal, en dos suites por paquete.
+
 ### 2.2 Fuentes de evidencia
 
 | Fuente | Resultado |

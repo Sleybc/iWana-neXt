@@ -43,7 +43,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { SkipAudit } from '../audit/decorators/skip-audit.decorator';
-import { UsersService } from './users.service';
+import { USER_SORT_FIELDS, UsersService } from './users.service';
 import { resolveRouteRateLimit } from '../../common/rate-limit-env';
 import {
   AdminChangeUserLoginEmailDto,
@@ -95,11 +95,17 @@ export class UsersController {
   @Get()
   @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_READ)
-  @ApiOperation({ summary: 'Listar usuarios del tenant (paginacion cursor-based)' })
+  @ApiOperation({ summary: 'Listar usuarios del tenant por página o cursor' })
   @ApiQuery({
     name: 'cursor',
     required: false,
-    description: 'Cursor de paginacion (UUID del ultimo item)',
+    description: 'Cursor de paginación (UUID del último usuario). Excluyente con page.',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    schema: { type: 'integer', minimum: 1 },
+    description: 'Página numerada, desde 1. Excluyente con cursor.',
   })
   @ApiQuery({
     name: 'limit',
@@ -107,6 +113,8 @@ export class UsersController {
     description: 'Cantidad maxima de elementos (entero 1-100; default 50)',
     type: Number,
   })
+  @ApiQuery({ name: 'sortBy', required: false, enum: USER_SORT_FIELDS })
+  @ApiQuery({ name: 'sortDir', required: false, enum: ['asc', 'desc'] })
   @ApiQuery({
     name: 'status',
     required: false,
@@ -127,7 +135,7 @@ export class UsersController {
     description: 'Listado paginado de usuarios.',
     type: UsersListEnvelopeDto,
   })
-  @ApiResponse({ status: 400, description: 'Parametro limit invalido.' })
+  @ApiResponse({ status: 400, description: 'Parámetros de paginación inválidos o incompatibles.' })
   @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
   @ApiResponse({ status: 403, description: 'Sin permisos de administrador o USERS_READ.' })
   async findAll(
@@ -136,19 +144,40 @@ export class UsersController {
     @Query('status') status?: UserStatus,
     @Query('role') role?: UserRole,
     @Query('search') search?: string,
+    @Query('page', new ParseIntPipe({ optional: true })) page?: number,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ): Promise<{ data: ListResponse<UserResponseDto> }> {
+    if (page !== undefined && (!Number.isSafeInteger(page) || page < 1 || cursor)) {
+      throw new BadRequestException('Indica una página válida o un cursor.');
+    }
+    if (sortBy !== undefined || sortDir !== undefined) {
+      if (
+        page === undefined ||
+        !sortBy ||
+        !USER_SORT_FIELDS.includes(sortBy) ||
+        (sortDir !== 'asc' && sortDir !== 'desc')
+      ) {
+        throw new BadRequestException('Indica una columna y una dirección válidas para ordenar.');
+      }
+    }
     const params: {
       cursor?: string;
+      page?: number;
       limit?: number;
       status?: UserStatus;
       role?: UserRole;
       search?: string;
+      sort?: { by: string; dir: 'asc' | 'desc' };
     } = {};
     if (cursor) params.cursor = cursor;
+    if (page !== undefined) params.page = page;
     if (limit !== undefined) params.limit = limit;
     if (status) params.status = status;
     if (role) params.role = role;
     if (search) params.search = search;
+    if (sortBy && (sortDir === 'asc' || sortDir === 'desc'))
+      params.sort = { by: sortBy, dir: sortDir };
     const result = await this.usersService.findAll(params);
     return { data: result };
   }

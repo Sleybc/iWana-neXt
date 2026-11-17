@@ -33,7 +33,6 @@ import {
 } from '@/lib/api-client';
 import { ensureIdempotencyKey } from '@/lib/idempotency-key';
 import { listPageWindow, normalizeListMeta } from '@/lib/list-meta';
-import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { useTableQueryState } from '@/lib/use-table-query-state';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { isPlatformOnlyRole, UserRole } from '@iwana/shared';
@@ -73,11 +72,9 @@ export function UsersClient() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { page, pageSize, filters, setPage, setPageSize, setFilters, setQuery } =
+  const { page, pageSize, filters, sort, setPage, setPageSize, setFilters, setQuery, setSort } =
     useTableQueryState({ filterKeys: USERS_FILTER_KEYS });
-  const [listParams, setListParams] = useState<ListUsersParams>({
-    limit: PORTAL_DEFAULT_PAGE_SIZE,
-  });
+  const [resolvedParams, setResolvedParams] = useState<ListUsersParams | null>(null);
   /** Texto inmediato del input; el filtro aplicado permanece en la dirección. */
   const [searchDraft, setSearchDraft] = useState(filters.search ?? '');
 
@@ -104,6 +101,7 @@ export function UsersClient() {
   const [selectedUserCompanyRoleIds, setSelectedUserCompanyRoleIds] = useState<string[]>([]);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listRequestRef = useRef(0);
   /** Trigger de fila (edit/delete/reset) para restaurar foco al cerrar dialogs. */
   const actionTriggerRef = useRef<HTMLElement | null>(null);
 
@@ -136,10 +134,12 @@ export function UsersClient() {
   // append=true cuando el usuario pulsa "Cargar más"; en ese caso se concatenan los
   // resultados al final de la lista en lugar de reemplazarla.
   const loadUsers = useCallback(async (params: ListUsersParams, append = false) => {
+    const requestId = ++listRequestRef.current;
     setIsLoading(true);
     setError(null);
     try {
       const result = await usersApi.list(params);
+      if (listRequestRef.current !== requestId) return;
       const data = Array.isArray(result?.data) ? result.data : [];
       const normalizedMeta = normalizeListMeta(result?.meta, {
         dataLength: data.length,
@@ -147,24 +147,26 @@ export function UsersClient() {
       });
       setUsers((prev) => (append ? [...prev, ...data] : data));
       setMeta(normalizedMeta);
-      setListParams(params);
+      setResolvedParams(params);
     } catch (err: unknown) {
-      setError(mapError(err));
+      if (listRequestRef.current === requestId) setError(mapError(err));
     } finally {
-      setIsLoading(false);
+      if (listRequestRef.current === requestId) setIsLoading(false);
     }
   }, []);
 
   const isPageMode = meta?.capabilities?.randomAccess === true;
-  const requestParams = useMemo((): ListUsersParams => {
+  const cursorParams = useMemo((): ListUsersParams => {
     const params: ListUsersParams = { limit: pageSize };
     if (filters.search) params.search = filters.search;
     if (filters.status) params.status = filters.status;
     if (filters.role) params.role = filters.role;
-    // La página solo existe para recursos que el servidor declara de acceso aleatorio.
-    if (isPageMode && page > 1) params.page = page;
     return params;
-  }, [filters, isPageMode, page, pageSize]);
+  }, [filters, pageSize]);
+  const requestParams = useMemo(
+    () => ({ ...cursorParams, page, ...(sort ? { sortBy: sort.by, sortDir: sort.dir } : {}) }),
+    [cursorParams, page, sort],
+  );
 
   useEffect(() => {
     if (!isAdmin) {
@@ -174,10 +176,11 @@ export function UsersClient() {
   }, [isAdmin, loadUsers, requestParams]);
 
   useEffect(() => {
-    if (meta && !isPageMode && page > 1) {
-      setQuery({ page: null }, { history: 'replace' });
+    if (resolvedParams === requestParams && meta) {
+      const actualPage = isPageMode ? (meta.page ?? 1) : 1;
+      if (actualPage !== page) setQuery({ page: actualPage });
     }
-  }, [isPageMode, meta, page, setQuery]);
+  }, [isPageMode, meta, page, requestParams, resolvedParams, setQuery]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -220,7 +223,7 @@ export function UsersClient() {
 
   const handleLoadMore = () => {
     if (meta?.nextCursor) {
-      void loadUsers({ ...listParams, cursor: meta.nextCursor }, true);
+      void loadUsers({ ...cursorParams, cursor: meta.nextCursor }, true);
     }
   };
 
@@ -288,7 +291,7 @@ export function UsersClient() {
         setIsCreateOpen(false);
       }
 
-      void loadUsers(listParams);
+      void loadUsers(requestParams);
     } catch (err: unknown) {
       setActionError(mapError(err));
     } finally {
@@ -329,7 +332,7 @@ export function UsersClient() {
       setIsEditOpen(false);
       setSelectedUser(null);
       setSelectedUserCompanyRoleIds([]);
-      void loadUsers(listParams);
+      void loadUsers(requestParams);
     } catch (err: unknown) {
       setActionError(mapError(err));
     } finally {
@@ -350,7 +353,7 @@ export function UsersClient() {
       window.requestAnimationFrame(() => {
         restoreActionTriggerFocus();
       });
-      void loadUsers(listParams);
+      void loadUsers(requestParams);
     } catch (err: unknown) {
       setActionError(mapError(err));
     } finally {
@@ -579,7 +582,7 @@ export function UsersClient() {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => void loadUsers(listParams)}
+              onClick={() => void loadUsers(requestParams)}
             >
               Reintentar
             </Button>
@@ -610,6 +613,7 @@ export function UsersClient() {
           pageSize={isPageMode ? pageSize : undefined}
           onPageSizeChange={isPageMode ? setPageSize : undefined}
           isPageMode={isPageMode}
+          onSortChange={setSort}
           searchValue={searchDraft}
           statusFilter={filters.status ?? ''}
           roleFilter={filters.role ?? ''}
@@ -647,7 +651,7 @@ export function UsersClient() {
         resumeJobId={activeBulkJobId}
         onActiveJobChange={setActiveBulkJobId}
         onSuccess={() => {
-          void loadUsers(listParams);
+          void loadUsers(requestParams);
         }}
       />
 
@@ -750,7 +754,7 @@ export function UsersClient() {
             user={selectedUser}
             onClose={closeModals}
             onSubmit={handleEdit}
-            onEmailChanged={() => void loadUsers(listParams)}
+            onEmailChanged={() => void loadUsers(requestParams)}
             isSubmitting={isSubmitting}
             error={actionError}
             accessCatalog={accessCatalog}

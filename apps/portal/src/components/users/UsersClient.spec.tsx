@@ -15,16 +15,25 @@ const useAuthMock = jest.fn();
 
 let mockSearchParams = new URLSearchParams();
 const mockReplace = jest.fn();
+const mockPush = jest.fn();
 
 jest.mock('next/navigation', () => ({
   useSearchParams: () => mockSearchParams,
   usePathname: () => '/dashboard/users',
-  useRouter: () => ({
-    replace: (href: string) => {
-      mockReplace(href);
-      mockSearchParams = new URLSearchParams(String(href).split('?')[1] ?? '');
-    },
-  }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () =>
+      (router ??= {
+        push: (href: string, options: { scroll: boolean }) => {
+          mockPush(href, options);
+          mockSearchParams = new URLSearchParams(String(href).split('?')[1] ?? '');
+        },
+        replace: (href: string) => {
+          mockReplace(href);
+          mockSearchParams = new URLSearchParams(String(href).split('?')[1] ?? '');
+        },
+      });
+  })(),
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
@@ -157,6 +166,7 @@ describe('UsersClient Ola B1', () => {
     jest.useFakeTimers();
     mockSearchParams = new URLSearchParams();
     mockReplace.mockReset();
+    mockPush.mockReset();
     listMock.mockReset().mockResolvedValue(emptyList);
     createMock.mockReset();
     updateMock.mockReset();
@@ -209,6 +219,7 @@ describe('UsersClient Ola B1', () => {
     await waitFor(() => {
       expect(listMock).toHaveBeenLastCalledWith({
         limit: 20,
+        page: 1,
         status: UserStatus.SUSPENDED,
       });
     });
@@ -225,6 +236,7 @@ describe('UsersClient Ola B1', () => {
     await waitFor(() => {
       expect(listMock).toHaveBeenLastCalledWith({
         limit: 20,
+        page: 1,
         status: UserStatus.SUSPENDED,
         search: 'ana',
       });
@@ -314,6 +326,72 @@ describe('UsersClient Ola B1', () => {
     expect(screen.getByLabelText('Filas por página')).toBeInTheDocument();
     // El pager muestra el rango (visible + sr-only → múltiples matches)
     expect(screen.getAllByText(/Mostrando 1–10 de 15 usuarios/).length).toBeGreaterThan(0);
+  });
+
+  it('solicita la página elegida y conserva los filtros activos', async () => {
+    mockSearchParams = new URLSearchParams('status=ACTIVE');
+    listMock.mockImplementation(({ page }: { page: number }) =>
+      Promise.resolve({
+        data: [sampleUser],
+        meta: {
+          ...EMPTY_LIST_META,
+          page,
+          limit: 20,
+          total: 21,
+          totalPages: 2,
+          mode: 'page',
+          capabilities: { randomAccess: true, sortableFields: [] },
+        },
+      }),
+    );
+    const { rerender } = render(<UsersClient />);
+
+    const next = await screen.findByRole('button', { name: 'Siguiente' });
+    expect(listMock).toHaveBeenLastCalledWith({ limit: 20, page: 1, status: UserStatus.ACTIVE });
+    fireEvent.click(next);
+    expect(mockPush).toHaveBeenCalledWith('/dashboard/users?status=ACTIVE&page=2', {
+      scroll: false,
+    });
+    rerender(<UsersClient />);
+
+    await waitFor(() => {
+      expect(listMock).toHaveBeenLastCalledWith({ limit: 20, page: 2, status: UserStatus.ACTIVE });
+      expect(screen.getAllByText(/Mostrando 21–21 de 21 usuarios/).length).toBeGreaterThan(0);
+    });
+  });
+
+  it('al ordenar conserva el filtro y vuelve a pedir la primera página', async () => {
+    mockSearchParams = new URLSearchParams('status=ACTIVE&page=2');
+    listMock.mockResolvedValue({
+      data: [sampleUser],
+      meta: {
+        ...EMPTY_LIST_META,
+        mode: 'page',
+        page: 2,
+        totalPages: 2,
+        limit: 20,
+        total: 21,
+        capabilities: { randomAccess: true, sortableFields: ['user', 'role', 'created'] },
+      },
+    });
+    const { rerender } = render(<UsersClient />);
+    const sort = await screen.findByRole('combobox', { name: 'Ordenar por' });
+    fireEvent.click(sort);
+    fireEvent.click(screen.getByRole('option', { name: 'Creado · descendente' }));
+    expect(mockReplace).toHaveBeenCalledWith(
+      '/dashboard/users?status=ACTIVE&sortBy=created&sortDir=desc',
+    );
+    rerender(<UsersClient />);
+
+    await waitFor(() =>
+      expect(listMock).toHaveBeenCalledWith({
+        page: 1,
+        limit: 20,
+        status: UserStatus.ACTIVE,
+        sortBy: 'created',
+        sortDir: 'desc',
+      }),
+    );
   });
 
   it('ADR-065: usa Cargar más cuando randomAccess es false', async () => {

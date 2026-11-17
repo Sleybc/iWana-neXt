@@ -2,6 +2,7 @@
 'use client';
 
 import type { InternalUser, UsersPaginationMeta } from '@/lib/api-client';
+import type { TableSortState } from '@/lib/use-table-query-state';
 import { formatFullName, isPlatformOnlyRole, UserRole, UserStatus } from '@iwana/shared';
 import { Pencil, Plus, Trash2, ShieldCheck, KeyRound, Loader2, Upload } from 'lucide-react';
 import { Badge, Button, Select, cn } from '@iwana/ui';
@@ -15,6 +16,7 @@ import {
 import {
   PortalActionToolbar,
   PortalDataTableHead,
+  PortalDataTableSortableHead,
   PortalEmptyState,
   PortalPageSizeSelect,
   PortalSearchField,
@@ -66,6 +68,7 @@ interface UsersTableProps {
   onPageSizeChange?: ((pageSize: number) => void) | undefined;
   /** La modalidad la declara `meta.capabilities.randomAccess`, nunca la UI local. */
   isPageMode?: boolean | undefined;
+  onSortChange?: (sort: TableSortState | null) => void;
   /** Criterios controlados desde UsersClient (única fuente de verdad). */
   searchValue: string;
   statusFilter: string;
@@ -193,6 +196,7 @@ export function UsersTable({
   pageSize,
   onPageSizeChange,
   isPageMode = false,
+  onSortChange,
   searchValue,
   statusFilter,
   roleFilter,
@@ -209,6 +213,14 @@ export function UsersTable({
   const hasActiveFilters = Boolean(statusFilter || roleFilter || searchValue);
   const hasMore = Boolean(meta?.nextCursor);
   const total = meta?.total ?? users.length;
+  const sortableFields = meta?.capabilities.sortableFields ?? [];
+  const activeSort = meta?.sort ?? null;
+  const mobileSortOptions = TABLE_HEADERS.filter(({ id }) => sortableFields.includes(id)).flatMap(
+    ({ id, label }) => [
+      { value: `${id}:asc`, label: `${label} · ascendente` },
+      { value: `${id}:desc`, label: `${label} · descendente` },
+    ],
+  );
   const loadingAnnouncement =
     isLoading && users.length === 0
       ? 'Cargando usuarios'
@@ -269,6 +281,21 @@ export function UsersTable({
             className="h-12"
             options={PORTAL_TENANT_ROLE_FILTER_OPTIONS}
           />
+          {onSortChange && mobileSortOptions.length > 0 && (
+            <div className="lg:hidden">
+              <Select
+                id="users-sort"
+                label="Ordenar por"
+                disabled={isLoading}
+                value={activeSort ? `${activeSort.by}:${activeSort.dir}` : ''}
+                onChange={(event) => {
+                  const [by, dir] = event.target.value.split(':');
+                  onSortChange(by && (dir === 'asc' || dir === 'desc') ? { by, dir } : null);
+                }}
+                options={[{ value: '', label: 'Orden por defecto' }, ...mobileSortOptions]}
+              />
+            </div>
+          )}
           {hasActiveFilters ? (
             <Button
               type="button"
@@ -298,11 +325,24 @@ export function UsersTable({
             </caption>
             <thead className={portalDataTableHeadRowClassName}>
               <tr>
-                {TABLE_HEADERS.map((header) => (
-                  <PortalDataTableHead key={header.id} className={header.className}>
-                    {header.label}
-                  </PortalDataTableHead>
-                ))}
+                {TABLE_HEADERS.map((header) =>
+                  onSortChange && sortableFields.includes(header.id) ? (
+                    <PortalDataTableSortableHead
+                      key={header.id}
+                      field={header.id}
+                      className={header.className}
+                      activeSort={activeSort}
+                      loading={isLoading}
+                      onSortChange={onSortChange}
+                    >
+                      {header.label}
+                    </PortalDataTableSortableHead>
+                  ) : (
+                    <PortalDataTableHead key={header.id} className={header.className}>
+                      {header.label}
+                    </PortalDataTableHead>
+                  ),
+                )}
               </tr>
             </thead>
             <tbody className={portalDataTableBodyClassName}>

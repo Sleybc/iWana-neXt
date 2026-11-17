@@ -4978,6 +4978,8 @@ export interface ListUsersParams {
   limit?: number;
   /** ADR-065: página 1-based (modo randomAccess). */
   page?: number;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
   status?: string;
   role?: string;
   /** Texto libre para filtrar por nombre, apellido o email */
@@ -5746,6 +5748,8 @@ export const usersApi = {
     if (params?.cursor) searchParams.set('cursor', params.cursor);
     if (params?.limit !== undefined) searchParams.set('limit', String(params.limit));
     if (params?.page !== undefined) searchParams.set('page', String(params.page));
+    if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
+    if (params?.sortDir) searchParams.set('sortDir', params.sortDir);
     if (params?.status) searchParams.set('status', params.status);
     if (params?.role) searchParams.set('role', params.role);
     if (params?.search) searchParams.set('search', params.search);
