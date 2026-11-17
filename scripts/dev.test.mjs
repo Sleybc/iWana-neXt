@@ -17,18 +17,71 @@ import {
   buildMissingDevEnvMessage,
   buildMissingMigrationEnvMessage,
   createProcessRegistry,
+  createServiceSupervisor,
   devComposeFiles,
   devInfraOneShots,
   devInfraServices,
+  devServices,
   findMissingDevEnvVars,
   isErrorLine,
   parseEnvFile,
   requiredDevEnvVars,
   requiredMigrationEnvVars,
   resolvePnpmTarget,
+  runOptionalStep,
   waitForApiHealth,
   waitForCompilation,
 } from './dev.mjs';
+
+test('runOptionalStep avisa y continúa si el paso falla fuera del apagado', async () => {
+  const warnings = [];
+  const ok = await runOptionalStep(
+    async () => {
+      throw new Error('redis-cli falló');
+    },
+    { isShuttingDown: () => false, warn: (message) => warnings.push(message) },
+  );
+
+  assert.equal(ok, false);
+  assert.deepEqual(warnings, ['redis-cli falló']);
+});
+
+test('runOptionalStep propaga el fallo durante el apagado', async () => {
+  const warnings = [];
+  await assert.rejects(
+    runOptionalStep(
+      async () => {
+        throw new Error('interrumpido');
+      },
+      { isShuttingDown: () => true, warn: (message) => warnings.push(message) },
+    ),
+    /interrumpido/,
+  );
+  assert.deepEqual(warnings, []);
+});
+
+test('runOptionalStep devuelve true si el paso termina bien', async () => {
+  const ok = await runOptionalStep(async () => {}, {
+    isShuttingDown: () => false,
+    warn: () => assert.fail('no debe avisar'),
+  });
+  assert.equal(ok, true);
+});
+
+test('el arranque re-sincroniza el usuario ACL del MCP redis-dev tras levantar la infraestructura', () => {
+  const source = readFileSync(join(process.cwd(), 'scripts', 'dev.mjs'), 'utf8');
+  const ps = source.indexOf("['compose', ...composeFileArgs, 'ps']");
+  const sync = source.indexOf("['dev:redis-readonly-user']");
+  const migrate = source.indexOf("['db:migrate:all']");
+
+  assert.ok(ps > 0 && sync > ps, 'el usuario ACL se sincroniza después de compose ps');
+  assert.ok(sync < migrate, 'y antes de las migraciones');
+  assert.match(
+    source.slice(sync - 400, sync),
+    /runOptionalStep\(/,
+    'el paso no debe bloquear el arranque',
+  );
+});
 
 // Lee los servicios que declaran un perfil dado en docker-compose.yml sin
 // depender de un parser YAML: el archivo usa indentación de 2 espacios para las
@@ -450,6 +503,179 @@ test('createProcessRegistry deja de seguir un paso cuando este termina', () => {
   registry.shutdownAll('SIGTERM');
 
   assert.deepEqual(terminated, []);
+});
+
+test('createProcessRegistry.replaceManaged apaga el proceso nuevo y no el reemplazado', () => {
+  const terminated = [];
+  const registry = createProcessRegistry((child) => {
+    terminated.push(child.name);
+  });
+  const oldWeb = { name: 'web-1' };
+
+  registry.trackManaged({ name: 'api' }, oldWeb);
+  registry.replaceManaged(oldWeb, { name: 'web-2' });
+  registry.shutdownAll('SIGTERM');
+
+  assert.deepEqual(terminated, ['api', 'web-2']);
+});
+
+test('devServices declara los cuatro procesos reiniciables del arranque', () => {
+  assert.deepEqual(Object.keys(devServices), ['api', 'web', 'portal', 'worker']);
+
+  for (const [name, service] of Object.entries(devServices)) {
+    assert.deepEqual(service.args, ['--filter', `@iwana/${name}`, 'dev']);
+  }
+});
+
+function createFakeChild(name) {
+  const child = new EventEmitter();
+  return Object.assign(child, { name, exitCode: null, signalCode: null });
+}
+
+function createSupervisorHarness(options = {}) {
+  const spawned = [];
+  const terminated = [];
+  const events = [];
+  const dashboard = options.withDashboard
+    ? {
+        flush() {},
+        log: (section, line) => events.push(['log', section, line]),
+        setStatus: (section, status) => events.push(['status', section, status]),
+      }
+    : null;
+  const registry = createProcessRegistry(() => {});
+  const supervisor = createServiceSupervisor({
+    dashboard,
+    registry,
+    isShuttingDown: options.isShuttingDown,
+    spawnService(name) {
+      const child = createFakeChild(`${name}-${spawned.length + 1}`);
+      spawned.push(child);
+      return child;
+    },
+    terminateImpl(child, signal) {
+      terminated.push([child.name, signal]);
+
+      if (options.exitOnTerminate !== false) {
+        child.exitCode = 1;
+        queueMicrotask(() => child.emit('exit', 1, null));
+      }
+    },
+    waitForHealth: options.waitForHealth ?? (async () => {}),
+    exitTimeoutMs: 20,
+  });
+
+  return { events, registry, spawned, supervisor, terminated };
+}
+
+test('createServiceSupervisor reinicia un servicio sin marcarlo como fallido', async () => {
+  const harness = createSupervisorHarness({ withDashboard: true });
+
+  harness.supervisor.start('web');
+  await harness.supervisor.restart('web');
+
+  assert.deepEqual(harness.terminated, [['web-1', 'SIGTERM']]);
+  assert.deepEqual(
+    harness.spawned.map((child) => child.name),
+    ['web-1', 'web-2'],
+  );
+  assert.deepEqual(
+    harness.events.filter(([kind]) => kind === 'status'),
+    [['status', 'web', 'restarting']],
+  );
+});
+
+test('createServiceSupervisor espera el healthcheck al reiniciar la API', async () => {
+  const checked = [];
+  const harness = createSupervisorHarness({
+    withDashboard: true,
+    waitForHealth: async (_dashboard, child) => {
+      checked.push(child.name);
+    },
+  });
+
+  harness.supervisor.start('api');
+  await harness.supervisor.restart('api');
+
+  assert.deepEqual(checked, ['api-2']);
+  assert.deepEqual(harness.events.filter(([kind]) => kind === 'status').at(-1), [
+    'status',
+    'api',
+    'ready',
+  ]);
+});
+
+test('createServiceSupervisor marca el reinicio como fallido si la API no responde', async () => {
+  const harness = createSupervisorHarness({
+    withDashboard: true,
+    waitForHealth: async () => {
+      throw new Error('API health check timed out');
+    },
+  });
+
+  harness.supervisor.start('api');
+  await harness.supervisor.restart('api');
+
+  assert.deepEqual(harness.events.at(-2), ['status', 'api', 'failed']);
+  assert.match(harness.events.at(-1)[2], /Error al reiniciar api: API health check timed out/);
+});
+
+test('createServiceSupervisor fuerza SIGKILL si el servicio ignora SIGTERM', async () => {
+  const harness = createSupervisorHarness({ withDashboard: true, exitOnTerminate: false });
+
+  harness.supervisor.start('worker');
+  await harness.supervisor.restart('worker');
+
+  assert.deepEqual(harness.terminated, [
+    ['worker-1', 'SIGTERM'],
+    ['worker-1', 'SIGKILL'],
+  ]);
+  assert.equal(harness.spawned.length, 2);
+});
+
+test('createServiceSupervisor mantiene vivo el dashboard cuando un servicio cae', async () => {
+  const harness = createSupervisorHarness({ withDashboard: true });
+  let settled = false;
+
+  harness.supervisor.ended.then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    },
+  );
+  harness.supervisor.start('portal').emit('exit', 1, null);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(settled, false);
+  assert.deepEqual(harness.events[0], ['status', 'portal', 'failed']);
+  assert.match(harness.events[1][2], /^Error: portal terminó de forma inesperada \(1\)/);
+  assert.equal(isErrorLine(harness.events[1][2]), true);
+});
+
+test('createServiceSupervisor sin dashboard termina con la primera salida inesperada', async () => {
+  const harness = createSupervisorHarness();
+
+  harness.supervisor.start('api').emit('exit', 1, null);
+
+  await assert.rejects(harness.supervisor.ended, /api dev process exited unexpectedly with 1/);
+});
+
+test('createServiceSupervisor ignora las salidas provocadas por el apagado', async () => {
+  let shuttingDown = false;
+  const harness = createSupervisorHarness({
+    withDashboard: true,
+    isShuttingDown: () => shuttingDown,
+  });
+  const child = harness.supervisor.start('web');
+
+  shuttingDown = true;
+  child.emit('exit', 1, null);
+  await harness.supervisor.restart('web');
+
+  assert.deepEqual(harness.events, []);
+  assert.equal(harness.spawned.length, 1);
 });
 
 test('parseEnvFile ignora comentarios y desenvuelve valores entrecomillados', () => {

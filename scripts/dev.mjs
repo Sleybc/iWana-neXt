@@ -1,10 +1,15 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import process from 'node:process';
-import { emitKeypressEvents } from 'node:readline';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
+
+import { createDashboard, normalizeChunk } from './dev-dashboard.mjs';
+
+// El dashboard vive en su propio módulo; `isErrorLine` se sigue exponiendo desde
+// aquí porque es parte del contrato que cubren las pruebas del orquestador.
+export { isErrorLine } from './dev-dashboard.mjs';
 
 const rootCwd = process.cwd();
 // Archivos Compose del perfil de desarrollo. La publicación de puertos vive en
@@ -50,13 +55,19 @@ export const requiredDevEnvVars = [
 // Distintas de requiredDevEnvVars: Compose puede levantar infra sin ellas, pero
 // `pnpm db:migrate:all` falla a mitad de transacción si faltan.
 export const requiredMigrationEnvVars = ['PII_HASH_KEY'];
+// Procesos de larga duración que el orquestador lanza y puede reiniciar uno a
+// uno desde el dashboard. `pseudoTty` conserva la salida con formato de Nest.
+export const devServices = Object.freeze({
+  api: { args: ['--filter', '@iwana/api', 'dev'], pseudoTty: true },
+  web: { args: ['--filter', '@iwana/web', 'dev'], pseudoTty: false },
+  portal: { args: ['--filter', '@iwana/portal', 'dev'], pseudoTty: false },
+  worker: { args: ['--filter', '@iwana/worker', 'dev'], pseudoTty: true },
+});
+// Cota de espera a que un servicio termine antes de relanzarlo.
+const restartExitTimeoutMs = 5_000;
 const isWindows = process.platform === 'win32';
 const hasScriptCommand =
   !isWindows && spawnSync('script', ['-qc', 'true', '/dev/null'], { stdio: 'ignore' }).status === 0;
-const panelSections = ['all', 'errors', 'api', 'web', 'portal', 'worker', 'docker'];
-const serviceSections = panelSections.filter((section) => !['all', 'errors'].includes(section));
-const maxBufferedLines = 1200;
-const dashboardStateFile = join(rootCwd, '.turbo', 'dev-dashboard-state.json');
 const windowsCommandCache = new Map();
 
 function resolveCommand(command) {
@@ -333,108 +344,6 @@ function assertMigrationEnvFromDisk() {
   }
 }
 
-function stripAnsi(text) {
-  return text.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
-}
-
-function normalizeChunk(chunk) {
-  return stripAnsi(String(chunk)).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-}
-
-function truncate(text, width) {
-  if (width <= 0) {
-    return '';
-  }
-
-  if (text.length <= width) {
-    return text.padEnd(width, ' ');
-  }
-
-  if (width === 1) {
-    return text.slice(0, 1);
-  }
-
-  return `${text.slice(0, width - 1)}…`;
-}
-
-function padAnsi(text, width) {
-  const visibleWidth = stripAnsi(text).length;
-
-  if (visibleWidth >= width) {
-    return text;
-  }
-
-  return `${text}${' '.repeat(width - visibleWidth)}`;
-}
-
-function colorize(text, code) {
-  return `\x1b[${code}m${text}\x1b[0m`;
-}
-
-function colorizeStatus(status, text) {
-  if (status === 'running' || status === 'ready') {
-    return colorize(text, '32');
-  }
-
-  if (status === 'starting' || status === 'waiting_api') {
-    return colorize(text, '33');
-  }
-
-  if (status === 'failed') {
-    return colorize(text, '31');
-  }
-
-  if (status === 'stopped') {
-    return colorize(text, '36');
-  }
-
-  if (status === 'vista') {
-    return colorize(text, '34');
-  }
-
-  return colorize(text, '90');
-}
-
-function loadSelectedSection() {
-  try {
-    const raw = readFileSync(dashboardStateFile, 'utf8');
-    const parsed = JSON.parse(raw);
-    const selectedSection =
-      typeof parsed?.selectedSection === 'string' ? parsed.selectedSection : 'all';
-    return panelSections.includes(selectedSection) ? selectedSection : 'all';
-  } catch {
-    return 'all';
-  }
-}
-
-function saveSelectedSection(section) {
-  try {
-    mkdirSync(join(rootCwd, '.turbo'), { recursive: true });
-    writeFileSync(dashboardStateFile, JSON.stringify({ selectedSection: section }), 'utf8');
-  } catch {
-    // No-op: si no podemos persistir el estado, el dashboard sigue funcionando.
-  }
-}
-
-export function isErrorLine(text) {
-  const normalizedText = stripAnsi(text).trim().toLowerCase();
-
-  if (/found 0 errors?\b/.test(normalizedText)) {
-    return false;
-  }
-
-  if (/\blog\s+\[routerexplorer\]\s+mapped\s+\{.*\/exceptions?\b/.test(normalizedText)) {
-    return false;
-  }
-
-  // Los resúmenes de migración/backfill reportan conteos (`failed=0`), no un
-  // error: sin este caso, `failed=0` entraba al panel de errores del dashboard.
-  // `failed=<n>` con n > 0 sigue marcándose.
-  return /(\berror\b|err_|\bexception\b|\bexceptionhandler\b|\bfailed\b(?!\s*=\s*0\b)|\beaddrinuse\b|\bunable\b|\bcannot\b|\bdenied\b)/i.test(
-    normalizedText,
-  );
-}
-
 function spawnCommand(command, args, options = {}) {
   const target = resolveSpawnTarget(command, args);
 
@@ -474,343 +383,6 @@ function buildObservedCommand(command, args, options = {}) {
   return { command, args };
 }
 
-function createDashboard() {
-  if (!process.stdout.isTTY || !process.stdin.isTTY) {
-    return null;
-  }
-
-  const buffers = new Map(serviceSections.map((section) => [section, []]));
-  const fragments = new Map(['system', ...serviceSections].map((section) => [section, '']));
-  const timeline = [];
-  const errorTimeline = [];
-  const statuses = new Map(serviceSections.map((section) => [section, 'idle']));
-  let selectedIndex = Math.max(panelSections.indexOf(loadSelectedSection()), 0);
-  let active = false;
-  let quitting = false;
-  let renderScheduled = false;
-  let quitHandler = null;
-
-  function pushBufferedLine(collection, line) {
-    collection.push(line);
-
-    if (collection.length > maxBufferedLines) {
-      collection.splice(0, collection.length - maxBufferedLines);
-    }
-  }
-
-  function setSelectedSection(section) {
-    const nextIndex = panelSections.indexOf(section);
-    selectedIndex = nextIndex >= 0 ? nextIndex : 0;
-    saveSelectedSection(panelSections[selectedIndex]);
-    requestRender();
-  }
-
-  function moveSelection(delta) {
-    selectedIndex = (selectedIndex + delta + panelSections.length) % panelSections.length;
-    saveSelectedSection(panelSections[selectedIndex]);
-    requestRender();
-  }
-
-  function render() {
-    if (!active) {
-      return;
-    }
-
-    renderScheduled = false;
-
-    const columns = process.stdout.columns ?? 120;
-    const rows = process.stdout.rows ?? 40;
-    const sidebarWidth = Math.min(26, Math.max(18, Math.floor(columns * 0.22)));
-    const contentWidth = Math.max(20, columns - sidebarWidth - 3);
-    const contentHeight = Math.max(8, rows - 6);
-    const selectedSection = panelSections[selectedIndex] ?? 'all';
-    const runningServices = serviceSections.filter((section) => {
-      const status = statuses.get(section);
-      return status === 'running' || status === 'ready';
-    }).length;
-    const header = `iWana dev dashboard | vista: ${selectedSection}`;
-    const controls = '↑↓ seleccionar  a all  e errors  q salir';
-
-    const menuRows = [
-      truncate('Servicios', sidebarWidth),
-      '',
-      ...panelSections.map((section) => {
-        const status =
-          section === 'all'
-            ? 'vista'
-            : section === 'errors'
-              ? `${errorTimeline.length} err`
-              : (statuses.get(section) ?? 'idle');
-        const marker = panelSections[selectedIndex] === section ? '>' : ' ';
-        const sectionText =
-          panelSections[selectedIndex] === section
-            ? colorize(section.padEnd(7, ' '), '1;36')
-            : section.padEnd(7, ' ');
-        const statusText =
-          section === 'errors'
-            ? colorize(status.padEnd(8, ' '), errorTimeline.length > 0 ? '31' : '90')
-            : colorizeStatus(section === 'all' ? 'vista' : status, String(status).padEnd(8, ' '));
-        const row = padAnsi(`${marker} ${sectionText} ${statusText}`, sidebarWidth);
-        return panelSections[selectedIndex] === section ? colorize(row, '1') : row;
-      }),
-      '',
-      truncate('Vista actual', sidebarWidth),
-      truncate(selectedSection, sidebarWidth),
-    ];
-
-    const selectedLines =
-      selectedSection === 'all'
-        ? timeline
-        : selectedSection === 'errors'
-          ? errorTimeline
-          : (buffers.get(selectedSection) ?? []);
-    const visibleContent =
-      selectedLines.length > 0
-        ? selectedLines.slice(-contentHeight)
-        : buildPlaceholderLines(selectedSection, contentWidth, contentHeight);
-    const output = [
-      '\x1b[H',
-      truncate(header, columns),
-      truncate(controls, columns),
-      `${'-'.repeat(sidebarWidth)}-+-${'-'.repeat(contentWidth)}`,
-    ];
-
-    for (let rowIndex = 0; rowIndex < contentHeight; rowIndex += 1) {
-      const left = (menuRows[rowIndex] ?? '').padEnd(sidebarWidth, ' ');
-      const right = truncate(visibleContent[rowIndex] ?? '', contentWidth);
-      output.push(`${left} | ${right}`);
-    }
-
-    output.push(`${'-'.repeat(sidebarWidth)}-+-${'-'.repeat(contentWidth)}`);
-    output.push(
-      truncate(
-        `Vista ${selectedSection} | lineas ${selectedLines.length} | errores ${errorTimeline.length} | servicios activos ${runningServices}/${serviceSections.length}`,
-        columns,
-      ),
-    );
-    output.push(truncate('q cierra el dashboard y detiene los procesos activos', columns));
-
-    while (output.length < rows) {
-      output.push(' '.repeat(columns));
-    }
-
-    process.stdout.write(output.join('\n'));
-  }
-
-  function requestRender() {
-    if (!active || renderScheduled) {
-      return;
-    }
-
-    renderScheduled = true;
-    setImmediate(render);
-  }
-
-  function recordTimeline(prefix, line) {
-    const entry = `[${prefix}] ${line}`;
-    pushBufferedLine(timeline, entry);
-
-    if (isErrorLine(entry)) {
-      pushBufferedLine(errorTimeline, entry);
-    }
-  }
-
-  function logSystem(line) {
-    recordTimeline('setup', line);
-    requestRender();
-  }
-
-  function log(section, line) {
-    if (!serviceSections.includes(section)) {
-      logSystem(line);
-      return;
-    }
-
-    const sanitizedLine = line.replace(/\t/g, '  ');
-    pushBufferedLine(buffers.get(section), sanitizedLine);
-    recordTimeline(section, sanitizedLine);
-    requestRender();
-  }
-
-  function consumeChunk(section, chunk) {
-    const normalized = normalizeChunk(chunk);
-    const previous = fragments.get(section) ?? '';
-    const parts = `${previous}${normalized}`.split('\n');
-    const remainder = parts.pop() ?? '';
-
-    fragments.set(section, remainder);
-
-    for (const line of parts) {
-      if (!line) {
-        continue;
-      }
-
-      if (section === 'system') {
-        logSystem(line);
-        continue;
-      }
-
-      log(section, line);
-    }
-  }
-
-  function flush(section) {
-    const remainder = fragments.get(section);
-
-    if (!remainder) {
-      return;
-    }
-
-    fragments.set(section, '');
-
-    if (section === 'system') {
-      logSystem(remainder);
-      return;
-    }
-
-    log(section, remainder);
-  }
-
-  function setStatus(section, status) {
-    if (!serviceSections.includes(section)) {
-      return;
-    }
-
-    statuses.set(section, status);
-    requestRender();
-  }
-
-  function requestQuit() {
-    if (quitting) {
-      return;
-    }
-
-    quitting = true;
-    stop();
-
-    if (typeof quitHandler === 'function') {
-      quitHandler();
-      return;
-    }
-
-    process.exit(0);
-  }
-
-  function onKeypress(input, key) {
-    const keyName = (key?.name ?? '').toLowerCase();
-    const sequence = (key?.sequence ?? input ?? '').toLowerCase();
-
-    if (!key && !sequence) {
-      return;
-    }
-
-    if (key?.ctrl && keyName === 'c') {
-      requestQuit();
-      return;
-    }
-
-    if (keyName === 'q' || sequence === 'q') {
-      requestQuit();
-      return;
-    }
-
-    if (keyName === 'a' || sequence === 'a') {
-      setSelectedSection('all');
-      return;
-    }
-
-    if (keyName === 'e' || sequence === 'e') {
-      setSelectedSection('errors');
-      return;
-    }
-
-    if (keyName === 'up') {
-      moveSelection(-1);
-      return;
-    }
-
-    if (keyName === 'down') {
-      moveSelection(1);
-      return;
-    }
-  }
-
-  function start() {
-    if (active) {
-      return;
-    }
-
-    active = true;
-    emitKeypressEvents(process.stdin);
-    process.stdin.setRawMode(true);
-    process.stdin.resume();
-    process.stdin.on('keypress', onKeypress);
-    process.stdout.on('resize', requestRender);
-    process.stdout.write('\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H');
-    requestRender();
-  }
-
-  function stop() {
-    if (!active) {
-      return;
-    }
-
-    active = false;
-    process.stdout.write('\x1b[?25h\x1b[0m\x1b[?1049l');
-
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(false);
-    }
-
-    process.stdin.pause();
-
-    process.stdin.off('keypress', onKeypress);
-    process.stdout.off('resize', requestRender);
-  }
-
-  function buildPlaceholderLines(section, width, height) {
-    const lines = [];
-
-    if (section === 'errors') {
-      lines.push('Sin errores capturados por ahora.');
-    } else if (section !== 'all') {
-      const status = statuses.get(section) ?? 'idle';
-      const placeholderByStatus = {
-        idle: `Esperando que ${section} entre en la secuencia de arranque.`,
-        starting: `${section} se esta iniciando. Los logs apareceran aqui.`,
-        waiting_api: `${section} esta en espera hasta que la API responda healthcheck OK.`,
-        running: `${section} esta corriendo. Los nuevos logs apareceran aqui.`,
-        ready: `${section} esta listo. Los nuevos logs apareceran aqui.`,
-        stopped: `${section} se detuvo.`,
-        failed: `${section} fallo. Revisa la vista errors.`,
-      };
-
-      lines.push(placeholderByStatus[status] ?? `${section} sin salida registrada aun.`);
-    } else {
-      lines.push('Esperando eventos del orquestador...');
-    }
-
-    while (lines.length < height) {
-      lines.push('');
-    }
-
-    return lines.map((line) => truncate(line, width));
-  }
-
-  return {
-    consumeChunk,
-    flush,
-    log,
-    logSystem,
-    setQuitHandler(handler) {
-      quitHandler = handler;
-    },
-    setStatus,
-    start,
-    stop,
-  };
-}
-
 function waitForExit(child, label) {
   return new Promise((resolve, reject) => {
     child.once('error', reject);
@@ -824,6 +396,23 @@ function waitForExit(child, label) {
       reject(new Error(`${label} failed with ${reason}`));
     });
   });
+}
+
+/**
+ * Ejecuta un paso cuyo fallo no debe tumbar el arranque: lo reporta con `warn` y
+ * sigue. Durante el apagado propaga el error, igual que cualquier otro paso.
+ */
+export async function runOptionalStep(step, { isShuttingDown, warn }) {
+  try {
+    await step();
+    return true;
+  } catch (error) {
+    if (isShuttingDown()) {
+      throw error;
+    }
+    warn(error instanceof Error ? error.message : String(error));
+    return false;
+  }
 }
 
 async function runStep(label, command, args, options = {}) {
@@ -848,6 +437,7 @@ async function runStep(label, command, args, options = {}) {
   }
 
   dashboard.logSystem(label);
+  const closeStep = dashboard.startupStep(label);
 
   if (section) {
     dashboard.setStatus(section, 'starting');
@@ -882,11 +472,13 @@ async function runStep(label, command, args, options = {}) {
     if (captureFailureOutput && details && error instanceof Error) {
       error.message = `${error.message}\n\nSalida del paso:\n${details}`;
     }
+    closeStep(false);
     throw error;
   } finally {
     untrack();
   }
 
+  closeStep(true);
   dashboard.flush(section ?? 'system');
 
   if (section) {
@@ -1081,6 +673,18 @@ export function createProcessRegistry(terminateImpl = terminate) {
     trackManaged(...children) {
       managedChildren.push(...children);
     },
+    // Un reinicio sustituye al hijo anterior: sin esto, el apagado seguiría
+    // apuntando a un proceso ya muerto y no alcanzaría al nuevo.
+    replaceManaged(previousChild, nextChild) {
+      const index = managedChildren.indexOf(previousChild);
+
+      if (index >= 0) {
+        managedChildren[index] = nextChild;
+        return;
+      }
+
+      managedChildren.push(nextChild);
+    },
     shutdownAll(signal = 'SIGTERM') {
       for (const child of stepChildren) {
         terminateImpl(child, signal);
@@ -1145,6 +749,162 @@ function spawnObservedProcess(section, command, args, dashboard, options = {}) {
   return child;
 }
 
+function isChildAlive(child) {
+  return Boolean(child) && child.exitCode === null && !child.signalCode;
+}
+
+// Supervisa los procesos de larga duración y permite reiniciarlos uno a uno.
+//
+// Con dashboard, la salida de un servicio no termina la sesión: queda marcado
+// como «falló» o «detenido» y se puede relanzar con `r`. Sin dashboard (CI,
+// tubería) se conserva el contrato previo: la primera salida resuelve o rechaza
+// `ended`, y el orquestador termina.
+export function createServiceSupervisor({
+  dashboard = null,
+  registry,
+  isShuttingDown = () => false,
+  spawnService = (name) =>
+    spawnObservedProcess(name, 'pnpm', devServices[name].args, dashboard, {
+      pseudoTty: devServices[name].pseudoTty,
+    }),
+  terminateImpl = terminate,
+  waitForHealth = waitForApiHealth,
+  exitTimeoutMs = restartExitTimeoutMs,
+}) {
+  const current = new Map();
+  const intentional = new WeakSet();
+  const restarting = new Set();
+  let settle;
+  const ended = new Promise((resolve, reject) => {
+    settle = { resolve, reject };
+  });
+
+  // `ended` puede rechazarse antes de que alguien lo espere (la API cae durante
+  // su healthcheck inicial): sin este manejador sería un rechazo no controlado.
+  ended.catch(() => {});
+
+  function isCurrent(name, child) {
+    return current.get(name) === child && !intentional.has(child) && !isShuttingDown();
+  }
+
+  function onExit(name, child, code, signal) {
+    dashboard?.flush(name);
+
+    if (!isCurrent(name, child)) {
+      return;
+    }
+
+    const clean = code === 0 || signal === 'SIGINT' || signal === 'SIGTERM';
+    dashboard?.setStatus(name, clean ? 'stopped' : 'failed');
+
+    if (dashboard) {
+      dashboard.log(
+        name,
+        clean
+          ? `${name} se detuvo. Pulsa r para iniciarlo de nuevo.`
+          : `Error: ${name} terminó de forma inesperada (${signal ?? code}). Pulsa r para reiniciarlo.`,
+      );
+      return;
+    }
+
+    if (clean) {
+      settle.resolve({ source: name, code: code ?? 0, signal });
+      return;
+    }
+
+    settle.reject(new Error(`${name} dev process exited unexpectedly with ${signal ?? code}`));
+  }
+
+  function onError(name, child, error) {
+    if (!isCurrent(name, child)) {
+      return;
+    }
+
+    dashboard?.setStatus(name, 'failed');
+
+    if (dashboard) {
+      dashboard.log(name, `Error al lanzar ${name}: ${error.message}`);
+      return;
+    }
+
+    settle.reject(error);
+  }
+
+  function start(name) {
+    const child = spawnService(name);
+    const previous = current.get(name);
+
+    current.set(name, child);
+
+    if (previous) {
+      registry.replaceManaged(previous, child);
+    } else {
+      registry.trackManaged(child);
+    }
+
+    child.once('error', (error) => onError(name, child, error));
+    child.once('exit', (code, signal) => onExit(name, child, code, signal));
+    return child;
+  }
+
+  async function stopForRestart(child) {
+    if (!isChildAlive(child)) {
+      return;
+    }
+
+    intentional.add(child);
+
+    const exited = new Promise((resolve) => {
+      child.once('exit', () => resolve(true));
+    });
+    const timeout = () => delay(exitTimeoutMs, false, { ref: false });
+
+    terminateImpl(child, 'SIGTERM');
+
+    if (await Promise.race([exited, timeout()])) {
+      return;
+    }
+
+    terminateImpl(child, 'SIGKILL');
+    await Promise.race([exited, timeout()]);
+  }
+
+  async function restart(name) {
+    if (restarting.has(name) || isShuttingDown()) {
+      return;
+    }
+
+    restarting.add(name);
+
+    try {
+      dashboard?.setStatus(name, 'restarting');
+      dashboard?.log(name, `Reiniciando ${name} a petición del dashboard.`);
+      await stopForRestart(current.get(name));
+
+      if (isShuttingDown()) {
+        return;
+      }
+
+      const next = start(name);
+
+      if (name === 'api') {
+        await waitForHealth(dashboard, next);
+        dashboard?.setStatus('api', 'ready');
+      }
+
+      dashboard?.log(name, `${name} reiniciado.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      dashboard?.setStatus(name, 'failed');
+      dashboard?.log(name, `Error al reiniciar ${name}: ${message}`);
+    } finally {
+      restarting.delete(name);
+    }
+  }
+
+  return { ended, restart, start };
+}
+
 async function main() {
   // Preflight antes de crear el dashboard: si falta una variable, el mensaje
   // accionable debe verse en la terminal normal y no dentro del buffer alterno.
@@ -1153,15 +913,28 @@ async function main() {
   const dashboard = createDashboard();
   const registry = createProcessRegistry();
   const { shutdownAll, trackStep: trackChild } = registry;
-  let shutdownRequested = false;
+  let resolveShutdown;
+  const session = {
+    shuttingDown: false,
+    whenShutdown: new Promise((resolve) => {
+      resolveShutdown = resolve;
+    }),
+  };
+
+  // Punto único de apagado: marca la sesión, detiene los hijos y libera la
+  // espera final. Desde aquí, la salida de un hijo ya no es un fallo.
+  const requestShutdown = (signal) => {
+    session.shuttingDown = true;
+    shutdownAll(signal);
+    resolveShutdown();
+  };
 
   dashboard?.setQuitHandler(() => {
-    if (shutdownRequested) {
+    if (session.shuttingDown) {
       return;
     }
 
-    shutdownRequested = true;
-    shutdownAll('SIGTERM');
+    requestShutdown('SIGTERM');
 
     // Fallback: devolver el prompt aunque algun hijo ignore SIGTERM.
     setTimeout(() => {
@@ -1173,12 +946,8 @@ async function main() {
   // Las señales se registran ANTES del primer paso. Cuando se registraban junto
   // al arranque de la API, un Ctrl+C durante la liberación de puertos, el
   // `docker compose up`, los builds o las migraciones dejaba procesos huérfanos.
-  const shutdown = (signal) => {
-    shutdownAll(signal);
-  };
-
-  process.once('SIGINT', () => shutdown('SIGINT'));
-  process.once('SIGTERM', () => shutdown('SIGTERM'));
+  process.once('SIGINT', () => requestShutdown('SIGINT'));
+  process.once('SIGTERM', () => requestShutdown('SIGTERM'));
 
   dashboard?.start();
 
@@ -1187,15 +956,23 @@ async function main() {
   // devolvía la terminal inutilizable y además mantenía vivo el event loop, así
   // que el proceso no terminaba pese a `process.exitCode = 1`.
   try {
-    await runStartupSequence({ dashboard, registry, trackChild });
+    await runStartupSequence({ dashboard, registry, trackChild, session });
+  } catch (error) {
+    // Un paso interrumpido por el propio apagado no es un fallo que reportar.
+    if (!session.shuttingDown) {
+      throw error;
+    }
   } finally {
     shutdownAll('SIGTERM');
     dashboard?.stop();
   }
 }
 
-async function runStartupSequence({ dashboard, registry, trackChild }) {
+async function runStartupSequence({ dashboard, registry, trackChild, session }) {
   dashboard?.logSystem('Inicializando entorno de desarrollo');
+  // Puertos, `up`, `ps`, usuario ACL del MCP, dos builds, migraciones, API y
+  // apps, más los one-shots.
+  dashboard?.setStartupTotal(9 + devInfraOneShots.length);
 
   await runStep('Liberando puertos de desarrollo', 'pnpm', ['dev:free-ports'], {
     dashboard,
@@ -1203,68 +980,102 @@ async function runStartupSequence({ dashboard, registry, trackChild }) {
     captureFailureOutput: true,
   });
 
-  // `--wait` bloquea hasta que cada servicio esté running/healthy. Sin él, las
-  // migraciones podían arrancar contra una infraestructura a medio levantar:
-  // el único `depends_on` que garantizaba algo era el de pgbouncer sobre postgres.
-  await runStep(
-    'Levantando infraestructura Docker local',
-    'docker',
-    [
-      'compose',
-      ...composeFileArgs,
-      'up',
-      '-d',
-      '--wait',
-      '--wait-timeout',
-      String(devInfraWaitTimeoutSeconds),
-      ...devInfraServices,
-    ],
-    { dashboard, section: 'docker', trackChild },
-  );
-
-  for (const service of devInfraOneShots) {
+  async function startInfrastructure() {
+    // `--wait` bloquea hasta que cada servicio esté running/healthy. Sin él, las
+    // migraciones podían arrancar contra una infraestructura a medio levantar:
+    // el único `depends_on` que garantizaba algo era el de pgbouncer sobre postgres.
     await runStep(
-      `Ejecutando inicializador ${service}`,
+      'Levantando infraestructura Docker local',
       'docker',
-      ['compose', ...composeFileArgs, 'run', '--rm', service],
+      [
+        'compose',
+        ...composeFileArgs,
+        'up',
+        '-d',
+        '--wait',
+        '--wait-timeout',
+        String(devInfraWaitTimeoutSeconds),
+        ...devInfraServices,
+      ],
       { dashboard, section: 'docker', trackChild },
+    );
+
+    for (const service of devInfraOneShots) {
+      await runStep(
+        `Ejecutando inicializador ${service}`,
+        'docker',
+        ['compose', ...composeFileArgs, 'run', '--rm', service],
+        { dashboard, section: 'docker', trackChild },
+      );
+    }
+
+    await runStep(
+      'Estado de la infraestructura Docker',
+      'docker',
+      ['compose', ...composeFileArgs, 'ps'],
+      {
+        dashboard,
+        section: 'docker',
+        trackChild,
+      },
+    );
+
+    // Redis dev arranca sin aclfile: el usuario `iwana_readonly` del MCP
+    // `redis-dev` desaparece cada vez que el contenedor se reinicia o se recrea,
+    // y el MCP falla sin que nadie lo note. El script es idempotente y conserva
+    // la contraseña. Su fallo solo afecta a Claude Code, no a las apps.
+    await runOptionalStep(
+      () =>
+        runStep(
+          'Sincronizando usuario de solo lectura de Redis (MCP redis-dev)',
+          'pnpm',
+          ['dev:redis-readonly-user'],
+          { dashboard, trackChild, captureFailureOutput: true },
+        ),
+      {
+        isShuttingDown: () => session.shuttingDown,
+        warn: (message) => {
+          const text = `Aviso: el MCP redis-dev no podrá conectar. ${message}`;
+          if (dashboard) dashboard.logSystem(text);
+          else console.warn(`[iWana dev] ${text}`);
+        },
+      },
     );
   }
 
-  await runStep(
-    'Estado de la infraestructura Docker',
-    'docker',
-    ['compose', ...composeFileArgs, 'ps'],
-    {
-      dashboard,
-      section: 'docker',
-      trackChild,
-    },
-  );
+  const buildPackage = (name) =>
+    runStep(`Compilando ${name}`, 'pnpm', ['--filter', name, 'build'], { dashboard, trackChild });
 
-  await runStep('Compilando @iwana/shared', 'pnpm', ['--filter', '@iwana/shared', 'build'], {
-    dashboard,
-    trackChild,
-  });
-
-  await runStep('Compilando @iwana/storage', 'pnpm', ['--filter', '@iwana/storage', 'build'], {
-    dashboard,
-    trackChild,
-  });
+  if (dashboard) {
+    // La infraestructura y los builds no dependen entre sí, y `@iwana/storage`
+    // no depende de `@iwana/shared`: corren a la vez. Las migraciones esperan a
+    // todo. El dashboard separa la salida por sección, así que no se mezcla.
+    await Promise.all([
+      startInfrastructure(),
+      buildPackage('@iwana/shared'),
+      buildPackage('@iwana/storage'),
+    ]);
+  } else {
+    // Sin dashboard la salida va directa a la terminal: en serie, para que los
+    // logs de cada paso no se intercalen.
+    await startInfrastructure();
+    await buildPackage('@iwana/shared');
+    await buildPackage('@iwana/storage');
+  }
 
   assertMigrationEnvFromDisk();
 
   await runStep('Ejecutando migraciones', 'pnpm', ['db:migrate:all'], { dashboard, trackChild });
 
-  dashboard?.logSystem('Iniciando API en modo watch');
-  const apiChild = spawnObservedProcess(
-    'api',
-    'pnpm',
-    ['--filter', '@iwana/api', 'dev'],
+  const supervisor = createServiceSupervisor({
     dashboard,
-    { pseudoTty: true },
-  );
-  registry.trackManaged(apiChild);
+    registry,
+    isShuttingDown: () => session.shuttingDown,
+  });
+
+  dashboard?.logSystem('Iniciando API en modo watch');
+  const closeApiStep = dashboard?.startupStep('Esperando a la API');
+  const apiChild = supervisor.start('api');
 
   dashboard?.setStatus('web', 'waiting_api');
   dashboard?.setStatus('portal', 'waiting_api');
@@ -1277,6 +1088,7 @@ async function runStartupSequence({ dashboard, registry, trackChild }) {
     await waitForApiHealth(dashboard, apiChild);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    closeApiStep?.(false);
     dashboard?.log('api', `Fallo de arranque: ${message}`);
     dashboard?.logSystem(`Fallo de arranque de API: ${message}`);
     terminate(apiChild, 'SIGTERM');
@@ -1287,58 +1099,25 @@ async function runStartupSequence({ dashboard, registry, trackChild }) {
     throw error;
   }
 
+  closeApiStep?.(true);
   dashboard?.setStatus('api', 'ready');
   dashboard?.logSystem('Iniciando web, portal y worker');
 
-  const webChild = spawnObservedProcess(
-    'web',
-    'pnpm',
-    ['--filter', '@iwana/web', 'dev'],
-    dashboard,
-  );
-  const portalChild = spawnObservedProcess(
-    'portal',
-    'pnpm',
-    ['--filter', '@iwana/portal', 'dev'],
-    dashboard,
-  );
-  const workerChild = spawnObservedProcess(
-    'worker',
-    'pnpm',
-    ['--filter', '@iwana/worker', 'dev'],
-    dashboard,
-    { pseudoTty: true },
-  );
-  registry.trackManaged(webChild, portalChild, workerChild);
+  const closeAppsStep = dashboard?.startupStep('Iniciando web, portal y worker');
 
-  const children = [
-    ['api', apiChild],
-    ['web', webChild],
-    ['portal', portalChild],
-    ['worker', workerChild],
-  ];
-
-  function exitPromiseFor(name, child) {
-    return new Promise((resolve, reject) => {
-      child.once('error', reject);
-      child.once('exit', (code, signal) => {
-        dashboard?.flush(name);
-
-        if (code === 0 || signal === 'SIGINT' || signal === 'SIGTERM') {
-          dashboard?.setStatus(name, 'stopped');
-          resolve({ source: name, code: code ?? 0, signal });
-          return;
-        }
-
-        dashboard?.setStatus(name, 'failed');
-        reject(new Error(`${name} dev process exited unexpectedly with ${signal ?? code}`));
-      });
-    });
+  for (const name of ['web', 'portal', 'worker']) {
+    supervisor.start(name);
   }
+
+  closeAppsStep?.(true);
+  dashboard?.completeStartup();
+  dashboard?.setRestartHandler((name) => {
+    void supervisor.restart(name);
+  });
 
   // El apagado y el `dashboard.stop()` viven en el `finally` de `main()`, que
   // cubre también los caminos de fallo previos a este punto.
-  await Promise.race(children.map(([name, child]) => exitPromiseFor(name, child)));
+  await Promise.race([supervisor.ended, session.whenShutdown]);
 }
 
 const invokedPath = process.argv[1];
