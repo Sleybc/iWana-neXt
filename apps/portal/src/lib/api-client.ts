@@ -947,7 +947,13 @@ async function request<T>(
     return body as T;
   }
 
-  return (body as ApiEnvelope<T>).data;
+  // Algunos endpoints responden sin `{ data }` (p. ej. los conteos de colas). Leer `data` de un
+  // cuerpo que no lo trae devolvía `undefined` y dejaba la pantalla cargando para siempre; como el
+  // cliente de la web de plataforma, ese cuerpo se devuelve tal cual (auditoría 2026-11-14).
+  if (body !== null && typeof body === 'object' && !Array.isArray(body) && 'data' in body) {
+    return (body as ApiEnvelope<T>).data;
+  }
+  return body as T;
 }
 
 export interface NetworkCatalogListParams {
@@ -7285,8 +7291,19 @@ export const subscribersApi = {
       tenantSlug,
     ),
 
-  queueCounts: (tenantSlug?: string) =>
-    request<SubscriberQueueCounts>('/crm/subscribers/queue-counts', undefined, tenantSlug),
+  /**
+   * La API responde los conteos sin el envoltorio `{ data }`. Leer `data` dejaba los conteos
+   * vacíos y el listado en «Cargando conteos de las colas…» para siempre: se lee la respuesta
+   * completa y se acepta también la forma envuelta.
+   */
+  queueCounts: async (tenantSlug?: string): Promise<SubscriberQueueCounts> => {
+    const body = await request<SubscriberQueueCounts | { data: SubscriberQueueCounts }>(
+      '/crm/subscribers/queue-counts',
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+    return 'data' in body ? body.data : body;
+  },
 
   getById: (id: string, tenantSlug?: string) =>
     request<SubscriberRecord>(`/crm/subscribers/${id}`, undefined, tenantSlug),

@@ -140,6 +140,47 @@ describe('subscribersApi.search', () => {
     expect(url.pathname).toBe('/api/v1/crm/subscribers/queue-counts');
     expect(url.search).toBe('');
   });
+
+  it('lee los conteos tal como los responde la API, sin envoltorio `data`', async () => {
+    // Forma real de GET /crm/subscribers/queue-counts: el fixture con `{ data }` ocultó que el
+    // listado quedaba en «Cargando conteos de las colas…» (2026-11-14).
+    const counts = {
+      active: 1,
+      suspended: 0,
+      contactPending: 0,
+      fiscalIncomplete: 2,
+      withoutLiveServices: 2,
+    };
+    Reflect.set(
+      globalThis,
+      'fetch',
+      jest.fn(async (): Promise<MockResponse> => createJsonResponse(200, counts)),
+    );
+
+    await expect(subscribersApi.queueCounts('tenant-demo')).resolves.toEqual(counts);
+  });
+});
+
+describe('desenvolvido de respuestas', () => {
+  it('devuelve el cuerpo tal cual si la API no lo envuelve en `data`', async () => {
+    const record = { id: 'subscriber-1', firstName: 'Ana' };
+    Reflect.set(
+      globalThis,
+      'fetch',
+      jest.fn(async (): Promise<MockResponse> => createJsonResponse(200, record)),
+    );
+    await expect(subscribersApi.getById('subscriber-1', 'tenant-demo')).resolves.toEqual(record);
+  });
+
+  it('sigue leyendo `data` cuando la API sí lo envuelve', async () => {
+    const record = { id: 'subscriber-1', firstName: 'Ana' };
+    Reflect.set(
+      globalThis,
+      'fetch',
+      jest.fn(async (): Promise<MockResponse> => createJsonResponse(200, { data: record })),
+    );
+    await expect(subscribersApi.getById('subscriber-1', 'tenant-demo')).resolves.toEqual(record);
+  });
 });
 
 describe('etiquetas del suscriptor (ADR-110 D8)', () => {
