@@ -170,6 +170,7 @@ import { MigrationMappingKindTitular2100000000210 } from './210_migration_mappin
 import { MigrationUispUsers2110000000211 } from './211_migration_uisp_users';
 import { TicketCommentAttachments2120000000212 } from './212_ticket_comment_attachments';
 import { AssetLoansSubscriberIndex2130000000213 } from './213_asset_loans_subscriber_index';
+import { AddExecutionOrderClosedTimelineEvent2140000000214 } from './214_add_execution_order_closed_timeline_event';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -421,6 +422,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   MigrationUispUsers2110000000211,
   TicketCommentAttachments2120000000212,
   AssetLoansSubscriberIndex2130000000213,
+  AddExecutionOrderClosedTimelineEvent2140000000214,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;
