@@ -71,6 +71,9 @@ export * from './contracts/organization';
 export * from './contracts/billing';
 export * from './contracts/migration';
 export * from './contracts/assurance';
+// N3 se exporta aquí: el barril de assurance tiene cambios de otra sesión sin commit.
+export * from './contracts/assurance/assurance-dashboard-series.contract';
+export * from './contracts/dashboard-series.schema';
 
 // Operations
 export * from './operations/task-type-to-wfm-work-type';

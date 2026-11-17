@@ -4,3 +4,4 @@ export * from './contract-document-snapshot';
 export * from './contract-signing-job';
 export * from './contract-template-html';
 export * from './subscriber-documents';
+export * from './subscribers-dashboard.contract';
