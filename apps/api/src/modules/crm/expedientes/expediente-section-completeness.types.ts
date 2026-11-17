@@ -1,4 +1,4 @@
-import type { DocumentSupportApprovedFlags } from './document-support.types';
+import type { DocumentSupportFlags } from './document-support.types';
 
 export const INSTALLATION_READINESS_STATUS = {
   NOT_READY: 'NOT_READY',
@@ -35,7 +35,8 @@ export interface ExpedienteSensitiveFieldPresence {
   hasLatitude?: boolean;
   hasLongitude?: boolean;
   hasLocation?: boolean;
-  documentSupportApproved?: DocumentSupportApprovedFlags;
+  documentSupportApproved?: DocumentSupportFlags;
+  documentSupportUploaded?: DocumentSupportFlags;
 }
 
 export interface SectionCompletenessItem {

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Button, SectionAccordion } from '@iwana/ui';
 import { FolderOpen } from 'lucide-react';
 import type { CompletenessResult, ExpedienteRecord } from '@/lib/api-client';
+import { PortalAlert } from '@/components/shared/portal-ui';
 import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 import {
   SECTIONS,
@@ -33,6 +34,12 @@ interface ExpedienteSectionsProps {
   draftValues: DraftValues;
   onDraftChange: (field: string, value: string) => void;
   onSaveSection: (section: SectionId) => Promise<void>;
+  /**
+   * Secciones con cambios sin guardar. Si se pasa, «Guardar cambios» solo se habilita en ellas y
+   * aparece «Descartar» (mismo patrón que la ficha del suscriptor). Sin él, el botón queda activo.
+   */
+  dirtySections?: ReadonlySet<SectionId>;
+  onDiscardSection?: (section: SectionId) => void;
   onCandidateTechnologyToggle: (technology: string, checked: boolean) => void;
   lockedSections: Set<SectionId>;
   onUnlockIdentification: () => void;
@@ -49,6 +56,8 @@ export function ExpedienteSections({
   draftValues,
   onDraftChange,
   onSaveSection,
+  dirtySections,
+  onDiscardSection,
   onCandidateTechnologyToggle,
   lockedSections,
   onUnlockIdentification,
@@ -130,14 +139,14 @@ export function ExpedienteSections({
     return accumulator;
   }, {});
 
-  const documentSupportCompletion =
-    getBackendSectionCompletion(completeness?.sectionCompleteness, 'document_support') ??
-    calculateDocumentSupportCompletion(effectivePersonType, expediente.documentSupports);
-
+  const documentUploadProgress = calculateDocumentSupportCompletion(
+    effectivePersonType,
+    expediente.documentSupports,
+  );
   const completedSections = [...SECTIONS.map((section) => section.id), 'document_support'].filter(
     (sectionId) =>
       (sectionId === 'document_support'
-        ? documentSupportCompletion
+        ? documentUploadProgress
         : (sectionCompletionById[sectionId] ?? 0)) >= 100,
   ).length;
 
@@ -244,15 +253,14 @@ export function ExpedienteSections({
         <>
           {sectionContent}
           {sectionId !== 'identification' || !lockedSections.has('identification') ? (
-            <div className="mt-4 flex justify-end">
-              <Button
-                type="button"
-                variant="primary"
-                loading={savingSection === sectionId}
-                onClick={() => onSaveSection(sectionId)}
-              >
-                {savingSection === sectionId ? 'Guardando sección...' : 'Guardar cambios'}
-              </Button>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <SectionSaveActions
+                sectionId={sectionId}
+                saving={savingSection === sectionId}
+                dirty={dirtySections ? dirtySections.has(sectionId) : undefined}
+                onSave={() => onSaveSection(sectionId)}
+                onDiscard={onDiscardSection ? () => onDiscardSection(sectionId) : undefined}
+              />
             </div>
           ) : null}
         </>
@@ -265,9 +273,9 @@ export function ExpedienteSections({
     {
       id: 'document_support',
       label: 'Soportes documentales',
-      description: `Evidencias requeridas para validar y cerrar la oportunidad. · Prioridad: ${getSectionPriorityLabel(documentSupportCompletion)}`,
+      description: 'Avance de carga de las evidencias requeridas para la oportunidad.',
       icon: <FolderOpen className="h-5 w-5" />,
-      progress: documentSupportCompletion,
+      progress: documentUploadProgress,
       children: (
         <DocumentSupportSection
           expedienteId={expediente.id}
@@ -315,15 +323,14 @@ export function ExpedienteSections({
         <div className="px-5 py-5">
           {sectionContent}
           {showSaveButton && (
-            <div className="mt-4 flex justify-end">
-              <Button
-                type="button"
-                variant="primary"
-                loading={savingSection === sectionId}
-                onClick={() => onSaveSection(sectionId)}
-              >
-                {savingSection === sectionId ? 'Guardando sección...' : 'Guardar cambios'}
-              </Button>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <SectionSaveActions
+                sectionId={sectionId}
+                saving={savingSection === sectionId}
+                dirty={dirtySections ? dirtySections.has(sectionId) : undefined}
+                onSave={() => onSaveSection(sectionId)}
+                onDiscard={onDiscardSection ? () => onDiscardSection(sectionId) : undefined}
+              />
             </div>
           )}
         </div>
@@ -333,21 +340,13 @@ export function ExpedienteSections({
 
   return (
     <div className="space-y-6">
-      {actionMessage && (
-        <div
-          role="status"
-          aria-live="polite"
-          className={
-            actionMessageTone === 'success'
-              ? 'rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 shadow-sm dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300'
-              : actionMessageTone === 'error'
-                ? 'rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300'
-                : 'rounded-[20px] border border-iwana-primary/15 bg-iwana-primary/5 px-4 py-3 text-sm text-iwana-primary shadow-sm dark:border-iwana-primary-300/20 dark:bg-iwana-primary-400/10 dark:text-iwana-primary-200'
-          }
-        >
-          {actionMessage}
-        </div>
-      )}
+      {actionMessage ? (
+        <PortalAlert
+          variant={actionMessageTone}
+          title={actionMessage}
+          live={actionMessageTone === 'error' ? 'assertive' : 'polite'}
+        />
+      ) : null}
 
       {/* Cabecera de progreso */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-6 py-5 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2">
@@ -360,13 +359,11 @@ export function ExpedienteSections({
           </p>
         </div>
         <div className="text-right">
-          <span className="text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-400">
-            Progreso
-          </span>
+          <span className="portal-eyebrow-muted">Progreso</span>
           <p className="text-lg font-bold text-iwana-secondary-700 dark:text-iwana-secondary">
             {completedSections} de {totalSections} completadas
           </p>
-          <p className="text-xs text-gray-400 dark:text-gray-400">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
             Núcleo: {completedCoreSections} de {SECTIONS.length} + documental
           </p>
         </div>
@@ -394,5 +391,46 @@ export function ExpedienteSections({
         </div>
       </div>
     </div>
+  );
+}
+
+/** «Descartar» (con cambios) y «Guardar cambios», habilitado solo con cambios pendientes. */
+function SectionSaveActions({
+  saving,
+  dirty,
+  onSave,
+  onDiscard,
+}: {
+  sectionId: SectionId;
+  saving: boolean;
+  /** Ausente: el botón queda siempre habilitado (comportamiento previo). */
+  dirty: boolean | undefined;
+  onSave: () => void;
+  onDiscard: (() => void) | undefined;
+}) {
+  return (
+    <>
+      {dirty && onDiscard ? (
+        <Button
+          type="button"
+          variant="ghost"
+          className="min-h-11"
+          disabled={saving}
+          onClick={onDiscard}
+        >
+          Descartar
+        </Button>
+      ) : null}
+      <Button
+        type="button"
+        variant="primary"
+        className="min-h-11"
+        loading={saving}
+        disabled={dirty === false || saving}
+        onClick={onSave}
+      >
+        {saving ? 'Guardando sección...' : 'Guardar cambios'}
+      </Button>
+    </>
   );
 }

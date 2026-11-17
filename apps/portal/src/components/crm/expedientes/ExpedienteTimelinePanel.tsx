@@ -22,6 +22,7 @@ import {
   PortalPageSizeSelect,
   PortalSkeletonBlock,
   PortalTablePager,
+  interactiveFocusClassName,
 } from '@/components/shared/portal-ui';
 import { getPortalUserRoleLabel } from '@/lib/user-labels';
 import type {
@@ -42,7 +43,8 @@ export type TimelineKind = 'contact' | 'responsibility' | 'attribution' | 'syste
 export type TimelineFilter = 'all' | 'contact' | 'asignaciones' | 'pipeline' | 'system';
 export type TimelinePageSize = 5 | 10 | 20 | 50;
 
-export const TIMELINE_DEFAULT_PAGE_SIZE: TimelinePageSize = 5;
+// 10 por página: con filas compactas caben sin desplazar la pantalla (antes 5 en tarjetas).
+export const TIMELINE_DEFAULT_PAGE_SIZE: TimelinePageSize = 10;
 export const TIMELINE_PAGE_SIZE_OPTIONS: TimelinePageSize[] = [5, 10, 20, 50];
 export const TIMELINE_MAX_EVENTS = 500;
 
@@ -201,23 +203,27 @@ function PipelineEntry({
 }) {
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Se lee en orden: estado anterior → estado nuevo. */}
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        {change.fromStatus ? (
+          <>
+            <span className="text-gray-600 dark:text-gray-300">
+              {formatExpedienteStatus(change.fromStatus)}
+            </span>
+            <span aria-label="pasó a" className="text-gray-400">
+              →
+            </span>
+          </>
+        ) : null}
         <Badge variant={getStatusBadgeVariant(change.toStatus)}>
           {formatExpedienteStatus(change.toStatus)}
         </Badge>
-        {change.fromStatus && (
-          <span className="text-[10px] text-gray-400 dark:text-gray-400">
-            ← {formatExpedienteStatus(change.fromStatus)}
-          </span>
-        )}
       </div>
       {change.actor?.name && (
-        <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-400">por {change.actor.name}</p>
+        <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">por {change.actor.name}</p>
       )}
       {change.reason && (
-        <p className="mt-1.5 rounded-lg bg-gray-50 px-2.5 py-1.5 text-[11px] dark:bg-dark-surface-3">
-          {change.reason}
-        </p>
+        <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">{change.reason}</p>
       )}
     </div>
   );
@@ -229,26 +235,21 @@ function SystemActivityEntry({ activity }: { activity: ExpedienteSystemTimelineE
     <div className="space-y-0">
       {activity.type === 'SECTION_UPDATED' && (
         <div className="space-y-0">
-          <p className="text-xs font-medium leading-tight text-gray-900 dark:text-white">
+          <p className="text-sm font-medium text-gray-900 dark:text-white">
             {activity.sectionLabel ?? 'Sección actualizada'}
           </p>
-          {activity.reason && (
-            <p className="rounded-lg bg-gray-50 px-2 py-1 text-[11px] leading-tight text-gray-600 dark:bg-dark-surface-3 dark:text-gray-300">
-              {activity.reason}
-            </p>
+          {/* El motivo genérico repetía el rótulo del evento; solo se muestra uno con contenido. */}
+          {activity.reason && activity.reason.trim() !== 'Sección actualizada' && (
+            <p className="text-sm text-gray-700 dark:text-gray-200">{activity.reason}</p>
           )}
         </div>
       )}
       {activity.type === 'CREATED' && (
-        <p className="text-xs leading-tight text-gray-600 dark:text-gray-300">
+        <p className="text-sm text-gray-700 dark:text-gray-200">
           Registro inicial de la oportunidad.
         </p>
       )}
-      {actorName && (
-        <p className="text-[10px] leading-tight text-gray-400 dark:text-gray-400">
-          por {actorName}
-        </p>
-      )}
+      {actorName && <p className="text-xs text-gray-500 dark:text-gray-400">por {actorName}</p>}
     </div>
   );
 }
@@ -298,16 +299,20 @@ function TimelineItem({ entry }: { entry: TimelineEntry }) {
               })();
 
   return (
-    <div className="relative pb-1.5 pl-6">
-      <span className="absolute -left-[13px] top-1 flex h-6 w-6 items-center justify-center rounded-full border border-gray-100 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
+    <li className="relative pl-7">
+      <span className="absolute -left-[13px] top-0 flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-3">
         {iconNode}
       </span>
-      <div
-        className={`rounded-[14px] border border-gray-100 border-l-2 bg-white px-3 py-2.5 shadow-sm transition-shadow hover:shadow-sm dark:border-dark-border dark:bg-dark-surface-2 ${kindMeta.accentClassName}`}
-      >
-        <p className="text-[10px] font-bold uppercase tracking-wide leading-tight text-gray-400 dark:text-gray-400">
-          {kindLabel}
-        </p>
+      <div className="min-w-0 space-y-0.5">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <p className="portal-eyebrow-muted">{kindLabel}</p>
+          <time
+            dateTime={entry.sortAt.toISOString()}
+            className="font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400"
+          >
+            {entry.sortAt.toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' })}
+          </time>
+        </div>
         {entry.kind === 'contact' && (
           <ContactEntry attempt={entry.data as ExpedienteContactTimelineEvent} />
         )}
@@ -329,11 +334,8 @@ function TimelineItem({ entry }: { entry: TimelineEntry }) {
         {entry.kind === 'system' && (
           <SystemActivityEntry activity={entry.data as ExpedienteSystemTimelineEvent} />
         )}
-        <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-400">
-          {entry.sortAt.toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' })}
-        </p>
       </div>
-    </div>
+    </li>
   );
 }
 
@@ -388,12 +390,15 @@ export function ExpedienteTimelinePanel({
           onClick={() => onHistoryExpandedChange(!isHistoryExpanded)}
           disabled={timelineTotal === 0 && !loadingTimeline}
           aria-expanded={isHistoryExpanded}
-          className="group flex items-center gap-2 outline-none"
+          className={cn(
+            'group flex min-h-11 items-center gap-2 rounded-lg',
+            interactiveFocusClassName,
+          )}
         >
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-400">
+          <span className="text-base font-semibold text-gray-900 dark:text-white">
             Bitácora de actividad
             {timelineTotal > 0 && ` (${timelineTotal})`}
-          </p>
+          </span>
           {timelineTotal > 0 && (
             <ChevronDown
               className={`h-4 w-4 text-gray-400 transition-transform duration-200 dark:text-gray-400 ${
@@ -483,10 +488,9 @@ export function ExpedienteTimelinePanel({
       ) : (
         isHistoryExpanded && (
           <>
-            <div
-              className={cn(
-                'relative ml-4 space-y-3 border-l border-gray-100 pl-0 dark:border-dark-border',
-              )}
+            <ol
+              aria-label="Eventos de la bitácora"
+              className="relative ml-3 space-y-4 border-l border-gray-200 py-1 dark:border-dark-border"
               aria-busy={loadingTimeline || undefined}
             >
               {loadingTimeline && (
@@ -497,7 +501,7 @@ export function ExpedienteTimelinePanel({
               {timelineEntries.map((entry) => (
                 <TimelineItem key={entry.id} entry={entry} />
               ))}
-            </div>
+            </ol>
 
             {timelineTotalPages > 1 && (
               <PortalTablePager

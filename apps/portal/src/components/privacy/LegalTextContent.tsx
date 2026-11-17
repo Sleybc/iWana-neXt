@@ -37,6 +37,13 @@ export function LegalTextContent({
         ]}
         urlTransform={(url) => (/^https?:\/\//i.test(url) ? url : '')}
         components={{
+          // El texto legal vive dentro de paneles que ya tienen su propio título: sus encabezados
+          // bajan tres niveles para no romper la jerarquía de la página (h1 → h4).
+          h1: ({ children }) => (
+            <h4 className="mt-3 text-sm font-semibold first:mt-0">{children}</h4>
+          ),
+          h2: ({ children }) => <h5 className="mt-3 text-sm font-semibold">{children}</h5>,
+          h3: ({ children }) => <h6 className="mt-2 text-sm font-medium">{children}</h6>,
           a: ({ children, href }) =>
             href ? (
               <a href={href} target="_blank" rel="noopener noreferrer" className="underline">

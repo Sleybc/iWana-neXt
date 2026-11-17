@@ -70,7 +70,7 @@ describe('ExpedienteSectionCompletenessService', () => {
         hasNeighborhood: true,
         hasLatitude: true,
         hasLongitude: true,
-        documentSupportApproved: {
+        documentSupportUploaded: {
           chamber_of_commerce: true,
           rut: true,
           legal_representative_id: true,
@@ -136,7 +136,7 @@ describe('ExpedienteSectionCompletenessService', () => {
         hasNeighborhood: false,
         hasLatitude: false,
         hasLongitude: false,
-        documentSupportApproved: { identity_document: false, utility_bill: false },
+        documentSupportUploaded: { identity_document: false, utility_bill: false },
       },
     });
 
@@ -199,7 +199,7 @@ describe('ExpedienteSectionCompletenessService', () => {
         hasNeighborhood: true,
         hasLatitude: true,
         hasLongitude: true,
-        documentSupportApproved: { identity_document: false, utility_bill: false },
+        documentSupportUploaded: { identity_document: false, utility_bill: false },
       },
     });
 

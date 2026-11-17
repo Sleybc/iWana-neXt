@@ -2,7 +2,17 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Button, Select } from '@iwana/ui';
+import {
+  Badge,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Select,
+} from '@iwana/ui';
+import { ExternalLink, FilePlus2, ShieldCheck } from 'lucide-react';
 import {
   ConsentChannel,
   type DataAuthorizationView,
@@ -11,7 +21,12 @@ import {
   type RequestSummary,
 } from '@iwana/shared';
 import { ApiError, privacyApi } from '@/lib/api-client';
-import { PortalAlert, PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalEmptyState,
+  PortalPanel,
+  PortalSkeletonBlock,
+} from '@/components/shared/portal-ui';
 import { EvidenceUploadField } from './EvidenceUploadField';
 import { LegalTextContent } from './LegalTextContent';
 import { LegalTextReferences } from './LegalTextReferences';
@@ -38,6 +53,37 @@ function getConsentChannelLabel(channel: string): string {
     CONSENT_CHANNEL_OPTIONS.find((option) => option.value === channel)?.label ?? 'Medio histórico'
   );
 }
+
+type BadgeVariant = 'success' | 'warning' | 'info' | 'neutral' | 'error';
+
+/** Estado del evento más reciente de una finalidad. */
+function authorizationStatus(item: DataAuthorizationView): {
+  label: string;
+  variant: BadgeVariant;
+} {
+  if (item.kind === 'REVOCATION') return { label: 'Retirada', variant: 'neutral' };
+  if (item.kind === 'LEGACY_IMPORT') return { label: 'Autorización importada', variant: 'info' };
+  return item.granted
+    ? { label: 'Autorización vigente', variant: 'success' }
+    : { label: 'No autorizada', variant: 'warning' };
+}
+
+const REQUEST_KIND_LABELS: Record<RequestSummary['kind'], string> = {
+  CONSULTA: 'Consulta',
+  RECLAMO: 'Reclamo',
+  SUPLANTACION: 'Reporte de suplantación',
+};
+
+const REQUEST_STATUS: Record<string, { label: string; variant: BadgeVariant }> = {
+  RESUELTA: { label: 'Respondida', variant: 'success' },
+  NO_PROCEDENTE: { label: 'No procede', variant: 'neutral' },
+  TRASLADADA: { label: 'Trasladada', variant: 'neutral' },
+  DESISTIDA: { label: 'Cerrada por falta de respuesta', variant: 'neutral' },
+  INCOMPLETA: { label: 'Necesita información', variant: 'warning' },
+  PRORROGADA: { label: 'Con plazo ampliado', variant: 'warning' },
+  EN_TRAMITE: { label: 'En trámite', variant: 'info' },
+};
+const REQUEST_RECEIVED = { label: 'Recibida', variant: 'info' as const };
 
 function currentAuthorizationByPurpose(
   records: DataAuthorizationView[],
@@ -168,49 +214,57 @@ export function CompliancePanel({
 
   return (
     <div className="space-y-6">
-      {creationNotice ? (
-        <div
-          role="status"
-          className="rounded-xl border border-green-300 bg-green-50 p-3 text-sm text-green-900 dark:border-green-800 dark:bg-green-950/30 dark:text-green-100"
-        >
-          {creationNotice}
-        </div>
+      {creationNotice ? <PortalAlert variant="success" title={creationNotice} /> : null}
+      {error ? (
+        <PortalAlert variant="error" title="No se completó la operación" description={error} />
       ) : null}
-      <section className="space-y-3" aria-labelledby="privacy-authorizations-title">
-        <div>
-          <h3 id="privacy-authorizations-title" className="text-base font-semibold">
-            Autorizaciones
-          </h3>
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            Consulta el evento más reciente por finalidad y revisa su comprobante.
-          </p>
-        </div>
+      <PortalPanel
+        as="section"
+        labelled
+        title="Autorizaciones"
+        description="El evento más reciente de cada finalidad, con su comprobante."
+      >
         {records.length ? (
-          <div className="space-y-2">
+          <ul
+            aria-label="Autorizaciones por finalidad"
+            className="divide-y divide-gray-100 dark:divide-dark-border"
+          >
             {PURPOSES.map((purpose) => {
               const item = latest.get(purpose);
+              const status = item ? authorizationStatus(item) : null;
               return (
-                <article
+                <li
                   key={purpose}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 p-3 dark:border-dark-border"
+                  className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                 >
-                  <div>
-                    <h4 className="font-medium">{DATA_PURPOSE_LABELS[purpose]}</h4>
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+                        {DATA_PURPOSE_LABELS[purpose]}
+                      </h4>
+                      {status ? <Badge variant={status.variant}>{status.label}</Badge> : null}
+                    </div>
                     <p className="text-sm text-gray-600 dark:text-gray-300">
                       {item
-                        ? `${item.kind === 'REVOCATION' ? 'Retirada' : item.kind === 'LEGACY_IMPORT' ? 'Autorización importada' : item.granted ? 'Autorización vigente' : 'No autorizada'} · ${formatLocalDateTime(item.capturedAt)} · Medio: ${getConsentChannelLabel(item.channel)}`
+                        ? `${formatLocalDateTime(item.capturedAt)} · Medio: ${getConsentChannelLabel(item.channel)}`
                         : 'Sin registro'}
                     </p>
                   </div>
                   {item ? (
-                    <Button variant="secondary" onClick={() => void viewProof(item.id)}>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="min-h-11 shrink-0 gap-1.5"
+                      onClick={() => void viewProof(item.id)}
+                    >
+                      <ShieldCheck className="h-4 w-4" aria-hidden />
                       Ver comprobante
                     </Button>
                   ) : null}
-                </article>
+                </li>
               );
             })}
-          </div>
+          </ul>
         ) : (
           <PortalEmptyState
             title="No hay autorizaciones registradas"
@@ -218,45 +272,54 @@ export function CompliancePanel({
             embedded
           />
         )}
-      </section>
+      </PortalPanel>
 
       {canManage ? (
-        <section
-          className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border"
-          aria-labelledby="privacy-capture-title"
+        <PortalPanel
+          as="section"
+          labelled
+          title="Registrar una autorización"
+          description="Cada decisión se guarda con el texto exacto que la persona revisa."
+          contentClassName="space-y-4"
         >
-          <div>
-            <h3 id="privacy-capture-title" className="font-semibold">
-              Registrar una autorización
-            </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300">
-              Cada decisión se guarda con el texto exacto que la persona revisa.
-            </p>
-          </div>
           {loadingText ? (
             <PortalSkeletonBlock className="h-24" />
           ) : currentText ? (
             <>
-              <div className="rounded-xl bg-iwana-surface-soft p-3 dark:bg-dark-surface-3">
-                <p className="text-sm font-semibold">
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">
                   Texto vigente · versión {currentText.version}
                 </p>
-                <LegalTextContent content={currentText.content} format={currentText.format} />
+                {/* El texto completo se conserva; solo se acota su alto para no empujar el formulario. */}
+                <div
+                  role="region"
+                  aria-label={`Texto de autorización, versión ${currentText.version}`}
+                  tabIndex={0}
+                  className="iwana-scroll-inset max-h-80 overflow-y-auto rounded-xl border border-gray-100 bg-iwana-surface-soft p-4 text-sm dark:border-dark-border dark:bg-dark-surface-3"
+                >
+                  <LegalTextContent content={currentText.content} format={currentText.format} />
+                </div>
                 <LegalTextReferences />
               </div>
-              <div className="space-y-2">
+              <fieldset className="space-y-2">
+                <legend className="mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                  Finalidades que la persona autoriza
+                </legend>
                 {purposes.enabled.length === 0 && purposes.failed ? (
-                  <p>
-                    No fue posible cargar las finalidades.{' '}
-                    <button type="button" onClick={purposes.retry}>
-                      Reintentar
-                    </button>
-                  </p>
+                  <PortalAlert
+                    variant="error"
+                    title="No fue posible cargar las finalidades."
+                    action={
+                      <Button type="button" variant="secondary" size="sm" onClick={purposes.retry}>
+                        Reintentar
+                      </Button>
+                    }
+                  />
                 ) : null}
                 {PURPOSES.filter((purpose) => purposes.enabled.includes(purpose)).map((purpose) => (
                   <label
                     key={purpose}
-                    className="flex min-h-11 items-start gap-3 rounded-xl border border-gray-200 p-3 text-sm dark:border-dark-border"
+                    className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-gray-200 p-3 text-sm dark:border-dark-border"
                   >
                     <input
                       className={`${purposeInput} mt-1`}
@@ -276,52 +339,64 @@ export function CompliancePanel({
                     </span>
                   </label>
                 ))}
+              </fieldset>
+              <div className="grid gap-4 md:grid-cols-2">
+                <Select
+                  id="privacy-authorization-channel"
+                  label="Medio por el que la persona otorgó la autorización"
+                  value={channel}
+                  options={CONSENT_CHANNEL_OPTIONS}
+                  placeholder="Selecciona un medio"
+                  onChange={(event) => setChannel(event.target.value as ConsentChannel | '')}
+                  required
+                  aria-required="true"
+                />
+                <EvidenceUploadField
+                  label="Evidencia para este registro (opcional)"
+                  onUploaded={setEvidenceId}
+                />
               </div>
-              <Select
-                id="privacy-authorization-channel"
-                label="Medio por el que la persona otorgó la autorización"
-                value={channel}
-                options={CONSENT_CHANNEL_OPTIONS}
-                placeholder="Selecciona un medio"
-                onChange={(event) => setChannel(event.target.value as ConsentChannel | '')}
-                required
-                aria-required="true"
-              />
-              <EvidenceUploadField
-                label="Evidencia para este registro (opcional)"
-                onUploaded={setEvidenceId}
-              />
               <p className="text-xs text-gray-600 dark:text-gray-300">
                 El medio indica cómo la persona otorgó su autorización. La evidencia puede asociarse
                 a un nuevo registro.
               </p>
-              <Button
-                disabled={
-                  saving ||
-                  !channel ||
-                  !PURPOSES.some(
-                    (purpose) => purposes.enabled.includes(purpose) && consent[purpose],
-                  )
-                }
-                onClick={() => void save()}
-              >
-                {saving ? 'Guardando…' : 'Guardar autorizaciones seleccionadas'}
-              </Button>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  className="min-h-11"
+                  loading={saving}
+                  disabled={
+                    saving ||
+                    !channel ||
+                    !PURPOSES.some(
+                      (purpose) => purposes.enabled.includes(purpose) && consent[purpose],
+                    )
+                  }
+                  onClick={() => void save()}
+                >
+                  {saving ? 'Guardando…' : 'Guardar autorizaciones seleccionadas'}
+                </Button>
+              </div>
             </>
           ) : textError ? (
-            <p>
-              No fue posible cargar el texto vigente.{' '}
-              <button
-                type="button"
-                onClick={() => {
-                  setLoadingText(true);
-                  setTextError(false);
-                  setTextRetry((value) => value + 1);
-                }}
-              >
-                Reintentar
-              </button>
-            </p>
+            <PortalAlert
+              variant="error"
+              title="No fue posible cargar el texto vigente."
+              action={
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setLoadingText(true);
+                    setTextError(false);
+                    setTextRetry((value) => value + 1);
+                  }}
+                >
+                  Reintentar
+                </Button>
+              }
+            />
           ) : (
             <PortalAlert
               variant="warning"
@@ -334,63 +409,64 @@ export function CompliancePanel({
               }
             />
           )}
-        </section>
+        </PortalPanel>
       ) : null}
 
-      <section className="space-y-3" aria-labelledby="privacy-requests-title">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h3 id="privacy-requests-title" className="font-semibold">
-              Solicitudes de esta persona
-            </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300">
-              El resumen no incluye datos de identidad ni evidencia.
-            </p>
-          </div>
-          {canManage ? (
-            <Button variant="secondary" onClick={() => setRequestFormOpen(true)}>
+      <PortalPanel
+        as="section"
+        labelled
+        title="Solicitudes de esta persona"
+        description="El resumen no incluye datos de identidad ni evidencia."
+        actions={
+          canManage ? (
+            <Button
+              type="button"
+              variant="secondary"
+              className="min-h-11 gap-1.5"
+              onClick={() => setRequestFormOpen(true)}
+            >
+              <FilePlus2 className="h-4 w-4" aria-hidden />
               Radicar solicitud
             </Button>
-          ) : null}
-        </div>
+          ) : undefined
+        }
+      >
         {requests.length ? (
-          <ul className="space-y-2">
-            {requests.map((request) => (
-              <li
-                key={request.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-200 p-3 text-sm dark:border-dark-border"
-              >
-                <span>
-                  {request.kind === 'CONSULTA'
-                    ? 'Consulta'
-                    : request.kind === 'RECLAMO'
-                      ? 'Reclamo'
-                      : 'Reporte de suplantación'}{' '}
-                  ·{' '}
-                  {request.status === 'RESUELTA'
-                    ? 'Respondida'
-                    : request.status === 'NO_PROCEDENTE'
-                      ? 'No procede'
-                      : request.status === 'TRASLADADA'
-                        ? 'Trasladada'
-                        : request.status === 'DESISTIDA'
-                          ? 'Cerrada por falta de respuesta'
-                          : request.status === 'INCOMPLETA'
-                            ? 'Necesita información'
-                            : request.status === 'PRORROGADA'
-                              ? 'Con plazo ampliado'
-                              : request.status === 'EN_TRAMITE'
-                                ? 'En trámite'
-                                : 'Recibida'}{' '}
-                  · vence {formatCivilDate(request.dueAt)}
-                </span>
-                <Button variant="secondary" asChild>
-                  <Link href={`/dashboard/privacy?requestId=${encodeURIComponent(request.id)}`}>
-                    Abrir
-                  </Link>
-                </Button>
-              </li>
-            ))}
+          <ul
+            aria-label="Solicitudes de esta persona"
+            className="divide-y divide-gray-100 dark:divide-dark-border"
+          >
+            {requests.map((request) => {
+              const status = REQUEST_STATUS[request.status] ?? REQUEST_RECEIVED;
+              const kind = REQUEST_KIND_LABELS[request.kind] ?? 'Solicitud';
+              return (
+                <li
+                  key={request.id}
+                  className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                >
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                        {kind}
+                      </span>
+                      <Badge variant={status.variant}>{status.label}</Badge>
+                    </div>
+                    <p className="text-sm text-gray-600 dark:text-gray-300">
+                      Vence el {formatCivilDate(request.dueAt)}
+                    </p>
+                  </div>
+                  <Button variant="secondary" className="min-h-11 shrink-0 gap-1.5" asChild>
+                    <Link
+                      href={`/dashboard/privacy?requestId=${encodeURIComponent(request.id)}`}
+                      aria-label={`Abrir ${kind.toLowerCase()} que vence el ${formatCivilDate(request.dueAt)}`}
+                    >
+                      <ExternalLink className="h-4 w-4" aria-hidden />
+                      Abrir
+                    </Link>
+                  </Button>
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <PortalEmptyState
@@ -399,7 +475,7 @@ export function CompliancePanel({
             embedded
           />
         )}
-      </section>
+      </PortalPanel>
       <RequestForm
         open={requestFormOpen}
         onClose={() => setRequestFormOpen(false)}
@@ -420,36 +496,44 @@ export function CompliancePanel({
         contracts={contracts}
         allowImpersonation
       />
-      {proof ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="privacy-proof-title"
-          className="fixed inset-0 z-(--z-modal) grid place-items-center bg-black/40 p-4"
-        >
-          <section className="w-full max-w-xl space-y-3 rounded-2xl bg-white p-6 dark:bg-dark-surface-2">
-            <h3 id="privacy-proof-title" className="text-lg font-semibold">
-              Comprobante de autorización
-            </h3>
-            <p>Versión: {proof.version}</p>
-            <p className="break-all text-sm">
-              SHA-256: <code>{proof.hash}</code>
-            </p>
-            <p className="text-sm text-gray-600 dark:text-gray-300">
+      <Dialog
+        open={proof !== null}
+        onOpenChange={(open) => {
+          if (!open) setProof(null);
+        }}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Comprobante de autorización</DialogTitle>
+            <DialogDescription>
               Si hay evidencia disponible, se abrió en una pestaña segura. El enlace firmado no se
               conserva en esta vista.
-            </p>
-            <div className="flex justify-end">
-              <Button variant="secondary" onClick={() => setProof(null)}>
-                Cerrar
-              </Button>
+            </DialogDescription>
+          </DialogHeader>
+          {proof ? (
+            <div className="space-y-2 text-sm">
+              <p>
+                <span className="font-medium text-gray-900 dark:text-white">Versión:</span>{' '}
+                {proof.version}
+              </p>
+              <p className="break-all">
+                <span className="font-medium text-gray-900 dark:text-white">SHA-256:</span>{' '}
+                <code className="font-mono">{proof.hash}</code>
+              </p>
             </div>
-          </section>
-        </div>
-      ) : null}
-      {error ? (
-        <PortalAlert variant="error" title="No se completó la operación" description={error} />
-      ) : null}
+          ) : null}
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              className="min-h-11"
+              onClick={() => setProof(null)}
+            >
+              Cerrar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

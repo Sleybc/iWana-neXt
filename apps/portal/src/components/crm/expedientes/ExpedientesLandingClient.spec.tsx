@@ -10,7 +10,10 @@ let searchParamsMock = new URLSearchParams();
 
 jest.mock('next/navigation', () => ({
   usePathname: () => '/dashboard/crm/expedientes',
-  useRouter: () => ({ replace: replaceMock, push: pushMock }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { replace: replaceMock, push: pushMock });
+  })(),
   useSearchParams: () => searchParamsMock,
 }));
 
@@ -234,7 +237,7 @@ describe('ExpedientesLandingClient', () => {
     expect(openTabIcon).not.toBeNull();
     expect(openTabIcon).toHaveAttribute('aria-hidden', 'true');
 
-    const allViews = screen.getByRole('checkbox', { name: 'Incluir todas las vistas' });
+    const allViews = screen.getByRole('checkbox', { name: 'Buscar en todas las pestañas' });
     expect(allViews).toBeDisabled();
     expect(
       crmApiMock.listExpedientes.mock.calls.every(

@@ -27,7 +27,7 @@ import {
   type SubscriberSummary,
 } from './dto/expediente-detail-bootstrap.dto';
 import type { ExpedienteSensitiveFieldPresence } from './expediente-section-completeness.types';
-import { DOCUMENT_SUPPORT_KEYS, type DocumentSupportApprovedFlags } from './document-support.types';
+import { DOCUMENT_SUPPORT_KEYS, type DocumentSupportFlags } from './document-support.types';
 
 const BOOTSTRAP_CONTEXT_FIELDS: (keyof ExpedienteRecord)[] = [
   'id',
@@ -284,6 +284,13 @@ export class ExpedienteDetailBootstrapService {
         )
         .where('expediente.id = :id', { id });
 
+      for (const key of DOCUMENT_SUPPORT_KEYS) {
+        query.addSelect(
+          `jsonb_typeof(expediente.document_supports->'${key}'->'versions'->0) = 'object'`,
+          `bootstrap_document_uploaded_${key}`,
+        );
+      }
+
       const { entities, raw } = await query.getRawAndEntities();
       const expediente = entities[0];
       const row = raw[0] as Record<string, unknown> | undefined;
@@ -326,7 +333,7 @@ export class ExpedienteDetailBootstrapService {
               hasLatitude: this.readPresenceFlag(row, PRESENCE_ALIASES.hasLatitude),
               hasLongitude: this.readPresenceFlag(row, PRESENCE_ALIASES.hasLongitude),
               hasLocation: this.readPresenceFlag(row, PRESENCE_ALIASES.hasLocation),
-              documentSupportApproved: DOCUMENT_SUPPORT_KEYS.reduce<DocumentSupportApprovedFlags>(
+              documentSupportApproved: DOCUMENT_SUPPORT_KEYS.reduce<DocumentSupportFlags>(
                 (flags, key) => {
                   flags[key] = this.readPresenceFlag(
                     row,
@@ -335,6 +342,12 @@ export class ExpedienteDetailBootstrapService {
                   return flags;
                 },
                 {},
+              ),
+              documentSupportUploaded: Object.fromEntries(
+                DOCUMENT_SUPPORT_KEYS.map((key) => [
+                  key,
+                  this.readPresenceFlag(row, `bootstrap_document_uploaded_${key}`),
+                ]),
               ),
             },
           }

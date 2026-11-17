@@ -324,8 +324,8 @@ export const FIELD_PLACEHOLDERS: Record<string, string> = {
   personType: 'Persona natural o jurídica',
   documentType: 'CC, NIT, CE...',
   documentNumber: 'Número del documento',
-  firstName: 'Nombres del titular',
-  lastName: 'Apellidos del titular',
+  firstName: 'Nombres del cliente',
+  lastName: 'Apellidos del cliente',
   companyName: 'Nombre de la empresa',
   primaryContactName: 'Nombre del contacto',
   primaryContactRole: 'Gerente, representante...',
@@ -413,11 +413,35 @@ export function getIdentificationValidationMessage(values: DraftValues): string 
   return null;
 }
 
+/**
+ * Campos que edita una sección (los que pinta, envía o cuentan para su avance). Viabilidad técnica
+ * también edita latitud y longitud, que se guardan en Dirección.
+ */
+export function getSectionEditableFields(sectionId: SectionId): string[] {
+  const section = SECTIONS.find((candidate) => candidate.id === sectionId);
+  if (!section) return [];
+  return [
+    ...new Set([...section.renderFields, ...section.payloadFields, ...section.completionFields]),
+  ];
+}
+
+/** Secciones con cambios sin guardar: algún campo difiere de lo que trajo el servidor. */
+export function getDirtySections(draft: DraftValues, saved: DraftValues): Set<SectionId> {
+  const dirty = new Set<SectionId>();
+  for (const section of SECTIONS) {
+    const changed = getSectionEditableFields(section.id).some(
+      (field) => (draft[field] ?? '') !== (saved[field] ?? ''),
+    );
+    if (changed) dirty.add(section.id);
+  }
+  return dirty;
+}
+
 export const SECTIONS: SectionConfig[] = [
   {
     id: 'identification',
     label: 'Identificación',
-    description: 'Datos base del titular o razón social.',
+    description: 'Datos base del cliente o razón social.',
     icon: UserRound,
     renderFields: [...IDENTIFICATION_FIELDS_NATURAL, ...IDENTIFICATION_FIELDS_JURIDICA.slice(3)],
     payloadFields: [...IDENTIFICATION_FIELDS_NATURAL, ...IDENTIFICATION_FIELDS_JURIDICA.slice(3)],

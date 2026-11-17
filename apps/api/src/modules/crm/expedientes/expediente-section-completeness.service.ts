@@ -4,7 +4,6 @@ import { ConsentRecord } from './entities/consent-record-v2.entity';
 import { ExpedienteRecord } from './entities/expediente-record.entity';
 import { type CrmQuoteSnapshot } from '../ports/crm-quote-read.port';
 import {
-  DOCUMENT_SUPPORT_STATUS,
   getDocumentDefinitionsByPersonType,
   type StoredDocumentSupportMap,
 } from './document-support.types';
@@ -265,8 +264,8 @@ export class ExpedienteSectionCompletenessService {
             fieldKey: definition.key,
             fieldLabel: definition.label,
             fulfilled:
-              sensitiveFieldPresence?.documentSupportApproved?.[definition.key] ??
-              supports[definition.key]?.versions?.[0]?.status === DOCUMENT_SUPPORT_STATUS.APPROVED,
+              sensitiveFieldPresence?.documentSupportUploaded?.[definition.key] ??
+              Boolean(supports[definition.key]?.versions?.[0]),
           }))
         : [
             {
@@ -323,7 +322,7 @@ export class ExpedienteSectionCompletenessService {
       return {
         status: INSTALLATION_READINESS_STATUS.READY_COMPLETE,
         canTransition: true,
-        title: 'Expediente completo para instalación',
+        title: 'Oportunidad completa para instalación',
         message: 'La oportunidad tiene el 100% de avance general y puede avanzar sin pendientes.',
       };
     }

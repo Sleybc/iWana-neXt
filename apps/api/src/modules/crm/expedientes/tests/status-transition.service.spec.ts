@@ -282,7 +282,7 @@ describe('StatusTransitionService', () => {
       installationReadiness: {
         status: 'READY_COMPLETE',
         canTransition: true,
-        title: 'Expediente completo para instalación',
+        title: 'Oportunidad completa para instalación',
         message: 'Todo listo.',
       },
       missingRequirements: [],

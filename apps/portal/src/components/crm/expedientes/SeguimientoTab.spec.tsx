@@ -68,7 +68,7 @@ describe('SeguimientoTab', () => {
         lastActivityAt: null,
       },
     },
-    meta: { page: 1, limit: 5, total: 0, totalPages: 0, truncated: false, hasMore: false },
+    meta: { page: 1, limit: 10, total: 0, totalPages: 0, truncated: false, hasMore: false },
   };
 
   beforeEach(() => {
@@ -370,7 +370,7 @@ describe('SeguimientoTab', () => {
     await waitFor(() => expect(mockGetTimelinePage).toHaveBeenCalledTimes(1));
     expect(mockGetTimelinePage).toHaveBeenCalledWith('expediente-1', {
       page: 1,
-      limit: 5,
+      limit: 10,
       filter: 'all',
     });
     expect(mockLegacyTimeline).not.toHaveBeenCalled();
@@ -382,7 +382,7 @@ describe('SeguimientoTab', () => {
   it('envía filtro y página al servidor sin filtrar ni paginar en memoria', async () => {
     mockGetTimelinePage.mockResolvedValue({
       ...timelineResponse,
-      meta: { page: 1, limit: 5, total: 15, totalPages: 3, truncated: false, hasMore: true },
+      meta: { page: 1, limit: 10, total: 15, totalPages: 3, truncated: false, hasMore: true },
     });
     const expediente = {
       interestedPlanId: null,
@@ -411,7 +411,7 @@ describe('SeguimientoTab', () => {
     await waitFor(() =>
       expect(mockGetTimelinePage).toHaveBeenLastCalledWith('expediente-1', {
         page: 1,
-        limit: 5,
+        limit: 10,
         filter: 'contact',
       }),
     );
@@ -420,7 +420,7 @@ describe('SeguimientoTab', () => {
     await waitFor(() =>
       expect(mockGetTimelinePage).toHaveBeenLastCalledWith('expediente-1', {
         page: 2,
-        limit: 5,
+        limit: 10,
         filter: 'contact',
       }),
     );
@@ -429,7 +429,7 @@ describe('SeguimientoTab', () => {
   it('limita la navegación al máximo de 500 eventos aunque el API reporte más páginas', async () => {
     mockGetTimelinePage.mockResolvedValue({
       ...timelineResponse,
-      meta: { page: 1, limit: 5, total: 500, totalPages: 140, truncated: true, hasMore: true },
+      meta: { page: 1, limit: 10, total: 500, totalPages: 140, truncated: true, hasMore: true },
     });
     const expediente = {
       interestedPlanId: null,
@@ -453,14 +453,14 @@ describe('SeguimientoTab', () => {
       />,
     );
 
-    expect(await screen.findByText('Página 1 de 100')).toBeInTheDocument();
+    expect(await screen.findByText('Página 1 de 50')).toBeInTheDocument();
     expect(screen.queryByText('Página 1 de 140')).not.toBeInTheDocument();
   });
 
   it('recarga la página actual del timeline después de crear un contacto', async () => {
     mockGetTimelinePage.mockResolvedValue({
       ...timelineResponse,
-      meta: { page: 1, limit: 5, total: 1, totalPages: 1, truncated: false, hasMore: false },
+      meta: { page: 1, limit: 10, total: 1, totalPages: 1, truncated: false, hasMore: false },
     });
     const createContactAttempt = (await import('@/lib/api-client')).crmApi
       .createContactAttempt as jest.MockedFunction<CrmApi['createContactAttempt']>;
@@ -616,7 +616,7 @@ describe('SeguimientoTab', () => {
           },
         ],
       },
-      meta: { page: 1, limit: 5, total: 1, totalPages: 1, truncated: false, hasMore: false },
+      meta: { page: 1, limit: 10, total: 1, totalPages: 1, truncated: false, hasMore: false },
     } satisfies ExpedienteTimelinePageResponse;
     const staleResponse = {
       ...currentResponse,
@@ -647,7 +647,7 @@ describe('SeguimientoTab', () => {
     expect(screen.queryByText('Actualización de sección')).not.toBeInTheDocument();
     expect(mockGetTimelinePage).toHaveBeenLastCalledWith('expediente-1', {
       page: 1,
-      limit: 5,
+      limit: 10,
       filter: 'all',
     });
   });

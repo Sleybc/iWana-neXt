@@ -138,6 +138,34 @@ describe('ExpedienteSections', () => {
     expect(screen.getAllByText('Completa').length).toBeGreaterThan(0);
   });
 
+  it('muestra soportes cargados aunque estén pendientes de aprobación', () => {
+    render(
+      <ExpedienteSections
+        expediente={{
+          ...expediente,
+          documentSupports: {
+            identity_document: { versions: [{ status: 'UPLOADED' }] },
+            utility_bill: { versions: [{ status: 'UPLOADED' }] },
+          },
+        }}
+        completeness={completeness}
+        draftValues={{}}
+        onDraftChange={jest.fn()}
+        onSaveSection={jest.fn()}
+        onCandidateTechnologyToggle={jest.fn()}
+        lockedSections={new Set()}
+        onUnlockIdentification={jest.fn()}
+        savingSection={null}
+        actionMessage={null}
+        actionMessageTone="info"
+        onDocumentSupportSaved={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /Soportes documentales/ })).toHaveTextContent('100%');
+    expect(screen.getByText('4 de 7 completadas')).toBeInTheDocument();
+  });
+
   it('usa tokens iWana en el shell y en el guardado de las secciones', () => {
     render(
       <ExpedienteSections
@@ -164,6 +192,35 @@ describe('ExpedienteSections', () => {
     expect(sectionShell).toHaveClass('shadow-iwana-soft');
     expect(saveButton).toHaveClass('bg-iwana-primary');
     expect(saveButton).not.toHaveClass('rounded-xl');
+  });
+
+  it('habilita «Guardar cambios» solo en la sección con cambios y ofrece «Descartar»', () => {
+    const onDiscard = jest.fn();
+    render(
+      <ExpedienteSections
+        expediente={expediente}
+        completeness={completeness}
+        draftValues={{}}
+        onDraftChange={jest.fn()}
+        onSaveSection={jest.fn(async () => undefined)}
+        dirtySections={new Set(['contact'])}
+        onDiscardSection={onDiscard}
+        onCandidateTechnologyToggle={jest.fn()}
+        lockedSections={new Set()}
+        onUnlockIdentification={jest.fn()}
+        savingSection={null}
+        actionMessage={null}
+        actionMessageTone="info"
+        onDocumentSupportSaved={jest.fn(async () => undefined)}
+      />,
+    );
+
+    const saves = screen.getAllByRole('button', { name: 'Guardar cambios' });
+    expect(saves.filter((button) => !(button as HTMLButtonElement).disabled)).toHaveLength(1);
+    const discard = screen.getAllByRole('button', { name: 'Descartar' });
+    expect(discard).toHaveLength(1);
+    fireEvent.click(discard[0]!);
+    expect(onDiscard).toHaveBeenCalledWith('contact');
   });
 
   it('conserva montada la sección de interés al cerrarla y reabrirla', async () => {

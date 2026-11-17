@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Badge, Button, FormStatus, Input, ProgressMeter, Select } from '@iwana/ui';
 import { AccessPermissionKey, PlatformRole, UserRole, formatFullName } from '@iwana/shared';
@@ -33,7 +33,6 @@ const SeguimientoTab = dynamic(
   },
 );
 import {
-  AlertTriangle,
   ArrowLeft,
   CalendarCheck2,
   ChevronDown,
@@ -75,6 +74,8 @@ import {
   hasPersistedIdentificationData,
   getSectionPayloadFields,
   buildDraftValues,
+  getDirtySections,
+  getSectionEditableFields,
   getCandidateTechnologiesFromDraft,
   getMunicipiosByDepartamento,
 } from '@/components/crm/expedientes/sections/constants';
@@ -90,7 +91,13 @@ import {
   invalidateExpedienteTimelineCache,
   resolveExpedienteCacheScope,
 } from '@/components/crm/expedientes/expediente-detail-cache';
-import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalFieldList,
+  PortalFieldRow,
+  PortalPanel,
+  PortalSkeletonBlock,
+} from '@/components/shared/portal-ui';
 import type { SectionId, DraftValues } from '@/components/crm/expedientes/sections/types';
 import { getPortalUserRoleLabel } from '@/lib/user-labels';
 
@@ -224,6 +231,8 @@ export default function ExpedienteDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [draftValues, setDraftValues] = useState<DraftValues>({});
+  // Lo que trajo el servidor en la última carga: define qué secciones tienen cambios sin guardar.
+  const [savedDraft, setSavedDraft] = useState<DraftValues>({});
   const [savingSection, setSavingSection] = useState<SectionId | null>(null);
   const [operationalMetadata, setOperationalMetadata] =
     useState<ExpedienteOperationalMetadata | null>(null);
@@ -344,6 +353,7 @@ export default function ExpedienteDetailPage() {
     if (refreshDraft) {
       setDraftValues((current) => {
         const nextDraft = buildDraftValues(safeDetail, current);
+        setSavedDraft(nextDraft);
         setLockedSections((currentLocks) => {
           const nextLocks = new Set(currentLocks);
           if (hasPersistedIdentificationData(nextDraft)) {
@@ -574,6 +584,7 @@ export default function ExpedienteDetailPage() {
       setCurrentAttribution(null);
       setResponsibility(null);
       setDraftValues({});
+      setSavedDraft({});
       setLockedSections(new Set());
       setSavingSection(null);
       setTransitionTarget('');
@@ -611,6 +622,23 @@ export default function ExpedienteDetailPage() {
     id,
     loadDetailRequest,
   ]);
+
+  const dirtySections = useMemo(
+    () => getDirtySections(draftValues, savedDraft),
+    [draftValues, savedDraft],
+  );
+
+  const handleDiscardSection = (section: SectionId) => {
+    const fields = getSectionEditableFields(section);
+    setDraftValues((current) => {
+      const next = { ...current };
+      for (const field of fields) {
+        if (field in savedDraft) next[field] = savedDraft[field] ?? '';
+        else delete next[field];
+      }
+      return next;
+    });
+  };
 
   const handleDraftChange = (field: string, value: string) => {
     setDraftValues((current) => {
@@ -1066,113 +1094,39 @@ export default function ExpedienteDetailPage() {
             : undefined
         }
       />
-      <ConsentsPanel expedienteId={expediente.id} />
-      {installationReadiness && (
-        <div
-          className={`rounded-[20px] border px-4 py-4 shadow-iwana-soft ${
-            installationReadiness.status === 'NOT_READY'
-              ? 'border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-900/20'
-              : installationReadiness.status === 'READY_WITH_PENDING'
-                ? 'border-blue-200 bg-blue-50 dark:border-blue-900/40 dark:bg-blue-900/20'
-                : 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-900/20'
-          }`}
-        >
-          <div className="flex items-start gap-3">
-            <AlertTriangle
-              className={`mt-0.5 h-4 w-4 shrink-0 ${
-                installationReadiness.status === 'READY_COMPLETE'
-                  ? 'text-emerald-600 dark:text-emerald-300'
-                  : installationReadiness.status === 'READY_WITH_PENDING'
-                    ? 'text-blue-600 dark:text-blue-300'
-                    : 'text-amber-600 dark:text-amber-300'
-              }`}
-              aria-hidden="true"
-            />
-            <div className="space-y-2">
-              <div>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                  {installationReadiness.title}
-                </p>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  {installationReadiness.message}
-                </p>
-              </div>
-              {missingRequirements.length > 0 && (
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Pendientes principales
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {missingRequirements.slice(0, 6).map((requirement) => (
-                      <span
-                        key={`${requirement.sectionKey}-${requirement.fieldKey}`}
-                        className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-300"
-                      >
-                        {requirement.sectionLabel}: {requirement.fieldLabel}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Acción recomendada ahora — dueño único de CTAs de visita */}
-      <div
-        id="programacion"
-        className="rounded-[20px] border border-iwana-primary/20 bg-iwana-primary/5 p-4 shadow-iwana-soft dark:border-iwana-primary-300/20 dark:bg-iwana-primary-400/10"
-      >
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div className="space-y-1">
-              <p className="text-xs font-semibold tracking-wide text-gray-500 dark:text-gray-400">
-                Acción recomendada ahora
-              </p>
-              <p className="text-sm font-semibold text-iwana-primary dark:text-iwana-primary-200">
-                {canCoordinateInstallationVisit || hasActiveInstallationFieldWork
-                  ? hasActiveInstallationFieldWork
-                    ? 'Revisa el trabajo de instalación activo.'
-                    : 'Coordina la visita de instalación para continuar.'
-                  : pipelineRecommendation?.suggestedStatus
-                    ? `Avanzar a ${getStatusMeta(pipelineRecommendation.suggestedStatus).label}`
-                    : 'Revisa el estado comercial para continuar la oportunidad.'}
-              </p>
-              <p className="text-xs text-gray-600 dark:text-gray-300">
-                {canCoordinateInstallationVisit && !hasActiveInstallationFieldWork
-                  ? 'Crea la solicitud de visita y elige si deseas agendar de una vez o dejarla en pendientes.'
-                  : 'Prioriza la siguiente acción operativa antes de continuar con ajustes secundarios.'}
-              </p>
-              {pipelineRecommendation?.blockingRequirements.length ? (
-                <div className="pt-1">
-                  <p className="text-xs font-semibold text-red-700 dark:text-red-300">
-                    Bloqueantes para avanzar: {pipelineRecommendation.blockingRequirements.length}
-                  </p>
-                  <ul className="mt-1 space-y-0.5">
-                    {pipelineRecommendation.blockingRequirements.slice(0, 2).map((requirement) => (
-                      <li
-                        key={`${requirement.sectionKey}-${requirement.fieldKey}`}
-                        className="text-xs text-red-700 dark:text-red-300"
-                      >
-                        • {requirement.sectionLabel}: {requirement.fieldLabel}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              {pipelineRecommendation?.informationalRequirements.length ? (
-                <p className="text-xs text-amber-700 dark:text-amber-300">
-                  Recomendado para cerrar mejor:{' '}
-                  {pipelineRecommendation.informationalRequirements.length} pendiente(s). Revisa los
-                  pendientes principales arriba.
-                </p>
-              ) : null}
-            </div>
-            {pipelineRecommendation?.suggestedStatus && (
-              <div className="flex flex-wrap items-center gap-2">
+      {/*
+        Vista general como tablero (2026-11-14): a la izquierda lo que hay que hacer (siguiente paso,
+        avance por sección, cambio de estado); a la derecha lo que hay que saber (datos del caso y
+        autorizaciones). El texto legal completo vive en el registro de la autorización, no aquí.
+      */}
+      <div className="grid items-start gap-6 xl:grid-cols-3">
+        <div className="min-w-0 space-y-6 xl:col-span-2">
+          <PortalPanel
+            as="section"
+            labelled
+            id="programacion"
+            eyebrow="Acción recomendada ahora"
+            title={
+              canCoordinateInstallationVisit || hasActiveInstallationFieldWork
+                ? hasActiveInstallationFieldWork
+                  ? 'Revisa el trabajo de instalación activo.'
+                  : 'Coordina la visita de instalación para continuar.'
+                : pipelineRecommendation?.suggestedStatus
+                  ? `Avanzar a ${getStatusMeta(pipelineRecommendation.suggestedStatus).label}`
+                  : 'Revisa el estado comercial para continuar la oportunidad.'
+            }
+            description={
+              canCoordinateInstallationVisit && !hasActiveInstallationFieldWork
+                ? 'Crea la solicitud de visita y elige si deseas agendar de una vez o dejarla en pendientes.'
+                : (pipelineRecommendation?.recommendationReason ??
+                  'Prioriza la siguiente acción operativa antes de continuar con ajustes secundarios.')
+            }
+            actions={
+              pipelineRecommendation?.suggestedStatus ? (
                 <Button
                   type="button"
                   variant="secondary"
+                  className="min-h-11"
                   onClick={() =>
                     handleTransition(pipelineRecommendation.suggestedStatus as ExpedienteStatus)
                   }
@@ -1181,13 +1135,70 @@ export default function ExpedienteDetailPage() {
                     installationReadiness?.canTransition === false
                   }
                 >
+                  <Sparkles className="h-4 w-4" aria-hidden="true" />
                   Aplicar sugerencia
                 </Button>
+              ) : undefined
+            }
+            contentClassName="space-y-4"
+          >
+            {installationReadiness ? (
+              <PortalAlert
+                variant={
+                  installationReadiness.status === 'NOT_READY'
+                    ? 'warning'
+                    : installationReadiness.status === 'READY_WITH_PENDING'
+                      ? 'info'
+                      : 'success'
+                }
+                title={installationReadiness.title}
+                description={installationReadiness.message}
+              />
+            ) : null}
+            {pipelineRecommendation?.blockingRequirements.length ? (
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+                  Bloqueantes para avanzar: {pipelineRecommendation.blockingRequirements.length}
+                </p>
+                <ul className="space-y-0.5">
+                  {pipelineRecommendation.blockingRequirements.map((requirement) => (
+                    <li
+                      key={`${requirement.sectionKey}-${requirement.fieldKey}`}
+                      className="text-sm text-red-700 dark:text-red-300"
+                    >
+                      • {requirement.sectionLabel}: {requirement.fieldLabel}
+                    </li>
+                  ))}
+                </ul>
               </div>
-            )}
-          </div>
-          {(canCoordinateInstallationVisit || hasActiveInstallationFieldWork) &&
-            detailExpediente && (
+            ) : null}
+            {missingRequirements.length > 0 ? (
+              <div className="space-y-2">
+                <p className="portal-eyebrow-muted">Pendientes principales</p>
+                <div className="flex flex-wrap gap-2">
+                  {missingRequirements.slice(0, 6).map((requirement) => (
+                    <span
+                      key={`${requirement.sectionKey}-${requirement.fieldKey}`}
+                      className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300"
+                    >
+                      {requirement.sectionLabel}: {requirement.fieldLabel}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {pipelineRecommendation?.informationalRequirements.length ? (
+              <p className="text-sm text-amber-700 dark:text-amber-300">
+                Recomendado para cerrar mejor:{' '}
+                {pipelineRecommendation.informationalRequirements.length} pendiente(s):{' '}
+                {pipelineRecommendation.informationalRequirements
+                  .map((requirement) => `${requirement.sectionLabel}: ${requirement.fieldLabel}`)
+                  .join(' · ')}
+                .
+              </p>
+            ) : null}
+            {(canCoordinateInstallationVisit || hasActiveInstallationFieldWork) &&
+            detailExpediente ? (
               <ExpedienteSchedulingActions
                 expedienteId={detailExpediente.id}
                 tenantScope={tenantScope}
@@ -1198,259 +1209,168 @@ export default function ExpedienteDetailPage() {
                 latitude={detailExpediente.latitude ?? null}
                 longitude={detailExpediente.longitude ?? null}
               />
-            )}
-        </div>
-      </div>
-      {/* Progreso general */}
-      <div className="rounded-[20px] border border-gray-50 bg-white p-6 shadow-[var(--shadow-iwana-soft)] dark:border-dark-border dark:bg-dark-surface-2">
-        <div className="flex items-center space-x-2 mb-5 text-iwana-primary dark:text-white">
-          <LayoutDashboard className="h-5 w-5 text-iwana-secondary-700" aria-hidden="true" />
-          <div>
-            <h2 className="text-base font-bold">Resumen de la oportunidad</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {completedSections}/{sectionCompleteness.length || 7} secciones completas
-            </p>
-          </div>
-        </div>
-        <ProgressMeter
-          value={overallProgress}
-          dimensions={sectionCompleteness.map((section) => ({
-            label: section.label,
-            value: section.percentage,
-          }))}
-        />
-      </div>
-      {/* Informacion del caso */}
-      <div className="grid gap-4 rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-surface-3 md:grid-cols-2 xl:grid-cols-6">
-        <div>
-          <p className="text-xs font-medium tracking-wide text-gray-500 dark:text-gray-400">
-            Estado actual
-          </p>
-          <div className="mt-2">
-            <Badge variant={getStatusMeta(expediente.status).variant}>
-              {getStatusMeta(expediente.status).label}
-            </Badge>
-          </div>
-        </div>
-        <div>
-          <p className="text-xs font-medium tracking-wide text-gray-500 dark:text-gray-400">
-            Fuente
-          </p>
-          <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-            {currentAttribution?.actorName?.trim()
-              ? currentAttribution.actorName
-              : formatAcquisitionChannel(expediente.acquisitionChannel)}
-          </p>
-          {currentAttribution?.actorRole ? (
-            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              {getPortalUserRoleLabel(currentAttribution.actorRole)}
-            </p>
-          ) : null}
-          {currentAttribution?.acquisitionChannel && (
-            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              {formatAcquisitionChannel(currentAttribution.acquisitionChannel)}
-            </p>
-          )}
-        </div>
-        <div>
-          <p className="text-xs font-medium tracking-wide text-gray-500 dark:text-gray-400">
-            Ubicación
-          </p>
-          <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-            {bootstrapExpediente?.hasLocation ? 'Ubicación registrada' : 'Sin ubicación registrada'}
-          </p>
-          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            La dirección exacta se consulta en Gestión.
-          </p>
-        </div>
-        <div>
-          <p className="text-xs font-medium tracking-wide text-gray-500 dark:text-gray-400">
-            Detalle operativo
-          </p>
-          <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-            Disponible bajo demanda
-          </p>
-          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            Abre Gestión para revisar dirección y formulario.
-          </p>
-        </div>
-        <div>
-          <p className="text-xs font-medium tracking-wide text-gray-500 dark:text-gray-400">
-            Asesor responsable
-          </p>
-          <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-            {responsibility?.currentResponsibleUserId
-              ? (responsibility.currentResponsible?.name ?? 'Usuario asignado')
-              : 'Sin asesor asignado'}
-          </p>
-          {responsibility?.currentResponsible?.role && (
-            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              {getPortalUserRoleLabel(responsibility.currentResponsible.role)}
-            </p>
-          )}
-        </div>
-      </div>
-      {/* Recomendación del pipeline asistido */}
-      {pipelineRecommendation?.suggestedStatus && (
-        <div className="rounded-[20px] border border-iwana-primary/20 bg-iwana-primary/5 p-4 shadow-iwana-soft dark:border-iwana-primary-300/20 dark:bg-iwana-primary-400/10">
-          <div className="flex items-start gap-3">
-            <Sparkles
-              className="mt-0.5 h-4 w-4 shrink-0 text-iwana-primary dark:text-iwana-primary-200"
-              aria-hidden="true"
+            ) : null}
+          </PortalPanel>
+
+          <PortalPanel
+            as="section"
+            labelled
+            eyebrow="Avance"
+            title="Resumen de la oportunidad"
+            description={`${completedSections}/${sectionCompleteness.length || 7} secciones completas`}
+          >
+            <ProgressMeter
+              value={overallProgress}
+              dimensions={sectionCompleteness.map((section) => ({
+                label: section.label,
+                value: section.percentage,
+              }))}
             />
-            <div className="min-w-0 flex-1 space-y-2">
-              <div>
-                <p className="text-sm font-semibold text-iwana-primary dark:text-iwana-primary-200">
-                  Estado sugerido:{' '}
-                  <span className="font-bold">
-                    {getStatusMeta(pipelineRecommendation.suggestedStatus).label}
-                  </span>
-                </p>
-                {pipelineRecommendation.recommendationReason && (
-                  <p className="text-sm text-gray-600 dark:text-gray-300">
-                    {pipelineRecommendation.recommendationReason}
-                  </p>
+          </PortalPanel>
+
+          <PortalPanel
+            as="section"
+            labelled
+            eyebrow="Estado comercial"
+            title="Acciones de estado"
+            description="Cambia el estado comercial de forma controlada y registra un motivo cuando aplique."
+          >
+            <div className="grid gap-4 md:grid-cols-2 md:items-end">
+              <Select
+                id="transition-target"
+                label="Nuevo estado"
+                value={transitionTarget}
+                onChange={(event) => setTransitionTarget(event.target.value as ExpedienteStatus)}
+              >
+                {PIPELINE_STATUS_OPTIONS.filter((option) => option.value !== expediente.status).map(
+                  (option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ),
                 )}
-              </div>
-              {pipelineRecommendation.blockingRequirements.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
-                    Requerido para avanzar
-                  </p>
-                  <ul className="mt-1 space-y-0.5">
-                    {pipelineRecommendation.blockingRequirements.map((req) => (
-                      <li
-                        key={`${req.sectionKey}-${req.fieldKey}`}
-                        className="text-xs text-red-700 dark:text-red-300"
-                      >
-                        • {req.sectionLabel}: {req.fieldLabel}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {pipelineRecommendation.informationalRequirements.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
-                    Recomendado (no bloqueante)
-                  </p>
-                  <ul className="mt-1 space-y-0.5">
-                    {pipelineRecommendation.informationalRequirements.map((req) => (
-                      <li
-                        key={`${req.sectionKey}-${req.fieldKey}`}
-                        className="text-xs text-amber-700 dark:text-amber-300"
-                      >
-                        • {req.sectionLabel}: {req.fieldLabel}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {pipelineRecommendation.blockingRequirements.length === 0 && (
+              </Select>
+              <Input
+                id="transition-reason"
+                label="Motivo (opcional)"
+                value={transitionReason}
+                onChange={(event) => setTransitionReason(event.target.value)}
+                placeholder="Registra contexto de la transición"
+              />
+              {/* Las acciones van en su propia fila: en la columna del tablero no caben junto a los campos. */}
+              <div className="flex flex-wrap justify-end gap-2 md:col-span-2">
+                <Button
+                  type="button"
+                  onClick={() => handleTransition()}
+                  disabled={
+                    transitionTarget === 'LISTO_PARA_INSTALACION' &&
+                    installationReadiness?.canTransition === false
+                  }
+                >
+                  Aplicar transición
+                </Button>
                 <Button
                   type="button"
                   variant="secondary"
-                  className="mt-1"
-                  onClick={() =>
-                    handleTransition(pipelineRecommendation.suggestedStatus as ExpedienteStatus)
+                  onClick={() => void handleCoordinateInstallation()}
+                  disabled={
+                    isCoordinatingInstallation ||
+                    isInstallationFieldWorkLoading ||
+                    isPreparingInstallation ||
+                    (!hasActiveInstallationFieldWork && !canCoordinateInstallationVisit) ||
+                    (hasActiveInstallationFieldWork && !installationFieldWork.href)
+                  }
+                  loading={
+                    isCoordinatingInstallation ||
+                    isInstallationFieldWorkLoading ||
+                    isPreparingInstallation
                   }
                 >
-                  <Sparkles className="h-4 w-4" aria-hidden="true" />
-                  Avanzar a {getStatusMeta(pipelineRecommendation.suggestedStatus).label}
+                  <CalendarCheck2 className="h-4 w-4" aria-hidden="true" />
+                  {getInstallationFieldWorkCtaLabel(installationFieldWork.kind)}
                 </Button>
-              )}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
-      {/* Acciones de estado */}
-      <div className="rounded-2xl border border-gray-100 bg-white p-5 dark:border-dark-border dark:bg-dark-surface-2">
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold tracking-wide text-gray-500 dark:text-gray-400">
-              Acciones de estado
-            </p>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Cambia el estado comercial de forma controlada y registra un motivo cuando aplique.
-            </p>
-          </div>
-          <Badge variant={getStatusMeta(expediente.status).variant} className="w-fit">
-            Estado actual: {getStatusMeta(expediente.status).label}
-          </Badge>
-        </div>
-
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)_auto_auto] lg:items-end">
-          <Select
-            id="transition-target"
-            label="Nuevo estado"
-            value={transitionTarget}
-            onChange={(event) => setTransitionTarget(event.target.value as ExpedienteStatus)}
-          >
-            {PIPELINE_STATUS_OPTIONS.filter((option) => option.value !== expediente.status).map(
-              (option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ),
+            {transitionTarget === 'LISTO_PARA_INSTALACION' && installationReadiness && (
+              <div className="mt-4 rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                  {installationReadiness.title}
+                </p>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                  {installationReadiness.message}
+                </p>
+              </div>
             )}
-          </Select>
-          <Input
-            id="transition-reason"
-            label="Motivo (opcional)"
-            value={transitionReason}
-            onChange={(event) => setTransitionReason(event.target.value)}
-            placeholder="Registra contexto de la transición"
-          />
-          <Button
-            type="button"
-            onClick={() => handleTransition()}
-            disabled={
-              transitionTarget === 'LISTO_PARA_INSTALACION' &&
-              installationReadiness?.canTransition === false
-            }
-          >
-            Aplicar transición
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => void handleCoordinateInstallation()}
-            disabled={
-              isCoordinatingInstallation ||
-              isInstallationFieldWorkLoading ||
-              isPreparingInstallation ||
-              (!hasActiveInstallationFieldWork && !canCoordinateInstallationVisit) ||
-              (hasActiveInstallationFieldWork && !installationFieldWork.href)
-            }
-            loading={
-              isCoordinatingInstallation ||
-              isInstallationFieldWorkLoading ||
-              isPreparingInstallation
-            }
-          >
-            <CalendarCheck2 className="h-4 w-4" aria-hidden="true" />
-            {getInstallationFieldWorkCtaLabel(installationFieldWork.kind)}
-          </Button>
-        </div>
-        {transitionTarget === 'LISTO_PARA_INSTALACION' && installationReadiness && (
-          <div className="mt-4 rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
-            <p className="text-sm font-semibold text-gray-900 dark:text-white">
-              {installationReadiness.title}
-            </p>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-              {installationReadiness.message}
-            </p>
-          </div>
-        )}
 
-        {expediente.status === 'DESCARTADO' && (
-          <div className="mt-4 flex justify-start">
-            <Button type="button" variant="ghost" onClick={handleReactivate}>
-              <RefreshCw className="h-4 w-4" aria-hidden="true" />
-              Reactivar oportunidad
-            </Button>
-          </div>
-        )}
+            {expediente.status === 'DESCARTADO' && (
+              <div className="mt-4 flex justify-start">
+                <Button type="button" variant="ghost" onClick={handleReactivate}>
+                  <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                  Reactivar oportunidad
+                </Button>
+              </div>
+            )}
+          </PortalPanel>
+        </div>
+
+        <div className="min-w-0 space-y-6">
+          <PortalPanel as="section" labelled eyebrow="Caso" title="Datos del caso">
+            <PortalFieldList>
+              <PortalFieldRow label="Estado actual">
+                <Badge variant={getStatusMeta(expediente.status).variant}>
+                  {getStatusMeta(expediente.status).label}
+                </Badge>
+              </PortalFieldRow>
+              <PortalFieldRow label="Fuente">
+                <span className="block text-right">
+                  {currentAttribution?.actorName?.trim()
+                    ? currentAttribution.actorName
+                    : formatAcquisitionChannel(expediente.acquisitionChannel)}
+                  {currentAttribution?.actorRole ? (
+                    <span className="block text-xs text-gray-500 dark:text-gray-400">
+                      {getPortalUserRoleLabel(currentAttribution.actorRole)}
+                    </span>
+                  ) : null}
+                  {currentAttribution?.acquisitionChannel ? (
+                    <span className="block text-xs text-gray-500 dark:text-gray-400">
+                      {formatAcquisitionChannel(currentAttribution.acquisitionChannel)}
+                    </span>
+                  ) : null}
+                </span>
+              </PortalFieldRow>
+              <PortalFieldRow label="Asesor responsable">
+                <span className="block text-right">
+                  {responsibility?.currentResponsibleUserId
+                    ? (responsibility.currentResponsible?.name ?? 'Usuario asignado')
+                    : 'Sin asesor asignado'}
+                  {responsibility?.currentResponsible?.role ? (
+                    <span className="block text-xs text-gray-500 dark:text-gray-400">
+                      {getPortalUserRoleLabel(responsibility.currentResponsible.role)}
+                    </span>
+                  ) : null}
+                </span>
+              </PortalFieldRow>
+              <PortalFieldRow label="Ubicación">
+                <span className="block text-right">
+                  {bootstrapExpediente?.hasLocation
+                    ? 'Ubicación registrada'
+                    : 'Sin ubicación registrada'}
+                  <span className="block text-xs text-gray-500 dark:text-gray-400">
+                    La dirección exacta se consulta en Gestión.
+                  </span>
+                </span>
+              </PortalFieldRow>
+            </PortalFieldList>
+          </PortalPanel>
+
+          <ConsentsPanel
+            expedienteId={expediente.id}
+            subscriberId={subscriberSummary?.id ?? null}
+            canReadSubscriberAuthorizations={
+              canReadPrivacy && hasPermission(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
+            }
+          />
+        </div>
       </div>
     </div>
   );
@@ -1499,6 +1419,8 @@ export default function ExpedienteDetailPage() {
       draftValues={draftValues}
       onDraftChange={handleDraftChange}
       onSaveSection={handleSaveSection}
+      dirtySections={dirtySections}
+      onDiscardSection={handleDiscardSection}
       onCandidateTechnologyToggle={handleCandidateTechnologyToggle}
       lockedSections={lockedSections}
       onUnlockIdentification={() => {

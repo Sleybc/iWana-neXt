@@ -1,5 +1,6 @@
 import type { ExpedienteRecord } from '@/lib/api-client';
 import {
+  getDirtySections,
   applyIdentificationDerivedDefaults,
   buildDraftValues,
   FIELD_LABELS,
@@ -183,5 +184,19 @@ describe('sections constants', () => {
         primaryContactRole: 'Representante legal',
       }),
     ).toBeNull();
+  });
+});
+
+describe('getDirtySections', () => {
+  it('marca solo la sección cuyo campo difiere de lo guardado', () => {
+    const saved = { phonePrimary: '3001112233', address: 'Calle 1' };
+    expect([...getDirtySections(saved, saved)]).toEqual([]);
+    expect([...getDirtySections({ ...saved, phonePrimary: '3009998877' }, saved)]).toEqual([
+      'contact',
+    ]);
+  });
+
+  it('trata vacío y ausente como el mismo valor', () => {
+    expect([...getDirtySections({ altContactName: '' }, {})]).toEqual([]);
   });
 });

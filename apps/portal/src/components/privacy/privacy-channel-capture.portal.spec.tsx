@@ -260,9 +260,7 @@ describe('captura del medio de autorización', () => {
 
     render(<ConsentsPanel expedienteId="cccccccc-cccc-4ccc-8ccc-cccccccccccc" />);
     expect(
-      await screen.findByText(
-        'No hay un texto de autorización vigente. La captura está bloqueada.',
-      ),
+      await screen.findByText('La captura está bloqueada hasta publicar uno.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Registrar autorización' })).toBeDisabled();
   });
@@ -347,7 +345,7 @@ describe('captura del medio de autorización', () => {
     const user = userEvent.setup();
     render(<ConsentsPanel expedienteId="cccccccc-cccc-4ccc-8ccc-cccccccccccc" />);
     await screen.findByText(/Medio histórico/);
-    await user.click(screen.getByRole('button', { name: 'Revocar' }));
+    await user.click(screen.getByRole('button', { name: /^Revocar/u }));
 
     expect(await screen.findByText('Consentimiento revocado correctamente.')).toBeInTheDocument();
     expect(crmMock.revokeConsent).toHaveBeenCalledWith(
@@ -402,7 +400,7 @@ describe('captura del medio de autorización', () => {
     expect(screen.getByText(/Medio: Presencial/)).toBeInTheDocument();
     expect(screen.getByText(/Medio: Correo electrónico/)).toBeInTheDocument();
     expect(screen.getByText(/Medio: Medio histórico/)).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Revocar' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /^Revocar/u })).toHaveLength(2);
   });
 
   it('muestra estados de autorizaciones y solicitudes, y permite consultar su comprobante', async () => {
@@ -526,10 +524,12 @@ describe('captura del medio de autorización', () => {
         'Mensajería instantánea',
       ]),
     );
-    expect(screen.getByRole('button', { name: 'Registrar autorización' })).toBeDisabled();
+    // El registro vive en un diálogo: su botón es el de enviar (el disparador queda detrás).
+    const dialog = screen.getByRole('dialog', { name: 'Registrar autorización' });
+    expect(within(dialog).getByRole('button', { name: 'Registrar autorización' })).toBeDisabled();
 
     fireEvent.change(channelSelect, { target: { value: ConsentChannel.TELEFONO } });
-    await user.click(screen.getByRole('button', { name: 'Registrar autorización' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Registrar autorización' }));
 
     await waitFor(() =>
       expect(crmMock.createConsent).toHaveBeenCalledWith('cccccccc-cccc-4ccc-8ccc-cccccccccccc', {

@@ -175,9 +175,10 @@ async function createConvertedSubscriberFixture(page: Page): Promise<{
   const expediente = await createExpedienteFixture(page, plan.id);
   await page.goto(`/dashboard/crm/expedientes/${expediente.id}`);
   await expect(page.getByRole('heading', { name: 'Consentimientos (Ley 1581)' })).toBeVisible();
-  await expect(page.getByText('Texto vigente · versión', { exact: false })).toBeVisible();
 
+  // El texto vigente se revisa al registrar: vive en el diálogo de registro.
   await page.getByRole('button', { name: 'Registrar autorización' }).first().click();
+  await expect(page.getByText('Texto vigente · versión', { exact: false })).toBeVisible();
   const authorizationForm = page.getByRole('region', { name: 'Registrar una autorización' });
   const channel = authorizationForm.getByLabel(
     'Medio por el que la persona otorgó la autorización',

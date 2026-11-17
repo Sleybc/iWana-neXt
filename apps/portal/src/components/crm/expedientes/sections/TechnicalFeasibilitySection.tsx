@@ -450,7 +450,7 @@ export function TechnicalFeasibilitySection({
                   </span>
                   <span
                     className={cn(
-                      'truncate text-sm font-semibold',
+                      'min-w-0 break-words text-sm font-semibold leading-tight',
                       isChecked
                         ? 'text-iwana-secondary-700 dark:text-iwana-secondary-400'
                         : 'text-gray-800 dark:text-gray-200',

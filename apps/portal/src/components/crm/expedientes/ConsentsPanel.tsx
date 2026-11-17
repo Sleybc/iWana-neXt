@@ -2,11 +2,26 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Badge, Button, FormStatus, Select } from '@iwana/ui';
-import { ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
-import { ConsentChannel, type LegalText } from '@iwana/shared';
-import { crmApi, type ConsentRecordItem, type CreateConsentDto } from '@/lib/api-client';
-import { PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import {
+  Badge,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  FormStatus,
+  Select,
+} from '@iwana/ui';
+import { Plus, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
+import { ConsentChannel, type DataAuthorizationView, type LegalText } from '@iwana/shared';
+import {
+  crmApi,
+  subscribersApi,
+  type ConsentRecordItem,
+  type CreateConsentDto,
+} from '@/lib/api-client';
+import { PortalAlert, PortalPanel, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { getSafeCrmErrorMessage } from './crm-error-message';
 import { ApiError, privacyApi } from '@/lib/api-client';
 import { LegalTextContent } from '@/components/privacy/LegalTextContent';
@@ -118,9 +133,154 @@ function getConsentTypeIcon(type: string, status: string) {
 
 interface ConsentsPanelProps {
   expedienteId: string;
+  subscriberId?: string | null;
+  canReadSubscriberAuthorizations?: boolean;
 }
 
-export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
+export function ConsentsPanel({
+  expedienteId,
+  subscriberId,
+  canReadSubscriberAuthorizations = false,
+}: ConsentsPanelProps) {
+  if (subscriberId) {
+    return (
+      <SubscriberConsentsPanel
+        key={`${subscriberId}:${canReadSubscriberAuthorizations}`}
+        subscriberId={subscriberId}
+        canRead={canReadSubscriberAuthorizations}
+      />
+    );
+  }
+  return <ExpedienteConsentsPanel expedienteId={expedienteId} />;
+}
+
+const SUBSCRIBER_CONSENT_PURPOSES = [
+  { key: 'TRATAMIENTO_CONTRACTUAL', label: 'Tratamiento contractual' },
+  { key: 'CONTACTO_COMERCIAL', label: 'Contacto comercial' },
+] as const;
+
+function SubscriberConsentsPanel({
+  subscriberId,
+  canRead,
+}: {
+  subscriberId: string;
+  canRead: boolean;
+}) {
+  const [authorizations, setAuthorizations] = useState<DataAuthorizationView[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [restricted, setRestricted] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (!canRead) return;
+    let active = true;
+    void subscribersApi.get360(subscriberId).then(
+      (data) => {
+        if (!active) return;
+        if (
+          data.privacyDetailsRestricted ||
+          data.subscriber.privacyRestricted ||
+          data.subscriber.anonymizedAt
+        ) {
+          setRestricted(true);
+          return;
+        }
+        setAuthorizations(data.habeasData);
+      },
+      (failure: unknown) => {
+        if (!active) return;
+        if (failure instanceof ApiError && failure.status === 403) setRestricted(true);
+        else setFailed(true);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [attempt, canRead, subscriberId]);
+
+  return (
+    <PortalPanel
+      as="section"
+      labelled
+      title="Consentimientos (Ley 1581)"
+      description="Autorizaciones del suscriptor vinculado."
+    >
+      {!canRead || restricted ? (
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          Autorizaciones restringidas para tu perfil.
+        </p>
+      ) : failed ? (
+        <PortalAlert
+          variant="error"
+          title="No fue posible cargar las autorizaciones del suscriptor."
+          action={
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setFailed(false);
+                setAttempt((value) => value + 1);
+              }}
+            >
+              Reintentar
+            </Button>
+          }
+        />
+      ) : authorizations === null ? (
+        <p role="status" className="text-sm text-gray-600 dark:text-gray-400">
+          Cargando autorizaciones
+        </p>
+      ) : (
+        <>
+          <ul
+            aria-label="Autorizaciones por finalidad"
+            className="divide-y divide-gray-100 dark:divide-dark-border"
+          >
+            {SUBSCRIBER_CONSENT_PURPOSES.map(({ key, label }) => {
+              // La API de privacidad devuelve primero el evento más reciente de cada finalidad.
+              const current = authorizations.find((item) => item.purpose === key);
+              const status =
+                current?.kind === 'REVOCATION'
+                  ? 'Retirada'
+                  : current?.granted
+                    ? current.kind === 'LEGACY_IMPORT'
+                      ? 'Autorización importada'
+                      : 'Autorización vigente'
+                    : current
+                      ? 'No autorizada'
+                      : 'Sin registro';
+              return (
+                <li
+                  key={key}
+                  className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+                >
+                  <span>{label}</span>
+                  <Badge
+                    variant={
+                      current?.granted && current.kind !== 'REVOCATION' ? 'success' : 'neutral'
+                    }
+                  >
+                    {status}
+                  </Badge>
+                </li>
+              );
+            })}
+          </ul>
+          <Button variant="link" asChild>
+            <Link
+              href={`/dashboard/crm/subscribers/${encodeURIComponent(subscriberId)}?tab=cumplimiento`}
+            >
+              Ver cumplimiento del suscriptor
+            </Link>
+          </Button>
+        </>
+      )}
+    </PortalPanel>
+  );
+}
+
+function ExpedienteConsentsPanel({ expedienteId }: { expedienteId: string }) {
   const purposes = useEnabledPurposes();
   const [textError, setTextError] = useState(false);
   const [textRetry, setTextRetry] = useState(0);
@@ -235,153 +395,87 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
     {} as Record<string, ConsentRecordItem | undefined>,
   );
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Consentimientos (Ley 1581)
-          </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Autorizaciones para tratamiento de datos y contacto
-          </p>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => setShowForm((current) => !current)}
-          disabled={authorizationTextLoading || !authorizationText}
-        >
-          {showForm ? 'Cancelar' : 'Registrar autorización'}
-        </Button>
-      </div>
+  const canRegister = !authorizationTextLoading && Boolean(authorizationText);
+  const authorizationStatusClass = (consent: ConsentRecordItem | undefined) => {
+    const accepted = consent?.status === 'ACCEPTED' || consent?.status === 'ACEPTADO';
+    const rejected =
+      consent?.status === 'REJECTED' ||
+      consent?.status === 'RECHAZADO' ||
+      consent?.status === 'REVOKED' ||
+      consent?.status === 'REVOCADO';
+    if (accepted)
+      return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300';
+    if (rejected) return 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300';
+    return 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300';
+  };
 
+  return (
+    <PortalPanel
+      as="section"
+      labelled
+      eyebrow="Ley 1581"
+      title="Consentimientos (Ley 1581)"
+      description="Autorizaciones de tratamiento de datos y contacto."
+      contentClassName="space-y-3"
+    >
+      {/* Con el diálogo abierto, el error se muestra dentro de él. */}
       <FormStatus
-        status={error ? 'error' : successMessage ? 'success' : 'idle'}
-        message={error ?? successMessage ?? undefined}
+        status={error && !showForm ? 'error' : successMessage ? 'success' : 'idle'}
+        message={(showForm ? null : error) ?? successMessage ?? undefined}
       />
 
-      {authorizationTextLoading ? (
-        <p role="status" className="text-sm text-gray-600 dark:text-gray-300">
-          Cargando texto de autorización vigente…
-        </p>
-      ) : authorizationText ? (
-        <section
-          className="space-y-2 rounded-xl border border-gray-200 p-4 dark:border-dark-border"
-          aria-label="Texto de autorización vigente"
-        >
-          <p className="text-sm font-semibold">
-            Texto vigente · versión {authorizationText.version}
-          </p>
-          <LegalTextContent content={authorizationText.content} format={authorizationText.format} />
-          <LegalTextReferences />
-        </section>
-      ) : textError ? (
-        <p>
-          No fue posible cargar el texto vigente.{' '}
-          <button
-            type="button"
-            onClick={() => {
-              setAuthorizationTextLoading(true);
-              setTextError(false);
-              setTextRetry((value) => value + 1);
-            }}
-          >
-            Reintentar
-          </button>
-        </p>
-      ) : (
-        <div className="rounded-xl border border-amber-300 p-4 text-sm">
-          <p>No hay un texto de autorización vigente. La captura está bloqueada.</p>
-          <Link className="font-medium underline" href="/dashboard/privacy?view=legal">
-            Administrar textos legales
-          </Link>
-        </div>
-      )}
-
-      {showForm && authorizationText ? (
-        <section
-          className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-2"
-          aria-labelledby="expediente-authorization-form-title"
-        >
-          <div>
-            <h4 id="expediente-authorization-form-title" className="font-semibold">
-              Registrar una autorización
-            </h4>
-            <p className="text-sm text-gray-600 dark:text-gray-300">
-              El medio indica cómo la persona otorgó su autorización.
-            </p>
-          </div>
-          <Select
-            id="expediente-consent-type"
-            label="Finalidad"
-            value={consentType}
-            options={CONSENT_TYPE_OPTIONS.filter((option) =>
-              purposes.enabled.includes(
-                option.value === 'COMMERCIAL_CONTACT'
-                  ? 'CONTACTO_COMERCIAL'
-                  : 'TRATAMIENTO_CONTRACTUAL',
-              ),
-            )}
-            onChange={(event) => setConsentType(event.target.value)}
+      {!authorizationTextLoading && !authorizationText ? (
+        textError ? (
+          <PortalAlert
+            variant="error"
+            title="No fue posible cargar el texto vigente."
+            action={
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setAuthorizationTextLoading(true);
+                  setTextError(false);
+                  setTextRetry((value) => value + 1);
+                }}
+              >
+                Reintentar
+              </Button>
+            }
           />
-          <Select
-            id="expediente-consent-status"
-            label="Decisión registrada"
-            value={status}
-            options={CONSENT_STATUS_OPTIONS}
-            onChange={(event) => setStatus(event.target.value)}
+        ) : (
+          <PortalAlert
+            variant="warning"
+            title="No hay un texto de autorización vigente"
+            description="La captura está bloqueada hasta publicar uno."
+            action={
+              <Button variant="secondary" size="sm" asChild>
+                <Link href="/dashboard/privacy?view=legal">Administrar textos legales</Link>
+              </Button>
+            }
           />
-          <Select
-            id="expediente-consent-channel"
-            label="Medio por el que la persona otorgó la autorización"
-            value={channel}
-            options={CONSENT_CHANNEL_OPTIONS}
-            placeholder="Selecciona un medio"
-            onChange={(event) => setChannel(event.target.value as ConsentChannel | '')}
-            required
-            aria-required="true"
-          />
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            Texto vinculado: versión {authorizationText.version}. No se adjuntan archivos desde el
-            expediente.
-          </p>
-          <div className="flex justify-end">
-            <Button
-              type="button"
-              onClick={() => void handleCreateConsent()}
-              loading={submitting}
-              disabled={
-                submitting ||
-                !channel ||
-                !purposes.enabled.includes(
-                  consentType === 'COMMERCIAL_CONTACT'
-                    ? 'CONTACTO_COMERCIAL'
-                    : 'TRATAMIENTO_CONTRACTUAL',
-                )
-              }
-            >
-              Registrar autorización
-            </Button>
-          </div>
-        </section>
+        )
       ) : null}
 
       {loading ? (
-        <div className="space-y-3 py-3" aria-busy="true">
+        <div className="space-y-2" aria-busy="true">
           <span className="sr-only" role="status">
             Cargando autorizaciones
           </span>
-          <PortalSkeletonBlock className="h-20 rounded-2xl" />
-          <PortalSkeletonBlock className="h-20 rounded-2xl" />
-          <PortalSkeletonBlock className="h-20 rounded-2xl" />
+          <PortalSkeletonBlock className="h-14 rounded-xl" />
+          <PortalSkeletonBlock className="h-14 rounded-xl" />
+          <PortalSkeletonBlock className="h-14 rounded-xl" />
         </div>
       ) : (
-        <div className="space-y-3">
+        // Una lista: las tres finalidades se leen de un vistazo, con su estado como etiqueta.
+        <ul
+          aria-label="Autorizaciones por finalidad"
+          className="divide-y divide-gray-100 dark:divide-dark-border"
+        >
           {consentTypes.map((type) => {
             const consent = consentsByType[type];
             const Icon = getConsentTypeIcon(type, consent?.status ?? '');
-            const isAccepted = consent?.status === 'ACCEPTED' || consent?.status === 'ACEPTADO';
             const isRejected =
               consent?.status === 'REJECTED' ||
               consent?.status === 'RECHAZADO' ||
@@ -389,69 +483,177 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
               consent?.status === 'REVOCADO';
 
             return (
-              <div
-                key={type}
-                className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-3"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl ${
-                        isAccepted
-                          ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
-                          : isRejected
-                            ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
-                            : 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400'
-                      }`}
-                    >
-                      <Icon className="h-5 w-5" aria-hidden="true" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-white">
-                        {getConsentTypeLabel(type)}
-                      </p>
-                      {consent ? (
-                        <>
-                          <div className="mt-1 flex items-center gap-2">
-                            <Badge variant={getConsentStatusBadgeVariant(consent.status)}>
-                              {getConsentStatusLabel(consent.status)}
-                            </Badge>
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {new Date(consent.obtainedAt).toLocaleString('es-CO', {
-                                dateStyle: 'medium',
-                              })}
-                            </span>
-                          </div>
-                          {consent.channel && (
-                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                              Medio: {getConsentChannelLabel(consent.channel)}
-                            </p>
-                          )}
-                        </>
-                      ) : (
-                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                          Sin registro
-                        </p>
-                      )}
-                    </div>
+              <li key={type} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                <span
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${authorizationStatusClass(consent)}`}
+                >
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      {getConsentTypeLabel(type)}
+                    </p>
+                    {consent ? (
+                      <Badge variant={getConsentStatusBadgeVariant(consent.status)}>
+                        {getConsentStatusLabel(consent.status)}
+                      </Badge>
+                    ) : null}
                   </div>
-                  {consent && !isRejected && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => void handleRevoke(consent.id)}
-                      loading={revoking === consent.id}
-                    >
-                      Revocar
-                    </Button>
-                  )}
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                    {consent
+                      ? [
+                          new Date(consent.obtainedAt).toLocaleString('es-CO', {
+                            dateStyle: 'medium',
+                          }),
+                          consent.channel
+                            ? `Medio: ${getConsentChannelLabel(consent.channel)}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')
+                      : 'Sin registro'}
+                  </p>
                 </div>
-              </div>
+                {consent && !isRejected ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="min-h-11 shrink-0"
+                    aria-label={`Revocar ${getConsentTypeLabel(type).toLowerCase()}`}
+                    onClick={() => void handleRevoke(consent.id)}
+                    loading={revoking === consent.id}
+                  >
+                    Revocar
+                  </Button>
+                ) : null}
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
-    </div>
+
+      {/* Al pie de la lista: en la columna angosta del tablero, en la cabecera apretaba el título. */}
+      <Button
+        type="button"
+        variant="secondary"
+        className="min-h-11 w-full gap-1.5"
+        onClick={() => setShowForm(true)}
+        disabled={!canRegister}
+      >
+        <Plus className="h-4 w-4" aria-hidden="true" />
+        Registrar autorización
+      </Button>
+
+      {/* El texto legal vigente se lee al registrar: es lo que la persona revisa y acepta. */}
+      <Dialog open={showForm && Boolean(authorizationText)} onOpenChange={setShowForm}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Registrar autorización</DialogTitle>
+            <DialogDescription>
+              Cada decisión se guarda con el texto exacto que la persona revisa.
+            </DialogDescription>
+          </DialogHeader>
+          {authorizationText ? (
+            <div className="space-y-4">
+              <section className="space-y-2" aria-label="Texto de autorización vigente">
+                <p className="text-sm font-semibold">
+                  Texto vigente · versión {authorizationText.version}
+                </p>
+                <div
+                  role="region"
+                  aria-label={`Texto de autorización, versión ${authorizationText.version}`}
+                  tabIndex={0}
+                  className="iwana-scroll-inset max-h-64 overflow-y-auto rounded-xl bg-iwana-surface-soft p-4 dark:bg-dark-surface-3"
+                >
+                  <LegalTextContent
+                    content={authorizationText.content}
+                    format={authorizationText.format}
+                  />
+                </div>
+                <LegalTextReferences />
+              </section>
+              <section className="space-y-4" aria-labelledby="expediente-authorization-form-title">
+                <div>
+                  <h4 id="expediente-authorization-form-title" className="font-semibold">
+                    Registrar una autorización
+                  </h4>
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    El medio indica cómo la persona otorgó su autorización.
+                  </p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Select
+                    id="expediente-consent-type"
+                    label="Finalidad"
+                    value={consentType}
+                    options={CONSENT_TYPE_OPTIONS.filter((option) =>
+                      purposes.enabled.includes(
+                        option.value === 'COMMERCIAL_CONTACT'
+                          ? 'CONTACTO_COMERCIAL'
+                          : 'TRATAMIENTO_CONTRACTUAL',
+                      ),
+                    )}
+                    onChange={(event) => setConsentType(event.target.value)}
+                  />
+                  <Select
+                    id="expediente-consent-status"
+                    label="Decisión registrada"
+                    value={status}
+                    options={CONSENT_STATUS_OPTIONS}
+                    onChange={(event) => setStatus(event.target.value)}
+                  />
+                </div>
+                <Select
+                  id="expediente-consent-channel"
+                  label="Medio por el que la persona otorgó la autorización"
+                  value={channel}
+                  options={CONSENT_CHANNEL_OPTIONS}
+                  placeholder="Selecciona un medio"
+                  onChange={(event) => setChannel(event.target.value as ConsentChannel | '')}
+                  required
+                  aria-required="true"
+                />
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  Texto vinculado: versión {authorizationText.version}. No se adjuntan archivos
+                  desde la oportunidad.
+                </p>
+                {/* Un fallo al registrar se ve dentro del diálogo, no detrás de él. */}
+                {error ? <PortalAlert variant="error" live="assertive" title={error} /> : null}
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="min-h-11"
+                    disabled={submitting}
+                    onClick={() => setShowForm(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    className="min-h-11"
+                    onClick={() => void handleCreateConsent()}
+                    loading={submitting}
+                    disabled={
+                      submitting ||
+                      !channel ||
+                      !purposes.enabled.includes(
+                        consentType === 'COMMERCIAL_CONTACT'
+                          ? 'CONTACTO_COMERCIAL'
+                          : 'TRATAMIENTO_CONTRACTUAL',
+                      )
+                    }
+                  >
+                    Registrar autorización
+                  </Button>
+                </div>
+              </section>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </PortalPanel>
   );
 }

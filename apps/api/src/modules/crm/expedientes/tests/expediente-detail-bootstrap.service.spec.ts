@@ -176,6 +176,10 @@ describe('ExpedienteDetailBootstrapService', () => {
       ]),
     );
     const presenceSql = projectionQuery.addSelect.mock.calls.map((call) => String(call[0]));
+    expect(projectionQuery.addSelect).toHaveBeenCalledWith(
+      "jsonb_typeof(expediente.document_supports->'identity_document'->'versions'->0) = 'object'",
+      'bootstrap_document_uploaded_identity_document',
+    );
     for (const textColumn of [
       'document_number_encrypted',
       'phone_primary_encrypted',
@@ -217,6 +221,13 @@ describe('ExpedienteDetailBootstrapService', () => {
         expediente,
         sensitiveFieldPresence: expect.objectContaining({
           documentSupportApproved: {
+            identity_document: false,
+            utility_bill: false,
+            chamber_of_commerce: false,
+            rut: false,
+            legal_representative_id: false,
+          },
+          documentSupportUploaded: {
             identity_document: true,
             utility_bill: true,
             chamber_of_commerce: false,
@@ -556,8 +567,10 @@ function buildProjectionQuery(expediente: ExpedienteRecord | null) {
           bootstrap_has_latitude: true,
           bootstrap_has_longitude: true,
           bootstrap_has_location: true,
-          bootstrap_document_identity_approved: true,
-          bootstrap_document_utility_bill_approved: true,
+          bootstrap_document_identity_approved: false,
+          bootstrap_document_utility_bill_approved: false,
+          bootstrap_document_uploaded_identity_document: true,
+          bootstrap_document_uploaded_utility_bill: true,
           bootstrap_document_chamber_approved: false,
           bootstrap_document_rut_approved: false,
           bootstrap_document_legal_representative_approved: false,

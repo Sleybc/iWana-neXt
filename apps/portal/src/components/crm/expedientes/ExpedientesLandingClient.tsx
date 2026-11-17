@@ -292,6 +292,7 @@ function ExpedientesLandingClientInner() {
   }, [page]);
 
   const totalPipelineCount = Object.values(summary).reduce((sum, value) => sum + (value ?? 0), 0);
+  const summaryLoaded = !(initialLoading && !hasLoadedOnceRef.current);
   const pageCount = meta.totalPages ?? (meta.total > 0 ? 1 : 0);
   const effectivePage = meta.page ?? page;
   const { from, to } = listPageWindow({
@@ -634,7 +635,8 @@ function ExpedientesLandingClientInner() {
                   aria-hidden="true"
                 />
                 <span>{label}</span>
-                {count > 0 && (
+                {/* El conteo se muestra también en 0: sin él, «En instalación» parecía sin cargar. */}
+                {summaryLoaded && (
                   <span className="rounded-full bg-iwana-primary/10 px-1.5 py-0.5 text-xs text-iwana-primary dark:bg-iwana-primary/20 dark:text-iwana-primary-300">
                     {count}
                   </span>
@@ -670,7 +672,7 @@ function ExpedientesLandingClientInner() {
               disabled={!searchDraft.trim() && !documentDraft.trim() && !allViewsEnabled}
               onChange={(event) => setFilters({ allViews: event.target.checked ? '1' : null })}
             />
-            Incluir todas las vistas
+            Buscar en todas las pestañas
           </label>
 
           {hasActiveFilters ? (
@@ -827,7 +829,14 @@ function ExpedientesLandingClientInner() {
                       </td>
                       <td className={cn(portalDataTableCellClassName, 'text-right')}>
                         <Button variant="ghost" asChild>
-                          <Link href={`/dashboard/crm/expedientes/${expediente.id}`}>
+                          <Link
+                            href={`/dashboard/crm/expedientes/${expediente.id}`}
+                            aria-label={`Abrir oportunidad de ${
+                              expediente.anonymizedAt || expediente.privacyRestricted
+                                ? 'datos protegidos'
+                                : expediente.fullName
+                            }`}
+                          >
                             Abrir
                             <ArrowRight className="h-4 w-4" aria-hidden="true" />
                           </Link>

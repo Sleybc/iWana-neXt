@@ -15,10 +15,14 @@ let currentUserRole = 'SALES';
 
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: currentExpedienteId }),
-  useRouter: () => ({
-    push: mockPush,
-    back: mockBack,
-  }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () =>
+      (router ??= {
+        push: mockPush,
+        back: mockBack,
+      });
+  })(),
 }));
 
 jest.mock('@/components/scheduling/visit-request-origin-orchestration', () => ({
@@ -60,6 +64,7 @@ jest.mock('@/components/crm/expedientes/useCrmInstallationFieldWork', () => ({
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
+  // ctx-inestable-intencional: el valor depende de estado mutable que cambia por prueba.
   useAuth: () => ({
     user: {
       id: 'user-1',
@@ -1196,8 +1201,38 @@ describe('ExpedienteDetailPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Enviar a pendientes' })).toBeInTheDocument();
     expect(
-      screen.getByText(/Recomendado para cerrar mejor: 1 pendiente\(s\)\. Revisa/i),
+      // Los recomendados se nombran en la acción recomendada (antes, en un panel aparte).
+      screen.getByText(/Recomendado para cerrar mejor: 1 pendiente\(s\):/i),
     ).toBeInTheDocument();
+  });
+
+  it('muestra la carga documental completa en el resumen y no la presenta como pendiente', async () => {
+    crmApiMock.getExpedienteBootstrap.mockResolvedValue(
+      buildExpedienteBootstrapResponse({
+        completeness: {
+          ...buildExpedienteResponse().completeness,
+          overall: 93,
+          sectionCompleteness: [
+            {
+              key: 'documentSupport',
+              label: 'Soportes documentales',
+              percentage: 100,
+              completedFields: 2,
+              totalFields: 2,
+              missingFields: [],
+            },
+          ],
+        },
+        pipelineRecommendation: {
+          ...buildExpedienteResponse().pipelineRecommendation!,
+          informationalRequirements: [],
+        },
+      }),
+    );
+    render(<ExpedienteDetailPage />);
+
+    expect(await screen.findByText('Soportes documentales: 100%')).toBeInTheDocument();
+    expect(screen.queryByText(/Recomendado para cerrar mejor:/i)).not.toBeInTheDocument();
   });
 
   it('coordina una instalación desde Agendar ahora y abre la agenda', async () => {

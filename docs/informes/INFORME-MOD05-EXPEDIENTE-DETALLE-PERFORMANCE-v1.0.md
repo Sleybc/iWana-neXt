@@ -130,3 +130,11 @@ Verificación focalizada posterior al timeline paginado:
 - Timeline paginado: filtros, límites físicos, `hasMore` y eventos polimórficos
   consumidos server-side por Seguimiento.
 - Commit: no realizado.
+
+## Corrección del avance documental (2026-11-17)
+
+Gestión y el resumen de la oportunidad miden la carga documental. El resumen y los pendientes consumen indicadores de presencia del bootstrap, sin incluir metadatos de archivos. La revisión documental conserva el estado de cada soporte.
+
+La carga contribuye al promedio de siete secciones que usa el umbral de instalación del PRD MOD05 §7.1.
+
+En expedientes vinculados, «Consentimientos» muestra las autorizaciones vigentes o retiradas de tratamiento contractual y contacto comercial desde la ficha del suscriptor, con los permisos de lectura de suscriptor y privacidad. La gestión de esas autorizaciones se abre desde Cumplimiento.

@@ -37,7 +37,7 @@ export const DOCUMENT_SUPPORT_KEYS = [
 ] as const;
 
 export type DocumentSupportKey = (typeof DOCUMENT_SUPPORT_KEYS)[number];
-export type DocumentSupportApprovedFlags = Partial<Record<DocumentSupportKey, boolean>>;
+export type DocumentSupportFlags = Partial<Record<DocumentSupportKey, boolean>>;
 
 export interface DocumentSupportDefinition {
   key: DocumentSupportKey;

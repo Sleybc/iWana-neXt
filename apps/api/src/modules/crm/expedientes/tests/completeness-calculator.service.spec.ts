@@ -720,14 +720,15 @@ describe('CompletenessCalculator', () => {
     );
   });
 
-  it('no marca como faltante un soporte APPROVED recibido con clave canónica', () => {
+  it('no marca como faltantes los soportes cargados sin aprobar en el bootstrap', () => {
     const expediente = buildExpediente({ personType: null, documentSupports: null });
     const sensitiveFieldPresence: ExpedienteSensitiveFieldPresence = {
       documentNumber: false,
       phonePrimary: false,
       emailPrimary: false,
       altContactPhone: false,
-      documentSupportApproved: {
+      documentSupportApproved: { identity_document: false, utility_bill: false },
+      documentSupportUploaded: {
         identity_document: true,
         utility_bill: true,
       },

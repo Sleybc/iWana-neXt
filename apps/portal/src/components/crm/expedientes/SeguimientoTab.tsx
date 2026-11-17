@@ -873,14 +873,12 @@ export function SeguimientoTab({
         {/* ── Columna derecha: Sidebar de estado ──────────────── */}
         <aside className="space-y-4">
           {/* Responsable actual */}
-          <div className="rounded-[20px] border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2">
             <div className="mb-3 flex items-center gap-2">
               <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-iwana-primary/10">
                 <UserCheck className="h-3.5 w-3.5 text-iwana-primary" aria-hidden="true" />
               </span>
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-400">
-                Responsable
-              </p>
+              <p className="portal-eyebrow-muted">Responsable</p>
             </div>
             {responsibility?.currentResponsibleUserId ? (
               <>
@@ -904,14 +902,12 @@ export function SeguimientoTab({
           </div>
 
           {/* Asesor de origen */}
-          <div className="rounded-[20px] border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2">
             <div className="mb-3 flex items-center gap-2">
               <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-iwana-secondary/15 dark:bg-iwana-secondary-700/20">
                 <TrendingUp className="h-3.5 w-3.5 text-iwana-secondary-700" aria-hidden="true" />
               </span>
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-400">
-                Asesor de origen
-              </p>
+              <p className="portal-eyebrow-muted">Asesor de origen</p>
             </div>
             {currentAttribution ? (
               <>
@@ -941,21 +937,19 @@ export function SeguimientoTab({
               <p className="text-sm text-gray-400 dark:text-gray-400">Sin atribución activa</p>
             )}
             {!canManageAttribution && (
-              <p className="mt-3 text-[11px] text-gray-400 dark:text-gray-400">
+              <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
                 Solo un administrador puede editar el origen.
               </p>
             )}
           </div>
 
           {/* Interés del cliente */}
-          <div className="rounded-[20px] border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2">
             <div className="mb-3 flex items-center gap-2">
               <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-900/20">
                 <User className="h-3.5 w-3.5 text-blue-500" aria-hidden="true" />
               </span>
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-400">
-                Interés del cliente
-              </p>
+              <p className="portal-eyebrow-muted">Interés del cliente</p>
             </div>
             <p className="text-sm font-medium text-gray-900 dark:text-white">
               {interestedPlanId
@@ -971,14 +965,12 @@ export function SeguimientoTab({
               <div className="mt-2 space-y-1 border-t border-gray-50 pt-2 dark:border-dark-border/50">
                 {additionalProductIds.length > 0 && (
                   <>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-400">
-                      Productos adicionales
-                    </p>
+                    <p className="portal-eyebrow-muted">Productos adicionales</p>
                     <div className="flex flex-wrap gap-1.5">
                       {additionalProductIds.map((id) => (
                         <span
                           key={id}
-                          className="rounded-full bg-blue-50/50 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:bg-blue-900/10 dark:text-blue-400"
+                          className="rounded-full bg-iwana-surface-soft px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-dark-surface-3 dark:text-gray-200"
                         >
                           {catalogLabelFromMap(
                             id,
@@ -993,14 +985,12 @@ export function SeguimientoTab({
                 )}
                 {additionalServiceIds.length > 0 && (
                   <>
-                    <p className="pt-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-400">
-                      Servicios adicionales
-                    </p>
+                    <p className="portal-eyebrow-muted pt-2">Servicios adicionales</p>
                     <div className="flex flex-wrap gap-1.5">
                       {additionalServiceIds.map((id) => (
                         <span
                           key={id}
-                          className="rounded-full bg-blue-50/50 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:bg-blue-900/10 dark:text-blue-400"
+                          className="rounded-full bg-iwana-surface-soft px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-dark-surface-3 dark:text-gray-200"
                         >
                           {catalogLabelFromMap(
                             id,
@@ -1018,14 +1008,12 @@ export function SeguimientoTab({
           </div>
 
           {/* Origen de la oportunidad */}
-          <div className="rounded-[20px] border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2">
             <div className="mb-3 flex items-center gap-2">
               <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-900/20">
                 <ArrowRightLeft className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
               </span>
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-400">
-                Origen
-              </p>
+              <p className="portal-eyebrow-muted">Origen</p>
             </div>
             <p className="text-sm font-medium text-gray-900 dark:text-white">
               {formatAcquisitionChannel(
