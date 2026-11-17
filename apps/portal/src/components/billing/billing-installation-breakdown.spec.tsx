@@ -152,7 +152,7 @@ describe('Detalle del documento con desglose de instalación', () => {
   it('el side peek muestra el desglose sin cambiar el total del documento (CA-1)', async () => {
     mockDocument.mockResolvedValue({ ...DOCUMENT, installationBreakdown: BREAKDOWN });
     render(<BillingDocumentTable documents={[DOCUMENT]} onChanged={jest.fn()} />);
-    await userEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Ver detalle de la factura/u }));
     expect(
       await screen.findByRole('heading', {
         name: 'Valor real de la instalación (informativo, no se cobra)',
@@ -165,7 +165,7 @@ describe('Detalle del documento con desglose de instalación', () => {
   it('sin desglose no muestra la sección', async () => {
     mockDocument.mockResolvedValue({ ...DOCUMENT, installationBreakdown: null });
     render(<BillingDocumentTable documents={[DOCUMENT]} onChanged={jest.fn()} />);
-    await userEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Ver detalle de la factura/u }));
     expect(await screen.findByText('Cliente', { selector: 'dt' })).toBeInTheDocument();
     expect(screen.queryByText(/Valor real de la instalación/u)).not.toBeInTheDocument();
   });

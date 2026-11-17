@@ -732,7 +732,9 @@ test.describe('MOD14 IVA por concepto y cortesías — E2E vivo', () => {
     const issued = await issueDocument(first.id);
     await loginInPortal(page, ADMIN_EMAIL, tenantAdminPassword);
     await page.goto(DOCUMENTS_URL);
-    await documentRow(page, issued.number!).getByRole('button', { name: 'Ver detalle' }).click();
+    await documentRow(page, issued.number!)
+      .getByRole('button', { name: /^Ver detalle de la factura/u })
+      .click();
     const detailLines = page.getByRole('row').filter({ hasText: 'Instalación' });
     await expect(detailLines.first()).toBeVisible();
     await expect(page.getByRole('cell', { name: `Router QA ${RUN_ID}` }).first()).toBeVisible();
@@ -814,7 +816,9 @@ test.describe('MOD14 IVA por concepto y cortesías — E2E vivo', () => {
 
     // R5: anular la cortesía desde el detalle devuelve el saldo.
     await page.goto(DOCUMENTS_URL);
-    await documentRow(page, issued.number!).getByRole('button', { name: 'Ver detalle' }).click();
+    await documentRow(page, issued.number!)
+      .getByRole('button', { name: /^Ver detalle de la factura/u })
+      .click();
     await page.getByRole('button', { name: 'Anular cortesía' }).click();
     const voidDialog = page.getByRole('dialog', { name: 'Anular cortesía' });
     await voidDialog.getByLabel('Motivo de anulación').selectOption('DECISION_REVERTIDA');
@@ -851,7 +855,7 @@ test.describe('MOD14 IVA por concepto y cortesías — E2E vivo', () => {
     const row = documentRow(page, issued.number!);
     await expect(row).toBeVisible();
     await expect(row.getByRole('button', { name: /Otorgar cortesía/u })).toHaveCount(0);
-    await row.getByRole('button', { name: 'Ver detalle' }).click();
+    await row.getByRole('button', { name: /^Ver detalle de la factura/u }).click();
     await expect(page.getByRole('columnheader', { name: 'IVA' }).first()).toBeVisible();
     await expect(page.getByRole('button', { name: /Otorgar cortesía/u })).toHaveCount(0);
 

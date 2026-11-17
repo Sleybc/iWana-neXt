@@ -21,7 +21,7 @@ jest.mock('@/lib/api-client', () => {
   const actual = jest.requireActual<typeof import('@/lib/api-client')>('@/lib/api-client');
   return {
     ...actual,
-    billingApi: { documents: jest.fn() },
+    billingApi: { documents: jest.fn(), documentsBySubscriber: jest.fn() },
     billingCyclesApi: { list: jest.fn().mockResolvedValue([]) },
     contractsApi: { listBySubscriber: jest.fn() },
   };
@@ -35,6 +35,7 @@ jest.mock('@/components/access-control/permissions-context', () => ({
 }));
 
 const mockedDocuments = billingApi.documents as jest.Mock;
+const mockedBySubscriber = billingApi.documentsBySubscriber as jest.Mock;
 
 function buildDocument(id: string, number: string | null): BillingDocumentResponse {
   return {
@@ -120,6 +121,61 @@ describe('BillingDocumentList — filtros en URL y estados vacíos (CA-UX-FAC-04
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     const href = String(mockReplace.mock.calls.at(-1)?.[0] ?? '');
     expect(href).toBe('/dashboard/billing/documents');
+  });
+});
+
+describe('BillingDocumentList — vista por cliente', () => {
+  const SUMMARY = {
+    subscriberId: '55555555-5555-4555-8555-555555555555',
+    displayName: 'Cliente Sintético',
+    buyerProtected: false,
+    documentCount: 3,
+    overdueCount: 2,
+    total: '150000.00',
+    pendingAmount: '90000.00',
+    oldestPendingDueDate: '2026-10-05',
+  };
+
+  it('agrupa por cliente con sus filtros y no pide la lista por factura', async () => {
+    searchParams = new URLSearchParams('vista=clientes&paymentState=VENCIDO');
+    window.history.pushState(
+      {},
+      '',
+      '/dashboard/billing/documents?vista=clientes&paymentState=VENCIDO',
+    );
+    mockedBySubscriber.mockResolvedValue({
+      ...EMPTY_PAGE,
+      data: [SUMMARY],
+      meta: { ...EMPTY_PAGE.meta, total: 1 },
+    });
+    render(<BillingDocumentList />);
+    const table = await screen.findByRole('region', { name: 'Facturas por cliente' });
+    expect(mockedBySubscriber).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentState: 'VENCIDO' }),
+    );
+    expect(mockedDocuments).not.toHaveBeenCalled();
+    expect(within(table).getByRole('link', { name: 'Cliente Sintético' })).toBeInTheDocument();
+    expect(within(table).getByText('5 oct 2026')).toBeInTheDocument();
+    // En esta vista no se busca un cliente puntual.
+    expect(screen.queryByLabelText('Buscar cliente')).not.toBeInTheDocument();
+  });
+
+  it('«Ver facturas» vuelve a la lista por factura filtrada por ese cliente', async () => {
+    searchParams = new URLSearchParams('vista=clientes');
+    window.history.pushState({}, '', '/dashboard/billing/documents?vista=clientes');
+    mockedBySubscriber.mockResolvedValue({
+      ...EMPTY_PAGE,
+      data: [SUMMARY],
+      meta: { ...EMPTY_PAGE.meta, total: 1 },
+    });
+    render(<BillingDocumentList />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Ver las facturas de Cliente Sintético' }),
+    );
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    const href = String(mockReplace.mock.calls.at(-1)?.[0] ?? '');
+    expect(href).toContain(`subscriberId=${SUMMARY.subscriberId}`);
+    expect(href).not.toContain('vista=clientes');
   });
 });
 

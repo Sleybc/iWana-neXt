@@ -109,6 +109,31 @@ describeWithDb('BillingPaymentsService contra PostgreSQL real', () => {
     return id;
   }
 
+  it('filtra la lista por cliente, método, estado y rango de fechas de pago', async () => {
+    const inRange = await insertPayment({
+      amount: '30.00',
+      key: 'pg-filter-1',
+      paidAt: '2026-11-05',
+    });
+    await insertPayment({ amount: '40.00', key: 'pg-filter-2', paidAt: '2026-10-01' });
+
+    const byDate = await TenantContext.run(tenantContext(), () =>
+      service.listPayments({ from: '2026-11-01', to: '2026-11-30' }),
+    );
+    expect(byDate.data.map((payment) => payment.id)).toEqual([inRange]);
+    expect(byDate.meta.total).toBe(1);
+
+    const byMethod = await TenantContext.run(tenantContext(), () =>
+      service.listPayments({ method: 'EFECTIVO' }),
+    );
+    expect(byMethod.meta.total).toBe(0);
+
+    const byStatusAndSubscriber = await TenantContext.run(tenantContext(), () =>
+      service.listPayments({ status: 'REGISTRADO', subscriberId }),
+    );
+    expect(byStatusAndSubscriber.meta.total).toBe(2);
+  });
+
   it('lista pagos en data y meta con paginación exacta', async () => {
     await insertPayment({ amount: '10.00', key: 'br5-list-1' });
     const latestId = await insertPayment({

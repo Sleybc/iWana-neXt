@@ -656,7 +656,10 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
 
     // CA-FAC-14: descarga del PDF.
     const downloadPromise = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Descargar PDF' }).first().click();
+    await page
+      .getByRole('button', { name: /^Descargar PDF de la factura/u })
+      .first()
+      .click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/\.pdf$/u);
     const pdfPath = await download.path();
@@ -1078,7 +1081,7 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
     const maskedRow = page
       .locator('tr', { hasText: '[Dato protegido por custodia legal]' })
       .first();
-    await maskedRow.getByRole('button', { name: 'Ver detalle' }).click();
+    await maskedRow.getByRole('button', { name: /^Ver detalle de la factura/u }).click();
     const detail = page.getByRole('dialog');
     await expect(detail.getByText('[Dato protegido por custodia legal]').first()).toBeVisible();
     await expect(detail.getByText('Titular Bloqueado')).not.toBeVisible();

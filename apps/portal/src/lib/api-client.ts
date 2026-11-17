@@ -289,6 +289,7 @@ import type {
   BillingContractPolicyUpdate,
   BillingCourtesyResponse,
   BillingDocumentResponse,
+  BillingSubscriberDocumentsSummary,
   BillingFirstChargeResult,
   BillingGenerationSummary,
   BillingPaymentResponse,
@@ -7769,6 +7770,12 @@ export const billingApi = {
     request<ListResponse<BillingDocumentResponse>>(`/billing/documents${billingListQuery(query)}`, {
       returnFullResponse: true,
     }),
+  /** Facturas agrupadas por cliente, paginadas por cliente (vista «Por cliente»). */
+  documentsBySubscriber: (query: Omit<BillingDocumentsQuery, 'subscriberId'>) =>
+    request<ListResponse<BillingSubscriberDocumentsSummary>>(
+      `/billing/documents/by-subscriber${billingListQuery(query)}`,
+      { returnFullResponse: true },
+    ),
   document: (id: string) =>
     request<BillingDocumentResponse>(`/billing/documents/${encodeURIComponent(id)}`),
   documentPdf: (id: string) =>
@@ -7808,7 +7815,15 @@ export const billingApi = {
       input,
       key,
     ),
-  payments: (query: { page?: number; limit?: number }) =>
+  payments: (query: {
+    page?: number;
+    limit?: number;
+    subscriberId?: string;
+    method?: BillingPaymentResponse['method'];
+    status?: BillingPaymentResponse['status'];
+    from?: string;
+    to?: string;
+  }) =>
     request<ListResponse<BillingPaymentResponse>>(`/billing/payments${billingListQuery(query)}`, {
       returnFullResponse: true,
     }),

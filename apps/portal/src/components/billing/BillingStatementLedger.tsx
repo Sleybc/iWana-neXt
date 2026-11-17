@@ -8,8 +8,12 @@ import {
   type BillingStatementLedgerRow,
 } from '@iwana/shared';
 import { Badge, Button } from '@iwana/ui';
+import { Download, Mail } from 'lucide-react';
 import { usePermissions } from '@/components/access-control/permissions-context';
-import { formatBillingDate } from '@/components/crm/subscribers/billing-cycle-ui';
+import {
+  formatBillingDate,
+  formatBillingShortDate,
+} from '@/components/crm/subscribers/billing-cycle-ui';
 import {
   PortalAlert,
   PortalEmptyState,
@@ -21,6 +25,7 @@ import { billingApi } from '@/lib/api-client';
 import { BillingEmailLog, BillingEmailSendResult, useBillingEmailSend } from './BillingEmailLog';
 import { saveBillingPdf } from './billing-document-pdf';
 import {
+  documentShortNumber,
   formatBillingMoneyExact,
   formatLedgerBalance,
   LEDGER_ROW_KINDS,
@@ -90,10 +95,20 @@ function ConceptCell({
   documents: readonly DocumentRef[];
 }) {
   const late = lateLabel(row, documents);
+  // La referencia va en el detalle (antes ocupaba su propia columna, casi siempre vacía): número
+  // corto de la factura, impuesto de la retención o referencia del pago.
+  const reference = ledgerReference(row);
   const details = [
+    reference !== '—'
+      ? row.kind === 'DOCUMENTO'
+        ? (documentShortNumber({ number: reference }) ?? reference)
+        : reference
+      : null,
     row.method ? PAYMENT_METHODS[row.method] : null,
     row.receiptNumber ? `Recibo N.º ${row.receiptNumber}` : null,
-    row.kind === 'DOCUMENTO' && row.dueDate ? `Vence el ${formatBillingDate(row.dueDate)}` : null,
+    row.kind === 'DOCUMENTO' && row.dueDate
+      ? `Vence el ${formatBillingShortDate(row.dueDate)}`
+      : null,
   ].filter(Boolean);
   return (
     <div className="space-y-0.5">
@@ -186,9 +201,49 @@ export function BillingStatementLedger({
     }
   }
 
+  const actions = (
+    <div className="flex flex-wrap gap-2">
+      <Button
+        className="min-h-11"
+        type="button"
+        variant="secondary"
+        disabled={!result.ok || downloading}
+        loading={downloading}
+        onClick={() => void downloadPdf()}
+      >
+        {downloading ? null : <Download className="h-4 w-4" aria-hidden />}
+        Descargar PDF
+      </Button>
+      {canSend ? (
+        <Button
+          className="min-h-11"
+          type="button"
+          variant="secondary"
+          disabled={!result.ok || email.busy !== null}
+          loading={email.busy !== null}
+          onClick={() => {
+            if (result.ok)
+              void email.send('estado', () =>
+                billingApi.sendStatementEmail(subscriberId, result.query),
+              );
+          }}
+        >
+          {email.busy !== null ? null : <Mail className="h-4 w-4" aria-hidden />}
+          Enviar al cliente
+        </Button>
+      ) : null}
+    </div>
+  );
+
   const rows = data ? ledgerRows(data) : [];
   return (
-    <PortalPanel title="Estado de cuenta" contentClassName="space-y-4" busy={loading && !!queryKey}>
+    <PortalPanel
+      title="Estado de cuenta"
+      description="Facturas, pagos, retenciones y cortesías en orden, con el saldo después de cada movimiento."
+      actions={actions}
+      contentClassName="space-y-4"
+      busy={loading && !!queryKey}
+    >
       <div className="space-y-3">
         <div
           role="group"
@@ -250,55 +305,36 @@ export function BillingStatementLedger({
           </p>
         ) : null}
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          className="min-h-11"
-          type="button"
-          variant="secondary"
-          disabled={!result.ok || downloading}
-          loading={downloading}
-          onClick={() => void downloadPdf()}
-        >
-          Descargar PDF
-        </Button>
-        {canSend ? (
-          <Button
-            className="min-h-11"
-            type="button"
-            variant="secondary"
-            disabled={!result.ok || email.busy !== null}
-            loading={email.busy !== null}
-            onClick={() => {
-              if (result.ok)
-                void email.send('estado', () =>
-                  billingApi.sendStatementEmail(subscriberId, result.query),
-                );
-            }}
-          >
-            Enviar al cliente
-          </Button>
-        ) : null}
-      </div>
       {pdfError ? <PortalAlert variant="error" title={pdfError} /> : null}
       <BillingEmailSendResult outcome={email.outcome} />
       {queryKey ? <BillingLoadState loading={loading} error={error} onRetry={reload} /> : null}
       {data ? (
         <>
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            {data.from
-              ? `Del ${formatBillingDate(data.from)} al ${formatBillingDate(data.to)}`
-              : `Todo el historial hasta el ${formatBillingDate(data.to)}`}
-          </p>
+          <div className="flex flex-col gap-1 rounded-2xl border border-gray-100 bg-iwana-surface-soft px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              {data.from
+                ? `Del ${formatBillingDate(data.from)} al ${formatBillingDate(data.to)}`
+                : `Todo el historial hasta el ${formatBillingDate(data.to)}`}
+            </p>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">
+              Saldo final:{' '}
+              <span className="text-base tabular-nums">
+                {formatLedgerBalance(data.closingBalance)}
+              </span>
+            </p>
+          </div>
           {rows.length ? (
             <BillingTable
+              key={`${subscriberId}:${queryKey}`}
+              paginate
               label="Movimientos del estado de cuenta"
-              columns={['Fecha', 'Concepto', 'Referencia', 'Cargo', 'Abono', 'Saldo']}
+              columns={['Fecha', 'Concepto', 'Cargo', 'Abono', 'Saldo']}
+              alignEnd={['Cargo', 'Abono', 'Saldo']}
               rows={rows.map((row, index) => ({
                 id: `${row.kind}-${row.documentId ?? row.paymentId ?? 'saldo'}-${index}`,
                 cells: [
-                  formatBillingDate(row.date),
+                  formatBillingShortDate(row.date),
                   <ConceptCell row={row} documents={documents} />,
-                  ledgerReference(row),
                   moneyCents(row.debit) > 0 ? formatBillingMoneyExact(row.debit) : '—',
                   moneyCents(row.credit) > 0 ? formatBillingMoneyExact(row.credit) : '—',
                   formatLedgerBalance(row.balance),
@@ -311,17 +347,15 @@ export function BillingStatementLedger({
               description="Elige un periodo más amplio para ver facturas y pagos."
             />
           )}
-          <p className="text-sm font-semibold text-gray-900 dark:text-white">
-            Saldo final:{' '}
-            <span className="tabular-nums">{formatLedgerBalance(data.closingBalance)}</span>
-          </p>
         </>
       ) : null}
-      <BillingEmailLog
-        subscriberId={subscriberId}
-        target={{ kind: 'ESTADO_CUENTA' }}
-        revision={email.sent}
-      />
+      <div className="border-t border-gray-100 pt-4 dark:border-dark-border">
+        <BillingEmailLog
+          subscriberId={subscriberId}
+          target={{ kind: 'ESTADO_CUENTA' }}
+          revision={email.sent}
+        />
+      </div>
     </PortalPanel>
   );
 }

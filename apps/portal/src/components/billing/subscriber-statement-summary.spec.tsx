@@ -222,7 +222,9 @@ describe('SubscriberStatementSummary: cortesías (spec MOD14 2026-11-12 R4)', ()
     expect(within(region).getByText(`Cortesía −${money('20.00')}`)).toBeInTheDocument();
     const detail = within(region).getByRole('region', { name: 'Detalle de cortesías' });
     expect(detail).toHaveTextContent('Compensación por falla del servicio');
-    expect(detail).toHaveTextContent(formatBillingDate(COURTESY.createdAt));
+    // Fecha literal: la esperada no puede salir del mismo formateador que se prueba («NaN» pasó así).
+    expect(detail).toHaveTextContent('10 de noviembre de 2026');
+    expect(detail).not.toHaveTextContent('NaN');
     expect(detail).toHaveTextContent('Aplicada');
     expect(detail).toHaveTextContent(money('20.00'));
   });

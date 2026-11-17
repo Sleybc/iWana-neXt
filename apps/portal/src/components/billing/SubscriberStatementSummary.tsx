@@ -21,7 +21,6 @@ import {
   PROTECTED_LABEL,
   PROTECTED_NOTICE,
   formatOptionalBillingDate,
-  COURTESY_PENDING_NOTE,
   statementCourtesyTotal,
   documentCourtesyAmount,
   WITHHOLDING_INCLUDED_NOTE,
@@ -61,6 +60,7 @@ export function SubscriberStatementSummary({
     <PortalPanel
       as="section"
       labelled
+      density="dense"
       title="Estado de cuenta"
       actions={<OpenBillingLink label="Ver facturación" onClick={onOpenBilling} />}
       contentClassName="space-y-4"
@@ -121,11 +121,11 @@ function StatementBody({
       {courtesyTotal ? (
         <p className="text-sm text-gray-600 dark:text-gray-300">
           Cortesías otorgadas:{' '}
-          <span className="font-semibold tabular-nums">{formatBillingMoney(courtesyTotal)}</span>.{' '}
-          {COURTESY_PENDING_NOTE}
+          <span className="font-semibold tabular-nums">{formatBillingMoney(courtesyTotal)}</span>,
+          ya descontadas de la deuda pendiente.
         </p>
       ) : null}
-      <StatementCourtesyList statement={statement} limit={VISIBLE_DOCUMENTS} />
+      <StatementCourtesyList statement={statement} limit={VISIBLE_DOCUMENTS} framed={false} />
       {withholdingTotal ? (
         <p className="text-sm text-gray-600 dark:text-gray-300">
           Retenciones del cliente:{' '}
@@ -133,7 +133,7 @@ function StatementBody({
           . {WITHHOLDING_INCLUDED_NOTE}
         </p>
       ) : null}
-      <StatementWithholdingList statement={statement} limit={VISIBLE_DOCUMENTS} />
+      <StatementWithholdingList statement={statement} limit={VISIBLE_DOCUMENTS} framed={false} />
       {pending.length ? (
         <ul className="divide-y divide-gray-200 dark:divide-dark-border">
           {pending.slice(0, VISIBLE_DOCUMENTS).map((document) => (

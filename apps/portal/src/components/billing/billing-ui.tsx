@@ -272,39 +272,81 @@ export function BillingTable({
   label,
   columns,
   rows,
+  alignEnd = [],
+  srOnlyColumns = [],
+  paginate = false,
 }: {
   label: string;
   columns: readonly string[];
   rows: readonly { id: string; cells: ReactNode[] }[];
+  /** Encabezados que solo lee el lector de pantalla (p. ej. la columna de casillas). */
+  srOnlyColumns?: readonly string[];
+  paginate?: boolean;
+  /** Columnas de valores (cargo, abono, saldo) alineadas a la derecha para compararlas a simple vista. */
+  alignEnd?: readonly string[];
 }) {
+  const [requestedPage, setPage] = useState(1);
+  const limit = 5;
+  const pageCount = Math.ceil(rows.length / limit);
+  const page = Math.min(requestedPage, Math.max(1, pageCount));
+  const from = (page - 1) * limit;
+  const to = Math.min(from + limit, rows.length);
+  const visible = paginate ? rows.slice(from, to) : rows;
   return (
-    <div
-      role="region"
-      aria-label={label}
-      tabIndex={0}
-      className={`${portalDataTableShellClassName} ${interactiveFocusClassName}`}
-    >
-      <table className="w-full min-w-max border-collapse text-left">
-        <thead className={portalDataTableHeadRowClassName}>
-          <tr>
-            {columns.map((column) => (
-              <PortalDataTableHead key={column}>{column}</PortalDataTableHead>
-            ))}
-          </tr>
-        </thead>
-        <tbody className={portalDataTableBodyClassName}>
-          {rows.map(({ id, cells }) => (
-            <tr key={id}>
-              {cells.map((cell, index) => (
-                <td key={columns[index]} className={`${portalDataTableCellClassName} tabular-nums`}>
-                  {cell}
-                </td>
+    <>
+      <div
+        role="region"
+        aria-label={label}
+        tabIndex={0}
+        className={`${portalDataTableShellClassName} ${interactiveFocusClassName}`}
+      >
+        <table className="w-full min-w-max border-collapse text-left">
+          <thead className={portalDataTableHeadRowClassName}>
+            <tr>
+              {columns.map((column) => (
+                <PortalDataTableHead
+                  key={column}
+                  {...(alignEnd.includes(column) ? { className: 'text-right' } : {})}
+                >
+                  {srOnlyColumns.includes(column) ? (
+                    <span className="sr-only">{column}</span>
+                  ) : (
+                    column
+                  )}
+                </PortalDataTableHead>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody className={portalDataTableBodyClassName}>
+            {visible.map(({ id, cells }) => (
+              <tr key={id}>
+                {cells.map((cell, index) => (
+                  <td
+                    key={columns[index]}
+                    className={`${portalDataTableCellClassName} tabular-nums${
+                      alignEnd.includes(columns[index] ?? '') ? ' text-right' : ''
+                    }`}
+                  >
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {paginate && pageCount > 1 ? (
+        <PortalTablePager
+          page={page}
+          pageCount={pageCount}
+          onPageChange={setPage}
+          from={from + 1}
+          to={to}
+          total={rows.length}
+          resource={{ singular: 'registro', plural: 'registros' }}
+        />
+      ) : null}
+    </>
   );
 }
 

@@ -67,6 +67,7 @@ export function BillingEmailLog({
       ) : null}
       {entries.length ? (
         <BillingTable
+          paginate
           label="Envíos por correo"
           columns={[
             'Fecha',

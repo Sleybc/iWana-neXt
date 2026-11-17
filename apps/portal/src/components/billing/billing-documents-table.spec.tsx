@@ -90,10 +90,53 @@ describe('BillingDocumentTable (CA-UX-FAC-05, 07, 13)', () => {
     expect(screen.getByText(label)).toBeInTheDocument();
   });
 
-  it('muestra un guion cuando el documento no tiene estado de pago', () => {
+  it('un borrador sin estado de pago muestra «Borrador» en la columna única de estado', () => {
+    // Estado y estado de pago son una sola columna (decisión del usuario 2026-11-14).
     renderTable([{ ...BASE, status: 'BORRADOR', paymentState: null, number: null }]);
     expect(screen.getByText('Sin número')).toBeInTheDocument();
-    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.getByText('Borrador')).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Estado de pago' })).not.toBeInTheDocument();
+  });
+
+  it('en la ficha omite Cliente, acorta número y fechas y une los estados', () => {
+    render(
+      <BillingDocumentTable
+        documents={[
+          {
+            ...BASE,
+            number: 'DC-000002',
+            issueDate: '2026-11-13',
+            dueDate: '2026-11-27',
+            paymentState: 'PAGADO',
+          },
+        ]}
+        onChanged={jest.fn()}
+        subscriberId={BASE.subscriberId}
+      />,
+    );
+    expect(screen.queryByRole('columnheader', { name: 'Cliente' })).not.toBeInTheDocument();
+    expect(screen.getByText('DC-2')).toBeInTheDocument();
+    expect(screen.getByText('13 nov 2026')).toBeInTheDocument();
+    expect(screen.getByText('27 nov 2026')).toBeInTheDocument();
+    expect(screen.getByText('Pagada')).toBeInTheDocument();
+    expect(screen.queryByText('Emitida')).not.toBeInTheDocument();
+    // El nombre accesible conserva el número oficial.
+    expect(
+      screen.getByRole('button', { name: 'Ver detalle de la factura DC-000002' }),
+    ).toBeInTheDocument();
+  });
+
+  it('sin borradores seleccionables no muestra la columna de casillas', () => {
+    render(
+      <BillingDocumentTable
+        documents={[{ ...BASE, number: 'DC-000003' }]}
+        onChanged={jest.fn()}
+        selection={new Set()}
+        onSelectionChange={jest.fn()}
+      />,
+    );
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Cliente' })).toBeInTheDocument();
   });
 
   it('deshabilita la emisión del borrador bloqueado con el motivo visible', () => {
@@ -114,14 +157,14 @@ describe('BillingDocumentTable (CA-UX-FAC-05, 07, 13)', () => {
   it('muestra el aviso de adicionales sin cobrar en el detalle', async () => {
     mockDocument.mockResolvedValue({ ...BASE, unbilledAdditionalCount: 2 });
     renderTable([{ ...BASE, unbilledAdditionalCount: 2 }]);
-    fireEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Ver detalle de la factura/u }));
     await waitFor(() => expect(screen.getByText(additionalNotice(2))).toBeInTheDocument());
   });
 
   it('muestra el aviso de custodia en el detalle sin revelar el nombre', async () => {
     mockDocument.mockResolvedValue({ ...BASE, buyerProtected: true });
     renderTable([{ ...BASE, buyerProtected: true }]);
-    fireEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Ver detalle de la factura/u }));
     await waitFor(() => expect(screen.getByText(PROTECTED_NOTICE)).toBeInTheDocument());
     expect(screen.queryByText('Titular Sintético')).not.toBeInTheDocument();
   });
@@ -131,7 +174,7 @@ describe('BillingDocumentTable (CA-UX-FAC-05, 07, 13)', () => {
       new ApiError(503, 'PRIVACY_AUDIT_UNAVAILABLE', 'No fue posible auditar.'),
     );
     renderTable([{ ...BASE }]);
-    fireEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Ver detalle de la factura/u }));
     await waitFor(() =>
       expect(
         screen.getByText(
@@ -160,7 +203,7 @@ describe('BillingDocumentTable — línea de instalación (fase 2, CA-4/CA-5)', 
     };
     mockDocument.mockResolvedValue({ ...BASE, lines: [line] });
     renderTable([BASE]);
-    fireEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Ver detalle de la factura/u }));
     expect(await screen.findByText('Instalación')).toBeInTheDocument();
     expect(screen.getByText(/descuento por permanencia/)).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Tipo' })).toBeInTheDocument();
@@ -180,7 +223,9 @@ describe('BillingDocumentTable — línea de instalación (fase 2, CA-4/CA-5)', 
       } as BillingDocumentResponse,
     ]);
     expect(screen.getByText('UISP-778')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Descargar PDF' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Anular factura' })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /^Descargar PDF de la factura/u }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Anular la factura/u })).not.toBeInTheDocument();
   });
 });

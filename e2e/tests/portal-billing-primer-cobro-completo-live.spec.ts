@@ -1171,7 +1171,7 @@ async function openDocumentDetail(page: Page, number: string): Promise<Locator> 
   await page
     .getByRole('row')
     .filter({ hasText: number })
-    .getByRole('button', { name: 'Ver detalle' })
+    .getByRole('button', { name: /^Ver detalle de la factura/u })
     .click();
   const section = page.getByRole('region', { name: BREAKDOWN_HEADING });
   await expect(section).toBeVisible({ timeout: 30_000 });
@@ -1509,7 +1509,7 @@ test.describe('MOD14 Primer cobro completo — E2E vivo', () => {
     await billingTab
       .getByRole('row')
       .filter({ hasText: `QA-PC-${RUN_ID}` })
-      .getByRole('button', { name: 'Anular pago' })
+      .getByRole('button', { name: /^Anular el pago/u })
       .click();
     const voidDialog = page.getByRole('dialog', { name: 'Anular pago' });
     await expect(voidDialog).toContainText('Sus retenciones también se anularán.');

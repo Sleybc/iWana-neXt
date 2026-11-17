@@ -55,6 +55,17 @@ export function unlinkBlockReason(
   return null;
 }
 
+/** Descarga el PDF del recibo de un pago nativo (detalle y fila de la tabla de Pagos). */
+export async function downloadPaymentReceipt(
+  payment: Pick<BillingPaymentResponse, 'id' | 'receiptNumber'>,
+): Promise<void> {
+  const blob = await billingApi.receiptPdf(payment.id);
+  saveBillingPdf(
+    blob,
+    billingPdfFilename(payment.receiptNumber ? `recibo-${payment.receiptNumber}` : null, 'recibo'),
+  );
+}
+
 function allocationState(allocation: BillingPaymentAllocationResponse) {
   if (!allocation.reversedAt) return { label: 'Vigente', variant: 'success' as const, note: null };
   if (allocation.reversalReasonCode)
@@ -111,14 +122,7 @@ export function BillingPaymentDetail({
     setDownloading(true);
     setReceiptError(null);
     try {
-      const blob = await billingApi.receiptPdf(payment.id);
-      saveBillingPdf(
-        blob,
-        billingPdfFilename(
-          payment.receiptNumber ? `recibo-${payment.receiptNumber}` : null,
-          'recibo',
-        ),
-      );
+      await downloadPaymentReceipt(payment);
     } catch (cause) {
       setReceiptError(billingError(cause));
     } finally {
@@ -214,6 +218,7 @@ export function BillingPaymentDetail({
           </h3>
           {allocations.length ? (
             <BillingTable
+              paginate
               label="Facturas cubiertas por el pago"
               columns={['Factura', 'Valor aplicado', 'Estado', 'Acciones']}
               rows={allocations.map((allocation) => {
@@ -275,6 +280,7 @@ export function BillingPaymentDetail({
           <section className="space-y-2" aria-label="Retenciones del pago">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Retenciones</h3>
             <BillingTable
+              paginate
               label="Retenciones del pago"
               columns={['Tipo', 'Factura', 'Valor', 'Estado']}
               rows={withholdings.map((line) => ({

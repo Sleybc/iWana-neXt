@@ -319,7 +319,7 @@ describe('BillingDocumentTable con cortesías', () => {
     mockVoidCourtesy.mockResolvedValue({});
     const onChanged = jest.fn();
     render(<BillingDocumentTable documents={[ISSUED]} onChanged={onChanged} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Ver detalle de la factura/u }));
 
     expect(await screen.findByText('Cortesías aplicadas')).toBeInTheDocument();
     expect(screen.getAllByText('Exento').length).toBeGreaterThan(0);

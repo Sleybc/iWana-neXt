@@ -919,14 +919,15 @@ test.describe('MOD05↔MOD14 Facturación en la ficha estilo UISP — E2E vivo',
 
     const row = facturas.getByRole('row').filter({ hasText: number });
     await expect(row).toBeVisible({ timeout: 30_000 });
-    await expect(row).toContainText('Emitida');
+    // Una sola columna de estado: una factura emitida muestra su estado de pago.
+    await expect(row).toContainText(/Pendiente|Vencida|Pago parcial|Pagada/u);
     await expect(
       row.getByRole('button', { name: `Enviar por correo la factura ${number}` }),
     ).toBeVisible();
-    await expect(row.getByRole('button', { name: 'Anular factura' })).toBeVisible();
+    await expect(row.getByRole('button', { name: /^Anular la factura/u })).toBeVisible();
 
     const pdf = page.waitForEvent('download');
-    await row.getByRole('button', { name: 'Descargar PDF' }).click();
+    await row.getByRole('button', { name: /^Descargar PDF de la factura/u }).click();
     await expectPdfDownload(await pdf, `factura-${number}.pdf`);
     await expectPdfRoute(`/billing/documents/${issued.id}/pdf`);
 

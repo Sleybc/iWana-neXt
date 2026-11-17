@@ -25,6 +25,8 @@ import {
   type BillingPeriodPaymentState,
   type BillingPaymentResponse,
   type ListResponse,
+  type BillingPaymentMethod,
+  type BillingPaymentStatus,
 } from '@iwana/shared';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { DataSource, EntityManager } from 'typeorm';
@@ -880,7 +882,16 @@ export class BillingPaymentsService extends BillingAccountReadPort {
   }
 
   async listPayments(
-    query: { page?: number; limit?: number } = {},
+    query: {
+      page?: number;
+      limit?: number;
+      subscriberId?: string | undefined;
+      method?: BillingPaymentMethod | undefined;
+      status?: BillingPaymentStatus | undefined;
+      /** Fecha de pago (civil) desde y hasta, inclusive. */
+      from?: string | undefined;
+      to?: string | undefined;
+    } = {},
     readAccess: {
       actorId?: string;
       canSeeBlocked?: boolean;
@@ -892,18 +903,31 @@ export class BillingPaymentsService extends BillingAccountReadPort {
       query.page ?? 1,
       Math.max(1, Math.min(100, Math.trunc(query.limit ?? 20))),
     );
+    // Filtros parametrizados: cada valor viaja como parámetro, nunca concatenado al SQL.
+    const filters: string[] = ['p.tenant_id = $1'];
+    const params: unknown[] = [tenantId];
+    const addFilter = (sql: (index: number) => string, value: unknown) => {
+      params.push(value);
+      filters.push(sql(params.length));
+    };
+    if (query.subscriberId) addFilter((i) => `p.subscriber_id = $${i}::uuid`, query.subscriberId);
+    if (query.method) addFilter((i) => `p.method = $${i}`, query.method);
+    if (query.status) addFilter((i) => `p.status = $${i}`, query.status);
+    if (query.from) addFilter((i) => `p.paid_at >= $${i}::date`, query.from);
+    if (query.to) addFilter((i) => `p.paid_at <= $${i}::date`, query.to);
+    const where = filters.join(' AND ');
     const { payments, total } = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const countRows = (await qr.manager.query(
-        `SELECT COUNT(*)::int AS total FROM billing_payments WHERE tenant_id = $1`,
-        [tenantId],
+        `SELECT COUNT(*)::int AS total FROM billing_payments p WHERE ${where}`,
+        params,
       )) as Array<{ total: number }>;
       const rows = (await qr.manager.query(
         `SELECT ${PAYMENT_COLUMNS}
            FROM billing_payments p
-          WHERE p.tenant_id = $1
+          WHERE ${where}
           ORDER BY p.paid_at DESC, p.created_at DESC, p.id DESC
-          LIMIT $2 OFFSET $3`,
-        [tenantId, limit, (page - 1) * limit],
+          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, (page - 1) * limit],
       )) as PaymentRow[];
       const payments = await Promise.all(
         rows.map((row) => this.toPaymentResponse(qr.manager, row)),

@@ -412,9 +412,57 @@ describe('BillingPaymentTable — columna Recibo', () => {
     expect(open).toHaveBeenCalledWith(expect.objectContaining({ id: PAYMENT_ID }));
   });
 
+  it('en la ficha ofrece recibo y correo en la fila solo para pagos nativos registrados', async () => {
+    const user = userEvent.setup();
+    mockReceiptPdf.mockResolvedValue(new Blob(['%PDF']));
+    mockSendReceipt.mockResolvedValue({
+      id: 'cccccccc-cccc-4ccc-8ccc-ccccccccccc2',
+      status: 'EN_COLA',
+    });
+    render(
+      <BillingPaymentTable
+        payments={[
+          payment(),
+          payment({
+            id: '66666666-6666-4666-8666-666666666667',
+            imported: true,
+            receiptNumber: null,
+            externalId: 'uisp:99',
+          }),
+        ]}
+        onChanged={jest.fn()}
+        showReceipt
+        onOpenDetail={jest.fn()}
+      />,
+    );
+    expect(screen.getAllByRole('button', { name: /^Descargar recibo del pago/u })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /^Enviar por correo el recibo/u })).toHaveLength(
+      1,
+    );
+    await user.click(screen.getByRole('button', { name: /^Descargar recibo del pago/u }));
+    await waitFor(() => expect(mockReceiptPdf).toHaveBeenCalledWith(PAYMENT_ID));
+    await user.click(screen.getByRole('button', { name: /^Enviar por correo el recibo/u }));
+    expect(mockSendReceipt).toHaveBeenCalledWith(PAYMENT_ID);
+    expect(screen.getAllByRole('button', { name: /^Anular el pago/u })).toHaveLength(2);
+  });
+
+  it('compacta las columnas: fecha corta, sin Referencia si ningún pago la tiene', () => {
+    render(
+      <BillingPaymentTable
+        payments={[payment({ reference: null, paidAt: '2026-11-13' })]}
+        onChanged={jest.fn()}
+        showReceipt
+      />,
+    );
+    expect(screen.queryByRole('columnheader', { name: 'Referencia' })).not.toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Saldo a favor' })).toBeInTheDocument();
+    expect(screen.getByText('13 nov 2026')).toBeInTheDocument();
+  });
+
   it('sin la opción no agrega la columna (página de Pagos del módulo)', () => {
     render(<BillingPaymentTable payments={[payment()]} onChanged={jest.fn()} />);
     expect(screen.queryByRole('columnheader', { name: 'Recibo' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Ver detalle/u })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /recibo/u })).not.toBeInTheDocument();
   });
 });

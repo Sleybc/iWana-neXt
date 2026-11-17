@@ -43,6 +43,8 @@ import type { Response } from 'express';
 import {
   AccessPermissionKey,
   BILLING_ALLOCATION_UNLINK_REASONS,
+  BILLING_PAYMENT_METHODS,
+  BILLING_PAYMENT_STATUSES,
   BILLING_WITHHOLDING_MAX_LINES,
   BILLING_WITHHOLDING_TAX_CODES,
   UserRole,
@@ -69,10 +71,21 @@ function actorId(request: AuthenticatedRequest): string {
   return id;
 }
 
+const CIVIL_DATE_QUERY = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/u)
+  .optional();
+
+/** Filtros de la lista de pagos del módulo (usuario 2026-11-14): cliente, método, estado y fechas. */
 const PaymentListQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
+    subscriberId: z.string().uuid().optional(),
+    method: z.enum(BILLING_PAYMENT_METHODS).optional(),
+    status: z.enum(BILLING_PAYMENT_STATUSES).optional(),
+    from: CIVIL_DATE_QUERY,
+    to: CIVIL_DATE_QUERY,
   })
   .strict();
 
@@ -381,6 +394,29 @@ export class BillingPaymentsController {
     name: 'limit',
     required: false,
     schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+  })
+  @ApiQuery({ name: 'subscriberId', required: false, schema: { type: 'string', format: 'uuid' } })
+  @ApiQuery({
+    name: 'method',
+    required: false,
+    schema: { type: 'string', enum: [...BILLING_PAYMENT_METHODS] },
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    schema: { type: 'string', enum: [...BILLING_PAYMENT_STATUSES] },
+  })
+  @ApiQuery({
+    name: 'from',
+    required: false,
+    schema: { type: 'string', format: 'date' },
+    description: 'Fecha de pago desde (inclusive).',
+  })
+  @ApiQuery({
+    name: 'to',
+    required: false,
+    schema: { type: 'string', format: 'date' },
+    description: 'Fecha de pago hasta (inclusive).',
   })
   @ApiOkResponse({
     description: 'Pagos paginados del tenant.',

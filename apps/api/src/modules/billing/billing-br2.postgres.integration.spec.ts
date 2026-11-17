@@ -427,6 +427,59 @@ describeDb('BR-2 contratos sobre migración 173 real y pool 10', () => {
       expect(again?.subtotal).toBe(first?.subtotal);
     },
   );
+  it('agrupa por cliente con los mismos saldos que la lista y respeta la custodia', async () => {
+    const overdue = await seed();
+    const paid = await seed();
+    const overdueId = await draft(overdue.id);
+    const paidId = await draft(paid.id);
+    await run(() => documents.issue([overdueId, paidId], actorId));
+    await sql("UPDATE billing_periods SET cutoff_date='2026-11-20',due_date='2026-11-25'");
+    await sql("UPDATE billing_documents SET due_date='2026-11-01' WHERE id=$1", [overdueId]);
+    await sql("UPDATE billing_periods SET due_date='2026-11-01' WHERE contract_id=$1", [
+      overdue.id,
+    ]);
+    await run(() =>
+      payments.registerPayment(
+        {
+          subscriberId: paid.subscriber,
+          method: 'TRANSFERENCIA',
+          amount: '119.00',
+          paidAt: '2026-11-05',
+        },
+        'by-subscriber-paid',
+        actorId,
+      ),
+    );
+
+    const list = await run(() => documents.list({ page: 1, limit: 25 }, actorId));
+    const grouped = await run(() => documents.listBySubscriber({ page: 1, limit: 25 }, actorId));
+    expect(grouped.meta.total).toBe(2);
+    // El que más urge (vencimiento más antiguo con saldo) va primero.
+    expect(grouped.data[0]).toMatchObject({
+      subscriberId: overdue.subscriber,
+      documentCount: 1,
+      overdueCount: 1,
+      oldestPendingDueDate: '2026-11-01',
+    });
+    const listPending = list.data.find((d) => d.subscriberId === overdue.subscriber)?.pendingAmount;
+    expect(grouped.data[0]?.pendingAmount).toBe(listPending);
+    expect(grouped.data.find((g) => g.subscriberId === paid.subscriber)).toMatchObject({
+      pendingAmount: '0.00',
+      oldestPendingDueDate: null,
+    });
+
+    const onlyOverdue = await run(() =>
+      documents.listBySubscriber({ page: 1, limit: 25, paymentState: 'VENCIDO' }, actorId),
+    );
+    expect(onlyOverdue.data.map((g) => g.subscriberId)).toEqual([overdue.subscriber]);
+
+    privacy.activeMarks.mockResolvedValue({ [overdue.party]: ['DATOS_BLOQUEADOS'] });
+    const blocked = await run(() =>
+      documents.listBySubscriber({ page: 1, limit: 25, paymentState: 'VENCIDO' }, actorId),
+    );
+    // Con custodia el nombre no viaja: el portal muestra la etiqueta de datos protegidos.
+    expect(blocked.data[0]).toMatchObject({ buyerProtected: true, displayName: null });
+  });
   it('BR-2.13 lectura bloqueada en lista, detalle y PDF audita antes de revelar; fallo de auditoría es 503', async () => {
     const c = await seed();
     const id = await draft(c.id);

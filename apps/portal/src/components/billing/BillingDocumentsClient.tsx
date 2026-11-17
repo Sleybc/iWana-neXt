@@ -22,7 +22,9 @@ import {
   PortalAlert,
   PortalEmptyState,
   PortalPageSizeSelect,
+  PortalFilterChip,
   PortalPanel,
+  portalFilterChipGroupClassName,
 } from '@/components/shared/portal-ui';
 import {
   billingApi,
@@ -32,6 +34,7 @@ import {
 } from '@/lib/api-client';
 import { BillingConfirmation } from './BillingConfirmation';
 import { BillingDocumentTable } from './BillingDocumentTable';
+import { BillingDocumentsBySubscriber } from './BillingDocumentsBySubscriber';
 import { BillingSubscriberPicker } from './BillingSubscriberPicker';
 import {
   DOCUMENT_STATES,
@@ -66,6 +69,7 @@ function countLabel(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 const LIMIT_OPTIONS = [10, 20, 50] as const;
+const SUBSCRIBER_LIMIT_OPTIONS = [5, ...LIMIT_OPTIONS] as const;
 
 export function BillingDocumentsClient() {
   return <BillingDocumentList />;
@@ -87,13 +91,16 @@ export function BillingDocumentList({
   const sizeKey = subscriberId ? 'documentPageSize' : 'pageSize';
   const page = billingPage(params.get(pageKey));
   const requestedLimit = Number(params.get(sizeKey));
-  const limit = LIMIT_OPTIONS.find((value) => value === requestedLimit) ?? 20;
+  const limitOptions = subscriberId ? SUBSCRIBER_LIMIT_OPTIONS : LIMIT_OPTIONS;
+  const limit = limitOptions.find((value) => value === requestedLimit) ?? (subscriberId ? 5 : 20);
   const status = subscriberId ? '' : (params.get('status') ?? '');
   const paymentState = subscriberId ? '' : (params.get('paymentState') ?? '');
   const cycleDay = subscriberId ? '' : (params.get('cycleDay') ?? '');
   const from = subscriberId ? '' : (params.get('from') ?? '');
   const to = subscriberId ? '' : (params.get('to') ?? '');
   const filterSubscriberId = subscriberId ?? params.get('subscriberId') ?? '';
+  // Vista «Por cliente» (solo en el módulo): agrupa con los mismos filtros, en la URL.
+  const byClient = !subscriberId && params.get('vista') === 'clientes';
   const filtered = !!(
     status ||
     paymentState ||
@@ -126,8 +133,8 @@ export function BillingDocumentList({
       ...(/^\d{4}-\d{2}-\d{2}$/u.test(from) ? { from } : {}),
       ...(/^\d{4}-\d{2}-\d{2}$/u.test(to) ? { to } : {}),
     };
-    return billingApi.documents(query);
-  }, [page, limit, status, paymentState, cycleDay, from, to, filterSubscriberId]);
+    return byClient ? Promise.resolve(null) : billingApi.documents(query);
+  }, [page, limit, status, paymentState, cycleDay, from, to, filterSubscriberId, byClient]);
   const { data, loading, error, reload } = useBillingLoad(load, revision);
   const [selection, setSelection] = useState<{
     key: string;
@@ -156,10 +163,60 @@ export function BillingDocumentList({
 
   const blockedInList = data?.data.filter((document) => document.blockingReason).length ?? 0;
 
+  const groupedQuery = {
+    page,
+    limit,
+    ...(Object.hasOwn(DOCUMENT_STATES, status)
+      ? { status: status as BillingDocumentResponse['status'] }
+      : {}),
+    ...(Object.hasOwn(PAYMENT_STATES, paymentState)
+      ? { paymentState: paymentState as BillingPeriodPaymentState }
+      : {}),
+    ...(/^(?:[1-9]|1\d|2[0-8])$/u.test(cycleDay) ? { cycleDay: Number(cycleDay) } : {}),
+    ...(/^\d{4}-\d{2}-\d{2}$/u.test(from) ? { from } : {}),
+    ...(/^\d{4}-\d{2}-\d{2}$/u.test(to) ? { to } : {}),
+  };
+  const groupedFiltered = Boolean(status || paymentState || cycleDay || from || to);
+
+  const viewToggle = !subscriberId ? (
+    <div role="group" aria-label="Ver facturas" className={portalFilterChipGroupClassName}>
+      <PortalFilterChip active={!byClient} onClick={() => update({ vista: '', [pageKey]: '' })}>
+        Por factura
+      </PortalFilterChip>
+      <PortalFilterChip
+        active={byClient}
+        onClick={() => update({ vista: 'clientes', subscriberId: '', [pageKey]: '' })}
+      >
+        Por cliente
+      </PortalFilterChip>
+    </div>
+  ) : null;
+
+  const groupedView = byClient ? (
+    <BillingDocumentsBySubscriber
+      query={groupedQuery}
+      limitOptions={LIMIT_OPTIONS}
+      filtered={groupedFiltered}
+      onPage={(next) => update({ [pageKey]: String(next) }, false)}
+      onPageSize={(size) => update({ [sizeKey]: String(size), [pageKey]: '' })}
+      onShowDocuments={(summary) => {
+        setSubscriberOption(
+          summary.buyerProtected
+            ? null
+            : { id: summary.subscriberId, label: summary.displayName ?? 'Cliente seleccionado' },
+        );
+        update({ vista: '', subscriberId: summary.subscriberId, [pageKey]: '' });
+      }}
+      onClearFilters={() => update({ ...EMPTY_QUERY, vista: 'clientes' })}
+    />
+  ) : null;
+
   const table = (
     <>
+      {viewToggle}
       {!subscriberId ? (
         <DocumentFilters
+          hideSubscriber={byClient}
           status={status}
           paymentState={paymentState}
           cycleDay={cycleDay}
@@ -177,7 +234,7 @@ export function BillingDocumentList({
             filters('subscriberId', option?.id ?? '');
           }}
           onFilter={filters}
-          onClear={() => update(EMPTY_QUERY)}
+          {...(filtered && data?.data.length ? { onClear: () => update(EMPTY_QUERY) } : {})}
         />
       ) : null}
       {summary ? (
@@ -187,8 +244,9 @@ export function BillingDocumentList({
           description={`Ya existían: ${summary.existing}. Con datos incompletos: ${summary.blocked}. Con errores: ${summary.failed}. Aún no tocaba generarlas: ${summary.notDue}. Sin ciclo de facturación: ${summary.withoutCycle}. Omitidas por suplantación: ${summary.omittedImpersonation}. Omitidas por terminación del contrato: ${summary.omittedTermination}.`}
         />
       ) : null}
-      <BillingLoadState loading={loading} error={error} onRetry={reload} />
-      {data?.data.length ? (
+      {groupedView}
+      {byClient ? null : <BillingLoadState loading={loading} error={error} onRetry={reload} />}
+      {!byClient && data?.data.length ? (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3">
             {selected.size ? (
@@ -200,7 +258,7 @@ export function BillingDocumentList({
             )}
             <PortalPageSizeSelect
               value={limit}
-              options={LIMIT_OPTIONS}
+              options={limitOptions}
               onChange={(value) => update({ [sizeKey]: String(value), [pageKey]: '' })}
             />
           </div>
@@ -227,7 +285,7 @@ export function BillingDocumentList({
             onPage={(next) => update({ [pageKey]: String(next) }, false)}
           />
         </>
-      ) : data ? (
+      ) : !byClient && data ? (
         <PortalEmptyState
           title={filtered ? 'No encontramos facturas con estos filtros' : 'Aún no hay facturas'}
           description={
@@ -283,12 +341,11 @@ export function BillingDocumentList({
     <div className="space-y-6">
       <PageHeader
         title="Facturas"
-        subtitle={
-          data ? `Total: ${data.meta.total}` : 'Consulta y gestiona las facturas de la empresa.'
-        }
+        subtitle="Consulta, emite y gestiona las facturas de la empresa."
         actions={generateAction}
       />
-      <PortalPanel title="Facturas" contentClassName="space-y-4" busy={loading}>
+      {/* Sin título propio: el encabezado de la página ya dice «Facturas» y el pie da el total. */}
+      <PortalPanel contentClassName="space-y-4" busy={loading}>
         {table}
       </PortalPanel>
     </div>
@@ -304,6 +361,7 @@ function DocumentFilters({
   subscriber,
   onSubscriber,
   onFilter,
+  hideSubscriber = false,
   onClear,
 }: {
   status: string;
@@ -314,7 +372,10 @@ function DocumentFilters({
   subscriber: { id: string; label: string } | null;
   onSubscriber: (value: { id: string; label: string } | null) => void;
   onFilter: (key: string, value: string) => void;
-  onClear: () => void;
+  /** En la vista «Por cliente» no se filtra por un cliente: se oculta su buscador. */
+  hideSubscriber?: boolean;
+  /** Solo con filtros activos: sin ellos «Limpiar filtros» no hace nada. */
+  onClear?: (() => void) | undefined;
 }) {
   const cycles = useBillingLoad(billingCyclesApi.list);
   const id = useId();
@@ -327,6 +388,9 @@ function DocumentFilters({
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {hideSubscriber ? null : (
+          <BillingSubscriberPicker selected={subscriber} onChange={onSubscriber} />
+        )}
         <FilterSelect
           id={`${id}-status`}
           label="Estado de la factura"
@@ -368,19 +432,20 @@ function DocumentFilters({
             onChange={(event) => onFilter('to', event.target.value)}
           />
         </label>
-        <BillingSubscriberPicker selected={subscriber} onChange={onSubscriber} />
       </div>
       {cycles.error ? (
         <BillingLoadState loading={false} error={cycles.error} onRetry={cycles.reload} />
       ) : null}
-      <Button className="min-h-11" type="button" variant="ghost" onClick={onClear}>
-        Limpiar filtros
-      </Button>
+      {onClear ? (
+        <Button className="min-h-11" type="button" variant="ghost" onClick={onClear}>
+          Limpiar filtros
+        </Button>
+      ) : null}
     </div>
   );
 }
 
-function FilterSelect({
+export function FilterSelect({
   id,
   label,
   value,

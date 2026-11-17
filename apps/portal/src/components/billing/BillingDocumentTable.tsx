@@ -9,8 +9,12 @@ import {
   type BillingDocumentResponse,
 } from '@iwana/shared';
 import { Badge, Button } from '@iwana/ui';
+import { Ban, Download, Eye, Gift, Mail } from 'lucide-react';
 import { usePermissions } from '@/components/access-control/permissions-context';
-import { formatBillingDate } from '@/components/crm/subscribers/billing-cycle-ui';
+import {
+  formatBillingDate,
+  formatBillingShortDate,
+} from '@/components/crm/subscribers/billing-cycle-ui';
 import { PortalAlert, PortalSidePeek } from '@/components/shared/portal-ui';
 import { billingApi } from '@/lib/api-client';
 import { BillingConfirmation } from './BillingConfirmation';
@@ -39,8 +43,14 @@ import {
   documentCoveredRange,
   documentIssueDate,
   documentReference,
+  documentIssueShortDate,
+  documentShortNumber,
+  documentStatusBadges,
 } from './billing-copy';
+import { PortalRowActions, PortalRowIconButton } from '@/components/shared/portal-row-actions';
 import { BillingLoadState, BillingTable, billingError, useBillingLoad } from './billing-ui';
+
+const SELECT_COLUMN = 'Seleccionar';
 
 export function BillingDocumentTable({
   documents,
@@ -71,6 +81,11 @@ export function BillingDocumentTable({
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
   const email = useBillingEmailSend();
+  // La columna de casillas solo aparece si en la página hay algún borrador que se pueda emitir:
+  // en la ficha, con facturas ya emitidas, era una columna de casillas deshabilitadas.
+  const showSelection =
+    Boolean(selection) &&
+    documents.some((document) => document.status === 'BORRADOR' && !document.blockingReason);
   const canSend = Boolean(subscriberId) && canManage;
   // D11: el registro se ve con la lectura de documentos; enviar exige la gestión.
   const canReadEmailLog =
@@ -96,20 +111,20 @@ export function BillingDocumentTable({
       <BillingTable
         label="Facturas"
         columns={[
-          ...(selection ? ['Selección'] : []),
+          ...(showSelection ? [SELECT_COLUMN] : []),
           'Número',
-          'Cliente',
-          'Periodo cubierto',
-          'Fecha de vencimiento',
+          ...(subscriberId ? [] : ['Cliente']),
+          'Emisión',
+          'Vence',
           'Total',
-          'Saldo pendiente',
+          'Saldo',
           'Estado',
-          'Estado de pago',
           'Acciones',
         ]}
+        srOnlyColumns={[SELECT_COLUMN]}
+        alignEnd={['Total', 'Saldo']}
         rows={documents.map((document) => {
-          const status = DOCUMENT_STATES[document.status];
-          const payment = document.paymentState ? PAYMENT_STATES[document.paymentState] : null;
+          const shortNumber = documentShortNumber(document);
           const blocking = document.blockingReason
             ? BLOCKING_REASONS[document.blockingReason]
             : null;
@@ -117,7 +132,7 @@ export function BillingDocumentTable({
           return {
             id: document.id,
             cells: [
-              ...(selection
+              ...(showSelection && selection
                 ? [
                     <label className="inline-flex min-h-11 min-w-11 items-center justify-center">
                       <input
@@ -133,97 +148,77 @@ export function BillingDocumentTable({
                     </label>,
                   ]
                 : []),
-              document.number ?? document.externalNumber ?? 'Sin número',
-              document.buyerProtected
-                ? PROTECTED_LABEL
-                : (document.buyerSnapshot?.displayName ?? 'No disponible'),
-              documentCoveredRange(document),
-              formatBillingDate(document.dueDate),
+              shortNumber && shortNumber === documentReference(document) ? (
+                <span className="font-mono">{shortNumber}</span>
+              ) : shortNumber ? (
+                // Se ve corto («DC-2»); el lector de pantalla y la búsqueda leen el número oficial.
+                <span title={documentReference(document)}>
+                  <span aria-hidden="true" className="font-mono">
+                    {shortNumber}
+                  </span>
+                  <span className="sr-only">{documentReference(document)}</span>
+                </span>
+              ) : (
+                <span className="text-gray-500 dark:text-gray-400">Sin número</span>
+              ),
+              ...(subscriberId
+                ? []
+                : [
+                    document.buyerProtected
+                      ? PROTECTED_LABEL
+                      : (document.buyerSnapshot?.displayName ?? 'No disponible'),
+                  ]),
+              documentIssueShortDate(document),
+              formatBillingShortDate(document.dueDate),
               <DocumentTotalCell document={document} />,
               document.pendingAmount == null ? '—' : formatBillingMoney(document.pendingAmount),
-              <div className="space-y-1">
-                <Badge variant={status.variant}>{status.label}</Badge>
-                {blocking ? (
-                  <p>
-                    <Badge variant="warning">{blocking}</Badge>
-                  </p>
-                ) : null}
+              <div className="flex flex-wrap items-center gap-1">
+                {documentStatusBadges(document).map((badge) => (
+                  <Badge key={badge.label} variant={badge.variant}>
+                    {badge.label}
+                  </Badge>
+                ))}
+                {blocking ? <Badge variant="warning">{blocking}</Badge> : null}
               </div>,
-              payment ? <Badge variant={payment.variant}>{payment.label}</Badge> : '—',
-              <div className="flex flex-wrap gap-1">
-                <Button
-                  className="min-h-11"
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setDetail(document.id)}
-                >
-                  Ver detalle
-                </Button>
-                {canManage && document.status === 'BORRADOR' ? (
-                  <Button
-                    className="min-h-11"
-                    type="button"
-                    variant="secondary"
-                    disabled={!canIssue}
-                    title={blocking ?? undefined}
-                    onClick={() => setAction({ kind: 'issue', document })}
-                  >
-                    Emitir
-                  </Button>
-                ) : null}
-                {canCourtesy && canReceiveCourtesy(document) ? (
-                  <Button
-                    className="min-h-11"
-                    type="button"
-                    variant="ghost"
-                    aria-label={`Otorgar cortesía en la factura ${documentReference(document)}`}
-                    onClick={() => setCourtesyFor(document.id)}
-                  >
-                    Otorgar cortesía
-                  </Button>
-                ) : null}
-                {document.status === 'EMITIDO' || document.status === 'IMPORTADO' ? (
-                  <Button
-                    className="min-h-11"
-                    type="button"
-                    variant="ghost"
-                    disabled={downloading !== null}
-                    loading={downloading === document.id}
-                    onClick={() => void download(document)}
-                  >
-                    Descargar PDF
-                  </Button>
-                ) : null}
-                {canSend && document.status === 'EMITIDO' ? (
-                  <Button
-                    className="min-h-11"
-                    type="button"
-                    variant="ghost"
-                    aria-label={`Enviar por correo la factura ${documentReference(document)}`}
-                    disabled={email.busy !== null}
-                    loading={email.busy === document.id}
-                    onClick={() =>
-                      void email.send(document.id, () => billingApi.sendDocumentEmail(document.id))
+              <DocumentRowActions
+                reference={documentReference(document)}
+                onDetail={() => setDetail(document.id)}
+                {...(canManage && document.status === 'BORRADOR'
+                  ? {
+                      issue: {
+                        disabledReason: canIssue ? null : blocking,
+                        run: () => setAction({ kind: 'issue', document }),
+                      },
                     }
-                  >
-                    Enviar por correo
-                  </Button>
-                ) : null}
-                {document.status === 'EMITIDO' ? (
-                  <>
-                    {canManage ? (
-                      <Button
-                        className="min-h-11"
-                        type="button"
-                        variant="ghost"
-                        onClick={() => setAction({ kind: 'void', document })}
-                      >
-                        Anular factura
-                      </Button>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>,
+                  : {})}
+                {...(document.status === 'EMITIDO' || document.status === 'IMPORTADO'
+                  ? {
+                      download: {
+                        busy: downloading === document.id,
+                        disabled: downloading !== null,
+                        run: () => void download(document),
+                      },
+                    }
+                  : {})}
+                {...(canSend && document.status === 'EMITIDO'
+                  ? {
+                      sendEmail: {
+                        busy: email.busy === document.id,
+                        disabled: email.busy !== null,
+                        run: () =>
+                          void email.send(document.id, () =>
+                            billingApi.sendDocumentEmail(document.id),
+                          ),
+                      },
+                    }
+                  : {})}
+                {...(canCourtesy && canReceiveCourtesy(document)
+                  ? { courtesy: () => setCourtesyFor(document.id) }
+                  : {})}
+                {...(canManage && document.status === 'EMITIDO'
+                  ? { voidDocument: () => setAction({ kind: 'void', document }) }
+                  : {})}
+              />,
             ],
           };
         })}
@@ -395,6 +390,7 @@ function BillingDocumentDetail({
           ) : null}
           {data.lines?.length ? (
             <BillingTable
+              paginate
               label="Conceptos de la factura"
               columns={['Tipo', 'Concepto', 'IVA', 'Total']}
               rows={data.lines.map((line) => ({
@@ -417,6 +413,7 @@ function BillingDocumentDetail({
                 Cortesías
               </h3>
               <BillingTable
+                paginate
                 label="Cortesías de la factura"
                 columns={['Fecha', 'Motivo', 'Valor', 'Estado', 'Acciones']}
                 rows={data.courtesies.map((courtesy) => {
@@ -504,6 +501,96 @@ function BillingDocumentDetail({
         />
       ) : null}
     </PortalSidePeek>
+  );
+}
+
+type RowAction = { busy: boolean; disabled: boolean; run: () => void };
+
+/**
+ * Acciones de la fila de una factura (`PortalRowActions`). «Emitir» conserva su texto porque es la
+ * acción principal de un borrador; anular lleva el tono de peligro.
+ */
+function DocumentRowActions({
+  reference,
+  onDetail,
+  issue,
+  download,
+  sendEmail,
+  courtesy,
+  voidDocument,
+}: {
+  reference: string;
+  onDetail: () => void;
+  issue?: { disabledReason: string | null; run: () => void };
+  download?: RowAction;
+  sendEmail?: RowAction;
+  courtesy?: () => void;
+  voidDocument?: () => void;
+}) {
+  return (
+    <PortalRowActions>
+      {issue ? (
+        <Button
+          className="min-h-11"
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={issue.disabledReason !== null}
+          title={issue.disabledReason ?? undefined}
+          onClick={issue.run}
+        >
+          Emitir
+        </Button>
+      ) : null}
+      <PortalRowIconButton
+        label={`Ver detalle de la factura ${reference}`}
+        hint="Ver detalle"
+        onClick={onDetail}
+      >
+        <Eye className="h-4 w-4" aria-hidden />
+      </PortalRowIconButton>
+      {download ? (
+        <PortalRowIconButton
+          label={`Descargar PDF de la factura ${reference}`}
+          hint="Descargar PDF"
+          disabled={download.disabled}
+          busy={download.busy}
+          onClick={download.run}
+        >
+          <Download className="h-4 w-4" aria-hidden />
+        </PortalRowIconButton>
+      ) : null}
+      {sendEmail ? (
+        <PortalRowIconButton
+          label={`Enviar por correo la factura ${reference}`}
+          hint="Enviar por correo"
+          disabled={sendEmail.disabled}
+          busy={sendEmail.busy}
+          onClick={sendEmail.run}
+        >
+          <Mail className="h-4 w-4" aria-hidden />
+        </PortalRowIconButton>
+      ) : null}
+      {courtesy ? (
+        <PortalRowIconButton
+          label={`Otorgar cortesía en la factura ${reference}`}
+          hint="Otorgar cortesía"
+          onClick={courtesy}
+        >
+          <Gift className="h-4 w-4" aria-hidden />
+        </PortalRowIconButton>
+      ) : null}
+      {voidDocument ? (
+        <PortalRowIconButton
+          label={`Anular la factura ${reference}`}
+          hint="Anular factura"
+          tone="danger"
+          onClick={voidDocument}
+        >
+          <Ban className="h-4 w-4" aria-hidden />
+        </PortalRowIconButton>
+      ) : null}
+    </PortalRowActions>
   );
 }
 

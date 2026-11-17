@@ -18,7 +18,7 @@ import type {
   BillingWithholdingTaxCode,
 } from '@iwana/shared';
 import type { BadgeProps } from '@iwana/ui';
-import { formatBillingDate } from '../crm/subscribers/billing-cycle-ui';
+import { formatBillingDate, formatBillingShortDate } from '../crm/subscribers/billing-cycle-ui';
 
 export const PAYMENT_STATES = {
   PAGADO: { label: 'Pagada', variant: 'success' },
@@ -325,6 +325,47 @@ export function documentIssueDate(document: {
 }): string {
   const value = document.issueDate ?? document.createdAt;
   return CIVIL_DATE.test(value) ? formatBillingDate(value) : formatBillingInstant(value);
+}
+
+/**
+ * Número corto para tablas (decisión del usuario 2026-11-14): `DC-000002` → `DC-2`. El número
+ * oficial (`documentReference`) sigue en el PDF, el correo, el detalle y los nombres accesibles.
+ * Un número de origen importado se muestra tal cual; un borrador no tiene número.
+ */
+export function documentShortNumber(document: {
+  number?: string | null | undefined;
+  externalNumber?: string | null | undefined;
+}): string | null {
+  if (document.number) {
+    const match = /^([A-Za-z]+-)0*(\d+)$/u.exec(document.number);
+    return match ? `${match[1]}${match[2]}` : document.number;
+  }
+  return document.externalNumber ?? null;
+}
+
+/** Fecha de emisión corta para tablas (la de creación si aún no se emite). */
+export function documentIssueShortDate(document: {
+  issueDate?: string | null | undefined;
+  createdAt: string;
+}): string {
+  return formatBillingShortDate(document.issueDate ?? document.createdAt);
+}
+
+type StatusBadge = { label: string; variant: BadgeProps['variant'] };
+
+/**
+ * Estado único de una factura (como UISP): emitida o importada → su estado de pago; borrador y
+ * anulada → el estado del documento. Una importada lleva además «Importada».
+ */
+export function documentStatusBadges(document: {
+  status: keyof typeof DOCUMENT_STATES;
+  paymentState?: keyof typeof PAYMENT_STATES | null | undefined;
+}): StatusBadge[] {
+  const payment = document.paymentState ? PAYMENT_STATES[document.paymentState] : null;
+  if (document.status === 'EMITIDO') return [payment ?? DOCUMENT_STATES.EMITIDO];
+  if (document.status === 'IMPORTADO')
+    return [...(payment ? [payment] : []), { label: 'Importada', variant: 'neutral' }];
+  return [DOCUMENT_STATES[document.status]];
 }
 
 /** Número de recibo visible: consecutivo propio o la referencia de origen de un importado (D8). */

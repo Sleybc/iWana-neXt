@@ -237,7 +237,7 @@ describe('Retenciones en el estado de cuenta (spec MOD14 2026-11-13 R8)', () => 
     expect(
       screen.getByText('Retención en la fuente por servicios · Retención de ICA'),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Anular pago' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Anular el pago/u }));
     expect(await screen.findByText(/Sus retenciones también se anularán\./u)).toBeInTheDocument();
   });
 

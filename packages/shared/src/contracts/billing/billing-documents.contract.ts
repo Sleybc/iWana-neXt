@@ -194,6 +194,27 @@ export const BillingDocumentResponseSchema = z
 
 export type BillingDocumentResponse = z.infer<typeof BillingDocumentResponseSchema>;
 
+/**
+ * Facturas agrupadas por cliente (vista «Por cliente» de Facturas, usuario 2026-11-14). Los
+ * importes salen de los mismos documentos que la lista; el nombre respeta la custodia.
+ */
+export const BillingSubscriberDocumentsSummarySchema = z
+  .object({
+    subscriberId: z.string().uuid(),
+    displayName: z.string().nullable(),
+    buyerProtected: z.boolean(),
+    documentCount: z.number().int().nonnegative(),
+    overdueCount: z.number().int().nonnegative(),
+    total: z.string(),
+    pendingAmount: z.string(),
+    /** Vencimiento más antiguo entre las facturas con saldo; null si no debe nada. */
+    oldestPendingDueDate: z.string().nullable(),
+  })
+  .strict();
+export type BillingSubscriberDocumentsSummary = z.infer<
+  typeof BillingSubscriberDocumentsSummarySchema
+>;
+
 const generationCount = z.number().int().nonnegative();
 
 export const BillingGenerationSummarySchema = z

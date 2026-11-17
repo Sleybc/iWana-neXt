@@ -289,7 +289,7 @@ describe('BillingDocumentTable — envío por correo (CA-4, CA-6)', () => {
         subscriberId={SUBSCRIBER_ID}
       />,
     );
-    await user.click(screen.getByRole('button', { name: 'Ver detalle' }));
+    await user.click(screen.getByRole('button', { name: /^Ver detalle de la factura/u }));
     expect(await screen.findByText('Fecha de emisión')).toBeInTheDocument();
     expect(screen.getByText('5 de noviembre de 2026')).toBeInTheDocument();
     const log = await screen.findByRole('region', { name: 'Envíos por correo' });
@@ -322,7 +322,7 @@ describe('BillingDocumentTable — envío por correo (CA-4, CA-6)', () => {
         subscriberId={SUBSCRIBER_ID}
       />,
     );
-    await user.click(screen.getByRole('button', { name: 'Ver detalle' }));
+    await user.click(screen.getByRole('button', { name: /^Ver detalle de la factura/u }));
     const log = await screen.findByRole('region', { name: 'Envíos por correo' });
     expect(within(log).getAllByRole('row')).toHaveLength(6);
     expect(mockEmailLog).toHaveBeenCalledWith(SUBSCRIBER_ID);

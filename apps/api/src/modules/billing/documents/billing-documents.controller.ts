@@ -288,6 +288,36 @@ export class BillingDocumentsController {
     );
   }
 
+  @Get('by-subscriber')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SUPPORT, UserRole.SALES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.BILLING_INVOICES_READ)
+  @ApiOperation({
+    summary: 'Consultar facturas agrupadas por cliente',
+    description:
+      'Paginada por cliente, con los mismos filtros que la lista (sin subscriberId). Ordenada por el vencimiento más antiguo con saldo.',
+  })
+  @ApiOkResponse({ description: 'Clientes con el conteo, el total y el saldo de sus facturas.' })
+  @ApiUnauthorizedResponse({ description: 'La sesión no es válida.' })
+  @ApiForbiddenResponse({ description: 'El rol o permiso no permite esta acción.' })
+  async listBySubscriber(
+    @Query(new ZodValidationPipe(DocumentListQuerySchema.omit({ subscriberId: true })))
+    input: Omit<z.infer<typeof DocumentListQuerySchema>, 'subscriberId'>,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.documents.listBySubscriber(
+      {
+        page: input.page,
+        limit: input.limit,
+        ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.paymentState !== undefined ? { paymentState: input.paymentState } : {}),
+        ...(input.cycleDay !== undefined ? { cycleDay: input.cycleDay } : {}),
+        ...(input.from !== undefined ? { from: input.from } : {}),
+        ...(input.to !== undefined ? { to: input.to } : {}),
+      },
+      actorId(request),
+    );
+  }
+
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SUPPORT, UserRole.SALES, UserRole.AUDITOR)
   @Permissions(AccessPermissionKey.BILLING_INVOICES_READ)

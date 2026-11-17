@@ -238,6 +238,21 @@ Evidencia:
 
 `test-change-reviewer`: los ajustes de specs están justificados. Se tocaron la spec de la 207, que ahora corre `209.down()` en su `beforeAll`; `billing-payments.errors`, que cuenta tres lecturas del pago; y CA-4 de `billing-emails.postgres`, porque una carrera ahora puede dar 429.
 
+### Publicación de los pendientes
+
+Commit `16103a3d` (2026-11-14). Gate sobre el índice aislado (stash `--keep-index`):
+- api: 565 suites, 7563 tests.
+- portal: 397 suites, 4027 tests.
+- shared: 46 suites, 649 tests.
+- db: 79 suites, 429 tests.
+- `migration-order` 6/6, docs `BLOQUEANTE: 0`.
+
+CI run 43598607376: `failure`. Solo el job «E2E operativo R4.1» falló, con 354 pasan y 2 fallan. Los demás jobs dieron `success`:
+- `portal-billing-flow.spec.ts:564` busca «Define las reglas de emisión de cobro». Es una regresión de `5435adcf`, el cambio de vocabulario de otra sesión: su propio CI (43590113586) ya falla igual, y esa sesión tiene la corrección de la E2E sin commit. No es de esta fase.
+- `portal-importacion-uisp-live.spec.ts:348`: axe `color-contrast` en Documentos importados. Esta ronda no tocó esa pantalla, y en local pasa 2/2 con `--repeat-each=2`. Flaky probable, con el precedente de `a5433838`.
+
+G6.5 de `16103a3d` queda pendiente del primer CI verde de `main` después de que la otra sesión publique su corrección.
+
 ## Atajos
 
 Ninguno vigente: los dos de la primera ronda (SEC-03 y SEC-07) se cerraron con P-01 y P-03.
@@ -258,5 +273,9 @@ Ninguno vigente: los dos de la primera ronda (SEC-03 y SEC-07) se cerraron con P
 | P-10 | Tenant huérfano `srqa-bf-49e2f08b18cc` en `dbiw` | Cerrado 2026-11-14: por la API de plataforma, `PATCH` a INACTIVE (200) y `DELETE` (204); quedó en `MARKED_FOR_DELETION` y lo purga el worker | — | — |
 | P-11 | 10 suites de integración sin tenant en la base `test` (incluida `billing-installation-breakdown`) | Cerrado 2026-11-14: CI usa `E2E_TENANT_SLUG=test`, y en local se leía el slug de `.env.development.local`. Además se realineó el id del tenant `test` con un UPDATE con guardas (`scripts/db/realign-local-integration-tenant.sh`; procedimiento en `RUNBOOK-DB-MIGRATIONS-v1.1.md` §4). Integración local: 104 pasan, 6 skip, 0 rojas (764 tests) | — | — |
 | P-12 | «Registrar → Pago» abre Facturación sin forzar `sub` | Aceptado: «Registrar pago» está sobre las subpestañas | — | — |
+
+## Paginación de Facturación en la ficha
+
+Facturas consulta cinco filas por defecto. Pagos, movimientos, registro de envíos y tablas de detalle muestran cinco filas por página sobre las respuestas ya cargadas. El estado de cuenta calcula el saldo sobre el periodo completo y conserva ese alcance en el PDF.
 
 Omitido: nada de P-01 a P-12; P-05 y P-12 quedan aceptados sin acción. No verificado: la estabilidad en CI de las dos pruebas de temporización que fallaron en el primer intento. Riesgo: ninguno abierto de la fase; las invariantes del recibo y del desasociar están protegidas en base por la migración 209.

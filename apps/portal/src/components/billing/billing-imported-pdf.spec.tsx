@@ -71,7 +71,7 @@ describe('Facturas — PDF del histórico importado', () => {
     mockDocumentPdf.mockResolvedValue(new Blob(['%PDF']));
     render(<BillingDocumentTable documents={[IMPORTED]} onChanged={jest.fn()} />);
     expect(screen.getByText('UISP-2024-0042')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Descargar PDF' }));
+    await user.click(screen.getByRole('button', { name: /^Descargar PDF de la factura/u }));
     await waitFor(() => expect(mockDocumentPdf).toHaveBeenCalledWith(IMPORTED.id));
     await waitFor(() => expect(names).toEqual(['factura-importada-UISP-2024-0042.pdf']));
   });
@@ -80,7 +80,7 @@ describe('Facturas — PDF del histórico importado', () => {
     const user = userEvent.setup();
     mockDocumentPdf.mockRejectedValue(new ApiError(404, 'BILLING_IMPORTED_PDF_NOT_AVAILABLE', 'x'));
     render(<BillingDocumentTable documents={[IMPORTED]} onChanged={jest.fn()} />);
-    await user.click(screen.getByRole('button', { name: 'Descargar PDF' }));
+    await user.click(screen.getByRole('button', { name: /^Descargar PDF de la factura/u }));
     expect(
       await screen.findByText('El PDF de esta factura histórica no se trajo en la importación.'),
     ).toBeInTheDocument();

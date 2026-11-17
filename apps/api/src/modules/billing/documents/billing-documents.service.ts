@@ -18,8 +18,10 @@ import {
   type BillingDocumentResponse,
   type BillingDocumentVoidReason,
   type BillingPeriodPaymentState,
+  type BillingSubscriberDocumentsSummary,
 } from '@iwana/shared';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
+import { buildPageMeta } from '../../../common/pagination';
 import { DataSource, EntityManager } from 'typeorm';
 import { computeDueAndCutoff, shiftLateDueAndCutoff } from '@iwana/shared';
 import { AuditService } from '../../audit/audit.service';
@@ -100,6 +102,9 @@ interface DocumentLineRow {
 const PAID_SQL = `COALESCE((SELECT SUM(a.amount) FROM billing_payment_allocations a
                   JOIN billing_payments p2 ON p2.id = a.payment_id
                  WHERE a.document_id = d.id AND a.reversed_at IS NULL AND p2.status = 'REGISTRADO'), 0)`;
+
+/** Tope de facturas leídas por página de clientes en la vista agrupada (ADR-064 §8: nunca sin cota). */
+const BY_SUBSCRIBER_DOCUMENT_CAP = 2000;
 
 const SELECT_DOCUMENTS = `SELECT d.id::text, d.tenant_id::text, d.period_id::text,
        d.contract_id::text, d.subscriber_id::text, d.status, d.number, d.external_number,
@@ -196,28 +201,7 @@ export class BillingDocumentsService {
     }
     const { timezone } = await this.tenantSettings.getSnapshot({ tenantId });
     const localDate = this.localDate(new Date(), timezone);
-    const params: unknown[] = [tenantId];
-    const conditions = ['d.tenant_id = $1'];
-    const add = (sql: string, value: unknown) => {
-      params.push(value);
-      conditions.push(sql.replace('?', `$${params.length}`));
-    };
-    if (input.status) add('d.status = ?', input.status);
-    if (input.subscriberId) add('d.subscriber_id = ?::uuid', input.subscriberId);
-    if (input.from) add('d.issue_date >= ?::date', input.from);
-    if (input.to) add('d.issue_date <= ?::date', input.to);
-    if (input.cycleDay !== undefined)
-      add('EXTRACT(DAY FROM p.period_start)::int = ?', input.cycleDay);
-    if (input.paymentState) {
-      params.push(localDate);
-      const dateParam = `$${params.length}`;
-      // Spec MOD14 2026-11-12 R4: la cortesía activa salda igual que un pago en el estado.
-      const paidExpr = `(${PAID_SQL} + ${activeCourtesySum('d')})`;
-      const stateCase = `CASE WHEN d.status NOT IN ('EMITIDO', 'IMPORTADO') THEN 'NO_EMITIDO' WHEN ${paidExpr} >= d.total THEN 'PAGADO' WHEN ${dateParam} > d.due_date::text THEN 'VENCIDO' WHEN ${paidExpr} > 0 THEN 'PARCIAL' ELSE 'PENDIENTE' END`;
-      params.push(input.paymentState);
-      conditions.push(`${stateCase} = $${params.length}`);
-    }
-    const where = conditions.join(' AND ');
+    const { where, params } = this.documentFilter(tenantId, input, localDate);
     const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const counts = (await qr.query(
         `SELECT count(*)::int AS total FROM billing_documents d LEFT JOIN billing_periods p ON p.id = d.period_id WHERE ${where}`,
@@ -253,6 +237,149 @@ export class BillingDocumentsService {
       ...result,
       data: await this.hydrate(result.data, 'list', actorId, undefined, localDate),
     };
+  }
+
+  /**
+   * Condiciones de la lista de facturas (también las usa la vista por cliente). Todo valor viaja
+   * como parámetro.
+   */
+  private documentFilter(
+    tenantId: string,
+    input: {
+      status?: string;
+      paymentState?: BillingPeriodPaymentState;
+      cycleDay?: number;
+      subscriberId?: string;
+      from?: string;
+      to?: string;
+    },
+    localDate: string,
+  ): { where: string; params: unknown[] } {
+    const params: unknown[] = [tenantId];
+    const conditions = ['d.tenant_id = $1'];
+    const add = (sql: string, value: unknown) => {
+      params.push(value);
+      conditions.push(sql.replace('?', `$${params.length}`));
+    };
+    if (input.status) add('d.status = ?', input.status);
+    if (input.subscriberId) add('d.subscriber_id = ?::uuid', input.subscriberId);
+    if (input.from) add('d.issue_date >= ?::date', input.from);
+    if (input.to) add('d.issue_date <= ?::date', input.to);
+    if (input.cycleDay !== undefined)
+      add('EXTRACT(DAY FROM p.period_start)::int = ?', input.cycleDay);
+    if (input.paymentState) {
+      params.push(localDate);
+      const dateParam = `$${params.length}`;
+      // Spec MOD14 2026-11-12 R4: la cortesía activa salda igual que un pago en el estado.
+      const paidExpr = `(${PAID_SQL} + ${activeCourtesySum('d')})`;
+      const stateCase = `CASE WHEN d.status NOT IN ('EMITIDO', 'IMPORTADO') THEN 'NO_EMITIDO' WHEN ${paidExpr} >= d.total THEN 'PAGADO' WHEN ${dateParam} > d.due_date::text THEN 'VENCIDO' WHEN ${paidExpr} > 0 THEN 'PARCIAL' ELSE 'PENDIENTE' END`;
+      params.push(input.paymentState);
+      conditions.push(`${stateCase} = $${params.length}`);
+    }
+    return { where: conditions.join(' AND '), params };
+  }
+
+  /**
+   * Facturas agrupadas por cliente, paginadas por cliente (no por factura): así la suma de cada
+   * cliente incluye todas sus facturas que cumplen el filtro. Los importes salen de la misma
+   * hidratación que la lista (saldo, cortesías, retenciones y custodia), por eso cuadran con ella.
+   * Orden: el vencimiento más antiguo primero (lo que más urge cobrar).
+   */
+  async listBySubscriber(
+    input: {
+      page: number;
+      limit: number;
+      status?: string;
+      paymentState?: BillingPeriodPaymentState;
+      cycleDay?: number;
+      from?: string;
+      to?: string;
+    },
+    actorId: string,
+  ): Promise<{
+    data: BillingSubscriberDocumentsSummary[];
+    meta: ReturnType<typeof buildPageMeta>;
+  }> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    if (input.paymentState === 'SIN_DOCUMENTO') {
+      return { data: [], meta: buildPageMeta({ total: 0, page: input.page, limit: input.limit }) };
+    }
+    const { timezone } = await this.tenantSettings.getSnapshot({ tenantId });
+    const localDate = this.localDate(new Date(), timezone);
+    const { where, params } = this.documentFilter(tenantId, input, localDate);
+    const { rows, total } = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const counts = (await qr.query(
+        `SELECT count(DISTINCT d.subscriber_id)::int AS total
+           FROM billing_documents d LEFT JOIN billing_periods p ON p.id = d.period_id
+          WHERE ${where}`,
+        params,
+      )) as Array<{ total: number }>;
+      const offset = (input.page - 1) * input.limit;
+      const subscribers = (await qr.query(
+        `SELECT d.subscriber_id::text AS subscriber_id
+           FROM billing_documents d LEFT JOIN billing_periods p ON p.id = d.period_id
+          WHERE ${where}
+          GROUP BY d.subscriber_id
+          ORDER BY MIN(d.due_date) ASC NULLS LAST, d.subscriber_id
+          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, input.limit, offset],
+      )) as Array<{ subscriber_id: string }>;
+      if (!subscribers.length) return { rows: [] as DocumentRow[], total: counts[0]?.total ?? 0 };
+      const documents = (await qr.query(
+        `${SELECT_DOCUMENTS} WHERE ${where} AND d.subscriber_id = ANY($${params.length + 1}::uuid[])
+          ORDER BY d.created_at DESC, d.id DESC
+          LIMIT ${BY_SUBSCRIBER_DOCUMENT_CAP}`,
+        [...params, subscribers.map(({ subscriber_id }) => subscriber_id)],
+      )) as DocumentRow[];
+      return { rows: documents, total: counts[0]?.total ?? 0 };
+    });
+    const hydrated = await this.hydrate(rows, 'list', actorId, undefined, localDate);
+    const cents = (value: string | null | undefined) => Math.round(Number(value ?? 0) * 100);
+    const money = (value: number) => (value / 100).toFixed(2);
+    const groups = new Map<
+      string,
+      BillingSubscriberDocumentsSummary & { _total: number; _pending: number }
+    >();
+    for (const document of hydrated) {
+      const current =
+        groups.get(document.subscriberId) ??
+        ({
+          subscriberId: document.subscriberId,
+          displayName: document.buyerProtected
+            ? null
+            : (document.buyerSnapshot?.displayName ?? null),
+          buyerProtected: document.buyerProtected,
+          documentCount: 0,
+          overdueCount: 0,
+          total: '0.00',
+          pendingAmount: '0.00',
+          oldestPendingDueDate: null,
+          _total: 0,
+          _pending: 0,
+        } as BillingSubscriberDocumentsSummary & { _total: number; _pending: number });
+      current.documentCount += 1;
+      if (document.paymentState === 'VENCIDO') current.overdueCount += 1;
+      if (document.status !== 'ANULADO') current._total += cents(document.total);
+      const pending = cents(document.pendingAmount);
+      current._pending += pending;
+      if (pending > 0 && document.dueDate) {
+        if (!current.oldestPendingDueDate || document.dueDate < current.oldestPendingDueDate)
+          current.oldestPendingDueDate = document.dueDate;
+      }
+      groups.set(document.subscriberId, current);
+    }
+    const data = [...groups.values()]
+      .map(({ _total, _pending, ...summary }) => ({
+        ...summary,
+        total: money(_total),
+        pendingAmount: money(_pending),
+      }))
+      .sort(
+        (a, b) =>
+          (a.oldestPendingDueDate ?? '9999').localeCompare(b.oldestPendingDueDate ?? '9999') ||
+          a.subscriberId.localeCompare(b.subscriberId),
+      );
+    return { data, meta: buildPageMeta({ total, page: input.page, limit: input.limit }) };
   }
 
   async findOne(documentId: string, actorId: string): Promise<BillingDocumentResponse> {

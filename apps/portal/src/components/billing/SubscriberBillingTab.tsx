@@ -320,12 +320,12 @@ export function SubscriberBillingTab({
           ) : null}
         </TabsContent>
         <TabsContent value="pagos" className="space-y-4" tabIndex={0}>
-          <StatementWithholdingList statement={data} />
           <PortalPanel title="Pagos recibidos">
             {data.payments.length ? (
               <BillingPaymentTable
                 payments={data.payments}
                 onChanged={changed}
+                paginate
                 showReceipt
                 onOpenDetail={(payment) => setPaymentId(payment.id)}
               />
@@ -336,6 +336,7 @@ export function SubscriberBillingTab({
               />
             )}
           </PortalPanel>
+          <StatementWithholdingList statement={data} />
         </TabsContent>
         <TabsContent value="estado" className="space-y-4" tabIndex={0}>
           <BillingStatementLedger
