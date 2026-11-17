@@ -370,7 +370,7 @@ test.describe('MOD05 ciclo de facturación — CA-CF-12 contra Portal y API real
     await cycleSelect.click();
     await page.getByRole('option', { name: `Día ${cycle!.cycleDay}`, exact: true }).click();
     await expect(
-      dialog.getByText(`Próximo corte: ${formatCivilDate(nextCutoffDate)}`),
+      dialog.getByText(`Corte si no paga: ${formatCivilDate(nextCutoffDate)}`),
     ).toBeVisible();
     await expect(activateButton).toBeEnabled();
 
@@ -397,7 +397,7 @@ test.describe('MOD05 ciclo de facturación — CA-CF-12 contra Portal y API real
     await expect(dialog).toHaveCount(0);
     await expect(page.getByText(`Ciclo: día ${cycle!.cycleDay}`, { exact: true })).toBeVisible();
     await expect(
-      page.getByText(`Próximo corte: ${formatCivilDate(nextCutoffDate)}`, { exact: true }),
+      page.getByText(`Corte si no paga: ${formatCivilDate(nextCutoffDate)}`, { exact: true }),
     ).toBeVisible();
 
     const agendaResponsePromise = page.waitForResponse((response) => {

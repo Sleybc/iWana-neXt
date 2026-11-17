@@ -43,7 +43,7 @@ import { BillingCycleMissingNotice } from './contract-auto-creation-ui';
 import { formatBillingMoney } from '@/components/billing/billing-copy';
 import { useContractPlan } from './use-contract-plan';
 import { ChangeContractPlanDialog, ContractPlanSummary } from './ChangeContractPlanDialog';
-import { findBillingCycle, formatBillingDate } from './billing-cycle-ui';
+import { CUTOFF_LABEL, findBillingCycle, formatBillingDate } from './billing-cycle-ui';
 import { PrivacyAnonymizedBadge } from '@/components/privacy/PrivacyAnonymizedBadge';
 import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 import { ServicePointFields } from './CreateContractDialog';
@@ -971,7 +971,7 @@ export function ContractDetailView({
                   value={`Ciclo: día ${currentContract.billingCycleDay}`}
                 />
                 <FieldC
-                  label="Próximo corte"
+                  label={CUTOFF_LABEL}
                   value={
                     currentCycle
                       ? formatBillingDate(currentCycle.nextCutoffDate)
@@ -1031,7 +1031,7 @@ export function ContractDetailView({
               <>
                 <FieldC label="Ciclo de facturación" value={`Ciclo: día ${form.billingCycleDay}`} />
                 <FieldC
-                  label="Próximo corte"
+                  label={CUTOFF_LABEL}
                   value={
                     editedCycle ? formatBillingDate(editedCycle.nextCutoffDate) : 'No disponible'
                   }

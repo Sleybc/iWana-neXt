@@ -259,7 +259,7 @@ describe('MOD05 Fase 09 — experiencia de ciclo de facturación', () => {
     fireEvent.click(cycleSelect);
     fireEvent.click(await screen.findByRole('option', { name: 'Día 15' }));
 
-    expect(screen.getByText('Próximo corte: 30 de octubre de 2026')).toBeInTheDocument();
+    expect(screen.getByText('Corte si no paga: 30 de octubre de 2026')).toBeInTheDocument();
     expect(confirm).toBeEnabled();
     fireEvent.click(confirm);
 

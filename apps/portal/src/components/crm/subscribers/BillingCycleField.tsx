@@ -2,7 +2,7 @@
 
 import { Select } from '@iwana/ui';
 import type { BillingCycleOption } from '@/lib/api-client';
-import { formatBillingDate } from './billing-cycle-ui';
+import { CUTOFF_LABEL, formatBillingDate } from './billing-cycle-ui';
 import { PortalAlert } from '@/components/shared/portal-ui';
 
 interface BillingCycleFieldProps {
@@ -91,7 +91,7 @@ export function BillingCycleField({
 
       {showNextCutoff && selected ? (
         <p className="text-sm text-gray-700 dark:text-gray-200" aria-live="polite">
-          Próximo corte: {formatBillingDate(selected.nextCutoffDate)}
+          {CUTOFF_LABEL}: {formatBillingDate(selected.nextCutoffDate)}
         </p>
       ) : null}
     </div>

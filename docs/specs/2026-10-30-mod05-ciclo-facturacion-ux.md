@@ -2,6 +2,7 @@
 
 **Versión:** 1.1 · **Fecha:** 2026-10-30 (v1.1: 2026-11-01) · **Responsable:** AI-PROD-UX  
 **Estado:** UX congelada para F1 y Q1; v1.1 alinea la entrada de «Activar» con el [addendum U](2026-10-31-mod05-ficha-suscriptor-addendum-u.md)  
+**Cambio 2026-11-14 (usuario):** el rótulo «Próximo corte» pasa a «Corte si no paga» en la tarjeta, el detalle y la activación del servicio; la fecha y su cálculo no cambian. Un cliente al día lo leía como aviso de suspensión.  
 **PRD:** [Fase 09 v1.1](../prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-09-v1.1.md) · **ADR:** [ADR-102](../adrs/ADR-102-Ciclo-Facturacion-y-Fecha-de-Corte-por-Servicio.md) · **Plan:** [2026-10-30-mod05-ciclo-facturacion](../plans/2026-10-30-mod05-ciclo-facturacion.md)
 
 ## Objetivo y alcance

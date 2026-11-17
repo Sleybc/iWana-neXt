@@ -394,9 +394,9 @@ describe('ContractCard — ciclo y próximo corte', () => {
       />,
     );
     const cycle = screen.getByText('Ciclo: día 1');
-    const cutoff = screen.getByText('Próximo corte: 15 de noviembre de 2026');
+    const cutoff = screen.getByText('Corte si no paga: 15 de noviembre de 2026');
     expect(cycle.parentElement).not.toBe(cutoff.parentElement);
-    expect(cycle.parentElement).not.toHaveTextContent('Próximo corte');
+    expect(cycle.parentElement).not.toHaveTextContent('Corte si no paga');
     expect(cutoff.parentElement).not.toHaveTextContent('Ciclo:');
   });
 
@@ -411,10 +411,10 @@ describe('ContractCard — ciclo y próximo corte', () => {
       />,
     );
     const status = screen.getByRole('status');
-    expect(status).toHaveTextContent('Cargando próximo corte');
+    expect(status).toHaveTextContent('Cargando la fecha de corte');
     expect(status.querySelector('.animate-pulse')).toBeInTheDocument();
     expect(screen.getByText('Ciclo: día 1')).toBeInTheDocument();
-    expect(screen.queryByText(/Próximo corte:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Corte si no paga:/)).not.toBeInTheDocument();
     rerender(
       <ContractCard
         contract={{ ...CONTRACT, billingCycleDay: 1 }}
@@ -424,8 +424,8 @@ describe('ContractCard — ciclo y próximo corte', () => {
         onViewDetail={jest.fn()}
       />,
     );
-    expect(screen.queryByText('Cargando próximo corte')).not.toBeInTheDocument();
-    expect(screen.getByText('Próximo corte: 15 de noviembre de 2026')).toBeInTheDocument();
+    expect(screen.queryByText('Cargando la fecha de corte')).not.toBeInTheDocument();
+    expect(screen.getByText('Corte si no paga: 15 de noviembre de 2026')).toBeInTheDocument();
   });
 
   it('mantiene el aviso textual cuando un activo no tiene ciclo', () => {

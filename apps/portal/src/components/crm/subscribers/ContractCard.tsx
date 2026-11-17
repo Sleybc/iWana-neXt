@@ -26,7 +26,7 @@ import { CONTRACT_STATUS_META, formatContractAlias, formatLocationLabel } from '
 import { PrivacyAnonymizedBadge } from '@/components/privacy/PrivacyAnonymizedBadge';
 import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 import { formatLifecycleDate, lifecycleReasonLabel } from './subscriber-lifecycle-ui';
-import { findBillingCycle, formatBillingDate } from './billing-cycle-ui';
+import { CUTOFF_LABEL, findBillingCycle, formatBillingDate } from './billing-cycle-ui';
 import { useContractPlan } from './use-contract-plan';
 import { BillingCycleMissingNotice } from './contract-auto-creation-ui';
 import {
@@ -43,7 +43,13 @@ type TransitionAction = 'activate' | 'suspend' | 'reactivate' | 'terminate' | 'a
 
 const ACTIONS_BY_STATUS: Record<
   ContractStatus,
-  Array<{ label: string; action: TransitionAction; icon: React.ReactNode }>
+  Array<{
+    label: string;
+    action: TransitionAction;
+    icon: React.ReactNode;
+    /** Tono del ítem: suspender advierte y terminar es destructivo (Firma iWana). */
+    tone?: 'warning' | 'danger';
+  }>
 > = {
   DRAFT: [
     {
@@ -56,11 +62,13 @@ const ACTIONS_BY_STATUS: Record<
     {
       label: 'Suspender',
       action: 'suspend',
+      tone: 'warning',
       icon: <PauseCircle className="h-3.5 w-3.5" aria-hidden />,
     },
     {
       label: 'Terminar',
       action: 'terminate',
+      tone: 'danger',
       icon: <XCircle className="h-3.5 w-3.5" aria-hidden />,
     },
   ],
@@ -73,6 +81,7 @@ const ACTIONS_BY_STATUS: Record<
     {
       label: 'Terminar',
       action: 'terminate',
+      tone: 'danger',
       icon: <XCircle className="h-3.5 w-3.5" aria-hidden />,
     },
     {
@@ -266,6 +275,7 @@ export function ContractCard({
               {actions.map((action) => (
                 <DropdownMenuItem
                   key={action.action}
+                  {...(action.tone ? { variant: action.tone } : {})}
                   className="min-h-11 gap-2"
                   onClick={() => void handleAction(action.action)}
                 >
@@ -318,12 +328,13 @@ export function ContractCard({
                 {billingCyclesLoading ? (
                   <div role="status">
                     <PortalSkeletonBlock className="h-4 w-40 rounded-md" />
-                    <span className="sr-only">Cargando próximo corte</span>
+                    <span className="sr-only">Cargando la fecha de corte</span>
                   </div>
                 ) : (
                   <DetailLine
                     icon={<CalendarDays className="h-3.5 w-3.5" aria-hidden />}
-                    text={`Próximo corte: ${nextCutoff ? formatBillingDate(nextCutoff.nextCutoffDate) : 'no disponible'}`}
+                    wide
+                    text={`${CUTOFF_LABEL}: ${nextCutoff ? formatBillingDate(nextCutoff.nextCutoffDate) : 'no disponible'}`}
                   />
                 )}
               </>
@@ -368,11 +379,22 @@ export function ContractCard({
 
 // ── Subcomponente línea de detalle ────────────────────────────────────────────
 
-function DetailLine({ icon, text }: { icon: React.ReactNode; text: string }) {
+function DetailLine({
+  icon,
+  text,
+  wide = false,
+}: {
+  icon: React.ReactNode;
+  text: string;
+  /** Ocupa toda la fila y no recorta: para datos que deben leerse completos (fechas). */
+  wide?: boolean;
+}) {
   return (
-    <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+    <div
+      className={`flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400${wide ? ' sm:col-span-2' : ''}`}
+    >
       <span className="shrink-0 text-gray-400 dark:text-gray-400">{icon}</span>
-      <span className="truncate">{text}</span>
+      <span className={wide ? 'break-words' : 'truncate'}>{text}</span>
     </div>
   );
 }

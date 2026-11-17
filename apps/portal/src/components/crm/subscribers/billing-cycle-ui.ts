@@ -41,9 +41,9 @@ export function formatBillingShortDate(value: string): string {
   return `${Number(day)} ${monthName} ${year}`;
 }
 
-/** Presenta YYYY-MM-DD como fecha civil y conserva el día sin conversión horaria. */
+/** Presenta YYYY-MM-DD (o una marca de tiempo) como fecha civil en español. */
 export function formatBillingDate(value: string): string {
-  const [year, month, day] = value.split('-');
+  const [year, month, day] = civilDatePart(value).split('-');
   const monthName = [
     'enero',
     'febrero',
@@ -78,3 +78,9 @@ export function suggestedCycleDay(
   if (inheritedValue == null) return undefined;
   return cycles.find((cycle) => String(cycle.cycleDay) === inheritedValue)?.cycleDay;
 }
+
+/**
+ * Rótulo de la fecha de corte del ciclo (ADR-102: suspensión por falta de pago). Decía «Próximo
+ * corte» y un cliente al día lo leía como un aviso; el usuario pidió aclararlo el 2026-11-14.
+ */
+export const CUTOFF_LABEL = 'Corte si no paga';
