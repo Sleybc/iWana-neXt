@@ -12,12 +12,14 @@ import {
   type Ref,
 } from 'react';
 import { ExpedienteStatus, UserRole, type SubscriberQueueCounts } from '@iwana/shared';
-import { Badge, ProgressMeter, cn } from '@iwana/ui';
+import { Badge, Button, ProgressMeter, cn } from '@iwana/ui';
+import { RefreshCw } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   PortalAlert,
   PortalEmptyState,
   PortalModuleHealthChip,
+  PortalMetricSparkline,
   PortalNavListRow,
   PortalPanel,
   PortalSkeletonBlock,
@@ -69,6 +71,8 @@ import {
 } from '@/lib/api-client';
 import { TenantSummaryCard } from './TenantSummaryCard';
 import { RecentActivityPanel } from './RecentActivityPanel';
+import { DashboardTodayAgenda, type DashboardAgendaVisit } from './DashboardTodayAgenda';
+import { dashboardDayKey, dashboardDayRange } from './dashboard-day';
 import {
   DASHBOARD_AREA_REGISTRY,
   DASHBOARD_ATTENTION_SOURCES,
@@ -106,7 +110,12 @@ import {
   formatDashboardNumber,
 } from './dashboard-visuals';
 import { DashboardTrend } from './DashboardTrend';
-import { buildDashboardTrendTabs } from './dashboard-trend';
+import {
+  buildDashboardTrendTabs,
+  DASHBOARD_PERIODS,
+  readDashboardPeriod,
+  type DashboardPeriod,
+} from './dashboard-trend';
 
 type LoadStatus = 'idle' | 'loading' | 'updating' | 'success' | 'error';
 
@@ -124,6 +133,7 @@ interface DashboardSourcesState {
   'tenant-summary': SourceState<DashboardSummary>;
   'tenant-me': SourceState<{ tenant: TenantSelf; settings: TenantSelfSettings }>;
   wfm: SourceState<WfmDashboardSummary>;
+  'today-agenda': SourceState<{ day: string; visits: DashboardAgendaVisit[] }>;
   assurance: SourceState<AssuranceDashboardSummary>;
   commercial: SourceState<CommercialDashboardSummary>;
   inventory: SourceState<InventoryDashboardSummary>;
@@ -131,7 +141,7 @@ interface DashboardSourcesState {
   audit: SourceState<AuditLogEntry[]>;
   subscribers: SourceState<SubscriberQueueCounts>;
   /** Servicios con corte programado hoy. */
-  cutoff: SourceState<number>;
+  cutoff: SourceState<{ day: string; total: number }>;
   provisioning: SourceState<DashboardProvisioningCounts>;
   /** Productos con sugerencia de reposición. */
   replenishment: SourceState<number>;
@@ -146,6 +156,12 @@ const CLOSED_PIPELINE_STATUSES = new Set<string>([
 ]);
 
 const TAB_REFRESH_MS = 5 * 60 * 1000;
+const dashboardDateFormatter = new Intl.DateTimeFormat('es-CO', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  timeZone: 'UTC',
+});
 
 function emptySource<T>(): SourceState<T> {
   return { status: 'idle', data: null, error: null, lastSuccessAt: null };
@@ -157,6 +173,7 @@ function createInitialSources(): DashboardSourcesState {
     'tenant-summary': emptySource(),
     'tenant-me': emptySource(),
     wfm: emptySource(),
+    'today-agenda': emptySource(),
     assurance: emptySource(),
     commercial: emptySource(),
     inventory: emptySource(),
@@ -201,6 +218,7 @@ function assignSource(
 }
 
 const FORBIDDEN_SUMMARY_MESSAGE = 'No tienes acceso a este resumen.';
+const EXPIRED_SUMMARY_MESSAGE = 'Tu sesión expiró. Inicia sesión nuevamente.';
 
 function mapSourceError(error: unknown, fallback: string): string {
   const candidate =
@@ -210,7 +228,7 @@ function mapSourceError(error: unknown, fallback: string): string {
         ? (error as Error & { status: number })
         : null;
   if (candidate) {
-    if (candidate.status === 401) return 'Tu sesión expiró. Inicia sesión nuevamente.';
+    if (candidate.status === 401) return EXPIRED_SUMMARY_MESSAGE;
     if (candidate.status === 403) return FORBIDDEN_SUMMARY_MESSAGE;
     return candidate.message || fallback;
   }
@@ -423,6 +441,17 @@ function metricHint(
 
 /** Mini visual de la celda; solo con dato real de la misma fuente. */
 function metricVisual(metricId: DashboardMetricId, sources: DashboardSourcesState): ReactNode {
+  const history = currentData(sources['subscribers-summary'])?.series;
+  if (metricId === 'P-1' && history && history.length > 1) {
+    return (
+      <span className="block" title="Altas menos retiros por mes, últimos 12 meses">
+        <span className="sr-only">Altas menos retiros por mes, últimos 12 meses</span>
+        <PortalMetricSparkline
+          values={history.map(({ activations, cancellations }) => activations - cancellations)}
+        />
+      </span>
+    );
+  }
   if (metricId === 'P-1' && sources.subscribers.data) {
     return (
       <DashboardStackBar
@@ -521,6 +550,7 @@ function buildModuleHealthSnapshot(
 /** Cifra de cada fila de la cola de atención; `null` = la fuente no entregó el dato. */
 function attentionCounts(
   sources: DashboardSourcesState,
+  today: string,
 ): Partial<Record<DashboardAttentionId, number | null>> {
   const wfm = sources.wfm.data;
   const assurance = sources.assurance.data;
@@ -533,7 +563,7 @@ function attentionCounts(
     'requests-ready': wfm?.pendingInbox?.readyToScheduleCount ?? null,
     'offers-at-risk': commercial?.offersAtRiskCount ?? null,
     'plans-without-price': commercial?.missingCurrentPriceCount ?? null,
-    'cutoff-today': sources.cutoff.data,
+    'cutoff-today': sources.cutoff.data?.day === today ? sources.cutoff.data.total : null,
     'provisioning-failed': sources.provisioning.data?.failed ?? null,
     'provisioning-unfinished': sources.provisioning.data?.closedUnprovisioned ?? null,
     'fiscal-incomplete': sources.subscribers.data?.fiscalIncomplete ?? null,
@@ -597,12 +627,15 @@ interface DashboardCacheEntry {
   partialStale: boolean;
 }
 
-async function fetchSource(sourceId: DashboardDataSourceId, slug: string): Promise<unknown> {
+async function fetchSource(
+  sourceId: Exclude<DashboardDataSourceId, 'tenant-summary'>,
+  slug: string,
+  date: Date,
+  timeZone: string,
+): Promise<unknown> {
   switch (sourceId) {
     case 'public-branding':
       return tenantSelfApi.getPublicBranding(slug);
-    case 'tenant-summary':
-      return dashboardApi.getSummary(slug);
     case 'tenant-me': {
       const [tenant, settings] = await Promise.all([
         tenantSelfApi.getMe(slug),
@@ -612,6 +645,20 @@ async function fetchSource(sourceId: DashboardDataSourceId, slug: string): Promi
     }
     case 'wfm':
       return wfmApi.dashboard.getSummary(slug);
+    case 'today-agenda': {
+      const day = dashboardDayKey(date, timeZone);
+      const range = dashboardDayRange(day, timeZone);
+      const { data } = await wfmApi.events.list({ ...range, limit: 4 }, slug);
+      return {
+        day,
+        visits: data.map(({ id, scheduledStartAt, type, status }) => ({
+          id,
+          scheduledStartAt,
+          type,
+          status,
+        })),
+      };
+    }
     case 'assurance':
       return assuranceApi.dashboard.getSummary(slug);
     case 'commercial':
@@ -626,8 +673,9 @@ async function fetchSource(sourceId: DashboardDataSourceId, slug: string): Promi
       return subscribersApi.queueCounts(slug);
     case 'cutoff': {
       // Solo interesa el total: se pide la página mínima.
-      const agenda = await billingCyclesApi.cutoffAgenda({ date: toLocalDayKey(), limit: 1 }, slug);
-      return agenda.meta.total;
+      const day = dashboardDayKey(date, timeZone);
+      const agenda = await billingCyclesApi.cutoffAgenda({ date: day, limit: 1 }, slug);
+      return { day, total: agenda.meta.total };
     }
     case 'provisioning': {
       // Solo interesan los totales de cada cola.
@@ -649,7 +697,7 @@ async function fetchSource(sourceId: DashboardDataSourceId, slug: string): Promi
     case 'subscribers-summary':
       return dashboardSeriesApi.subscribersSummary(slug);
     case 'cases-series':
-      return dashboardSeriesApi.casesSeries(slug);
+      return dashboardSeriesApi.casesSeries(slug, 31);
     default: {
       const _exhaustive: never = sourceId;
       return _exhaustive;
@@ -958,6 +1006,8 @@ function renderDashboardBlock({
   highlightCommercial,
   onRetrySource,
   role,
+  today,
+  timeZone,
   commercialHeadingRef,
 }: {
   blockId: DashboardBlockId;
@@ -966,9 +1016,38 @@ function renderDashboardBlock({
   highlightCommercial: boolean;
   onRetrySource: (sourceId: DashboardDataSourceId) => void;
   role: UserRole;
+  today: string;
+  timeZone: string;
   commercialHeadingRef?: Ref<HTMLHeadingElement> | undefined;
 }) {
   switch (blockId) {
+    case 'today-agenda': {
+      const visits = sources['today-agenda'];
+      const cutoff = sources.cutoff;
+      const visitsAllowed = visits.error !== FORBIDDEN_SUMMARY_MESSAGE;
+      const cutoffAllowed = cutoff.error !== FORBIDDEN_SUMMARY_MESSAGE;
+      if (!visitsAllowed && !cutoffAllowed) return null;
+      const failedSources = (['today-agenda', 'cutoff'] as const).filter(
+        (id) => sources[id].status === 'error' && sources[id].error !== FORBIDDEN_SUMMARY_MESSAGE,
+      );
+      return (
+        <DashboardTodayAgenda
+          key={blockId}
+          day={today}
+          timeZone={timeZone}
+          visits={visits.data?.day === today ? (currentData(visits)?.visits ?? []) : []}
+          visitsAllowed={visitsAllowed}
+          cutoff={cutoff.data?.day === today ? (currentData(cutoff)?.total ?? null) : null}
+          loading={[visits, cutoff].some(({ status }) => status === 'idle' || status === 'loading')}
+          unavailable={failedSources.map((id) =>
+            id === 'today-agenda' ? 'las visitas' : 'los cortes',
+          )}
+          onRetry={() => {
+            for (const id of failedSources) onRetrySource(id);
+          }}
+        />
+      );
+    }
     case 'field-attention':
       return (
         <FieldAttentionBlock
@@ -994,6 +1073,7 @@ function renderDashboardBlock({
       return (
         <section key={blockId} aria-label={resolveDashboardBlock(blockId).title}>
           <RecentActivityPanel
+            dashboardPreview={role === UserRole.ADMIN}
             entries={audit.data}
             status={audit.status}
             error={audit.error}
@@ -1113,7 +1193,11 @@ export function DashboardClient() {
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [highlightCommercial, setHighlightCommercial] = useState(false);
   const [moduleHealthOverflowOpen, setModuleHealthOverflowOpen] = useState(false);
+  const [period, setPeriod] = useState<DashboardPeriod>('mes');
+  const [refreshing, setRefreshing] = useState(false);
+  const activeLoadsRef = useRef(0);
   const lastFetchedAtRef = useRef<string | null>(null);
+  const tenantTimeZoneRef = useRef<string | undefined>(undefined);
   const commercialHeadingRef = useRef<HTMLHeadingElement | null>(null);
 
   const loadSources = useCallback(
@@ -1124,10 +1208,13 @@ export function DashboardClient() {
       cacheKey: DashboardSessionCacheKey;
     }) => {
       const { sourceIds, silent, slug, cacheKey } = options;
+      const date = new Date();
+      const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       if (sourceIds.length === 0) {
         setInitialLoadDone(true);
         return;
       }
+      activeLoadsRef.current += 1;
 
       setSources((prev) => {
         const next: DashboardSourcesState = { ...prev };
@@ -1144,8 +1231,26 @@ export function DashboardClient() {
         return next;
       });
 
+      const summary = sourceIds.includes('tenant-summary') ? dashboardApi.getSummary(slug) : null;
+      const tenantTimeZone = summary?.then(
+        ({ settings }) => {
+          tenantTimeZoneRef.current = settings.timezone;
+          return settings.timezone;
+        },
+        () => tenantTimeZoneRef.current,
+      );
       const settled = await Promise.allSettled(
-        sourceIds.map(async (id) => ({ id, data: await fetchSource(id, slug) })),
+        sourceIds.map(async (id) => {
+          if (id === 'tenant-summary') return { id, data: await summary };
+          const timeZone =
+            id === 'today-agenda' || id === 'cutoff'
+              ? await (tenantTimeZone ?? tenantTimeZoneRef.current)
+              : undefined;
+          return {
+            id,
+            data: await fetchSource(id, slug, date, timeZone ?? browserTimeZone),
+          };
+        }),
       );
 
       const fetchedAt = new Date().toISOString();
@@ -1164,14 +1269,17 @@ export function DashboardClient() {
             });
           } else {
             const previous = prev[sourceId];
+            const error = mapSourceError(
+              result.reason,
+              'No pudimos cargar este resumen. Reintenta en unos minutos.',
+            );
+            const accessLost =
+              error === FORBIDDEN_SUMMARY_MESSAGE || error === EXPIRED_SUMMARY_MESSAGE;
             assignSource(next, sourceId, {
               status: 'error',
-              data: previous.data,
-              error: mapSourceError(
-                result.reason,
-                'No pudimos cargar este resumen. Reintenta en unos minutos.',
-              ),
-              lastSuccessAt: previous.lastSuccessAt,
+              data: accessLost ? null : previous.data,
+              error,
+              lastSuccessAt: accessLost ? null : previous.lastSuccessAt,
             });
           }
         }
@@ -1195,9 +1303,42 @@ export function DashboardClient() {
         setPartialStale(Boolean(lastFetchedAtRef.current));
       }
       setInitialLoadDone(true);
+      activeLoadsRef.current -= 1;
     },
     [],
   );
+
+  useEffect(() => {
+    const syncPeriod = () => setPeriod(readDashboardPeriod(window.location.search));
+    syncPeriod();
+    window.addEventListener('popstate', syncPeriod);
+    return () => window.removeEventListener('popstate', syncPeriod);
+  }, []);
+
+  const selectPeriod = (next: DashboardPeriod) => {
+    if (period === next) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('periodo', next);
+    window.history.pushState(null, '', url);
+    setPeriod(next);
+  };
+
+  const refresh = async () => {
+    if (!role || activeLoadsRef.current > 0) return;
+    const slug = resolveTenantSlug().slug;
+    if (!slug) return;
+    setRefreshing(true);
+    try {
+      await loadSources({
+        sourceIds: resolveDashboardDataSources(role),
+        silent: true,
+        slug,
+        cacheKey: { userId, role, slug },
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const retrySource = useCallback(
     (sourceId: DashboardDataSourceId) => {
@@ -1228,7 +1369,17 @@ export function DashboardClient() {
 
     const cacheKey: DashboardSessionCacheKey = { userId, role, slug };
     const cached = readDashboardSessionCache<DashboardCacheEntry>(cacheKey);
-    if (cached) {
+    tenantTimeZoneRef.current = cached?.sources['tenant-summary'].data?.settings.timezone;
+    const today = tenantTimeZoneRef.current
+      ? dashboardDayKey(new Date(), tenantTimeZoneRef.current)
+      : toLocalDayKey();
+    if (
+      cached &&
+      (['today-agenda', 'cutoff'] as const).every((id) => {
+        const data = cached.sources[id].data;
+        return !data || data.day === today;
+      })
+    ) {
       // R-5 · restaurar último estado leído; no disparar red.
       setSources(cached.sources);
       lastFetchedAtRef.current = cached.lastFetchedAt;
@@ -1244,9 +1395,21 @@ export function DashboardClient() {
 
   useEffect(() => {
     const onVisibility = () => {
-      if (document.visibilityState !== 'visible' || !role || !lastFetchedAt) return;
+      if (
+        document.visibilityState !== 'visible' ||
+        !role ||
+        !lastFetchedAt ||
+        activeLoadsRef.current > 0
+      )
+        return;
       const elapsed = Date.now() - new Date(lastFetchedAt).getTime();
-      if (elapsed < TAB_REFRESH_MS) return;
+      const timeZone =
+        tenantTimeZoneRef.current ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (
+        elapsed < TAB_REFRESH_MS &&
+        dashboardDayKey(new Date(), timeZone) === dashboardDayKey(new Date(lastFetchedAt), timeZone)
+      )
+        return;
       const slug = resolveTenantSlug().slug;
       if (!slug) return;
       const operational = resolveDashboardDataSources(role).filter(
@@ -1298,7 +1461,10 @@ export function DashboardClient() {
     operationalTenant?.name ?? branding?.displayName ?? branding?.productName ?? 'Inicio';
 
   const firstLoadPending = !initialLoadDone;
-  const today = toLocalDayKey();
+  const timeZone =
+    sources['tenant-summary'].data?.settings.timezone ??
+    Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const today = dashboardDayKey(new Date(), timeZone);
 
   const requestedSources = resolveDashboardDataSources(role);
   const hasAttention = composition.attentionIds.length > 0;
@@ -1308,7 +1474,7 @@ export function DashboardClient() {
       (id) => sources[DASHBOARD_ATTENTION_SOURCES[id]].error !== FORBIDDEN_SUMMARY_MESSAGE,
     ),
     sourceStatus: (id) => sources[id].status,
-    counts: attentionCounts(sources),
+    counts: attentionCounts(sources, today),
     todayLocalDate: today,
   });
 
@@ -1365,6 +1531,7 @@ export function DashboardClient() {
     sources[DASHBOARD_TREND_REGISTRY[id].source];
   const trendTabs = buildDashboardTrendTabs({
     trendIds: composition.trendIds,
+    period,
     subscribers: {
       data: currentData(sources['subscribers-summary']),
       updating: sources['subscribers-summary'].status === 'updating',
@@ -1385,6 +1552,7 @@ export function DashboardClient() {
       return status === 'idle' || status === 'loading';
     });
   const hasTrend = trendTabs.length > 0 || (trendLoading && composition.trendIds.length > 0);
+  const showDashboardControls = composition.trendIds.length > 0;
 
   const renderBlock = (blockId: DashboardBlockId) =>
     renderDashboardBlock({
@@ -1394,6 +1562,8 @@ export function DashboardClient() {
       highlightCommercial,
       onRetrySource: retrySource,
       role,
+      today,
+      timeZone,
       commercialHeadingRef,
     });
 
@@ -1402,8 +1572,53 @@ export function DashboardClient() {
       {/* B0 · Identidad (U-B0bis: sin controles en el encabezado) */}
       <PageHeader
         title={companyTitle}
+        actions={
+          showDashboardControls ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                role="group"
+                aria-label="Periodo de tendencia"
+                className="flex flex-wrap gap-1 rounded-xl bg-gray-100 p-1 dark:bg-dark-surface-3"
+              >
+                {DASHBOARD_PERIODS.map(({ id, label }) => (
+                  <Button
+                    key={id}
+                    type="button"
+                    variant={period === id ? 'primary' : 'ghost'}
+                    size="sm"
+                    className="min-h-11"
+                    aria-pressed={period === id}
+                    onClick={() => selectPeriod(id)}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11"
+                disabled={!initialLoadDone || refreshing}
+                onClick={() => void refresh()}
+              >
+                <RefreshCw className="size-4" aria-hidden="true" />
+                {refreshing ? 'Actualizando' : 'Actualizar'}
+              </Button>
+            </div>
+          ) : null
+        }
+        className={
+          role === UserRole.ADMIN
+            ? 'border-0 bg-transparent px-0 py-1 shadow-none dark:bg-transparent'
+            : ''
+        }
         subtitle={
           <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+            {role === UserRole.ADMIN ? (
+              <time dateTime={today} className="first-letter:uppercase">
+                {dashboardDateFormatter.format(new Date(`${today}T00:00:00Z`))}
+              </time>
+            ) : null}
             <span>
               Última lectura:{' '}
               {lastFetchedAt ? (
@@ -1433,6 +1648,11 @@ export function DashboardClient() {
 
       {/* B1 · Pulso: una superficie con hasta cinco celdas */}
       <DashboardPulse cells={pulseCells} loading={firstLoadPending} />
+      {showDashboardControls && !hasTrend && period !== 'mes' ? (
+        <p role="status" className="text-sm text-gray-600 dark:text-gray-300">
+          No hay series disponibles para este periodo.
+        </p>
+      ) : null}
 
       {/* Chips de navegación: solo roles de ejecución en campo */}
       {composition.moduleHealthIds.length > 0 ? (
@@ -1474,6 +1694,7 @@ export function DashboardClient() {
       {hasAreas ? (
         <DashboardAreaCards
           areaIds={composition.areaIds}
+          showNetworkAvailability={role === UserRole.ADMIN}
           health={areaHealth}
           assurance={sources.assurance}
           wfm={sources.wfm}

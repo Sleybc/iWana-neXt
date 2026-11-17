@@ -571,7 +571,8 @@ export interface AuditLogQueryParams {
 
 export interface AuditLogListResponse {
   data: AuditLogEntry[];
-  meta: ListMeta;
+  nextCursor: string | null;
+  total: number;
 }
 
 export function setPendingTenantMfaLogin(payload: PendingTenantMfaLogin): void {
@@ -11340,9 +11341,12 @@ export const dashboardSeriesApi = {
       tenantSlug,
     ),
   /** N3 · casos creados y resueltos por día. */
-  casesSeries: (tenantSlug?: string): Promise<AssuranceDashboardSeries> =>
+  casesSeries: (
+    tenantSlug?: string,
+    days = DASHBOARD_CASES_SERIES_DAYS,
+  ): Promise<AssuranceDashboardSeries> =>
     requestDashboardContract(
-      `/assurance/dashboard/series?days=${DASHBOARD_CASES_SERIES_DAYS}`,
+      `/assurance/dashboard/series?days=${days}`,
       AssuranceDashboardSeriesSchema,
       tenantSlug,
     ),

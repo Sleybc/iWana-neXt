@@ -70,13 +70,14 @@ export async function loadAuditFeed(options?: {
     }
   })();
 
-  inFlight = request.finally(() => {
-    if (inFlight === request) {
+  const sharedRequest = request.finally(() => {
+    if (inFlight === sharedRequest) {
       inFlight = null;
     }
   });
 
-  return inFlight;
+  inFlight = sharedRequest;
+  return sharedRequest;
 }
 
 /** Limpieza de módulo para pruebas. */

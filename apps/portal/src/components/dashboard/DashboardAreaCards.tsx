@@ -109,7 +109,7 @@ export function subscriberBaseSegments(counts: SubscriberQueueCounts): Dashboard
 function AreaLead({ figure, caption }: { figure: string; caption: string }) {
   return (
     <p className="text-sm text-gray-600 dark:text-gray-400">
-      <span className="mr-1.5 font-thin-exo text-3xl leading-none tabular-nums text-iwana-primary dark:text-white">
+      <span className="mr-1.5 text-3xl leading-none font-bold tabular-nums text-iwana-primary dark:text-white">
         {figure}
       </span>
       {caption}
@@ -137,6 +137,7 @@ export interface DashboardProvisioningCounts {
 }
 
 export interface DashboardAreaCardsProps {
+  showNetworkAvailability?: boolean;
   areaIds: readonly DashboardAreaId[];
   health: Record<DashboardAreaId, DashboardAreaHealth>;
   assurance: DashboardAreaSource<AssuranceDashboardSummary>;
@@ -456,6 +457,26 @@ export function DashboardAreaCards(props: DashboardAreaCardsProps) {
             </PortalPanel>
           );
         })}
+        {props.showNetworkAvailability ? (
+          <PortalPanel
+            compact
+            title="Red"
+            headerClassName={areaHeaderClassName}
+            className={areaPanelClassName}
+            contentClassName={areaContentClassName}
+            actions={<Badge variant="neutral">Sin medición</Badge>}
+          >
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              La disponibilidad de los routers aún no se mide.
+            </p>
+            <Link
+              href="/dashboard/network/routers"
+              className={`${portalInlineTextLinkClassName} mt-auto min-h-11`}
+            >
+              Ver routers
+            </Link>
+          </PortalPanel>
+        ) : null}
       </div>
     </section>
   );

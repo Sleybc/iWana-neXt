@@ -604,7 +604,7 @@ const portalDashboardMetricDeltaBadgeVariant: Record<
 const defaultPortalDashboardMetricFormat = (value: number) =>
   new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(value);
 
-function PortalMetricSparkline({ values }: { values: readonly number[] }) {
+export function PortalMetricSparkline({ values }: { values: readonly number[] }) {
   if (values.length < 2) return null;
   const max = Math.max(...values);
   const min = Math.min(...values);

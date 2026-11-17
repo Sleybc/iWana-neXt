@@ -161,6 +161,7 @@ interface MockOptions {
   holdWfm?: { wait: () => Promise<void> };
   /** Fuerza error en el resumen WFM (bloque dominante ADMIN/NOC). */
   failWfm?: boolean;
+  failAgenda?: boolean;
   /** todayCount null → dato no disponible. */
   nullVisits?: boolean;
   /** alerts vacíos + sin actividad. */
@@ -603,6 +604,10 @@ async function setupDashboardMocks(page: Page, options: MockOptions = {}) {
 
     // Destinos CA-V2-05 — stubs mínimos para hidratar filtros sin API real.
     if (url.includes('/wfm/events') && method === 'GET') {
+      if (options.failAgenda) {
+        await json(route, { code: 'E2E_FORCED', message: 'source down' }, 500);
+        return;
+      }
       await json(route, {
         data: [],
         meta: {
@@ -892,12 +897,12 @@ test.describe('Dashboard empresarial — baseline CA (selectores semánticos D-6
     expect(portalPageNotFound).toHaveLength(0);
   });
 
-  test('CA-05: el historial de cambios se muestra al ADMIN', async ({ page }) => {
+  test('CA-05: la actividad reciente se muestra al ADMIN', async ({ page }) => {
     await setupDashboardMocks(page);
     await setAuthSession(page);
     await gotoDashboard(page);
 
-    await expect(page.getByRole('heading', { name: /historial de cambios/i })).toBeVisible({
+    await expect(page.getByRole('heading', { name: 'Actividad reciente' })).toBeVisible({
       timeout: 10_000,
     });
   });
@@ -987,22 +992,24 @@ test.describe('D-1 / D-2 · Axe en temas y estados', () => {
       await gotoDashboard(page);
       await expectLoadedDashboard(page);
       await expectThemeApplied(page, theme);
-      await expect(page.getByText(/Sin avisos de campo/i)).toBeVisible();
+      await expect(
+        page.getByRole('region', { name: 'Hoy en agenda' }).getByText('Sin eventos para hoy'),
+      ).toBeVisible();
       await runAxe(page, `empty-${theme}`);
     });
 
     test(`error de fuente · tema ${theme} + backgroundImage none`, async ({ page }) => {
       await applyTheme(page, theme);
-      await setupDashboardMocks(page, { failWfm: true });
+      await setupDashboardMocks(page, { failWfm: true, failAgenda: true });
       await setAuthSession(page);
       await gotoDashboard(page);
       await expectLoadedDashboard(page);
       await expectThemeApplied(page, theme);
 
       const alert = page
+        .getByRole('region', { name: 'Hoy en agenda' })
         .getByRole('status')
-        .filter({ hasText: /No pudimos cargar/i })
-        .first();
+        .filter({ hasText: 'No pudimos cargar las visitas' });
       await expect(alert).toBeVisible();
 
       const backgroundImage = await alert.evaluate((el) => getComputedStyle(el).backgroundImage);
@@ -1243,8 +1250,8 @@ test.describe('Dashboard empresarial — CA-V2-05 hidratación destino', () => {
   });
 });
 
-test.describe('U-B0bis · Encabezado sin franja de acciones', () => {
-  test('H1 sin controles y sin toolbar de página en 375/768/1280', async ({ page }) => {
+test.describe('Encabezado · Periodo y actualización', () => {
+  test('Periodo y Actualizar junto al título en 375/768/1280', async ({ page }) => {
     for (const width of [375, 768, 1280] as const) {
       await page.setViewportSize({ width, height: width === 375 ? 812 : 900 });
       await setupDashboardMocks(page);
@@ -1256,9 +1263,41 @@ test.describe('U-B0bis · Encabezado sin franja de acciones', () => {
       await expect(heading).toBeVisible();
       await expect(heading.locator('a, button')).toHaveCount(0);
       await expect(page.getByRole('toolbar', { name: 'Acciones del inicio' })).toHaveCount(0);
-      await expect(page.getByRole('button', { name: /^Actualizar$/ })).toHaveCount(0);
+      await expect(page.getByRole('group', { name: 'Periodo de tendencia' })).toBeVisible();
+      await expect(page.getByRole('button', { name: /^Actualizar$/ })).toBeEnabled();
       await expect(page.getByRole('button', { name: 'Más acciones del inicio' })).toHaveCount(0);
     }
+  });
+
+  test('el periodo cambia las series y se recupera desde la URL; Actualizar relee la agenda', async ({
+    page,
+  }) => {
+    await openDashboardAs(page, 'ADMIN');
+    const periods = page.getByRole('group', { name: 'Periodo de tendencia' });
+    await expect(periods.getByRole('button', { name: 'Este mes' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await periods.getByRole('button', { name: '7 días' }).click();
+    await expect(page).toHaveURL(/periodo=7-dias/);
+    await expect(trendBlock(page)).toContainText('últimos 7 días');
+    await expect(seriesControl(trendBlock(page), 'Suscriptores')).toHaveCount(0);
+
+    await periods.getByRole('button', { name: '12 meses' }).click();
+    await expect(trendBlock(page)).toContainText('últimos 12 meses');
+    await page.reload();
+    await expect(periods.getByRole('button', { name: '12 meses' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(trendBlock(page)).toContainText('últimos 12 meses');
+    await expect(page.getByTestId('portal-metric-sparkline')).toBeVisible();
+    await expect(page.getByText('Sin medición', { exact: true })).toBeVisible();
+
+    const refreshed = page.waitForResponse((r) => r.url().includes('/wfm/events?') && r.ok());
+    await page.getByRole('button', { name: 'Actualizar', exact: true }).click();
+    await refreshed;
+    await expect(page.getByRole('button', { name: 'Actualizar', exact: true })).toBeEnabled();
   });
 });
 
@@ -1462,6 +1501,10 @@ test.describe('Fase 2 · Tendencia montada (contrato DS §7, CA-PA-07)', () => {
     await expect(trend).toBeVisible({ timeout: 15_000 });
 
     for (const name of ['Suscriptores', 'Recaudo', 'Casos'] as const) {
+      await page
+        .getByRole('group', { name: 'Periodo de tendencia' })
+        .getByRole('button', { name: name === 'Casos' ? 'Este mes' : '12 meses' })
+        .click();
       await selectSeriesByKeyboard(page, trend, name);
       const spec = TREND_TABLE[name];
 
@@ -1751,6 +1794,22 @@ test.describe('Fase 2 · Primer viewport (CA-PA-01, CA-PA-02)', () => {
     const trend = trendBlock(page);
     await expectChartPainted(trendChart(trend));
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+    const trendTitle = trend.getByRole('heading', { name: 'Tendencia' });
+    const series = trend.getByRole('tablist', { name: 'Serie de la tendencia' });
+    const [titleBox, seriesBox] = await Promise.all([
+      trendTitle.boundingBox(),
+      series.boundingBox(),
+    ]);
+    expect(seriesBox!.x).toBeGreaterThan(titleBox!.x + titleBox!.width);
+    expect(seriesBox!.y).toBeLessThan(titleBox!.y + titleBox!.height);
+
+    const agenda = page.getByRole('region', { name: 'Hoy en agenda' });
+    await expect(agenda.getByRole('link', { name: 'Ver agenda completa' })).toHaveAttribute(
+      'href',
+      /\/dashboard\/scheduling\/agenda\?view=day&fromDate=\d{4}-\d{2}-\d{2}$/,
+    );
+    await expect(page.getByRole('heading', { name: 'Actividad reciente' })).toBeVisible();
 
     const pulse = page.getByLabel(PULSE_LABEL);
     const cells = await pulse.locator(':scope > *').count();

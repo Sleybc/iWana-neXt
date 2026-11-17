@@ -101,7 +101,7 @@ export function DashboardPulse({
                 Sin dato disponible
               </span>
             ) : (
-              <span className="font-thin-exo text-4xl leading-none tabular-nums text-iwana-primary dark:text-white">
+              <span className="text-4xl leading-none font-bold tabular-nums text-iwana-primary dark:text-white">
                 {(cell.formatValue ?? formatDashboardNumber)(cell.value)}
               </span>
             )}

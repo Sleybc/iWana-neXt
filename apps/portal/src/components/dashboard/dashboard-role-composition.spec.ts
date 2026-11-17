@@ -135,6 +135,7 @@ describe('dashboard-role-composition', () => {
         'public-branding',
         'tenant-summary',
         'wfm',
+        'today-agenda',
         'assurance',
         'commercial',
         'crm',
@@ -149,7 +150,7 @@ describe('dashboard-role-composition', () => {
         'cases-series',
       ]),
     );
-    expect(sources).toHaveLength(15);
+    expect(sources).toHaveLength(16);
     expect(sources).not.toContain('tenant-me');
   });
 
@@ -403,6 +404,14 @@ const API_GUARD_ROLES: Record<DashboardDataSourceId, readonly UserRole[]> = {
   'tenant-me': [UserRole.ADMIN, UserRole.NOC, UserRole.ACCOUNTANT, UserRole.SUPPORT],
   // wfm.controller.ts · GET /wfm/dashboard/summary
   wfm: [UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT],
+  // wfm.controller.ts · GET /wfm/events
+  'today-agenda': [
+    UserRole.ADMIN,
+    UserRole.NOC,
+    UserRole.SUPPORT,
+    UserRole.TECHNICIAN,
+    UserRole.CONTRACTOR,
+  ],
   // assurance.controller.ts · GET /assurance/dashboard/summary
   assurance: [UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR],
   // commercial-dashboard.controller.ts · COMMERCIAL_CATALOG_READ_ROLES + AUDITOR

@@ -50,7 +50,11 @@ export type DashboardMetricId =
 export type DashboardMetricSourceStatus = 'idle' | 'loading' | 'updating' | 'success' | 'error';
 
 /** Bloques de detalle bajo las áreas (B4). */
-export type DashboardBlockId = 'field-attention' | 'commercial-attention' | 'change-history';
+export type DashboardBlockId =
+  | 'today-agenda'
+  | 'field-attention'
+  | 'commercial-attention'
+  | 'change-history';
 
 /** Filas posibles de la cola «Requiere tu atención» (B2). El orden del tipo no es prioridad. */
 export type DashboardAttentionId =
@@ -147,6 +151,7 @@ export type DashboardDataSourceId =
   | 'tenant-summary'
   | 'tenant-me'
   | 'wfm'
+  | 'today-agenda'
   | 'assurance'
   | 'commercial'
   | 'inventory'
@@ -207,7 +212,7 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
     ],
     trendIds: ['subscribers', 'collections', 'cases'],
     moduleHealthIds: [],
-    blockIds: ['field-attention', 'commercial-attention', 'change-history'],
+    blockIds: ['today-agenda', 'field-attention', 'commercial-attention', 'change-history'],
     actionIds: [
       'register-subscriber',
       'schedule-visit',
@@ -472,6 +477,11 @@ export const DASHBOARD_METRIC_REGISTRY: Record<DashboardMetricId, DashboardMetri
 };
 
 export const DASHBOARD_BLOCK_REGISTRY: Record<DashboardBlockId, DashboardBlockDefinition> = {
+  'today-agenda': {
+    id: 'today-agenda',
+    title: 'Hoy en agenda',
+    sources: ['today-agenda', 'cutoff'],
+  },
   'field-attention': {
     id: 'field-attention',
     title: 'Atención de campo',
@@ -660,7 +670,7 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     areaIds: ['help-desk', 'scheduling', 'opportunities', 'billing', 'provisioning', 'inventory'],
     trendIds: ['subscribers', 'collections', 'cases'],
     moduleHealthIds: [],
-    dominantBlockId: 'field-attention',
+    dominantBlockId: 'today-agenda',
     supportBlockIds: ['change-history'],
     showOperationalTenantCard: false,
   },

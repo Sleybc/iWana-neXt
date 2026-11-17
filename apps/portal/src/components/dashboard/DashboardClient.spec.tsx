@@ -45,6 +45,7 @@ const getSummary = jest.fn();
 const getMe = jest.fn();
 const getSettings = jest.fn();
 const wfmGetSummary = jest.fn();
+const listScheduleEvents = jest.fn();
 const assuranceGetSummary = jest.fn();
 const commercialGetSummary = jest.fn();
 const inventoryDashboard = jest.fn();
@@ -80,6 +81,7 @@ jest.mock('@/lib/api-client', () => {
       getSummary: (...args: unknown[]) => getSummary(...args),
     },
     wfmApi: {
+      events: { list: (...args: unknown[]) => listScheduleEvents(...args) },
       dashboard: {
         getSummary: (...args: unknown[]) => wfmGetSummary(...args),
       },
@@ -268,6 +270,7 @@ function mockAdminApis() {
     data: { NUEVO_POTENCIAL: 3, DESCARTADO: 1, CLIENTE_ACTIVO: 2 },
     total: 6,
   });
+  listScheduleEvents.mockResolvedValue({ data: [] });
   auditList.mockResolvedValue([]);
   queueCounts.mockResolvedValue({
     active: 120,
@@ -378,7 +381,7 @@ describe('DashboardClient', () => {
     expect(within(document.body).queryByText(/Panel en preparación/i)).not.toBeInTheDocument();
   });
 
-  it('U-B0bis: el H1 no contiene controles ni hay franja de acciones de página', async () => {
+  it('el encabezado separa el título de los controles de periodo y actualización', async () => {
     render(<DashboardClient />);
 
     await waitFor(() => {
@@ -393,10 +396,43 @@ describe('DashboardClient', () => {
 
     expect(screen.queryByRole('toolbar', { name: 'Acciones del inicio' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Registrar suscriptor/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^Actualizar$/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Actualizar$/ })).toBeEnabled();
+    const periods = within(screen.getByRole('group', { name: 'Periodo de tendencia' }));
+    expect(periods.getByRole('button', { name: 'Este mes' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     expect(
       screen.queryByRole('button', { name: 'Más acciones del inicio' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('Actualizar no recupera datos de una fuente que acaba de devolver 403', async () => {
+    const { ApiError } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+    };
+    const user = userEvent.setup();
+    let finishRequest: (data: ReturnType<typeof billingSummaryFixture>) => void = () => {};
+    const pending = new Promise<ReturnType<typeof billingSummaryFixture>>((resolve) => {
+      finishRequest = resolve;
+    });
+    render(<DashboardClient />);
+
+    expect(await screen.findByRole('tab', { name: 'Recaudo' })).toBeVisible();
+    billingSummary.mockRejectedValueOnce(new ApiError(403, 'Forbidden'));
+    await user.click(screen.getByRole('button', { name: /^Actualizar$/ }));
+    await waitFor(() => expect(screen.queryByRole('tab', { name: 'Recaudo' })).toBeNull());
+
+    billingSummary.mockReturnValueOnce(pending);
+    const refresh = screen.getByRole('button', { name: /^Actualizar$/ });
+    await user.click(refresh);
+    expect(refresh).toBeDisabled();
+    expect(screen.queryByRole('tab', { name: 'Recaudo' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Suscriptores activos' })).toBeVisible();
+    await user.click(refresh);
+    expect(billingSummary).toHaveBeenCalledTimes(3);
+    finishRequest(billingSummaryFixture());
+    expect(await screen.findByRole('tab', { name: 'Recaudo' })).toBeVisible();
   });
 
   it('NOC compone indicadores operativos sin paneles de preparación (D-3)', async () => {
@@ -487,6 +523,10 @@ describe('DashboardClient', () => {
   });
 
   it('error de fuente anuncia PortalAlert sin gradiente lineal (D-1 backgroundImage)', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'u-noc', role: UserRole.NOC, tenantId: 't-1', displayName: 'Monitoreo' },
+      isLoading: false,
+    });
     const { ApiError } = jest.requireMock('@/lib/api-client') as {
       ApiError: new (status: number, message: string) => Error;
     };
@@ -508,6 +548,10 @@ describe('DashboardClient', () => {
   });
 
   it('mapea expiración de sesión en un error operativo visible', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'u-noc', role: UserRole.NOC, tenantId: 't-1', displayName: 'Monitoreo' },
+      isLoading: false,
+    });
     const { ApiError } = jest.requireMock('@/lib/api-client') as {
       ApiError: new (status: number, message: string) => Error;
     };
@@ -586,47 +630,55 @@ describe('DashboardClient', () => {
     }));
   }
 
-  it('CA-DELTA-05: ADMIN muestra hasta 5 avisos de campo con severidad, sin mini-card y enlace a agenda', async () => {
-    wfmGetSummary.mockResolvedValue({
-      todayCount: 3,
-      overdueCount: 1,
-      upcomingCount: 0,
-      activeCount: 0,
-      enRouteCount: 0,
-      atRiskCount: 0,
-      pendingInbox: {
-        totalOpen: 2,
-        readyToScheduleCount: 2,
-        needsContextCount: 0,
-        overdueSlaCount: 1,
-        highPriorityOpenCount: 0,
-      },
-      alerts: buildFieldAlerts(6),
-      technicianLoad: [],
-    });
+  it('ADMIN muestra hasta cuatro filas de agenda e incluye el resumen de cortes del día', async () => {
+    jest.useFakeTimers({ now: new Date('2026-11-18T02:00:00Z') });
+    try {
+      listScheduleEvents.mockResolvedValue({
+        data: Array.from({ length: 4 }, (_, index) => ({
+          id: `visit-${index}`,
+          scheduledStartAt: new Date(Date.UTC(2026, 10, 17, 14 + index)).toISOString(),
+          type: 'INSTALLATION',
+          status: 'SCHEDULED',
+        })),
+      });
+      cutoffAgenda.mockResolvedValue({ meta: { total: 2 } });
+
+      render(<DashboardClient />);
+
+      const agenda = await screen.findByRole('region', { name: 'Hoy en agenda' });
+      const visits = within(agenda);
+      expect(await visits.findAllByText('Instalación')).toHaveLength(3);
+      expect(visits.getAllByRole('listitem')).toHaveLength(4);
+      expect(
+        visits.getByRole('link', { name: '2 servicios con corte programado' }),
+      ).toHaveAttribute('href', '/dashboard/crm/subscribers/agenda-corte?date=2026-11-17');
+      expect(visits.getByRole('link', { name: 'Ver agenda completa' })).toHaveAttribute(
+        'href',
+        '/dashboard/scheduling/agenda?view=day&fromDate=2026-11-17',
+      );
+      expect(listScheduleEvents).toHaveBeenCalledWith(
+        { from: '2026-11-17T05:00:00.000Z', to: '2026-11-18T05:00:00.000Z', limit: 4 },
+        expect.any(String),
+      );
+      expect(visits.getByText('09:00')).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('ADMIN conserva los cortes si fallan las visitas y permite reintentar esa fuente', async () => {
+    listScheduleEvents.mockRejectedValueOnce(new Error('Falló la carga'));
+    cutoffAgenda.mockResolvedValue({ meta: { total: 1 } });
 
     render(<DashboardClient />);
 
-    await waitFor(() => {
-      expect(screen.getByText('Aviso de campo 5')).toBeInTheDocument();
-    });
-
-    const fieldPanel = screen
-      .getByRole('heading', { name: 'Atención de campo' })
-      .closest('section') as HTMLElement;
-    expect(within(fieldPanel).queryByText('Aviso de campo 6')).not.toBeInTheDocument();
-    expect(within(fieldPanel).getAllByText('Crítico').length).toBeGreaterThan(0);
-    expect(within(fieldPanel).getAllByText('Atención').length).toBeGreaterThan(0);
-    expect(within(fieldPanel).getAllByText('Informativo').length).toBeGreaterThan(0);
-
-    const alertLink = within(fieldPanel).getByRole('link', { name: /Aviso de campo 1/i });
-    expect(alertLink).toHaveAttribute('href', '/dashboard/scheduling/agenda');
-    expect(within(fieldPanel).getByRole('table', { name: 'Avisos de campo' })).toBeInTheDocument();
-    expect(within(fieldPanel).getByText('Aviso')).toBeInTheDocument();
-    expect(within(fieldPanel).getByText('Estado')).toBeInTheDocument();
-    expect(alertLink.className).not.toMatch(/rounded-xl/);
-    expect(alertLink.className).not.toMatch(/(?:^|\s)border(?:\s|$)/);
-    expect(within(fieldPanel).queryByText(/OVERDUE|DRAFT_SOON/)).not.toBeInTheDocument();
+    const agenda = within(await screen.findByRole('region', { name: 'Hoy en agenda' }));
+    expect(await agenda.findByText('No pudimos cargar las visitas')).toBeInTheDocument();
+    expect(agenda.getByText('1 servicio con corte programado')).toBeInTheDocument();
+    await userEvent.click(agenda.getByRole('button', { name: 'Reintentar' }));
+    await waitFor(() => expect(agenda.queryByRole('button', { name: 'Reintentar' })).toBeNull());
+    expect(listScheduleEvents).toHaveBeenCalledTimes(2);
+    expect(cutoffAgenda).toHaveBeenCalledTimes(1);
   });
 
   it('CA-DELTA-05: SUPPORT limita Atención de campo a máximo 3 filas', async () => {
@@ -665,6 +717,32 @@ describe('DashboardClient', () => {
       'href',
       '/dashboard/scheduling/agenda',
     );
+    expect(listScheduleEvents).not.toHaveBeenCalled();
+  });
+
+  it('NOC mantiene las severidades y los enlaces de la tabla de avisos de campo', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'u-noc', role: UserRole.NOC, tenantId: 't-1', displayName: 'Monitoreo' },
+      isLoading: false,
+    });
+    wfmGetSummary.mockImplementationOnce(async () => ({
+      ...(await wfmGetSummary()),
+      alerts: buildFieldAlerts(6),
+    }));
+
+    render(<DashboardClient />);
+
+    const table = within(await screen.findByRole('table', { name: 'Avisos de campo' }));
+    for (const severity of ['Crítico', 'Atención', 'Informativo']) {
+      expect(table.getAllByText(severity).length).toBeGreaterThan(0);
+    }
+    expect(table.getByRole('columnheader', { name: 'Aviso' })).toBeInTheDocument();
+    expect(table.getByRole('columnheader', { name: 'Estado' })).toBeInTheDocument();
+    const alertLink = table.getByRole('link', { name: /Aviso de campo 1/i });
+    expect(alertLink).toHaveAttribute('href', '/dashboard/scheduling/agenda');
+    expect(alertLink.className).not.toMatch(/rounded-xl|(?:^|\s)border(?:\s|$)/);
+    expect(table.queryByText(/OVERDUE|DRAFT_SOON/)).not.toBeInTheDocument();
+    expect(table.queryByText('Aviso de campo 6')).not.toBeInTheDocument();
   });
 
   it('C-R1: carga incompleta no anuncia dato desactualizado ni hora de lectura completa', async () => {
@@ -680,7 +758,7 @@ describe('DashboardClient', () => {
     });
 
     expect(screen.getByText(/Sin lectura aún/i)).toBeInTheDocument();
-    expect(document.querySelector('time')).toBeNull();
+    expect(screen.getByText(/Última lectura/i).querySelector('time')).toBeNull();
     expect(screen.queryByText(/Algunos datos no se actualizaron/i)).not.toBeInTheDocument();
   });
 
@@ -747,10 +825,10 @@ describe('DashboardClient', () => {
     render(<DashboardClient />);
 
     await waitFor(() => {
-      expect(document.querySelector('time')).not.toBeNull();
+      expect(screen.getByText(/Última lectura/i).querySelector('time')).not.toBeNull();
     });
 
-    const time = document.querySelector('time');
+    const time = screen.getByText(/Última lectura/i).querySelector('time');
     expect(time).toHaveClass('font-mono');
     expect(time).toHaveClass('tabular-nums');
     expect(time).toHaveAttribute('dateTime');
@@ -842,9 +920,7 @@ describe('DashboardClient', () => {
     expect(
       within(cases).getByRole('img', { name: /^Casos abiertos por prioridad: Alta 2/ }),
     ).toBeInTheDocument();
-    expect(
-      within(pulse).getByRole('img', { name: 'Base de suscriptores: Activos 120' }),
-    ).toBeInTheDocument();
+    expect(within(pulse).getByTestId('portal-metric-sparkline')).toBeInTheDocument();
 
     expect(screen.getByRole('heading', { name: 'Requiere tu atención' })).toBeInTheDocument();
     const areas = screen.getByRole('region', { name: 'Por área' });
@@ -859,7 +935,9 @@ describe('DashboardClient', () => {
       'Facturación',
       'Aprovisionamiento',
       'Inventario',
+      'Red',
     ]);
+    expect(within(areas).getByText('Sin medición')).toBeInTheDocument();
 
     expect(screen.queryByRole('region', { name: 'Estado de la empresa' })).not.toBeInTheDocument();
     expect(screen.queryByText('Foco de hoy')).not.toBeInTheDocument();
@@ -1291,7 +1369,7 @@ describe('DashboardClient · Fase 2 (recaudo, cartera, neto y tendencia)', () =>
     expect(
       screen.getByRole('img', { name: /^Facturado y recaudado por mes\. En noviembre/ }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Facturado frente a recaudado · últimos 12 meses')).toBeInTheDocument();
+    expect(screen.getByText('Facturado frente a recaudado · este mes')).toBeInTheDocument();
 
     await user.click(within(tabs).getByRole('tab', { name: 'Casos' }));
     expect(
@@ -1299,7 +1377,7 @@ describe('DashboardClient · Fase 2 (recaudo, cartera, neto y tendencia)', () =>
         name: 'Casos creados y resueltos por día. Hoy: 11 creados y 9 resueltos.',
       }),
     ).toBeInTheDocument();
-    expect(casesSeries).toHaveBeenCalledWith('demo-isp');
+    expect(casesSeries).toHaveBeenCalledWith('demo-isp', 31);
   });
 
   it('fuente de recaudo caída: sin pestaña, celdas «No disponible» y nunca un cero', async () => {

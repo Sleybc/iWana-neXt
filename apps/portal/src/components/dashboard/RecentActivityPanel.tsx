@@ -11,6 +11,7 @@ import {
   PortalPanel,
   PortalSkeletonBlock,
   interactiveFocusClassName,
+  portalInlineTextLinkClassName,
 } from '@/components/shared/portal-ui';
 
 /**
@@ -28,6 +29,7 @@ export interface RecentActivityPanelProps {
   status?: ActivityLoadStatus;
   error?: string | null;
   onRetry?: () => void;
+  dashboardPreview?: boolean;
   /**
    * Vista minimizada (AUDITOR): sin CTA a configuración ni «ver todo».
    * Mismo panel/shell; solo cambia el vacío y la ausencia de destinos amplios.
@@ -99,15 +101,27 @@ export function RecentActivityPanel({
   status = 'idle',
   error = null,
   onRetry,
+  dashboardPreview = false,
   minimized = false,
 }: RecentActivityPanelProps) {
   const isLoading = (status === 'loading' || status === 'idle') && !entries;
   const isUpdating = status === 'updating';
   const showError = status === 'error';
-  const list = entries ?? [];
+  const list = dashboardPreview ? (entries ?? []).slice(0, 4) : (entries ?? []);
 
   return (
-    <PortalPanel compact title="Historial de cambios" busy={isLoading}>
+    <PortalPanel
+      compact
+      title={dashboardPreview ? 'Actividad reciente' : 'Historial de cambios'}
+      busy={isLoading}
+      actions={
+        dashboardPreview && (status === 'success' || status === 'updating') ? (
+          <Link href="/dashboard/actividad" className={`${portalInlineTextLinkClassName} min-h-11`}>
+            Ver historial
+          </Link>
+        ) : null
+      }
+    >
       {isLoading ? (
         <div className="space-y-1.5" role="status" aria-label="Cargando historial">
           {Array.from({ length: 4 }).map((_, i) => (

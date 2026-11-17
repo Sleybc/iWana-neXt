@@ -61,21 +61,27 @@ export function DashboardTrend({
   }
 
   return (
-    <PortalPanel compact title={TREND_TITLE} description={active.subtitle}>
-      <Tabs value={active.id} onValueChange={(value) => setSelectedId(value as DashboardTrendId)}>
-        <TabsList aria-label="Serie de la tendencia" className="w-fit">
-          {tabs.map((tab) => (
-            <TabsTrigger key={tab.id} value={tab.id} className="min-h-11">
-              {tab.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+    <Tabs value={active.id} onValueChange={(value) => setSelectedId(value as DashboardTrendId)}>
+      <PortalPanel
+        compact
+        title={TREND_TITLE}
+        description={active.subtitle}
+        actions={
+          <TabsList aria-label="Serie de la tendencia" className="flex-wrap">
+            {tabs.map((tab) => (
+              <TabsTrigger key={tab.id} value={tab.id} className="min-h-11 px-3">
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        }
+      >
         {tabs.map((tab) => (
           <TabsContent key={tab.id} value={tab.id}>
             <TrendChart tab={tab} />
           </TabsContent>
         ))}
-      </Tabs>
-    </PortalPanel>
+      </PortalPanel>
+    </Tabs>
   );
 }

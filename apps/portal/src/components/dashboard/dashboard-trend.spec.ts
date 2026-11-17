@@ -147,4 +147,59 @@ describe('dashboard-trend', () => {
     });
     expect(tab?.chart.summary).toMatch(/1 alta y 1 retiro\.$/);
   });
+
+  it.each([
+    ['hoy', [['cases', 1]]],
+    ['7-dias', [['cases', 7]]],
+    [
+      'mes',
+      [
+        ['subscribers', 1],
+        ['collections', 1],
+        ['cases', 14],
+      ],
+    ],
+    [
+      '12-meses',
+      [
+        ['subscribers', 12],
+        ['collections', 12],
+      ],
+    ],
+  ] as const)(
+    'al seleccionar %s conserva solo las series con la granularidad disponible',
+    (period, expected) => {
+      const tabs = buildDashboardTrendTabs({
+        period,
+        trendIds: ['subscribers', 'collections', 'cases'],
+        subscribers: { data: subscribersSummaryFixture(), updating: false },
+        collections: { data: billingSummaryFixture(), updating: false },
+        cases: { data: casesSeriesFixture(), updating: false },
+      });
+      expect(tabs.map(({ id, chart }) => [id, chart.data.length])).toEqual(expected);
+    },
+  );
+
+  it('Este mes omite los días del mes anterior presentes en la serie', () => {
+    const fixture = casesSeriesFixture();
+    const [tab] = buildDashboardTrendTabs({
+      period: 'mes',
+      trendIds: ['cases'],
+      subscribers: none,
+      collections: none,
+      cases: {
+        updating: false,
+        data: {
+          ...fixture,
+          asOf: '2026-11-02',
+          series: [
+            { date: '2026-10-31', created: 7, resolved: 3 },
+            { date: '2026-11-01', created: 4, resolved: 6 },
+            { date: '2026-11-02', created: 5, resolved: 4 },
+          ],
+        },
+      },
+    });
+    expect(tab?.chart.data.map(({ x }) => x)).toEqual(['2026-11-01', '2026-11-02']);
+  });
 });

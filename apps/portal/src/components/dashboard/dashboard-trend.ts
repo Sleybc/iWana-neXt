@@ -190,6 +190,81 @@ export interface DashboardTrendSource<T> {
   updating: boolean;
 }
 
+export const DASHBOARD_PERIODS = [
+  { id: 'hoy', label: 'Hoy' },
+  { id: '7-dias', label: '7 días' },
+  { id: 'mes', label: 'Este mes' },
+  { id: '12-meses', label: '12 meses' },
+] as const;
+
+export type DashboardPeriod = (typeof DASHBOARD_PERIODS)[number]['id'];
+
+export function readDashboardPeriod(search: string): DashboardPeriod {
+  const value = new URLSearchParams(search).get('periodo');
+  return DASHBOARD_PERIODS.find(({ id }) => id === value)?.id ?? 'mes';
+}
+
+function restrictTab(tab: DashboardTrendTab, period: DashboardPeriod): DashboardTrendTab | null {
+  if (tab.id === 'cases') {
+    if (period === '12-meses') return null;
+    const last = tab.chart.data.at(-1)?.x;
+    const data =
+      period === 'mes'
+        ? tab.chart.data.filter(({ x }) => x.slice(0, 7) === last?.slice(0, 7))
+        : tab.chart.data.slice(period === 'hoy' ? -1 : -7);
+    if (!data.length) return null;
+    const windowLabel = period === 'mes' ? 'este mes' : period === 'hoy' ? 'hoy' : 'últimos 7 días';
+    const chart = {
+      ...tab.chart,
+      data,
+      tableCaption: `Casos creados y resueltos por día, ${windowLabel}`,
+    };
+    return {
+      ...tab,
+      subtitle: `Casos creados frente a resueltos · ${windowLabel}`,
+      chart:
+        data.length === 1
+          ? {
+              ...chart,
+              kind: 'grouped-bar',
+              series: [
+                { key: 'created', label: 'Creados', token: 'chart-1', mark: 'solid' },
+                {
+                  key: 'resolved',
+                  label: 'Resueltos',
+                  token: 'chart-2',
+                  progress: true,
+                  mark: 'outline',
+                },
+              ],
+            }
+          : chart,
+    };
+  }
+  if (period === 'hoy' || period === '7-dias') return null;
+  if (period === '12-meses') return tab;
+  if (tab.id === 'subscribers') {
+    return {
+      ...tab,
+      subtitle: 'Altas y retiros · este mes',
+      chart: {
+        ...tab.chart,
+        data: tab.chart.data.slice(-1),
+        tableCaption: 'Altas y retiros de suscriptores, este mes',
+      },
+    };
+  }
+  return {
+    ...tab,
+    subtitle: 'Facturado frente a recaudado · este mes',
+    chart: {
+      ...tab.chart,
+      data: tab.chart.data.slice(-1),
+      tableCaption: 'Facturado y recaudado, este mes',
+    },
+  };
+}
+
 /**
  * Pestañas con dato, en el orden de la composición del rol. Una fuente sin dato no ofrece su
  * pestaña; nunca se rellena con ceros ni con una serie de muestra (HLD §2, CA-PA-05).
@@ -199,6 +274,7 @@ export function buildDashboardTrendTabs(input: {
   subscribers: DashboardTrendSource<SubscribersDashboardSummary>;
   collections: DashboardTrendSource<BillingDashboardSummary>;
   cases: DashboardTrendSource<AssuranceDashboardSeries>;
+  period?: DashboardPeriod;
 }): DashboardTrendTab[] {
   const tabs: DashboardTrendTab[] = [];
   for (const id of input.trendIds) {
@@ -210,5 +286,6 @@ export function buildDashboardTrendTabs(input: {
       tabs.push(casesTab(input.cases.data, input.cases.updating));
     }
   }
-  return tabs;
+  const { period } = input;
+  return period ? tabs.flatMap((tab) => restrictTab(tab, period) ?? []) : tabs;
 }

@@ -88,4 +88,36 @@ Veredicto de `sec-eng`: GO en G1 (con condiciones) y en G3. Condiciones cumplida
 | P3 | Caso reabierto cuenta en el día de su última resolución; N3 incluye cancelados | Producto, si se decide otra regla |
 | P3 | `app.config.production-urls.spec.ts` no purga `MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS` | Dueño de la importación UISP |
 
-Omitido: índices de N1 (p95 medido dentro del presupuesto), caché Redis, «Hoy en agenda» y salud de red (N4). No verificado: comportamiento con datos de un tenant real grande y G6.5. G1-4 y D4 los decidió el CTO el 2026-11-17; publicar queda en espera por su indicación («Todavía no»).
+## 7. Ajuste al prototipo del inicio
+
+La Administradora ve la fecha civil de la empresa en el encabezado y las series de Tendencia junto a su título en escritorio. «Hoy en agenda» sustituye a «Atención de campo» para este rol. La vista consulta hasta cuatro visitas del día con el permiso de Programación y reserva una fila para el total de servicios con corte cuando corresponde. Si una fuente falla, conserva la lectura de la otra y permite reintentar la fallida. «Actividad reciente» limita la vista previa a cuatro entradas. [Plan de ajuste](../plans/2026-11-17-mod02-dashboard-paridad-prototipo.md)
+
+La fecha y las horas de agenda usan la zona del resumen de empresa. El navegador aporta la zona de respaldo cuando el resumen no está disponible. La fecha consultada acompaña a ambas fuentes para impedir que una lectura del día anterior reaparezca al volver al inicio.
+
+Jest del dashboard pasó de 218 pruebas en 10 suites a 222 en 11, sin omitidas. El chequeo de tipos del portal y ESLint de los componentes del dashboard terminaron con código cero.
+
+Playwright local en Chrome pasó 46 de 46 escenarios del dashboard con respuestas simuladas, incluidos axe en ambos temas, teclado y estado de error de agenda. En 1440 × 900, Tendencia y Requiere tu atención terminan a 776 y 825 px respectivamente.
+
+## 8. Controles y comprobación contra PostgreSQL
+
+El periodo queda en la URL y filtra Tendencia. Hoy y 7 días muestran Casos. Este mes muestra los puntos mensuales de Suscriptores y Recaudo y los días del mes en Casos. 12 meses muestra las dos series mensuales. Las etiquetas del pulso, la cola y la agenda conservan su ventana operativa.
+
+Actualizar relee las fuentes del perfil. El minigráfico muestra el neto mensual de altas y retiros durante 12 meses. La tarjeta Red enlaza al catálogo y explica que aún no se mide la disponibilidad. Ver historial abre una página de lectura paginada para Administradora. [Plan de implementación](../plans/2026-11-17-mod02-dashboard-controles-y-evidencia-real.md)
+
+Chrome, con sesión del entorno local y API conectado a PostgreSQL, comparó el panel con respuestas HTTP 200 de Programación y cortes. En las fechas históricas se fijó el reloj del navegador y se conservaron el API y los registros persistidos.
+
+| Fecha civil | Visitas | Servicios con corte |
+| --- | ---: | ---: |
+| 2026-10-07 | 3 | 0 |
+| 2026-11-15 | 0 | 14 |
+| 2026-11-17 | 0 | 0 |
+
+La comprobación cotejó las horas de las visitas, los enlaces con fecha y el estado vacío. Actualizar volvió a consultar actividad en el API. Ver historial mostró dos páginas consecutivas de 20 entradas con el cursor real del servidor.
+
+Pasaron 254 pruebas en 14 suites de Jest, 47 escenarios del dashboard en Playwright, el chequeo de tipos del portal y ESLint de los archivos de implementación. En 1440 × 900, Tendencia y Requiere tu atención terminan a 806 y 855 px respectivamente.
+
+Las cifras principales de Pulso y Por área usan negrilla. Chrome confirmó peso 700 en las 11 cifras visibles de la sesión local y Playwright verificó el primer viewport a 375, 768, 1280 y 1440 px.
+
+Queda pendiente la telemetría de disponibilidad de Red. La vista de cortes muestra un total diario, sin una hora ni un ciclo único. G6.5 sigue pendiente.
+
+Omitido: índices de N1 (p95 medido dentro del presupuesto), caché Redis y salud de red (N4). No verificado: comportamiento con datos de un tenant real grande y G6.5. G1-4 y D4 los decidió el CTO el 2026-11-17; publicar queda en espera por su indicación («Todavía no»).
