@@ -119,7 +119,7 @@ El techo sigue siendo la autorización; la composición reduce, nunca amplía un
 | Administradora | Las cinco | Suscriptores · Recaudo · Casos | Las seis |
 | Monitoreo operativo | Visitas, por programar, casos, en riesgo, activaciones pendientes | Casos | Mesa de ayuda, Programación, Red, Inventario |
 | Soporte inicial | Casos, en riesgo, visitas, por programar | Casos | Mesa de ayuda, Programación |
-| Ejecutivo comercial | Oportunidades, altas del periodo, ofertas en riesgo, planes sin precio | Suscriptores | Oportunidades |
+| Ejecutivo comercial | Oportunidades, suscriptores activos (con altas del periodo), recaudo, cartera vencida, ofertas en riesgo (D4, CTO 2026-11-17; ver §13) | Suscriptores · Recaudo | Oportunidades, Suscriptores, Facturación |
 | Contadora | Recaudo, cartera vencida, facturado, planes sin precio | Recaudo | Facturación |
 | Técnico y contratista | Sin cambio: agenda del día en móvil | — | — |
 | Vista base | Sin cambio | — | — |
@@ -208,3 +208,4 @@ Evidencia y conteos: [`INFORME-MOD02-DASHBOARD-PULSO-ATENCION-FASE-01-v1.0.md`](
 | §6 (Fase 2) | Contadora: pulso «recaudo, cartera, facturado, planes sin precio»; tendencia Recaudo; área Facturación | Pulso: recaudo (con lo facturado en la frase), cartera, suscriptores activos y planes sin precio; tendencia Recaudo y Suscriptores; áreas Facturación y Suscriptores | Ratificado por AI-EM-ARCH el 2026-11-17, pendiente de confirmación del CTO con la Contadora. Lo facturado no ocupa celda propia; Suscriptores activos y su área se conservan de la Fase 1 (destino de «datos fiscales incompletos»); la pestaña Suscriptores la fija el contrato DS §6 y HLD v3.0 §5 |
 | §5.3 (Fase 2) | — | Administradora: Facturación sustituye a Suscriptores en las áreas; Red sigue sustituida por Aprovisionamiento | Cierra la desviación de la Fase 1 para Facturación; Red depende de N4 |
 | §5.3 (Fase 2) | Badge de salud por área sin regla para Facturación | Facturación: «Al día» sin cartera vencida; «En riesgo» si hay saldo de más de 90 días; «Atención» en otro caso | Ratificado por AI-EM-ARCH el 2026-11-17 (revisión de pruebas de G6); el tramo de más de 90 días es la señal de mora que la dirección §5.1 ya destaca en el pulso |
+| §6 (D4, 2026-11-17) | Ejecutivo comercial sin cifras de dinero; pulso con planes sin precio | Pulso: Oportunidades, Suscriptores activos, Recaudo del mes, Cartera vencida y Ofertas en riesgo; tendencia Suscriptores y Recaudo; áreas Oportunidades, Suscriptores y Facturación | El CTO decidió que el Ejecutivo comercial también ve dinero (HLD v3.0 §8.9). Con el máximo de cinco celdas, «Planes sin precio» cede la suya porque ya es fila de la cola de atención (`plans-without-price`); se conserva «Ofertas en riesgo», más propia de la venta |

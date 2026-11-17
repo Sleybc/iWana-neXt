@@ -1,7 +1,7 @@
 # HLD — MOD02 · Inicio del portal · v3.0 (delta de la Fase 2 «Pulso y atención»)
 
 **Versión:** 3.0
-**Estado:** En revisión — alcance aprobado (D2, 2026-11-17); contratos pendientes de G1
+**Estado:** Aprobado — alcance (D2), G1-4 y D4 decididos por el CTO el 2026-11-17; contratos congelados en G1 (§8)
 **Fecha:** 2026-11-17
 **Autor:** Claude Code (AI-EM-ARCH) · **Revisión pendiente:** AI-SR-FULL (contratos), AI-SEC-ENG (autorización), AI-DS-OWNER (gráficas)
 **Base:** [`HLD-MOD02-DASHBOARD-EMPRESA-v2.0.md`](HLD-MOD02-DASHBOARD-EMPRESA-v2.0.md) sigue vigente en todo lo que este documento no cambia.
@@ -13,7 +13,7 @@
 | --- | --- |
 | Cualquier endpoint nuevo | Se admiten los tres de §3, de solo lectura y sin PII |
 | Series temporales y gráficas | Se admiten; librería por ADR-112 |
-| Facturación e ingresos | Se admiten para Administradora y Contadora (D4) |
+| Facturación e ingresos | Se admiten para Administradora, Contadora y Ejecutivo comercial (D4, decidido por el CTO el 2026-11-17) |
 
 Siguen fuera: dashboard componible por usuario, objetivos o metas, salud de red (N4), plazos de privacidad (N5), nombre del técnico en la carga (N6) y un selector global de periodo. El encabezado sigue sin controles (U-B0bis).
 
@@ -28,7 +28,7 @@ Siguen fuera: dashboard componible por usuario, objetivos o metas, salud de red 
 
 Respuestas con conteos y sumas, sin identificadores de persona. Importes como texto decimal, igual que el resto de facturación.
 
-### N1 · `GET /billing/dashboard/summary` — ADMIN y ACCOUNTANT · `BILLING_INVOICES_READ` **y** `BILLING_PAYMENTS_READ` (ambos; §8.5)
+### N1 · `GET /billing/dashboard/summary` — ADMIN, ACCOUNTANT y SALES (D4, §8.9) · `BILLING_INVOICES_READ` **y** `BILLING_PAYMENTS_READ` (ambos; §8.5)
 
 | Campo | Regla | Origen |
 | --- | --- | --- |
@@ -65,7 +65,7 @@ Endpoint aparte para no tocar el contrato publicado de `assurance/dashboard/summ
 | G1-1 | ¿Los documentos `IMPORTADO` (ADR-110) traen `issue_date`? Si no, la serie de facturado los omite o usa otra fecha | AI-SR-FULL |
 | G1-2 | ¿Qué `activated_at` reciben los suscriptores importados? Si es la fecha de importación, el mes de la migración mostraría un pico falso de altas | AI-SR-FULL |
 | G1-3 | Valores de `crm_lifecycle_changes.entity_type` y cuál representa al suscriptor | AI-SR-FULL |
-| G1-4 | «Recaudado» como caja del mes (pagos por `paid_at`) frente a recaudo imputado a documentos del mes. Se propone caja, que es lo que el prototipo rotula | CTO, con la Contadora |
+| G1-4 | «Recaudado» como caja del mes (pagos por `paid_at`) frente a recaudo imputado a documentos del mes. **Cerrada por el CTO el 2026-11-17: caja del mes** (§8.6) | CTO |
 | G1-5 | Plan de consulta de N1 sobre un tenant grande: si exige índice (`status`, `due_date`), va como migración tenant | AI-SR-FULL · AI-DATA-ENG |
 
 ## 5. Autorización
@@ -74,7 +74,7 @@ Endpoint aparte para no tocar el contrato publicado de `assurance/dashboard/summ
 | --- | --- | --- | --- |
 | Administradora | Sí | Sí | Sí |
 | Contadora | Sí | Sí | — |
-| Ejecutivo comercial | — | Sí | — |
+| Ejecutivo comercial | Sí (D4, 2026-11-17) | Sí | — |
 | Monitoreo operativo · Soporte inicial | — | — | Sí |
 | Resto | — | — | — |
 
@@ -131,9 +131,9 @@ Contratos en `packages/shared`: [`billing-dashboard.contract.ts`](../../packages
 | 2 | N2 solo para ADMIN, SALES y ACCOUNTANT (mínimo privilegio, igual que §5), no «los roles de `queue-counts`» | §3 N2 |
 | 3 | N3: `days` con `z.coerce.number().int().min(7).max(31).default(14)` y `.strict()`. N1 y N2 no aceptan parámetros: horizonte de 12 meses fijo en el servidor | `AssuranceDashboardSeriesQuerySchema`, `BillingDashboardSummaryQuerySchema`, `SubscribersDashboardSummaryQuerySchema` |
 
-### 8.6 G1-4 · «Recaudado» — supuesto en ejecución, pendiente del CTO
+### 8.6 G1-4 · «Recaudado» — caja del mes (decidido por el CTO el 2026-11-17)
 
-Se ejecuta como **caja del mes**: Σ `amount` de `billing_payments` `REGISTRADO` por `paid_at` (`date`, ya civil) en el mes civil del tenant, incluidos los pagos importados con su fecha histórica. Si el CTO y la Contadora eligen «recaudo imputado a documentos del mes», cambia la regla de `collectedAmount`, no la forma del contrato.
+**Caja del mes**: Σ `amount` de `billing_payments` `REGISTRADO` por `paid_at` (`date`, ya civil) en el mes civil del tenant, incluidos los pagos importados con su fecha histórica. El recaudo imputado a documentos del mes queda descartado.
 
 ### 8.7 Saldo vigente: reutilización sin editar `billing-documents.service.ts`
 
@@ -148,3 +148,7 @@ Se ejecuta como **caja del mes**: Σ `amount` de `billing_payments` `REGISTRADO`
 - `EXPLAIN ANALYZE` de la consulta de cartera en `tenant_iwana` (dev, 55 documentos): seq scan de `billing_documents` y subplan de saldo por fila, 4,5 ms. El dataset de dev no permite extrapolar.
 - Conclusión: congelar no exige migración. B1 mide p95 (§7) con volumen sintético. Si supera 300 ms, migración tenant con índices parciales `billing_documents (tenant_id, due_date) WHERE status IN ('EMITIDO','IMPORTADO')`, `billing_documents (tenant_id, issue_date) WHERE status IN ('EMITIDO','IMPORTADO')` y `billing_payments (tenant_id, paid_at) WHERE status = 'REGISTRADO'`, antes que caché.
 - N2 y N3: `crm_lifecycle_changes` solo indexa `(tenant_id, subscriber_id, changed_at)`; `support_tickets` tiene `(tenant_id, created_at)` y nada sobre `resolved_at`. Misma medición en B2.
+
+### 8.9 D4 · Quién ve dinero — decidido por el CTO el 2026-11-17
+
+N1 pasa a `@Roles(ADMIN, ACCOUNTANT, SALES)` con los mismos dos permisos (`BILLING_INVOICES_READ` y `BILLING_PAYMENTS_READ`). El rol SALES los tiene en `ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2` (`access-control.constants.ts:921-925`) y en la plantilla del rol (`:1022-1023`); no se concede ningún permiso nuevo. En el inicio, el pulso del Ejecutivo comercial es Oportunidades, Suscriptores activos, Recaudo del mes, Cartera vencida y Ofertas en riesgo: «Planes sin precio» cede su celda y sigue en la cola de atención. Tendencia: Suscriptores y Recaudo. Áreas: Oportunidades, Suscriptores y Facturación. Reidentificación: SALES ya tiene lectura nominal de documentos, pagos, estado de cuenta y suscriptores (plantilla del rol, migración tenant `174_seed_billing_permissions.ts:205-210`, y los `@Roles` de esos endpoints), así que la conclusión de §8.5 (sin umbral de supresión) se mantiene. AI-SEC-ENG: GO el 2026-11-17.

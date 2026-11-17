@@ -178,7 +178,7 @@ No aplican: disabled, readonly, success, active (la gráfica no es control).
 | Pestaña | Fuente | `kind` | Eje X | Serie A | Serie B | `valueKind` | Roles |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Suscriptores | N2 `series[]` (12 meses) | `grouped-bar` | Mes | Altas · `--chart-2` `progress` · `solid` | Retiros · `--chart-4` · `outline` | `count` | Administradora, Ejecutivo comercial, Contadora (HLD v3.0 §5) |
-| Recaudo | N1 `series[]` (12 meses) | `grouped-bar` | Mes | Facturado · `--chart-4` · `outline` | Recaudado · `--chart-1` · `solid` | `amount` (eje compacto en millones) | Administradora, Contadora |
+| Recaudo | N1 `series[]` (12 meses) | `grouped-bar` | Mes | Facturado · `--chart-4` · `outline` | Recaudado · `--chart-1` · `solid` | `amount` (eje compacto en millones) | Administradora, Contadora, Ejecutivo comercial (D4, HLD v3.0 §8.9) |
 | Casos | N3 `series[]` (14 días) | `line` | Día | Creados · `--chart-1` · `solid` | Resueltos · `--chart-2` `progress` · `dashed` | `count` | Administradora, Monitoreo operativo, Soporte inicial |
 
 Recaudado usa `--chart-1`, no lima: el avance del recaudo ya lo pinta el degradado de la celda de pulso (CA-PA-04) y el lima no se repite. El mes en curso se marca en `formatXLong` («(en curso)»).

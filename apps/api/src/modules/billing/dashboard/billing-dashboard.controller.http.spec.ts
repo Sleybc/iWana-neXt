@@ -55,7 +55,10 @@ const summary: BillingDashboardSummary = BillingDashboardSummarySchema.parse({
 
 const BOTH = [AccessPermissionKey.BILLING_INVOICES_READ, AccessPermissionKey.BILLING_PAYMENTS_READ];
 
-/** HLD-MOD02 v3.0 §3 N1 y §8.5: ADMIN y ACCOUNTANT con ambos permisos de lectura. */
+/** HLD-MOD02 v3.0 §3 N1 y §8.5: ADMIN, ACCOUNTANT y SALES (CTO 2026-11-17) con ambos permisos de lectura. */
+const ALLOWED = [UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SALES];
+const DENIED = Object.values(UserRole).filter((role) => !ALLOWED.includes(role));
+
 describe('HTTP GET /billing/dashboard/summary', () => {
   const url = '/api/v1/billing/dashboard/summary';
   const actor = '7a3f69a7-9463-4085-b8a6-4d73ae0077dc';
@@ -106,31 +109,33 @@ describe('HTTP GET /billing/dashboard/summary', () => {
     expect(service.summary).not.toHaveBeenCalled();
   });
 
-  it.each([UserRole.ADMIN, UserRole.ACCOUNTANT])(
-    '%s con ambos permisos recibe 200 sin caché',
-    async (role) => {
-      const response = await request(app.getHttpServer())
-        .get(url)
-        .set('x-test-role', role)
-        .expect(200);
-      expect(response.body).toEqual({ data: summary });
-      expect(response.headers['cache-control']).toBe('no-store');
-      expect(service.summary).toHaveBeenCalledWith();
-    },
-  );
+  it.each(ALLOWED)('%s con ambos permisos recibe 200 sin caché', async (role) => {
+    const response = await request(app.getHttpServer())
+      .get(url)
+      .set('x-test-role', role)
+      .expect(200);
+    expect(response.body).toEqual({ data: summary });
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(service.summary).toHaveBeenCalledWith();
+  });
 
-  it.each([
-    UserRole.SUPPORT,
-    UserRole.SALES,
-    UserRole.NOC,
-    UserRole.AUDITOR,
-    UserRole.TECHNICIAN,
-    UserRole.HR,
-    UserRole.SUBSCRIBER,
-    UserRole.CONTRACTOR,
-    UserRole.PARTNER,
-    UserRole.INVESTOR,
-  ])('el rol %s recibe 403 aunque tenga ambos permisos', async (role) => {
+  it('deniega exactamente los nueve roles restantes del enum', () => {
+    expect([...DENIED].sort()).toEqual(
+      [
+        UserRole.NOC,
+        UserRole.SUPPORT,
+        UserRole.TECHNICIAN,
+        UserRole.HR,
+        UserRole.SUBSCRIBER,
+        UserRole.CONTRACTOR,
+        UserRole.PARTNER,
+        UserRole.AUDITOR,
+        UserRole.INVESTOR,
+      ].sort(),
+    );
+  });
+
+  it.each(DENIED)('el rol %s recibe 403 aunque tenga ambos permisos', async (role) => {
     await request(app.getHttpServer()).get(url).set('x-test-role', role).expect(403);
     expect(service.summary).not.toHaveBeenCalled();
   });
@@ -141,6 +146,9 @@ describe('HTTP GET /billing/dashboard/summary', () => {
     [UserRole.ACCOUNTANT, [AccessPermissionKey.BILLING_INVOICES_READ]],
     [UserRole.ACCOUNTANT, [AccessPermissionKey.BILLING_PAYMENTS_READ]],
     [UserRole.ACCOUNTANT, []],
+    [UserRole.SALES, [AccessPermissionKey.BILLING_INVOICES_READ]],
+    [UserRole.SALES, [AccessPermissionKey.BILLING_PAYMENTS_READ]],
+    [UserRole.SALES, []],
   ])('%s con el permiso revocado (%j) recibe 403', async (role, granted) => {
     grants = granted;
     await request(app.getHttpServer()).get(url).set('x-test-role', role).expect(403);
@@ -167,6 +175,10 @@ describe('HTTP GET /billing/dashboard/summary', () => {
     expect(operation).toBeDefined();
     expect(operation?.parameters ?? []).toEqual([]);
     expect(Object.keys(operation?.responses ?? {}).sort()).toEqual(['200', '400', '401', '403']);
+    for (const role of ALLOWED) {
+      expect(operation?.description).toContain(role);
+      expect((operation?.responses['403'] as { description: string }).description).toContain(role);
+    }
     const ok = operation?.responses['200'] as { content: Record<string, { schema: unknown }> };
     expect(ok.content['application/json']?.schema).toEqual(
       BILLING_DASHBOARD_SUMMARY_RESPONSE_SCHEMA,

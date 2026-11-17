@@ -1377,17 +1377,54 @@ describe('DashboardClient · Fase 2 (recaudo, cartera, neto y tendencia)', () =>
     expect(subscribersSummary).not.toHaveBeenCalled();
   });
 
-  it('SALES: pide altas y retiros, nunca el resumen de facturación ni los casos', async () => {
+  it('SALES: pide altas y retiros y el resumen de facturación, nunca los casos', async () => {
     asRole(UserRole.SALES);
     render(<DashboardClient />);
 
     expect(
       await screen.findByRole('img', { name: /^Altas y retiros de suscriptores por mes/ }),
     ).toBeInTheDocument();
-    expect(billingSummary).not.toHaveBeenCalled();
+    expect(billingSummary).toHaveBeenCalledTimes(1);
     expect(casesSeries).not.toHaveBeenCalled();
-    expect(screen.queryByRole('link', { name: 'Recaudo del mes' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Recaudo del mes' })).toBeInTheDocument();
   });
+
+  it('SALES ve Recaudo y Cartera en el pulso, la pestaña Recaudo y el área de Facturación', async () => {
+    asRole(UserRole.SALES);
+    render(<DashboardClient />);
+
+    const pulse = await screen.findByRole('region', { name: 'Indicadores núcleo' });
+    expect(await within(pulse).findByRole('link', { name: 'Recaudo del mes' })).toBeInTheDocument();
+    expect(within(pulse).getByRole('link', { name: 'Cartera vencida' })).toBeInTheDocument();
+    expect(
+      within(pulse).queryByRole('link', { name: /Planes sin precio/ }),
+    ).not.toBeInTheDocument();
+    const tabs = await screen.findByRole('tablist', { name: 'Serie de la tendencia' });
+    expect(
+      within(tabs)
+        .getAllByRole('tab')
+        .map((tab) => tab.textContent),
+    ).toEqual(['Suscriptores', 'Recaudo']);
+    const areas = screen.getByRole('region', { name: 'Por área' });
+    expect(
+      await within(areas).findByRole('link', { name: 'Abrir Facturación' }),
+    ).toBeInTheDocument();
+  });
+
+  it.each([UserRole.SUPPORT, UserRole.NOC])(
+    '%s: no pide el resumen de facturación ni muestra dinero',
+    async (role) => {
+      asRole(role);
+      render(<DashboardClient />);
+
+      await screen.findByRole('region', { name: 'Indicadores núcleo' });
+      expect(billingSummary).not.toHaveBeenCalled();
+      expect(screen.queryByRole('link', { name: 'Recaudo del mes' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Cartera vencida' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', { name: 'Recaudo' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Abrir Facturación' })).not.toBeInTheDocument();
+    },
+  );
 
   it.each([
     ['caído', () => new Error('caída')],

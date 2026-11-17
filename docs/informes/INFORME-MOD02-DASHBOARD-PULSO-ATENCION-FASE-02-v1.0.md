@@ -12,7 +12,8 @@
 | `324ebc03` | Fase 1 | Inicio «Pulso y atención» con contratos vigentes (commit previo a la Ola 2, exigido por el plan) |
 | `d6b83827` | 0 (G1) | Contratos N1–N3 en `packages/shared` con Zod estricto; HLD v3.0 §8; ADR-112; contrato DS de gráficas |
 | `3bc6d67a` | 1 (G3, G4) | `GET /billing/dashboard/summary`, `GET /crm/subscribers/dashboard/summary`, `GET /assurance/dashboard/series`; wrapper `Chart` (`@iwana/ui`, Recharts 3.10.1 en la entrada diferida `@iwana/ui/chart`), tokens `--chart-1..4`, regla ESLint |
-| Ola 2 (commit de este informe) | 2 (G6) | Clientes N1–N3 en `api-client.ts`, tres fuentes en el fan-out y el techo por rol, celdas Recaudo del mes y Cartera vencida, neto en Suscriptores activos, bloque Tendencia (8) junto a la cola (4), áreas a tres columnas con Facturación, caché de sesión por persona y vaciada al cerrar sesión, `ProgressMeter compact` (aditivo), E2E del inicio 27 → 45 |
+| `095a65be` | 2 (G6) | Clientes N1–N3 en `api-client.ts`, tres fuentes en el fan-out y el techo por rol, celdas Recaudo del mes y Cartera vencida, neto en Suscriptores activos, bloque Tendencia (8) junto a la cola (4), áreas a tres columnas con Facturación, caché de sesión por persona y vaciada al cerrar sesión, `ProgressMeter compact` (aditivo), E2E del inicio 27 → 45 |
+| Ola D4 (commit de esta enmienda) | D4 | Decisión del CTO del 2026-11-17: el Ejecutivo comercial ve dinero. N1 admite `SALES` (mismos dos permisos, que el rol ya tiene); techo y composición de SALES con Recaudo, Cartera, tendencia Recaudo y área Facturación («Planes sin precio» cede su celda); G1-4 y D4 dejan de ser supuestos |
 
 Agentes: `sr-backend` (B0, B1, B2), `sec-eng` (B0-SEC y re-revisión en G3), `ds-owner` (B0-DS), `fe-platform` (B3, B4), `sr-qa` (B5); revisores `boundary-reviewer`, `contract-drift-reviewer`, `test-change-reviewer`, `gate-verifier`.
 
@@ -36,6 +37,10 @@ Agentes: `sr-backend` (B0, B1, B2), `sec-eng` (B0-SEC y re-revisión en G3), `ds
 | G6 | `grep -r "from 'recharts'" apps/` · `pnpm audit --prod --audit-level=critical` | 0 · 0 críticas (las 3 altas son de `apps/api`: joi, zod, glob; ninguna de Recharts) |
 | G6 | JS inicial de `/dashboard` | 1 149 819 → 1 179 412 B (gzip 325 964 → 336 345); chunk diferido de Recharts 391 783 B (gzip 111 463), fuera del JS inicial |
 | G6 | `test-change-reviewer` | Sin regresión; dos decisiones ratificadas por AI-EM-ARCH (§4) y dos huecos de cobertura cerrados con pruebas |
+| D4 | `jest src/modules/billing/dashboard` (API) · integración `DB_NAME=test` de N1 | 2 suites / 31 tests (200 para ADMIN, ACCOUNTANT y SALES; 403 para los 9 roles restantes y para SALES sin alguno de los dos permisos) · 1 suite / 6 tests |
+| D4 | Specs del inicio (dashboard + cliente N1–N3 + caché + logout) · `tsc --noEmit` de api y portal · `audit-ui.mjs` | 13 suites / 243 tests (antes 237) · 0 errores · sin hallazgos |
+| D4 | E2E del inicio con build de producción (`--retries=0`) | 46 / 46 en verde con una copia temporal de la config en el puerto 3012 (borrada). **No verificada en la config oficial**: el 3002 estaba ocupado por un servidor de otra sesión (PID 7344), no se liberó. Dos fallos de la primera corrida eran selectores de la prueba (nombre accesible de la fila de la cola; «$» del valor de Inventario para NOC) y se corrigieron sin cambiar la regla |
+| D4 | `sec-eng` · `test-change-reviewer` | GO (SALES ya tenía lectura nominal de documentos y pagos; sin umbral k) · sin regresión; la negación de dinero para SUPPORT y NOC queda reforzada |
 
 ### 2.1 Carraca de conteos
 
@@ -57,9 +62,10 @@ Agentes: `sr-backend` (B0, B1, B2), `sec-eng` (B0-SEC y re-revisión en G3), `ds
 
 | # | Decisión | Estado |
 | --- | --- | --- |
-| G1-4 | «Recaudado» = caja del mes (pagos `REGISTRADO` por `paid_at`), HLD §8.6 | Ejecutado como supuesto; **pendiente del CTO con la Contadora**. Cambiarlo altera la regla, no el contrato |
-| D4 | Dinero en el inicio solo para Administradora y Contadora (N1 con `@Roles(ADMIN, ACCOUNTANT)` y los dos permisos de facturación) | Ejecutado como propuesta del HLD; **pendiente de confirmación** |
+| G1-4 | «Recaudado» = caja del mes (pagos `REGISTRADO` por `paid_at`), HLD §8.6 | **Decidido por el CTO el 2026-11-17** («Caja del mes»); sin cambio de código |
+| D4 | Dinero en el inicio para Administradora, Contadora **y Ejecutivo comercial** (N1 con `@Roles(ADMIN, ACCOUNTANT, SALES)` y los dos permisos de facturación, que SALES ya tiene en la matriz V2), HLD §8.9 | **Decidido por el CTO el 2026-11-17** («También Comercial»); aplicado en la ola D4 (§1) |
 | Contadora | Pulso: Recaudo (con lo facturado en la frase), Cartera, Suscriptores activos y Planes sin precio; Tendencia Recaudo y Suscriptores | Ratificado por AI-EM-ARCH (dirección §13); pendiente del CTO con la Contadora |
+| Pulso del Ejecutivo comercial | Oportunidades, Suscriptores activos, Recaudo del mes, Cartera vencida y Ofertas en riesgo; «Planes sin precio» cede su celda y queda en la cola de atención | Decisión de AI-EM-ARCH al aplicar D4 (dirección §6 y §13) |
 | Salud de Facturación | «En riesgo» si hay saldo de más de 90 días; «Atención» si hay otra cartera vencida; «Al día» sin cartera | Ratificado por AI-EM-ARCH (dirección §13) |
 | Bajas (N2) | `from_status` en `ACTIVE`/`SUSPENDED`: un prospecto descartado no cuenta como retiro | Precisión de AI-SR-FULL aceptada (HLD §8.3) |
 
@@ -82,4 +88,4 @@ Veredicto de `sec-eng`: GO en G1 (con condiciones) y en G3. Condiciones cumplida
 | P3 | Caso reabierto cuenta en el día de su última resolución; N3 incluye cancelados | Producto, si se decide otra regla |
 | P3 | `app.config.production-urls.spec.ts` no purga `MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS` | Dueño de la importación UISP |
 
-Omitido: índices de N1 (p95 medido dentro del presupuesto), caché Redis, «Hoy en agenda» y salud de red (N4). No verificado: comportamiento con datos de un tenant real grande y G6.5. Riesgo: G1-4 y D4 siguen sin confirmar por el CTO.
+Omitido: índices de N1 (p95 medido dentro del presupuesto), caché Redis, «Hoy en agenda» y salud de red (N4). No verificado: comportamiento con datos de un tenant real grande y G6.5. G1-4 y D4 los decidió el CTO el 2026-11-17; publicar queda en espera por su indicación («Todavía no»).

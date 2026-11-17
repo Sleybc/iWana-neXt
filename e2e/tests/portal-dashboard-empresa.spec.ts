@@ -27,7 +27,8 @@
  *             «Soporte con N3 caído: Tendencia no se monta»
  *   CA-PA-06  «CA-V2-05 hidratación destino» (Fase 1; la Fase 2 no añade filas a la cola)
  *   CA-PA-07  «Tendencia montada · axe tema light/dark» (sin dona, radial ni mapa)
- *   CA-PA-08  «Contadora ve recaudo y cartera», «Soporte no ve dinero», «Ejecutivo comercial no ve dinero»
+ *   CA-PA-08  «Contadora ve recaudo y cartera», «Ejecutivo comercial ve recaudo y cartera»,
+ *             «Soporte no ve dinero», «Monitoreo no ve dinero» (CTO 2026-11-17, D4)
  *   CA-PA-09  No es E2E: `node .agents/skills/iwana-identity-ui-review/scripts/audit-ui.mjs` (G6)
  *   DS §7     «Tendencia montada · axe», «conmutación de series por teclado», «tabla alternativa por teclado»
  */
@@ -736,7 +737,14 @@ async function setAuthSession(page: Page, role: TenantRole = 'ADMIN') {
       'operations.tasks.read',
       'inventory.stock.read',
     ],
-    SALES: ['commercial.catalog.read', 'crm.expedientes.read', 'crm.subscribers.read'],
+    SALES: [
+      'commercial.catalog.read',
+      'crm.expedientes.read',
+      'crm.subscribers.read',
+      // D4 (CTO 2026-11-17): N1 se amplía a SALES con los mismos dos permisos de facturación.
+      'billing.invoices.read',
+      'billing.payments.read',
+    ],
     TECHNICIAN: ['wfm.schedule.read', 'operations.execution_orders.read', 'operations.tasks.read'],
     SUPPORT: ['assurance.tickets.read', 'wfm.schedule.read', 'crm.subscribers.read'],
     ACCOUNTANT: [
@@ -924,11 +932,11 @@ test.describe('D-3 · Composición por roles representativos', () => {
     await gotoDashboard(page);
     await expectLoadedDashboard(page);
 
-    // Nombre exacto: la cola de atención también enlaza «N planes sin precio vigente».
-    await expect(
-      page.getByRole('link', { name: 'Planes sin precio vigente', exact: true }),
-    ).toBeVisible();
     await expect(page.getByRole('link', { name: /Oportunidades en seguimiento/i })).toBeVisible();
+    // D4 (CTO 2026-11-17): «Planes sin precio vigente» sale del pulso y queda en la cola.
+    await expect(pulseCell(page, 'Planes sin precio vigente')).toHaveCount(0);
+    // El nombre accesible de la fila es «Atención: N planes sin precio vigente. Comercial».
+    await expect(page.getByRole('link', { name: /\d+ planes? sin precio vigente/i })).toBeVisible();
     await expect(page.getByText(/Panel en preparación/i)).toHaveCount(0);
   });
 
@@ -1595,24 +1603,63 @@ test.describe('Fase 2 · Dinero por rol (CA-PA-03, CA-PA-04, CA-PA-08)', () => {
     expect(await contentText(page)).not.toMatch(MONEY_TEXT);
   });
 
-  test('Ejecutivo comercial (SALES) no ve dinero y no pide N1', async ({ page }) => {
+  test('Ejecutivo comercial (SALES) ve recaudo y cartera; no pide casos', async ({ page }) => {
+    // Regla: decisión del CTO 2026-11-17, D4 — ven dinero Administradora, Contadora y Ejecutivo comercial.
     await page.setViewportSize({ width: 1440, height: 900 });
     const seen: string[] = [];
-    const responses = waitForSources(page, [N2_PATH]);
+    const responses = waitForSources(page, [N1_PATH, N2_PATH]);
     await openDashboardAs(page, 'SALES', { seen });
     await responses;
 
+    await expect(pulseCell(page, 'Oportunidades en seguimiento')).toBeVisible();
+    await expect(pulseCell(page, 'Suscriptores activos')).toBeVisible();
+    await expect(pulseCell(page, COLLECTION_CELL)).toContainText(/\d/);
+    await expect(pulseCell(page, OVERDUE_CELL)).toContainText(/\d/);
+    await expect(pulseCell(page, 'Ofertas en riesgo')).toBeVisible();
+    const cells = await page.getByLabel(PULSE_LABEL).locator(':scope > *').count();
+    expect(cells).toBeLessThanOrEqual(5);
+    await expect(billingArea(page)).toBeVisible();
+
     const trend = trendBlock(page);
-    await expectChartPainted(trendChart(trend, 'Suscriptores'));
+    await expectChartPainted(trendChart(trend));
+    await selectSeriesByKeyboard(page, trend, 'Recaudo');
+    await expect(seriesControl(trend, 'Suscriptores')).toBeVisible();
+    await expect(seriesControl(trend, 'Casos')).toHaveCount(0);
+    await page.waitForLoadState('networkidle');
+
+    expect(seen).toContain(N1_PATH);
+    expect(seen).not.toContain(N3_PATH);
+  });
+
+  test('Monitoreo (NOC) no ve dinero: no pide N1 ni N2, sin celdas, pestaña ni área', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const seen: string[] = [];
+    const responses = waitForSources(page, [N3_PATH]);
+    await openDashboardAs(page, 'NOC', { seen });
+    await responses;
+
+    const trend = trendBlock(page);
+    await expectChartPainted(trendChart(trend, 'Casos'));
     await page.waitForLoadState('networkidle');
 
     expect(seen).not.toContain(N1_PATH);
-    expect(seen).not.toContain(N3_PATH);
+    expect(seen).not.toContain(N2_PATH);
     await expect(seriesControl(trend, 'Recaudo')).toHaveCount(0);
     await expect(pulseCell(page, COLLECTION_CELL)).toHaveCount(0);
     await expect(pulseCell(page, OVERDUE_CELL)).toHaveCount(0);
     await expect(billingArea(page)).toHaveCount(0);
-    expect(await contentText(page)).not.toMatch(MONEY_TEXT);
+    // Sin dinero de facturación en pulso, Tendencia ni cola; el área Inventario sí muestra su valor
+    // estimado en pesos (Fase 1), que no es recaudo ni cartera.
+    expect(await page.getByLabel(PULSE_LABEL).innerText()).not.toMatch(MONEY_TEXT);
+    expect(await trend.innerText()).not.toMatch(MONEY_TEXT);
+    expect(
+      await page
+        .getByRole('heading', { name: 'Requiere tu atención' })
+        .locator('xpath=ancestor::section[1]')
+        .innerText(),
+    ).not.toMatch(MONEY_TEXT);
   });
 });
 

@@ -99,7 +99,10 @@ export const BILLING_DASHBOARD_SUMMARY_RESPONSE_SCHEMA: SchemaObject = {
   },
 };
 
-/** N1 del inicio del portal (HLD-MOD02 v3.0 §3 N1, §8.5): ambos permisos porque suma pagos. */
+/**
+ * N1 del inicio del portal (HLD-MOD02 v3.0 §3 N1, §8.5): ambos permisos porque suma pagos.
+ * SALES se suma a ADMIN y ACCOUNTANT por decisión del CTO del 2026-11-17 (ola D4).
+ */
 @ApiTags('billing')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
@@ -108,13 +111,13 @@ export class BillingDashboardController {
   constructor(private readonly dashboard: BillingDashboardService) {}
 
   @Get('summary')
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SALES)
   @Permissions(AccessPermissionKey.BILLING_INVOICES_READ, AccessPermissionKey.BILLING_PAYMENTS_READ)
   @Header('Cache-Control', 'no-store')
   @ApiOperation({
     summary: 'Resumen de facturación del inicio',
     description:
-      'Facturado y recaudado del mes en curso, cartera vencida por antigüedad y serie de 12 meses, en la fecha civil del tenant. Sin parámetros.',
+      'Facturado y recaudado del mes en curso, cartera vencida por antigüedad y serie de 12 meses, en la fecha civil del tenant. Sin parámetros. Roles: ADMIN, ACCOUNTANT y SALES, con los permisos de lectura de facturas y de pagos.',
   })
   @ApiOkResponse({
     description: 'Sumas y conteos del tenant, sin datos de personas.',
@@ -123,7 +126,8 @@ export class BillingDashboardController {
   @ApiBadRequestResponse({ description: 'La consulta no admite parámetros.' })
   @ApiUnauthorizedResponse({ description: 'La sesión no es válida.' })
   @ApiForbiddenResponse({
-    description: 'El rol o los permisos no permiten consultar facturas y pagos.',
+    description:
+      'El rol no es ADMIN, ACCOUNTANT ni SALES, o le falta el permiso de lectura de facturas o de pagos.',
   })
   async summary(@Query(new ZodValidationPipe(BillingDashboardSummaryQuerySchema)) _query: unknown) {
     return { data: await this.dashboard.summary() };

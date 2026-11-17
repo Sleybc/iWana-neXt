@@ -237,8 +237,9 @@ describe('dashboard-role-composition', () => {
     expect(getDashboardRoleComposition(UserRole.SALES).metricIds).toEqual([
       'I-7',
       'P-1',
+      'P-2',
+      'P-3',
       'I-6',
-      'I-5',
     ]);
     expect(getDashboardRoleComposition(UserRole.ACCOUNTANT).metricIds).toEqual([
       'P-2',
@@ -453,7 +454,7 @@ const API_GUARD_ROLES: Record<DashboardDataSourceId, readonly UserRole[]> = {
     UserRole.AUDITOR,
   ],
   // N1 · billing-dashboard.controller.ts · GET /billing/dashboard/summary
-  'billing-summary': [UserRole.ADMIN, UserRole.ACCOUNTANT],
+  'billing-summary': [UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SALES],
   // N2 · subscribers-dashboard.controller.ts · GET /crm/subscribers/dashboard/summary
   'subscribers-summary': [UserRole.ADMIN, UserRole.SALES, UserRole.ACCOUNTANT],
   // N3 · assurance-dashboard-series.controller.ts · GET /assurance/dashboard/series
@@ -487,11 +488,31 @@ describe('techo de autorización frente al guard del API (P3-5)', () => {
     for (const source of all) expect(API_GUARD_ROLES[source]).toBeDefined();
   });
 
-  it('el dinero (N1) solo lo piden Administradora y Contadora (HLD v3.0 §5)', () => {
+  it('el dinero (N1) lo piden Administradora, Contadora y Ejecutivo comercial (CTO 2026-11-17)', () => {
     const asking = ALL_ROLES.filter((role) =>
       resolveDashboardDataSources(role).includes('billing-summary'),
     );
-    expect(asking.sort()).toEqual([UserRole.ACCOUNTANT, UserRole.ADMIN].sort());
+    expect(asking.sort()).toEqual([UserRole.ACCOUNTANT, UserRole.ADMIN, UserRole.SALES].sort());
+  });
+
+  it('SALES compone Recaudo y Cartera, su pestaña y el área de Facturación; cede Planes sin precio a la cola', () => {
+    const sales = getDashboardRoleComposition(UserRole.SALES);
+    expect(sales.metricIds).toEqual(expect.arrayContaining(['P-2', 'P-3']));
+    expect(sales.metricIds).not.toContain('I-5');
+    expect(sales.attentionIds).toContain('plans-without-price');
+    expect(sales.trendIds).toContain('collections');
+    expect(sales.areaIds).toEqual(['opportunities', 'subscribers', 'billing']);
+    expect(resolveDashboardDataSources(UserRole.SALES)).toContain('billing-summary');
+  });
+
+  it.each([UserRole.SUPPORT, UserRole.NOC])('%s no pide N1 ni compone piezas de dinero', (role) => {
+    const composition = getDashboardRoleComposition(role);
+    const ceiling = DASHBOARD_ROLE_AUTHORIZATION_CEILING[role];
+    expect(resolveDashboardDataSources(role)).not.toContain('billing-summary');
+    expect(collectDashboardPartSources(ceiling).has('billing-summary')).toBe(false);
+    for (const id of ['P-2', 'P-3'] as const) expect(composition.metricIds).not.toContain(id);
+    expect(composition.trendIds).not.toContain('collections');
+    expect(composition.areaIds).not.toContain('billing');
   });
 
   it('N2 lo piden ADMIN, SALES y ACCOUNTANT; N3, ADMIN, NOC y SUPPORT', () => {
@@ -523,7 +544,10 @@ describe('Tendencia por rol (contrato DS de gráficas §6)', () => {
     ]);
     expect(getDashboardRoleComposition(UserRole.NOC).trendIds).toEqual(['cases']);
     expect(getDashboardRoleComposition(UserRole.SUPPORT).trendIds).toEqual(['cases']);
-    expect(getDashboardRoleComposition(UserRole.SALES).trendIds).toEqual(['subscribers']);
+    expect(getDashboardRoleComposition(UserRole.SALES).trendIds).toEqual([
+      'subscribers',
+      'collections',
+    ]);
     expect(getDashboardRoleComposition(UserRole.ACCOUNTANT).trendIds).toEqual([
       'collections',
       'subscribers',

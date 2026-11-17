@@ -253,11 +253,12 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
     blockIds: ['field-attention'],
     actionIds: ['register-case', 'register-subscriber', 'view-profile'],
   },
+  // CTO 2026-11-17: el Ejecutivo comercial también ve dinero (N1 admite SALES).
   [UserRole.SALES]: {
-    metricIds: ['P-1', 'I-5', 'I-6', 'I-7'],
+    metricIds: ['P-1', 'P-2', 'P-3', 'I-5', 'I-6', 'I-7'],
     attentionIds: ['offers-at-risk', 'plans-without-price'],
-    areaIds: ['opportunities', 'subscribers'],
-    trendIds: ['subscribers'],
+    areaIds: ['opportunities', 'subscribers', 'billing'],
+    trendIds: ['subscribers', 'collections'],
     moduleHealthIds: [],
     blockIds: ['commercial-attention'],
     actionIds: ['register-subscriber', 'new-opportunity', 'view-profile'],
@@ -707,10 +708,12 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
   [UserRole.SALES]: {
     primaryActionId: 'register-subscriber',
     secondaryActionId: 'new-opportunity',
-    metricIds: ['I-7', 'P-1', 'I-6', 'I-5'],
+    // Tope de 5 celdas: «Planes sin precio» (I-5) cede su lugar a Recaudo y Cartera y sigue en
+    // la cola de atención (`plans-without-price`).
+    metricIds: ['I-7', 'P-1', 'P-2', 'P-3', 'I-6'],
     attentionIds: ['offers-at-risk', 'plans-without-price'],
-    areaIds: ['opportunities', 'subscribers'],
-    trendIds: ['subscribers'],
+    areaIds: ['opportunities', 'subscribers', 'billing'],
+    trendIds: ['subscribers', 'collections'],
     moduleHealthIds: [],
     dominantBlockId: 'commercial-attention',
     supportBlockIds: [],
