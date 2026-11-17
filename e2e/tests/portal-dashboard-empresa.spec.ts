@@ -380,6 +380,41 @@ async function setupDashboardMocks(page: Page, options: MockOptions = {}) {
       return;
     }
 
+    // Fuentes de la cola «Requiere tu atención» (dirección Pulso y atención): al día por defecto.
+    if (url.includes('/crm/subscribers/queue-counts') && method === 'GET') {
+      await json(route, {
+        active: 120,
+        suspended: 0,
+        contactPending: 0,
+        fiscalIncomplete: 0,
+        withoutLiveServices: 0,
+      });
+      return;
+    }
+
+    if (url.includes('/crm/billing-cycles/cutoff-agenda') && method === 'GET') {
+      await json(route, {
+        date: '2026-11-16',
+        items: [],
+        meta: { nextCursor: null, total: 0, totalIsEstimate: false, page: 1, limit: 1 },
+        withoutCycleCount: 0,
+      });
+      return;
+    }
+
+    if (url.includes('/network/provisioning/inbox') && method === 'GET') {
+      await json(route, {
+        data: [],
+        meta: { nextCursor: null, total: 0, totalIsEstimate: false, page: 1, limit: 1 },
+      });
+      return;
+    }
+
+    if (url.includes('/inventory/replenishment/suggestions') && method === 'GET') {
+      await json(route, []);
+      return;
+    }
+
     if (url.includes('/crm/pipeline/summary') && method === 'GET') {
       await json(route, {
         data: { NUEVO_POTENCIAL: 3, DESCARTADO: 1, CLIENTE_ACTIVO: 2 },
@@ -724,7 +759,10 @@ test.describe('D-3 · Composición por roles representativos', () => {
     await gotoDashboard(page);
     await expectLoadedDashboard(page);
 
-    await expect(page.getByRole('link', { name: /Planes sin precio vigente/i })).toBeVisible();
+    // Nombre exacto: la cola de atención también enlaza «N planes sin precio vigente».
+    await expect(
+      page.getByRole('link', { name: 'Planes sin precio vigente', exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole('link', { name: /Oportunidades en seguimiento/i })).toBeVisible();
     await expect(page.getByText(/Panel en preparación/i)).toHaveCount(0);
   });
@@ -933,13 +971,8 @@ test.describe('D-5 / D-7 · Primer viewport, responsive y firmas', () => {
         a!.x + a!.width > b!.x &&
         a!.y < b!.y + b!.height &&
         a!.y + a!.height > b!.y;
-      // En 375 pueden apilarse (sin solape de cajas); en ≥768 no deben solaparse.
-      if (width >= 768) {
-        expect(overlap).toBe(false);
-      } else {
-        // Apilados: el segundo empieza debajo del primero.
-        expect(b!.y).toBeGreaterThanOrEqual(a!.y);
-      }
+      // Sin solape en ningún ancho; en 375 se apilan y el orden lo fija la composición del rol.
+      expect(overlap).toBe(false);
 
       await page.screenshot({
         path: path.join(EVIDENCE_DIR, `viewport-${width}.png`),
@@ -948,7 +981,7 @@ test.describe('D-5 / D-7 · Primer viewport, responsive y firmas', () => {
     });
   }
 
-  test('firmas iWana: barra lima activa + sombra soft en métrica (D-7)', async ({ page }) => {
+  test('firmas iWana: barra lima activa + sombra soft en el pulso (D-7)', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await setupDashboardMocks(page);
     await setAuthSession(page);
@@ -960,8 +993,9 @@ test.describe('D-5 / D-7 · Primer viewport, responsive y firmas', () => {
     const limeBar = inicio.locator('span.absolute.left-0');
     await expect(limeBar).toBeAttached();
 
-    const metric = page.getByRole('link', { name: /Visitas de hoy/i });
-    const shadow = await metric.evaluate((el) => getComputedStyle(el).boxShadow);
+    // El pulso es una sola superficie: la sombra vive en la franja, no en cada celda.
+    const pulse = page.getByLabel('Indicadores núcleo');
+    const shadow = await pulse.evaluate((el) => getComputedStyle(el).boxShadow);
     expect(shadow).not.toBe('none');
 
     await page.screenshot({
@@ -981,8 +1015,8 @@ test.describe('Dashboard empresarial — CA-V2-05 hidratación destino', () => {
     await gotoDashboard(page);
     await expectLoadedDashboard(page);
 
-    // I-4 — mesa de ayuda con slaBreachStatus (patrón I-3 ya estable)
-    await page.getByRole('link', { name: /Casos en riesgo de incumplir/i }).click();
+    // Cola de atención — mesa de ayuda con slaBreachStatus (patrón I-3 ya estable)
+    await page.getByRole('link', { name: /casos? en riesgo de incumplir/i }).click();
     await expect(page).toHaveURL(/\/dashboard\/assurance\?.*slaBreachStatus=AT_RISK/);
     await expect(page.getByRole('heading', { name: /mesa de ayuda/i }).first()).toBeVisible({
       timeout: 15_000,
@@ -1009,8 +1043,8 @@ test.describe('Dashboard empresarial — CA-V2-05 hidratación destino', () => {
     await page.locator('#sidebar').getByRole('link', { name: 'Inicio' }).click();
     await expectLoadedDashboard(page);
 
-    // I-2 — bandeja status
-    await page.getByRole('link', { name: /Solicitudes por programar/i }).click();
+    // Cola de atención — bandeja status
+    await page.getByRole('link', { name: /solicitud(es)? listas? para programar/i }).click();
     await expect(page).toHaveURL(
       /\/dashboard\/scheduling\/pending-visits\?.*status=READY_TO_SCHEDULE/,
     );

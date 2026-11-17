@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prototipo — Inicio del portal (dirección «Pulso y atención»)</title>
+<!--
+  Prototipo de composición. NO es código productivo: se lee el patrón y se implementa con las
+  primitives reales (portal-ui.tsx, @iwana/ui). Cifras, nombres y series son ilustrativos.
+  Spec: docs/specs/2026-11-16-portal-dashboard-pulso-y-atencion-direccion.md
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Valores copiados de packages/ui/src/styles/globals.css */
+  --primary:#17163a; --primary-100:#e8e7f0; --primary-200:#d1cfe1; --primary-300:#a8a4c8; --primary-400:#7b75ab;
+  --lime:#a5c330; --lime-100:#edf8cc; --lime-600:#8ba020; --lime-700:#6a7a1c; --lime-900:#48531d;
+  --canvas:#f9f9f9; --surface:#fff; --soft:#f8faf5; --border:#e5e7eb; --border-2:#f0f1f3;
+  --title:#17163a; --text:#374151; --muted:#6b7280;
+  --warn-bg:#fffbeb; --warn-tx:#b45309; --warn:#f59e0b;
+  --err-bg:#fef2f2; --err-tx:#b91c1c; --err:#dc2626;
+  --neutral-bg:#f3f4f6; --neutral-tx:#4b5563;
+  --shadow-soft:0 10px 40px -10px rgba(23,22,58,.08);
+  /* PROPUESTA de tokens --chart-* (no existen aún; decide DS-OWNER) */
+  --chart-1:#17163a; --chart-2:#8ba020; --chart-3:#7b75ab; --chart-4:#d1cfe1; --grid:#eceef1;
+}
+.dark{
+  --canvas:#181818; --surface:#222; --soft:#2a2a2a; --border:#2e2e2e; --border-2:#2a2a2a;
+  --title:#f5f5f7; --text:#d1d5db; --muted:#9ca3af;
+  --lime-100:rgba(165,195,48,.15); --lime-900:#c5e668; --lime-700:#b2d93c;
+  --warn-bg:rgba(245,158,11,.15); --warn-tx:#fbbf24; --err-bg:rgba(239,68,68,.15); --err-tx:#f87171;
+  --neutral-bg:#2a2a2a; --neutral-tx:#d1d5db; --shadow-soft:none;
+  --chart-1:#a8a4c8; --chart-2:#a5c330; --chart-3:#7b75ab; --chart-4:#3d3461; --grid:#2e2e2e;
+  --primary-100:#2a2a2a; --primary-200:#383838;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Exo 2',system-ui,sans-serif;font-size:14px;line-height:1.45;color:var(--text);background:var(--surface)}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;cursor:pointer}
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.mono{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+:focus-visible{outline:3px solid rgba(165,195,48,.45);outline-offset:2px;border-radius:8px}
+
+/* Barra de prototipo (no forma parte del diseño) */
+.protobar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--primary);color:#fff;font-size:12px}
+.protobar button{border:1px solid rgba(255,255,255,.35);background:transparent;color:#fff;border-radius:999px;padding:6px 12px;min-height:32px}
+.protobar button[aria-pressed="true"]{background:#fff;color:var(--primary)}
+
+.shell{display:grid;grid-template-columns:256px 1fr;min-height:100vh}
+.side{padding:16px 12px;border-right:1px solid var(--border-2)}
+.brand{display:flex;align-items:center;gap:10px;padding:6px 8px 18px;font-weight:600;font-size:16px;color:var(--title)}
+.brand b{display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:var(--lime);color:var(--primary);font-size:12px}
+.navlabel{font-size:11px;font-weight:600;color:var(--muted);padding:14px 10px 6px}
+.nav a{position:relative;display:flex;align-items:center;gap:12px;min-height:44px;padding:0 12px;border-radius:12px;color:var(--text)}
+.nav a svg{color:var(--muted)}
+.nav a.on{background:var(--soft);color:var(--title);font-weight:500}
+.nav a.on svg{color:var(--lime-700)}
+.nav a.on::before{content:"";position:absolute;left:-12px;top:10px;width:4px;height:24px;border-radius:0 999px 999px 0;background:var(--lime)}
+.top{display:flex;align-items:center;gap:12px;padding:12px 24px}
+.search{flex:1;max-width:520px;display:flex;align-items:center;gap:10px;height:44px;padding:0 16px;border:1px solid var(--border);border-radius:999px;color:var(--muted)}
+.search kbd{margin-left:auto;font:11px 'JetBrains Mono',monospace;border:1px solid var(--border);border-radius:6px;padding:1px 6px}
+.iconbtn{display:grid;place-items:center;width:44px;height:44px;border:1px solid var(--border);border-radius:999px;background:var(--surface)}
+.user{display:flex;align-items:center;gap:10px;margin-left:auto;color:var(--title)}
+.user i{display:grid;place-items:center;width:40px;height:40px;border-radius:999px;background:var(--primary);color:#fff;font-style:normal;font-weight:600;font-size:13px}
+main{background:var(--canvas);border-radius:24px 0 0 0;padding:24px;display:grid;gap:16px;align-content:start}
+
+.card{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:24px;box-shadow:var(--shadow-soft);padding:20px}
+.eyebrow{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--lime-700)}
+.eyebrow.muted{color:var(--muted)}
+h1{margin:2px 0 0;font-size:24px;font-weight:600;color:var(--title)}
+h2{margin:0;font-size:16px;font-weight:600;color:var(--title)}
+.sub{color:var(--muted);font-size:13px}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.between{justify-content:space-between}
+.link{color:var(--title);font-weight:500;font-size:13px;display:inline-flex;align-items:center;gap:4px;min-height:44px}
+.link:hover{text-decoration:underline}
+
+.seg{display:inline-flex;padding:4px;border-radius:12px;background:var(--neutral-bg)}
+.seg button{border:0;background:transparent;border-radius:8px;min-height:36px;padding:0 14px;color:var(--muted);font-size:13px}
+.seg button[aria-pressed="true"]{background:var(--primary);color:#fff}
+.dark .seg button[aria-pressed="true"]{background:var(--primary-400)}
+.btn{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 16px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--title);font-size:13px}
+
+.badge{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:500;white-space:nowrap}
+.b-ok{background:var(--lime-100);color:var(--lime-900)}
+.b-warn{background:var(--warn-bg);color:var(--warn-tx)}
+.b-err{background:var(--err-bg);color:var(--err-tx)}
+.b-neu{background:var(--neutral-bg);color:var(--neutral-tx)}
+
+/* B1 · Pulso: una superficie, cinco celdas */
+.pulse{padding:0;display:grid;grid-template-columns:repeat(5,1fr)}
+.kpi{padding:18px 20px;display:flex;flex-direction:column;gap:6px;min-height:156px;border-left:1px solid var(--border-2)}
+.kpi:first-child{border-left:0}
+.kpi:hover{background:var(--soft)}
+.kpi:first-child{border-radius:24px 0 0 24px}.kpi:last-child{border-radius:0 24px 24px 0}
+.fig{font-weight:200;font-size:34px;line-height:1.05;color:var(--title);font-variant-numeric:tabular-nums}
+.fig small{font-size:15px;font-weight:400;color:var(--muted)}
+.hint{font-size:12px;color:var(--muted)}
+.spark{margin-top:auto;height:28px;width:100%}
+.meter{margin-top:auto;height:8px;border-radius:999px;background:var(--neutral-bg);overflow:hidden}
+.meter i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--primary),var(--lime))}
+.dark .meter i{background:linear-gradient(90deg,var(--primary-400),var(--lime))}
+
+.g12{display:grid;grid-template-columns:repeat(12,1fr);gap:16px;align-items:stretch}
+.g12>.card{display:flex;flex-direction:column}
+.g12>.card>.facts,.g12>.card>.link{margin-top:auto}
+.c8{grid-column:span 8}.c7{grid-column:span 7}.c5{grid-column:span 5}.c4{grid-column:span 4}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+
+/* Gráfica */
+.legend{display:flex;gap:16px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:var(--k)}
+.legend span.dash::before{height:0;border-top:2px dashed var(--k);background:none;vertical-align:3px;width:14px}
+.chart{width:100%;height:auto;display:block;margin-top:8px}
+.chart text{font:11px 'JetBrains Mono',monospace;fill:var(--muted)}
+.chart .gl{stroke:var(--grid);stroke-width:1}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px;padding-top:14px;border-top:1px solid var(--border-2)}
+.facts b{display:block;font-weight:300;font-size:22px;color:var(--title);font-variant-numeric:tabular-nums}
+
+/* Cola de atención */
+.queue{list-style:none;margin:12px 0 0;padding:0}
+.queue li{border-top:1px solid var(--border-2)}
+.queue a{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;min-height:60px;padding:8px 6px;border-radius:12px}
+.queue a:hover{background:var(--soft)}
+.dot{width:36px;height:36px;border-radius:12px;display:grid;place-items:center}
+.dot.err{background:var(--err-bg);color:var(--err-tx)}.dot.warn{background:var(--warn-bg);color:var(--warn-tx)}
+.queue strong{display:block;font-weight:500;color:var(--title)}
+.queue em{font-style:normal;font-size:12px;color:var(--muted)}
+
+/* Tarjetas por área */
+.area{display:flex;flex-direction:column;gap:12px;min-height:232px}
+.area .foot{margin-top:auto;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.area .foot .link{min-height:32px}
+.lead{font-weight:300;font-size:24px;color:var(--title);font-variant-numeric:tabular-nums;line-height:1.1}
+.lead small{font-size:13px;font-weight:400;color:var(--muted)}
+.stack{display:flex;height:10px;border-radius:999px;overflow:hidden;gap:2px}
+.stack i{display:block;height:100%}
+.keys{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:12px}
+.keys span{display:flex;justify-content:space-between;gap:8px}
+.keys span b{font-weight:500;color:var(--title)}
+.keys span::before{content:"";width:8px;height:8px;border-radius:2px;background:var(--k);margin-top:5px;flex:none}
+.keys span q{quotes:none;flex:1;margin-left:-2px}
+.bars{display:grid;gap:8px;font-size:12px}
+.bars div{display:grid;grid-template-columns:110px 1fr 44px;gap:10px;align-items:center}
+.bars u{display:block;height:8px;border-radius:999px;background:var(--neutral-bg);overflow:hidden;text-decoration:none}
+.bars u i{display:block;height:100%;border-radius:999px;background:var(--chart-1)}
+.bars u i.w{background:var(--warn)}
+.bars b{text-align:right;font-weight:500;color:var(--title)}
+.track{display:grid;gap:8px;font-size:12px}
+.track div{display:grid;grid-template-columns:96px 1fr 50px;gap:10px;align-items:center}
+.track p{margin:0;display:flex;gap:2px;height:20px}
+.track p i{flex:1;border-radius:2px;background:var(--chart-2)}
+.track p i.w{background:var(--warn)}.track p i.d{background:var(--err)}
+.track b{text-align:right;font-weight:500;color:var(--title)}
+
+/* Agenda y actividad */
+.agenda{list-style:none;margin:10px 0 0;padding:0}
+.agenda li{display:grid;grid-template-columns:64px 1fr auto;gap:12px;align-items:center;min-height:52px;border-top:1px solid var(--border-2)}
+.agenda time{color:var(--title);font-size:12px}
+.tl{list-style:none;margin:12px 0 0;padding:0 0 0 18px;border-left:2px solid var(--border-2)}
+.tl li{position:relative;padding:0 0 14px}
+.tl li::before{content:"";position:absolute;left:-24px;top:5px;width:10px;height:10px;border-radius:999px;background:var(--surface);border:2px solid var(--primary-300)}
+.tl li:first-child::before{border-color:var(--lime)}
+.tl span{display:block;font-size:12px;color:var(--muted)}
+
+/* Etiquetas de origen del dato (solo con el interruptor del prototipo) */
+[data-src]::after{display:none}
+.show-src [data-src]::after{display:block;position:absolute;top:-9px;right:18px;z-index:10;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;letter-spacing:.04em}
+.show-src [data-src="hoy"]::after{content:"Dato disponible hoy";background:var(--lime-100);color:var(--lime-900)}
+.show-src [data-src="parcial"]::after{content:"Parcial · falta la serie";background:var(--neutral-bg);color:var(--neutral-tx)}
+.show-src [data-src="nuevo"]::after{content:"Requiere contrato nuevo";background:var(--warn-bg);color:var(--warn-tx)}
+.kpi{position:relative}
+
+@media (max-width:1180px){
+  .pulse{grid-template-columns:repeat(2,1fr)}
+  .kpi{border-left:0;border-top:1px solid var(--border-2);border-radius:0!important}
+  .c8,.c7,.c5,.c4{grid-column:span 12}
+  .g3{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:820px){
+  .shell{grid-template-columns:1fr}.side{display:none}
+  main{border-radius:0;padding:16px}
+  .pulse,.g3,.facts{grid-template-columns:1fr}
+  .search{display:none}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="case" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></symbol>
+    <symbol id="users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M17 4a4 4 0 0 1 0 8M22 21a6 6 0 0 0-4-5.6"/></symbol>
+    <symbol id="shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></symbol>
+    <symbol id="cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+    <symbol id="buoy" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></symbol>
+    <symbol id="clip" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 2h6v4H9zM9 12h6M9 16h4"/></symbol>
+    <symbol id="box" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5V8ZM3 8l9 5 9-5M12 13v8"/></symbol>
+    <symbol id="doc" viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6zM9 13h6M9 17h6"/></symbol>
+    <symbol id="net" viewBox="0 0 24 24"><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 17.5h.01M10 17.5h.01M16 14V9M12.5 6.5a5 5 0 0 1 7 0"/></symbol>
+    <symbol id="sliders" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+    <symbol id="chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+    <symbol id="moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+    <symbol id="alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3ZM12 9v4M12 17h.01"/></symbol>
+    <symbol id="clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/></symbol>
+  </defs>
+</svg>
+
+<div class="protobar">
+  <span><strong>Prototipo de dirección</strong> · «Pulso y atención» · vista Administradora · cifras ilustrativas</span>
+  <span class="row">
+    <button id="srcBtn" aria-pressed="false">Mostrar origen del dato</button>
+    <button id="themeBtn" aria-pressed="false">Tema oscuro</button>
+  </span>
+</div>
+
+<div class="shell">
+  <aside class="side" aria-label="Menú principal">
+    <div class="brand"><b>iW</b> Fibra Andina</div>
+    <nav class="nav">
+      <div class="navlabel">Menú</div>
+      <a class="on" href="#" aria-current="page"><svg class="i"><use href="#grid"/></svg>Inicio</a>
+      <a href="#"><svg class="i"><use href="#case"/></svg>Oportunidades</a>
+      <a href="#"><svg class="i"><use href="#users"/></svg>Suscriptores</a>
+      <a href="#"><svg class="i"><use href="#doc"/></svg>Facturación</a>
+      <a href="#"><svg class="i"><use href="#cal"/></svg>Programación</a>
+      <a href="#"><svg class="i"><use href="#buoy"/></svg>Mesa de ayuda</a>
+      <a href="#"><svg class="i"><use href="#clip"/></svg>Operaciones</a>
+      <a href="#"><svg class="i"><use href="#box"/></svg>Inventario</a>
+      <a href="#"><svg class="i"><use href="#shield"/></svg>Privacidad</a>
+      <div class="navlabel">Red</div>
+      <a href="#"><svg class="i"><use href="#net"/></svg>Routers</a>
+      <a href="#"><svg class="i"><use href="#clip"/></svg>Aprovisionamiento</a>
+      <div class="navlabel">Administración</div>
+      <a href="#"><svg class="i"><use href="#sliders"/></svg>Configuración</a>
+    </nav>
+  </aside>
+
+  <div>
+    <header class="top">
+      <div class="search"><svg class="i"><use href="#search"/></svg>Buscar en el portal empresarial…<kbd>Ctrl K</kbd></div>
+      <div class="user">
+        <button class="iconbtn" aria-label="Notificaciones"><svg class="i"><use href="#bell"/></svg></button>
+        <span>Administradora</span><i>AD</i>
+      </div>
+    </header>
+
+    <main>
+      <!-- B0 · Identidad y periodo -->
+      <div class="row between">
+        <div>
+          <div class="eyebrow">Inicio</div>
+          <h1>Fibra Andina S.A.S.</h1>
+          <div class="sub">Lunes 16 de noviembre · Última lectura <span class="mono">09:07</span></div>
+        </div>
+        <div class="row">
+          <div class="seg" role="group" aria-label="Periodo">
+            <button aria-pressed="false">Hoy</button><button aria-pressed="false">7 días</button>
+            <button aria-pressed="true">Este mes</button><button aria-pressed="false">12 meses</button>
+          </div>
+          <button class="btn"><svg class="i"><use href="#refresh"/></svg>Actualizar</button>
+        </div>
+      </div>
+
+      <!-- B1 · Pulso del negocio: una superficie, cinco celdas -->
+      <section class="card pulse" aria-label="Pulso del negocio">
+        <a class="kpi" href="#" data-src="parcial">
+          <span class="eyebrow muted">Suscriptores activos</span>
+          <span class="fig">2.418</span>
+          <span class="row"><span class="badge b-ok">+38 este mes</span></span>
+          <span class="hint">61 altas · 23 retiros</span>
+          <svg class="spark" viewBox="0 0 160 28" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="var(--chart-2)" stroke-width="2" points="0,25 15,23 29,21 44,19 58,17 73,15 87,12 102,10 116,8 131,6 145,4 160,2"/></svg>
+        </a>
+        <a class="kpi" href="#" data-src="nuevo">
+          <span class="eyebrow muted">Recaudo del mes</span>
+          <span class="fig">$ 148,2 <small>M</small></span>
+          <span class="row"><span class="badge b-ok">81 % de lo facturado</span></span>
+          <span class="hint">Facturado <span class="mono">$ 182,6 M</span></span>
+          <span class="meter" role="img" aria-label="Recaudo: 81 por ciento"><i style="width:81%"></i></span>
+        </a>
+        <a class="kpi" href="#" data-src="nuevo">
+          <span class="eyebrow muted">Cartera vencida</span>
+          <span class="fig">$ 36,9 <small>M</small></span>
+          <span class="row"><span class="badge b-warn">214 suscriptores</span></span>
+          <span class="hint">$ 6,4 M con más de 90 días</span>
+          <span class="stack" style="margin-top:auto" role="img" aria-label="Antigüedad: 0 a 30 días 14,8 M; 31 a 60 9,6 M; 61 a 90 6,1 M; más de 90 6,4 M">
+            <i style="width:40%;background:var(--chart-4)"></i><i style="width:26%;background:var(--chart-3)"></i><i style="width:17%;background:var(--warn)"></i><i style="width:17%;background:var(--err)"></i>
+          </span>
+        </a>
+        <a class="kpi" href="#" data-src="hoy">
+          <span class="eyebrow muted">Casos abiertos</span>
+          <span class="fig">27</span>
+          <span class="row"><span class="badge b-warn">4 en riesgo</span><span class="badge b-err">2 incumplidos</span></span>
+          <span class="hint">9 resueltos hoy</span>
+        </a>
+        <a class="kpi" href="#" data-src="hoy">
+          <span class="eyebrow muted">Visitas de hoy</span>
+          <span class="fig">14</span>
+          <span class="row"><span class="badge b-err">2 vencidas</span></span>
+          <span class="hint">3 en ruta · 5 por programar</span>
+        </a>
+      </section>
+
+      <!-- B2 · Tendencia (8) + Requiere tu atención (4) -->
+      <div class="g12">
+        <section class="card c8" data-src="nuevo" aria-labelledby="t-trend">
+          <div class="row between">
+            <div><h2 id="t-trend">Tendencia</h2><div class="sub" id="trendSub"></div></div>
+            <div class="seg" role="group" aria-label="Serie">
+              <button data-tab="subs" aria-pressed="true">Suscriptores</button>
+              <button data-tab="cash" aria-pressed="false">Recaudo</button>
+              <button data-tab="cases" aria-pressed="false">Casos</button>
+            </div>
+          </div>
+          <div class="legend" id="legend" style="margin-top:14px"></div>
+          <svg class="chart" id="chart" viewBox="0 0 760 250" role="img"></svg>
+          <div class="facts" id="facts"></div>
+        </section>
+
+        <section class="card c4" data-src="hoy" aria-labelledby="t-queue">
+          <div class="row between"><h2 id="t-queue">Requiere tu atención</h2><span class="badge b-neu mono">8</span></div>
+          <div class="sub">Lo más urgente primero, de todas las áreas</div>
+          <ul class="queue">
+            <li><a href="#"><span class="dot err"><svg class="i"><use href="#alert"/></svg></span><span><strong>2 casos superaron su tiempo de atención</strong><em>Mesa de ayuda</em></span><svg class="i"><use href="#chev"/></svg></a></li>
+            <li><a href="#"><span class="dot err"><svg class="i"><use href="#alert"/></svg></span><span><strong>2 visitas vencidas sin cerrar</strong><em>Programación</em></span><svg class="i"><use href="#chev"/></svg></a></li>
+            <li><a href="#"><span class="dot warn"><svg class="i"><use href="#clock"/></svg></span><span><strong>12 servicios entran a corte hoy</strong><em>Facturación</em></span><svg class="i"><use href="#chev"/></svg></a></li>
+            <li><a href="#"><span class="dot warn"><svg class="i"><use href="#clock"/></svg></span><span><strong>6 órdenes esperan activación</strong><em>Aprovisionamiento</em></span><svg class="i"><use href="#chev"/></svg></a></li>
+            <li><a href="#"><span class="dot warn"><svg class="i"><use href="#clock"/></svg></span><span><strong>5 solicitudes listas para programar</strong><em>Programación</em></span><svg class="i"><use href="#chev"/></svg></a></li>
+            <li><a href="#"><span class="dot warn"><svg class="i"><use href="#clock"/></svg></span><span><strong>9 suscriptores con datos fiscales incompletos</strong><em>Suscriptores</em></span><svg class="i"><use href="#chev"/></svg></a></li>
+          </ul>
+          <a class="link" href="#">Ver los 2 restantes <svg class="i"><use href="#chev"/></svg></a>
+        </section>
+      </div>
+
+      <!-- B3 · Por área: estado + una visual por módulo -->
+      <div class="row between" style="margin-top:4px"><div class="eyebrow">Por área</div></div>
+      <div class="g3">
+        <section class="card area" data-src="hoy">
+          <div class="row between"><h2>Mesa de ayuda</h2><span class="badge b-err">En riesgo</span></div>
+          <div class="lead">27 <small>casos abiertos por prioridad</small></div>
+          <div class="stack"><i style="width:7.4%;background:var(--err)"></i><i style="width:22.2%;background:var(--warn)"></i><i style="width:44.4%;background:var(--chart-3)"></i><i style="width:26%;background:var(--chart-4)"></i></div>
+          <div class="keys">
+            <span style="--k:var(--err)"><q>Crítica</q><b class="mono">2</b></span><span style="--k:var(--warn)"><q>Alta</q><b class="mono">6</b></span>
+            <span style="--k:var(--chart-3)"><q>Media</q><b class="mono">12</b></span><span style="--k:var(--chart-4)"><q>Baja</q><b class="mono">7</b></span>
+          </div>
+          <div class="foot"><span>9 resueltos hoy · 3 esperan visita</span><a class="link" href="#">Abrir <svg class="i"><use href="#chev"/></svg></a></div>
+        </section>
+
+        <section class="card area" data-src="parcial">
+          <div class="row between"><h2>Programación</h2><span class="badge b-warn">Atención</span></div>
+          <div class="lead">14 <small>visitas hoy · ocupación por cuadrilla</small></div>
+          <div class="bars">
+            <div><span>Cuadrilla norte</span><u><i class="w" style="width:92%"></i></u><b class="mono">92 %</b></div>
+            <div><span>Cuadrilla sur</span><u><i style="width:75%"></i></u><b class="mono">75 %</b></div>
+            <div><span>Cuadrilla centro</span><u><i style="width:60%"></i></u><b class="mono">60 %</b></div>
+            <div><span>Cuadrilla oriente</span><u><i style="width:38%"></i></u><b class="mono">38 %</b></div>
+          </div>
+          <div class="foot"><span>3 en ruta · 2 vencidas</span><a class="link" href="#">Ver agenda <svg class="i"><use href="#chev"/></svg></a></div>
+        </section>
+
+        <section class="card area" data-src="hoy">
+          <div class="row between"><h2>Oportunidades</h2><span class="badge b-ok">Al día</span></div>
+          <div class="lead">49 <small>en seguimiento por etapa</small></div>
+          <div class="bars">
+            <div><span>Nuevo</span><u><i style="width:100%"></i></u><b class="mono">18</b></div>
+            <div><span>En contacto</span><u><i style="width:67%"></i></u><b class="mono">12</b></div>
+            <div><span>Factibilidad</span><u><i style="width:50%"></i></u><b class="mono">9</b></div>
+            <div><span>Propuesta</span><u><i style="width:33%"></i></u><b class="mono">6</b></div>
+            <div><span>Contrato</span><u><i style="width:22%"></i></u><b class="mono">4</b></div>
+          </div>
+          <div class="foot"><span>2 planes sin precio vigente</span><a class="link" href="#">Ver embudo <svg class="i"><use href="#chev"/></svg></a></div>
+        </section>
+
+        <section class="card area" data-src="nuevo">
+          <div class="row between"><h2>Facturación</h2><span class="badge b-warn">Atención</span></div>
+          <div class="lead">$ 36,9 M <small>vencidos por antigüedad</small></div>
+          <div class="stack"><i style="width:40%;background:var(--chart-4)"></i><i style="width:26%;background:var(--chart-3)"></i><i style="width:17%;background:var(--warn)"></i><i style="width:17%;background:var(--err)"></i></div>
+          <div class="keys">
+            <span style="--k:var(--chart-4)"><q>0–30 días</q><b class="mono">14,8</b></span><span style="--k:var(--chart-3)"><q>31–60</q><b class="mono">9,6</b></span>
+            <span style="--k:var(--warn)"><q>61–90</q><b class="mono">6,1</b></span><span style="--k:var(--err)"><q>Más de 90</q><b class="mono">6,4</b></span>
+          </div>
+          <div class="foot"><span>Próximo ciclo: 20 nov · 38 servicios</span><a class="link" href="#">Abrir <svg class="i"><use href="#chev"/></svg></a></div>
+        </section>
+
+        <section class="card area" data-src="nuevo">
+          <div class="row between"><h2>Red</h2><span class="badge b-ok">Al día</span></div>
+          <div class="lead">4 <small>nodos · disponibilidad 30 días</small></div>
+          <div class="track" id="track"></div>
+          <div class="foot"><span>6 activaciones pendientes</span><a class="link" href="#">Ver red <svg class="i"><use href="#chev"/></svg></a></div>
+        </section>
+
+        <section class="card area" data-src="hoy">
+          <div class="row between"><h2>Inventario</h2><span class="badge b-warn">Atención</span></div>
+          <div class="lead">$ 212,4 M <small>valor estimado · existencias</small></div>
+          <div class="bars">
+            <div><span>Equipos de cliente</span><u><i style="width:100%"></i></u><b class="mono">412</b></div>
+            <div><span>Fibra y cable</span><u><i style="width:45%"></i></u><b class="mono">186</b></div>
+            <div><span>Herramienta</span><u><i style="width:18%"></i></u><b class="mono">74</b></div>
+          </div>
+          <div class="foot"><span>5 productos bajo el mínimo</span><a class="link" href="#">Reponer <svg class="i"><use href="#chev"/></svg></a></div>
+        </section>
+      </div>
+
+      <!-- B4 · Hoy en agenda (7) + Actividad reciente (5) -->
+      <div class="g12">
+        <section class="card c7" data-src="hoy">
+          <div class="row between"><h2>Hoy en agenda</h2><a class="link" href="#">Ver agenda completa <svg class="i"><use href="#chev"/></svg></a></div>
+          <ul class="agenda">
+            <li><time class="mono">09:30</time><span>Instalación residencial · Cuadrilla norte</span><span class="badge b-ok">En ruta</span></li>
+            <li><time class="mono">10:15</time><span>Reparación por caso de servicio · Cuadrilla sur</span><span class="badge b-neu">Programada</span></li>
+            <li><time class="mono">11:00</time><span>Corte programado del ciclo 15 · 12 servicios</span><span class="badge b-warn">Hoy</span></li>
+            <li><time class="mono">14:00</time><span>Instalación empresarial · Cuadrilla centro</span><span class="badge b-neu">Programada</span></li>
+          </ul>
+        </section>
+        <section class="card c5" data-src="hoy">
+          <div class="row between"><h2>Actividad reciente</h2><a class="link" href="#">Ver historial <svg class="i"><use href="#chev"/></svg></a></div>
+          <ul class="tl">
+            <li>Pago registrado en un estado de cuenta<span><span class="mono">09:02</span> · Contadora</span></li>
+            <li>Contrato activado tras la instalación<span><span class="mono">08:47</span> · Monitoreo operativo</span></li>
+            <li>Caso de servicio escalado a visita<span><span class="mono">08:31</span> · Soporte inicial</span></li>
+            <li>Orden de compra recibida en bodega<span><span class="mono">08:10</span> · Administradora</span></li>
+          </ul>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+const NS = 'http://www.w3.org/2000/svg';
+const el = (n, a = {}, t) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); if (t != null) e.textContent = t; return e; };
+const M12 = ['Dic','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov'];
+const TABS = {
+  subs: { sub: 'Altas y retiros por mes · últimos 12 meses', kind: 'bars', labels: M12,
+    a: [42,38,51,47,55,49,58,62,54,66,59,61], b: [18,22,19,25,21,27,20,24,29,22,26,23],
+    legend: [['Altas','--chart-2'],['Retiros','--chart-4']],
+    aria: 'Altas y retiros de suscriptores por mes. En noviembre: 61 altas y 23 retiros.',
+    facts: [['642','Altas en 12 meses'],['276','Retiros en 12 meses'],['1,0 %','Retiro mensual sobre la base']] },
+  cash: { sub: 'Facturado frente a recaudado · millones de pesos', kind: 'bars', labels: M12,
+    a: [151,153,157,160,163,166,169,172,175,178,180,182.6], b: [139,142,143,149,150,155,156,161,160,166,167,148.2],
+    legend: [['Facturado','--chart-4'],['Recaudado','--chart-1']], swap: true,
+    aria: 'Facturado y recaudado por mes. Noviembre en curso: 182,6 millones facturados y 148,2 recaudados.',
+    facts: [['93 %','Recaudo promedio de meses cerrados'],['$ 34,4 M','Por recaudar este mes'],['4 días','Para el cierre del ciclo']] },
+  cases: { sub: 'Casos creados frente a resueltos · últimos 14 días', kind: 'lines',
+    labels: ['3','4','5','6','7','8','9','10','11','12','13','14','15','16'],
+    a: [9,12,7,11,14,6,4,10,13,9,12,8,5,11], b: [8,10,9,10,11,8,5,9,12,11,10,9,6,9],
+    legend: [['Creados','--chart-1'],['Resueltos','--chart-2','dash']],
+    aria: 'Casos creados y resueltos por día. Hoy: 11 creados y 9 resueltos.',
+    facts: [['131','Creados en 14 días'],['127','Resueltos en 14 días'],['92 %','Dentro del tiempo de atención']] },
+};
+function draw(key) {
+  const t = TABS[key], svg = document.getElementById('chart');
+  svg.replaceChildren(); svg.setAttribute('aria-label', t.aria);
+  document.getElementById('trendSub').textContent = t.sub;
+  document.getElementById('legend').innerHTML = t.legend.map(([l, k, d]) => `<span class="${d || ''}" style="--k:var(${k})">${l}</span>`).join('');
+  document.getElementById('facts').innerHTML = t.facts.map(([v, l]) => `<div><b>${v}</b><span class="sub">${l}</span></div>`).join('');
+  const W = 760, H = 250, L = 38, R = 10, T = 14, B = 26, n = t.labels.length;
+  const max = Math.max(...t.a, ...t.b), step = max > 100 ? 50 : max > 40 ? 20 : 5, top = Math.ceil(max / step) * step;
+  const y = v => T + (H - T - B) * (1 - v / top), band = (W - L - R) / n;
+  for (let v = 0; v <= top; v += step) {
+    svg.append(el('line', { class: 'gl', x1: L, x2: W - R, y1: y(v), y2: y(v) }), el('text', { x: L - 8, y: y(v) + 4, 'text-anchor': 'end' }, v));
+  }
+  t.labels.forEach((l, i) => svg.append(el('text', { x: L + band * (i + .5), y: H - 6, 'text-anchor': 'middle' }, l)));
+  if (t.kind === 'bars') {
+    const bw = Math.min(16, band * .3), [ca, cb] = t.legend.map(x => `var(${x[1]})`);
+    t.labels.forEach((_, i) => {
+      const cx = L + band * (i + .5);
+      svg.append(el('rect', { x: cx - bw - 1.5, y: y(t.a[i]), width: bw, height: y(0) - y(t.a[i]), rx: 3, fill: ca }),
+                 el('rect', { x: cx + 1.5, y: y(t.b[i]), width: bw, height: y(0) - y(t.b[i]), rx: 3, fill: cb }));
+    });
+    const last = n - 1, cx = L + band * (last + .5);
+    svg.append(el('text', { x: cx - bw / 2 - 1.5, y: y(t.a[last]) - 5, 'text-anchor': 'middle', style: 'fill:var(--title)' }, String(t.a[last]).replace('.', ',')));
+  } else {
+    const pts = s => s.map((v, i) => `${L + band * (i + .5)},${y(v)}`).join(' ');
+    svg.append(el('polyline', { points: pts(t.b), fill: 'none', stroke: 'var(--chart-2)', 'stroke-width': 2, 'stroke-dasharray': '5 4' }),
+               el('polyline', { points: pts(t.a), fill: 'none', stroke: 'var(--chart-1)', 'stroke-width': 2 }));
+    const lx = L + band * (n - .5);
+    svg.append(el('circle', { cx: lx, cy: y(t.a[n - 1]), r: 4, fill: 'var(--chart-1)' }), el('circle', { cx: lx, cy: y(t.b[n - 1]), r: 4, fill: 'var(--chart-2)' }));
+  }
+}
+document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-tab]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  draw(b.dataset.tab);
+}));
+draw('subs');
+
+// Tracker de disponibilidad por nodo (Firma §4/Fase 3 ítem 3.4)
+const NODES = [['Nodo centro', {}, '100 %'], ['Nodo norte', { 21: 'w' }, '99,9 %'], ['Nodo sur', {}, '100 %'], ['Nodo oriente', { 8: 'd', 9: 'w' }, '99,4 %']];
+document.getElementById('track').innerHTML = NODES.map(([name, ev, pct]) =>
+  `<div><span>${name}</span><p role="img" aria-label="${name}: disponibilidad ${pct} en 30 días">${Array.from({ length: 30 }, (_, i) => `<i class="${ev[i] || ''}"></i>`).join('')}</p><b class="mono">${pct}</b></div>`).join('');
+
+const toggle = (btn, cls) => btn.addEventListener('click', () => btn.setAttribute('aria-pressed', String(document.body.classList.toggle(cls))));
+toggle(document.getElementById('srcBtn'), 'show-src');
+toggle(document.getElementById('themeBtn'), 'dark');
+</script>
+</body>
+</html>

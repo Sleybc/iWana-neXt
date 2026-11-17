@@ -14,8 +14,8 @@ import {
   ClipboardList,
   HandCoins,
   LifeBuoy,
-  Package,
   Timer,
+  UserCheck,
   UserRound,
   Users,
 } from 'lucide-react';
@@ -29,18 +29,29 @@ export type DashboardActionId =
   | 'review-plans-without-price'
   | 'view-profile';
 
-export type DashboardMetricId = 'I-1' | 'I-2' | 'I-3' | 'I-4' | 'I-5' | 'I-6' | 'I-7';
+/** `P-1` = base activa de suscriptores (franja de pulso, dirección «Pulso y atención»). */
+export type DashboardMetricId = 'P-1' | 'I-1' | 'I-2' | 'I-3' | 'I-4' | 'I-5' | 'I-6' | 'I-7';
 
 export type DashboardMetricSourceStatus = 'idle' | 'loading' | 'updating' | 'success' | 'error';
 
-export type DashboardBlockId =
-  | 'field-attention'
-  | 'help-desk'
-  | 'commercial-attention'
-  | 'pipeline'
-  | 'inventory'
-  | 'next-configuration'
-  | 'change-history';
+/** Bloques de detalle bajo las áreas (B4). */
+export type DashboardBlockId = 'field-attention' | 'commercial-attention' | 'change-history';
+
+/** Filas posibles de la cola «Requiere tu atención» (B2). El orden del tipo no es prioridad. */
+export type DashboardAttentionId =
+  | 'cases-breached'
+  | 'visits-overdue'
+  | 'requests-overdue'
+  | 'provisioning-failed'
+  | 'offers-at-risk'
+  | 'cases-at-risk'
+  | 'cutoff-today'
+  | 'provisioning-unfinished'
+  | 'requests-ready'
+  | 'plans-without-price'
+  | 'fiscal-incomplete'
+  | 'stock-below-minimum'
+  | 'configuration-pending';
 
 /** Chips de B1b — salud de módulos (centro de mando). */
 export type DashboardModuleHealthId =
@@ -54,14 +65,28 @@ export type DashboardModuleHealthId =
 
 export type DashboardModuleHealthStatus = 'ok' | 'attention' | 'at-risk' | 'unknown';
 
+/** Cards «Por área» (B3): un módulo, un estado y una sola visual. */
+export type DashboardAreaId =
+  | 'help-desk'
+  | 'scheduling'
+  | 'opportunities'
+  | 'subscribers'
+  | 'provisioning'
+  | 'inventory';
+
 export interface DashboardRoleComposition {
   primaryActionId: DashboardActionId;
   secondaryActionId: DashboardActionId | null;
+  /** Celdas de la franja de pulso (B1), máximo 5. */
   metricIds: readonly DashboardMetricId[];
+  /** Filas que la cola de atención (B2) puede mostrar a este rol. */
+  attentionIds: readonly DashboardAttentionId[];
+  /** Cards «Por área» (B3). */
+  areaIds: readonly DashboardAreaId[];
+  /** Chips de navegación: solo roles de ejecución en campo. */
   moduleHealthIds: readonly DashboardModuleHealthId[];
   dominantBlockId: DashboardBlockId | null;
   supportBlockIds: readonly DashboardBlockId[];
-  foldedBlockIds: readonly DashboardBlockId[];
   showOperationalTenantCard: boolean;
 }
 
@@ -105,7 +130,11 @@ export type DashboardDataSourceId =
   | 'commercial'
   | 'inventory'
   | 'crm'
-  | 'audit';
+  | 'audit'
+  | 'subscribers'
+  | 'cutoff'
+  | 'provisioning'
+  | 'replenishment';
 
 /**
  * Techo de autorización HLD §5.2 (no composición).
@@ -115,31 +144,40 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
   UserRole,
   {
     metricIds: readonly DashboardMetricId[];
+    attentionIds: readonly DashboardAttentionId[];
+    areaIds: readonly DashboardAreaId[];
     moduleHealthIds: readonly DashboardModuleHealthId[];
     blockIds: readonly DashboardBlockId[];
     actionIds: readonly DashboardActionId[];
   }
 > = {
   [UserRole.ADMIN]: {
-    metricIds: ['I-1', 'I-2', 'I-3', 'I-4', 'I-5', 'I-6', 'I-7'],
-    moduleHealthIds: [
+    metricIds: ['P-1', 'I-1', 'I-2', 'I-3', 'I-4', 'I-5', 'I-6', 'I-7'],
+    attentionIds: [
+      'cases-breached',
+      'visits-overdue',
+      'requests-overdue',
+      'provisioning-failed',
+      'offers-at-risk',
+      'cases-at-risk',
+      'cutoff-today',
+      'provisioning-unfinished',
+      'requests-ready',
+      'plans-without-price',
+      'fiscal-incomplete',
+      'stock-below-minimum',
+      'configuration-pending',
+    ],
+    areaIds: [
+      'help-desk',
       'scheduling',
-      'help-desk',
-      'commercial',
       'opportunities',
+      'subscribers',
+      'provisioning',
       'inventory',
-      'configuration',
-      'operations',
     ],
-    blockIds: [
-      'field-attention',
-      'help-desk',
-      'commercial-attention',
-      'pipeline',
-      'inventory',
-      'next-configuration',
-      'change-history',
-    ],
+    moduleHealthIds: [],
+    blockIds: ['field-attention', 'commercial-attention', 'change-history'],
     actionIds: [
       'register-subscriber',
       'schedule-visit',
@@ -152,36 +190,65 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
   },
   [UserRole.NOC]: {
     metricIds: ['I-1', 'I-2', 'I-3', 'I-4'],
-    moduleHealthIds: ['scheduling', 'help-desk', 'inventory', 'operations'],
-    blockIds: ['field-attention', 'inventory'],
+    attentionIds: [
+      'cases-breached',
+      'visits-overdue',
+      'requests-overdue',
+      'provisioning-failed',
+      'cases-at-risk',
+      'cutoff-today',
+      'provisioning-unfinished',
+      'requests-ready',
+      'stock-below-minimum',
+    ],
+    areaIds: ['help-desk', 'scheduling', 'provisioning', 'inventory'],
+    moduleHealthIds: [],
+    blockIds: ['field-attention'],
     actionIds: ['schedule-visit', 'view-today-agenda', 'view-profile'],
   },
   [UserRole.SUPPORT]: {
     metricIds: ['I-1', 'I-2', 'I-3', 'I-4'],
-    moduleHealthIds: ['scheduling', 'help-desk', 'operations'],
-    blockIds: ['help-desk', 'field-attention'],
+    attentionIds: [
+      'cases-breached',
+      'visits-overdue',
+      'requests-overdue',
+      'cases-at-risk',
+      'cutoff-today',
+      'requests-ready',
+    ],
+    areaIds: ['help-desk', 'scheduling'],
+    moduleHealthIds: [],
+    blockIds: ['field-attention'],
     actionIds: ['register-case', 'register-subscriber', 'view-profile'],
   },
   [UserRole.SALES]: {
-    metricIds: ['I-5', 'I-6', 'I-7'],
-    moduleHealthIds: ['commercial', 'opportunities', 'operations'],
-    blockIds: ['commercial-attention', 'pipeline'],
+    metricIds: ['P-1', 'I-5', 'I-6', 'I-7'],
+    attentionIds: ['offers-at-risk', 'plans-without-price'],
+    areaIds: ['opportunities', 'subscribers'],
+    moduleHealthIds: [],
+    blockIds: ['commercial-attention'],
     actionIds: ['register-subscriber', 'new-opportunity', 'view-profile'],
   },
   [UserRole.ACCOUNTANT]: {
-    metricIds: ['I-5'],
-    moduleHealthIds: ['commercial'],
+    metricIds: ['P-1', 'I-5'],
+    attentionIds: ['plans-without-price', 'fiscal-incomplete', 'cutoff-today'],
+    areaIds: ['subscribers'],
+    moduleHealthIds: [],
     blockIds: ['commercial-attention'],
     actionIds: ['review-plans-without-price', 'view-profile'],
   },
   [UserRole.TECHNICIAN]: {
     metricIds: [],
+    attentionIds: [],
+    areaIds: [],
     moduleHealthIds: ['scheduling'],
     blockIds: [],
     actionIds: ['view-today-agenda', 'view-profile'],
   },
   [UserRole.CONTRACTOR]: {
     metricIds: [],
+    attentionIds: [],
+    areaIds: [],
     moduleHealthIds: ['scheduling'],
     blockIds: [],
     actionIds: ['view-today-agenda', 'view-profile'],
@@ -189,30 +256,40 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
   // D-SEC-01 / C-13: listado aprobado (SEC GO condicionado); sin página «ver todo».
   [UserRole.AUDITOR]: {
     metricIds: [],
+    attentionIds: [],
+    areaIds: [],
     moduleHealthIds: [],
     blockIds: ['change-history'],
     actionIds: ['view-profile'],
   },
   [UserRole.HR]: {
     metricIds: [],
+    attentionIds: [],
+    areaIds: [],
     moduleHealthIds: [],
     blockIds: [],
     actionIds: ['view-profile'],
   },
   [UserRole.SUBSCRIBER]: {
     metricIds: [],
+    attentionIds: [],
+    areaIds: [],
     moduleHealthIds: [],
     blockIds: [],
     actionIds: ['view-profile'],
   },
   [UserRole.PARTNER]: {
     metricIds: [],
+    attentionIds: [],
+    areaIds: [],
     moduleHealthIds: [],
     blockIds: [],
     actionIds: ['view-profile'],
   },
   [UserRole.INVESTOR]: {
     metricIds: [],
+    attentionIds: [],
+    areaIds: [],
     moduleHealthIds: [],
     blockIds: [],
     actionIds: ['view-profile'],
@@ -258,6 +335,15 @@ export const DASHBOARD_ACTION_REGISTRY: Record<DashboardActionId, DashboardActio
 };
 
 export const DASHBOARD_METRIC_REGISTRY: Record<DashboardMetricId, DashboardMetricDefinition> = {
+  'P-1': {
+    id: 'P-1',
+    label: 'Suscriptores activos',
+    description: 'Base con servicio activo',
+    accent: 'primary',
+    icon: UserCheck,
+    buildHref: () => '/dashboard/crm/subscribers?queue=active',
+    sources: ['subscribers'],
+  },
   'I-1': {
     id: 'I-1',
     label: 'Visitas de hoy',
@@ -331,36 +417,80 @@ export const DASHBOARD_BLOCK_REGISTRY: Record<DashboardBlockId, DashboardBlockDe
     title: 'Atención de campo',
     sources: ['wfm'],
   },
-  'help-desk': {
-    id: 'help-desk',
-    title: 'Casos de la mesa de ayuda',
-    sources: ['assurance'],
-  },
   'commercial-attention': {
     id: 'commercial-attention',
     title: 'Atención comercial',
     sources: ['commercial'],
-  },
-  pipeline: {
-    id: 'pipeline',
-    title: 'Embudo de oportunidades',
-    sources: ['crm'],
-  },
-  inventory: {
-    id: 'inventory',
-    title: 'Estado del almacén',
-    sources: ['inventory'],
-  },
-  'next-configuration': {
-    id: 'next-configuration',
-    title: 'Próximo paso de configuración',
-    sources: ['tenant-summary'],
   },
   'change-history': {
     id: 'change-history',
     title: 'Historial de cambios',
     sources: ['audit'],
   },
+};
+
+export interface DashboardAreaDefinition {
+  id: DashboardAreaId;
+  /** Rótulo igual al del menú. */
+  label: string;
+  sources: readonly DashboardDataSourceId[];
+  href: string;
+}
+
+export const DASHBOARD_AREA_REGISTRY: Record<DashboardAreaId, DashboardAreaDefinition> = {
+  'help-desk': {
+    id: 'help-desk',
+    label: 'Mesa de ayuda',
+    sources: ['assurance'],
+    href: '/dashboard/assurance',
+  },
+  scheduling: {
+    id: 'scheduling',
+    label: 'Programación',
+    sources: ['wfm'],
+    href: '/dashboard/scheduling',
+  },
+  opportunities: {
+    id: 'opportunities',
+    label: 'Oportunidades',
+    sources: ['crm'],
+    href: '/dashboard/crm/expedientes?view=open',
+  },
+  subscribers: {
+    id: 'subscribers',
+    label: 'Suscriptores',
+    sources: ['subscribers'],
+    href: '/dashboard/crm/subscribers',
+  },
+  provisioning: {
+    id: 'provisioning',
+    label: 'Aprovisionamiento',
+    sources: ['provisioning'],
+    href: '/dashboard/network/provisioning',
+  },
+  inventory: {
+    id: 'inventory',
+    label: 'Inventario',
+    sources: ['inventory'],
+    href: '/dashboard/inventory',
+  },
+};
+
+/** Fuente remota que sostiene cada fila de la cola de atención (una por fila). */
+export const DASHBOARD_ATTENTION_SOURCES: Record<DashboardAttentionId, DashboardDataSourceId> = {
+  'cases-breached': 'assurance',
+  'visits-overdue': 'wfm',
+  'requests-overdue': 'wfm',
+  'provisioning-failed': 'provisioning',
+  'offers-at-risk': 'commercial',
+  'cases-at-risk': 'assurance',
+  'cutoff-today': 'cutoff',
+  'provisioning-unfinished': 'provisioning',
+  'requests-ready': 'wfm',
+  'plans-without-price': 'commercial',
+  'fiscal-incomplete': 'subscribers',
+  'stock-below-minimum': 'replenishment',
+  'configuration-pending': 'tenant-summary',
 };
 
 export interface DashboardModuleHealthDefinition {
@@ -430,130 +560,172 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
   [UserRole.ADMIN]: {
     primaryActionId: 'register-subscriber',
     secondaryActionId: 'schedule-visit',
-    metricIds: ['I-1', 'I-2', 'I-3', 'I-4', 'I-5', 'I-6', 'I-7'],
-    moduleHealthIds: [
-      'scheduling',
-      'help-desk',
-      'commercial',
-      'opportunities',
-      'inventory',
-      'configuration',
-      'operations',
+    metricIds: ['P-1', 'I-3', 'I-1', 'I-2', 'I-7'],
+    attentionIds: [
+      'cases-breached',
+      'visits-overdue',
+      'requests-overdue',
+      'provisioning-failed',
+      'offers-at-risk',
+      'cases-at-risk',
+      'cutoff-today',
+      'provisioning-unfinished',
+      'requests-ready',
+      'plans-without-price',
+      'fiscal-incomplete',
+      'stock-below-minimum',
+      'configuration-pending',
     ],
+    areaIds: [
+      'help-desk',
+      'scheduling',
+      'opportunities',
+      'subscribers',
+      'provisioning',
+      'inventory',
+    ],
+    moduleHealthIds: [],
     dominantBlockId: 'field-attention',
-    supportBlockIds: ['next-configuration', 'change-history'],
-    foldedBlockIds: ['help-desk', 'commercial-attention', 'inventory'],
-    showOperationalTenantCard: true,
+    supportBlockIds: ['change-history'],
+    showOperationalTenantCard: false,
   },
   [UserRole.NOC]: {
     primaryActionId: 'schedule-visit',
     secondaryActionId: 'view-today-agenda',
     metricIds: ['I-1', 'I-2', 'I-3', 'I-4'],
-    moduleHealthIds: ['scheduling', 'help-desk', 'inventory', 'operations'],
+    attentionIds: [
+      'cases-breached',
+      'visits-overdue',
+      'requests-overdue',
+      'provisioning-failed',
+      'cases-at-risk',
+      'cutoff-today',
+      'provisioning-unfinished',
+      'requests-ready',
+      'stock-below-minimum',
+    ],
+    areaIds: ['help-desk', 'scheduling', 'provisioning', 'inventory'],
+    moduleHealthIds: [],
     dominantBlockId: 'field-attention',
     supportBlockIds: [],
-    foldedBlockIds: ['inventory'],
-    showOperationalTenantCard: true,
+    showOperationalTenantCard: false,
   },
   [UserRole.SUPPORT]: {
     primaryActionId: 'register-case',
     secondaryActionId: 'register-subscriber',
     metricIds: ['I-3', 'I-4', 'I-1', 'I-2'],
-    moduleHealthIds: ['scheduling', 'help-desk', 'operations'],
-    dominantBlockId: 'help-desk',
-    supportBlockIds: ['field-attention'],
-    foldedBlockIds: [],
-    showOperationalTenantCard: true,
+    attentionIds: [
+      'cases-breached',
+      'visits-overdue',
+      'requests-overdue',
+      'cases-at-risk',
+      'cutoff-today',
+      'requests-ready',
+    ],
+    areaIds: ['help-desk', 'scheduling'],
+    moduleHealthIds: [],
+    dominantBlockId: 'field-attention',
+    supportBlockIds: [],
+    showOperationalTenantCard: false,
   },
   [UserRole.SALES]: {
     primaryActionId: 'register-subscriber',
     secondaryActionId: 'new-opportunity',
-    metricIds: ['I-5', 'I-6', 'I-7'],
-    moduleHealthIds: ['commercial', 'opportunities', 'operations'],
+    metricIds: ['I-7', 'P-1', 'I-6', 'I-5'],
+    attentionIds: ['offers-at-risk', 'plans-without-price'],
+    areaIds: ['opportunities', 'subscribers'],
+    moduleHealthIds: [],
     dominantBlockId: 'commercial-attention',
-    supportBlockIds: ['pipeline'],
-    foldedBlockIds: [],
-    showOperationalTenantCard: true,
+    supportBlockIds: [],
+    showOperationalTenantCard: false,
   },
   [UserRole.ACCOUNTANT]: {
     primaryActionId: 'review-plans-without-price',
     secondaryActionId: null,
-    metricIds: ['I-5'],
-    moduleHealthIds: ['commercial'],
+    metricIds: ['P-1', 'I-5'],
+    attentionIds: ['plans-without-price', 'fiscal-incomplete', 'cutoff-today'],
+    areaIds: ['subscribers'],
+    moduleHealthIds: [],
     dominantBlockId: 'commercial-attention',
     supportBlockIds: [],
-    foldedBlockIds: [],
-    showOperationalTenantCard: true,
+    showOperationalTenantCard: false,
   },
   [UserRole.TECHNICIAN]: {
     primaryActionId: 'view-today-agenda',
     secondaryActionId: null,
     metricIds: [],
+    attentionIds: [],
+    areaIds: [],
     moduleHealthIds: ['scheduling'],
     dominantBlockId: null,
     supportBlockIds: [],
-    foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
   [UserRole.CONTRACTOR]: {
     primaryActionId: 'view-today-agenda',
     secondaryActionId: null,
     metricIds: [],
+    attentionIds: [],
+    areaIds: [],
     moduleHealthIds: ['scheduling'],
     dominantBlockId: null,
     supportBlockIds: [],
-    foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
   [UserRole.AUDITOR]: {
     primaryActionId: 'view-profile',
     secondaryActionId: null,
     metricIds: [],
+    attentionIds: [],
+    areaIds: [],
     moduleHealthIds: [],
     dominantBlockId: null,
     // UX §4.9 B2b — historial minimizado (últimos N, sin «ver todo»).
     supportBlockIds: ['change-history'],
-    foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
   [UserRole.HR]: {
     primaryActionId: 'view-profile',
     secondaryActionId: null,
     metricIds: [],
+    attentionIds: [],
+    areaIds: [],
     moduleHealthIds: [],
     dominantBlockId: null,
     supportBlockIds: [],
-    foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
   [UserRole.SUBSCRIBER]: {
     primaryActionId: 'view-profile',
     secondaryActionId: null,
     metricIds: [],
+    attentionIds: [],
+    areaIds: [],
     moduleHealthIds: [],
     dominantBlockId: null,
     supportBlockIds: [],
-    foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
   [UserRole.PARTNER]: {
     primaryActionId: 'view-profile',
     secondaryActionId: null,
     metricIds: [],
+    attentionIds: [],
+    areaIds: [],
     moduleHealthIds: [],
     dominantBlockId: null,
     supportBlockIds: [],
-    foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
   [UserRole.INVESTOR]: {
     primaryActionId: 'view-profile',
     secondaryActionId: null,
     metricIds: [],
+    attentionIds: [],
+    areaIds: [],
     moduleHealthIds: [],
     dominantBlockId: null,
     supportBlockIds: [],
-    foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
 };
@@ -595,9 +767,9 @@ export function toLocalDayKey(date: Date = new Date()): string {
 }
 
 /**
- * Fuentes a pedir en el fan-out para un rol (R-1):
- * solo contratos autorizados y usados por métricas y bloques.
- * B1b reutiliza esas fuentes; no añade peticiones (técnico no pide el resumen de campo).
+ * Fuentes a pedir en el fan-out para un rol (R-1): solo contratos autorizados
+ * y usados por el pulso, la cola de atención, las áreas y los bloques de detalle.
+ * Los chips de navegación no añaden peticiones (técnico no pide el resumen de campo).
  */
 export function resolveDashboardDataSources(role: UserRole): readonly DashboardDataSourceId[] {
   const composition = getDashboardRoleComposition(role);
@@ -610,21 +782,16 @@ export function resolveDashboardDataSources(role: UserRole): readonly DashboardD
   }
 
   for (const metricId of composition.metricIds) {
-    for (const source of resolveDashboardMetric(metricId).sources) {
-      sources.add(source);
-    }
+    for (const source of resolveDashboardMetric(metricId).sources) sources.add(source);
   }
-
-  const blockIds = [
-    composition.dominantBlockId,
-    ...composition.supportBlockIds,
-    ...composition.foldedBlockIds,
-  ].filter((id): id is DashboardBlockId => id != null);
-
-  for (const blockId of blockIds) {
-    for (const source of resolveDashboardBlock(blockId).sources) {
-      sources.add(source);
-    }
+  for (const attentionId of composition.attentionIds) {
+    sources.add(DASHBOARD_ATTENTION_SOURCES[attentionId]);
+  }
+  for (const areaId of composition.areaIds) {
+    for (const source of DASHBOARD_AREA_REGISTRY[areaId].sources) sources.add(source);
+  }
+  for (const blockId of listCompositionBlockIds(composition)) {
+    for (const source of resolveDashboardBlock(blockId).sources) sources.add(source);
   }
 
   return Array.from(sources);
@@ -636,51 +803,11 @@ export function listCompositionBlockIds(
   const ids: DashboardBlockId[] = [];
   if (composition.dominantBlockId) ids.push(composition.dominantBlockId);
   ids.push(...composition.supportBlockIds);
-  ids.push(...composition.foldedBlockIds);
   return ids;
-}
-
-/**
- * Bloques plegados que salen del pliegue cuando su KPI de B1 es > 0
- * (Adenda UX §B · «Ver más» inteligente).
- */
-export function resolvePromotedFoldedBlockIds(options: {
-  foldedBlockIds: readonly DashboardBlockId[];
-  metricValues: Partial<Record<DashboardMetricId, number | null>>;
-  metricStatuses?: Partial<Record<DashboardMetricId, DashboardMetricSourceStatus>>;
-}): {
-  promotedBlockIds: readonly DashboardBlockId[];
-  remainingFoldedBlockIds: readonly DashboardBlockId[];
-} {
-  const { foldedBlockIds, metricValues, metricStatuses } = options;
-  const hasCurrentPositiveValue = (metricId: DashboardMetricId) => {
-    const value = metricValues[metricId];
-    const status = metricStatuses?.[metricId];
-    if (value == null || value <= 0) return false;
-    if (status === undefined) return true;
-    return status === 'success' || status === 'updating';
-  };
-  const helpDeskKpi = hasCurrentPositiveValue('I-3') || hasCurrentPositiveValue('I-4');
-  const commercialKpi = hasCurrentPositiveValue('I-5') || hasCurrentPositiveValue('I-6');
-
-  const promoteOrder: DashboardBlockId[] = [];
-  if (commercialKpi && foldedBlockIds.includes('commercial-attention')) {
-    promoteOrder.push('commercial-attention');
-  }
-  if (helpDeskKpi && foldedBlockIds.includes('help-desk')) {
-    promoteOrder.push('help-desk');
-  }
-
-  const promoted = new Set(promoteOrder);
-  return {
-    promotedBlockIds: promoteOrder,
-    remainingFoldedBlockIds: foldedBlockIds.filter((id) => !promoted.has(id)),
-  };
 }
 
 /** Icono decorativo de identidad (B3) — no es acción. */
 export const DASHBOARD_IDENTITY_ICON = UserRound;
-export const DASHBOARD_INVENTORY_ICON = Package;
 
 /**
  * Tinte de métrica del inicio (UX U-D / DS v1.4).

@@ -1,6 +1,8 @@
 import { UserRole } from '@iwana/shared';
 import {
   DASHBOARD_ACTION_REGISTRY,
+  DASHBOARD_AREA_REGISTRY,
+  DASHBOARD_ATTENTION_SOURCES,
   DASHBOARD_BLOCK_REGISTRY,
   DASHBOARD_METRIC_REGISTRY,
   DASHBOARD_MODULE_HEALTH_REGISTRY,
@@ -14,7 +16,6 @@ import {
   resolveDashboardDataSources,
   resolveDashboardMetric,
   resolveDashboardModuleHealth,
-  resolvePromotedFoldedBlockIds,
   resolveDashboardMetricAccent,
   splitDashboardModuleHealthIds,
   toLocalDayKey,
@@ -38,8 +39,13 @@ describe('dashboard-role-composition', () => {
     const composition = getDashboardRoleComposition(role);
     const ceiling = DASHBOARD_ROLE_AUTHORIZATION_CEILING[role];
 
-    it('incluye identidad B3 y al menos un destino útil (CA-V2-01)', () => {
-      expect(composition.showOperationalTenantCard).toBe(true);
+    it('incluye identidad y al menos un destino útil (CA-V2-01)', () => {
+      // La identidad vive en el encabezado. La ficha de empresa queda para los roles sin
+      // composición operativa; quien no la tiene compone pulso y cola de atención.
+      if (!composition.showOperationalTenantCard) {
+        expect(composition.metricIds.length).toBeGreaterThan(0);
+        expect(composition.attentionIds.length).toBeGreaterThan(0);
+      }
 
       const primary = resolveDashboardAction(composition.primaryActionId);
       expect(primary.label.length).toBeGreaterThan(0);
@@ -59,6 +65,16 @@ describe('dashboard-role-composition', () => {
       for (const moduleHealthId of composition.moduleHealthIds) {
         expect(ceiling.moduleHealthIds).toContain(moduleHealthId);
       }
+
+      for (const attentionId of composition.attentionIds) {
+        expect(ceiling.attentionIds).toContain(attentionId);
+      }
+
+      for (const areaId of composition.areaIds) {
+        expect(ceiling.areaIds).toContain(areaId);
+      }
+
+      expect(composition.metricIds.length).toBeLessThanOrEqual(5);
 
       for (const blockId of listCompositionBlockIds(composition)) {
         expect(ceiling.blockIds).toContain(blockId);
@@ -121,8 +137,13 @@ describe('dashboard-role-composition', () => {
         'crm',
         'inventory',
         'audit',
+        'subscribers',
+        'cutoff',
+        'provisioning',
+        'replenishment',
       ]),
     );
+    expect(sources).toHaveLength(12);
     expect(sources).not.toContain('tenant-me');
   });
 
@@ -131,9 +152,9 @@ describe('dashboard-role-composition', () => {
     expect(sources).toEqual(['public-branding']);
   });
 
-  it('cada métrica del registro tiene id estable I-1…I-7', () => {
+  it('cada métrica del registro tiene id estable I-1…I-7 y P-1', () => {
     const ids = Object.keys(DASHBOARD_METRIC_REGISTRY) as DashboardMetricId[];
-    expect(ids.sort()).toEqual(['I-1', 'I-2', 'I-3', 'I-4', 'I-5', 'I-6', 'I-7']);
+    expect(ids.sort()).toEqual(['I-1', 'I-2', 'I-3', 'I-4', 'I-5', 'I-6', 'I-7', 'P-1']);
   });
 
   it('reconoce roles válidos y rechaza valores nulos o desconocidos', () => {
@@ -169,9 +190,10 @@ describe('dashboard-role-composition', () => {
     expect(toLocalDayKey(new Date(2026, 1, 1, 0, 1))).toBe('2026-02-01');
   });
 
-  it('ADMIN compone 7 métricas en orden plano I-1…I-7 (U-D5 §3)', () => {
+  it('ADMIN compone el pulso con base activa, casos, visitas y embudo', () => {
     const metricIds = getDashboardRoleComposition(UserRole.ADMIN).metricIds;
-    expect(metricIds).toEqual(['I-1', 'I-2', 'I-3', 'I-4', 'I-5', 'I-6', 'I-7']);
+    expect(metricIds).toEqual(['P-1', 'I-3', 'I-1', 'I-2', 'I-7']);
+    expect(DASHBOARD_METRIC_REGISTRY['P-1'].sources).toEqual(['subscribers']);
     // Cada par de apariencia similar usa iconos distintos para no confundir la tarjeta.
     expect(DASHBOARD_METRIC_REGISTRY['I-3'].icon).not.toBe(DASHBOARD_METRIC_REGISTRY['I-4'].icon);
     expect(DASHBOARD_METRIC_REGISTRY['I-5'].icon).not.toBe(DASHBOARD_METRIC_REGISTRY['I-6'].icon);
@@ -193,8 +215,13 @@ describe('dashboard-role-composition', () => {
       'I-3',
       'I-4',
     ]);
-    expect(getDashboardRoleComposition(UserRole.SALES).metricIds).toEqual(['I-5', 'I-6', 'I-7']);
-    expect(getDashboardRoleComposition(UserRole.ACCOUNTANT).metricIds).toEqual(['I-5']);
+    expect(getDashboardRoleComposition(UserRole.SALES).metricIds).toEqual([
+      'I-7',
+      'P-1',
+      'I-6',
+      'I-5',
+    ]);
+    expect(getDashboardRoleComposition(UserRole.ACCOUNTANT).metricIds).toEqual(['P-1', 'I-5']);
   });
 
   it('roles sin ficha operativa no componen métricas en B1', () => {
@@ -211,40 +238,48 @@ describe('dashboard-role-composition', () => {
     }
   });
 
-  it('promueve bloques folded con KPI > 0 y deja el resto plegado (C-11)', () => {
-    const result = resolvePromotedFoldedBlockIds({
-      foldedBlockIds: ['help-desk', 'commercial-attention', 'inventory'],
-      metricValues: { 'I-3': 5, 'I-4': 0, 'I-5': 2, 'I-6': 0 },
-    });
-    expect(result.promotedBlockIds).toEqual(['commercial-attention', 'help-desk']);
-    expect(result.remainingFoldedBlockIds).toEqual(['inventory']);
+  it('cada fila de atención tiene una fuente y el rol que la compone la pide', () => {
+    for (const role of ALL_ROLES) {
+      const sources = resolveDashboardDataSources(role);
+      for (const attentionId of getDashboardRoleComposition(role).attentionIds) {
+        expect(sources).toContain(DASHBOARD_ATTENTION_SOURCES[attentionId]);
+      }
+    }
   });
 
-  it('no promueve un KPI previo cuando su fuente actual está en error', () => {
-    const result = resolvePromotedFoldedBlockIds({
-      foldedBlockIds: ['commercial-attention', 'help-desk'],
-      metricValues: { 'I-3': 4, 'I-5': 3 },
-      metricStatuses: { 'I-3': 'success', 'I-5': 'error' },
-    });
-
-    expect(result.promotedBlockIds).toEqual(['help-desk']);
-    expect(result.remainingFoldedBlockIds).toEqual(['commercial-attention']);
+  it('las áreas de un rol piden la fuente de su módulo', () => {
+    for (const role of ALL_ROLES) {
+      const sources = resolveDashboardDataSources(role);
+      for (const areaId of getDashboardRoleComposition(role).areaIds) {
+        for (const source of DASHBOARD_AREA_REGISTRY[areaId].sources) {
+          expect(sources).toContain(source);
+        }
+      }
+    }
   });
 
-  it('promueve valores success y updating, pero conserva loading y error plegados', () => {
-    const result = resolvePromotedFoldedBlockIds({
-      foldedBlockIds: ['commercial-attention', 'help-desk'],
-      metricValues: { 'I-3': 4, 'I-4': 3, 'I-5': 2, 'I-6': 1 },
-      metricStatuses: {
-        'I-3': 'success',
-        'I-4': 'updating',
-        'I-5': 'loading',
-        'I-6': 'error',
-      },
-    });
+  it('SUPPORT y ACCOUNTANT no piden fuentes fuera del guard de su endpoint', () => {
+    const support = resolveDashboardDataSources(UserRole.SUPPORT);
+    // Aprovisionamiento es de ADMIN y NOC; la reposición no se compone para soporte.
+    expect(support).not.toContain('provisioning');
+    expect(support).not.toContain('replenishment');
+    expect(support).not.toContain('subscribers');
+    expect(support).not.toContain('commercial');
+    expect(support).not.toContain('tenant-summary');
 
-    expect(result.promotedBlockIds).toEqual(['help-desk']);
-    expect(result.remainingFoldedBlockIds).toEqual(['commercial-attention']);
+    const accountant = getDashboardRoleComposition(UserRole.ACCOUNTANT);
+    expect(accountant.attentionIds).not.toContain('offers-at-risk');
+    expect(resolveDashboardDataSources(UserRole.ACCOUNTANT)).toEqual(
+      expect.arrayContaining(['commercial', 'subscribers', 'cutoff']),
+    );
+    expect(resolveDashboardDataSources(UserRole.ACCOUNTANT)).not.toContain('wfm');
+  });
+
+  it('solo ADMIN compone los pendientes de configuración', () => {
+    for (const role of ALL_ROLES) {
+      const has = getDashboardRoleComposition(role).attentionIds.includes('configuration-pending');
+      expect(has).toBe(role === UserRole.ADMIN);
+    }
   });
 });
 
@@ -273,20 +308,19 @@ describe('resolveDashboardMetricAccent', () => {
     );
   });
 
-  it('ADMIN compone B1b con siete chips de producto y Operaciones sin fuente', () => {
-    const ids = getDashboardRoleComposition(UserRole.ADMIN).moduleHealthIds;
-    expect(ids).toEqual([
-      'scheduling',
+  it('ADMIN ya no compone chips: la salud de cada módulo vive en su card de área', () => {
+    const admin = getDashboardRoleComposition(UserRole.ADMIN);
+    expect(admin.moduleHealthIds).toEqual([]);
+    expect(admin.areaIds).toEqual([
       'help-desk',
-      'commercial',
+      'scheduling',
       'opportunities',
+      'subscribers',
+      'provisioning',
       'inventory',
-      'configuration',
-      'operations',
     ]);
     expect(DASHBOARD_MODULE_HEALTH_REGISTRY.operations.sources).toEqual([]);
     expect(resolveDashboardModuleHealth('scheduling').label).toBe('Programación');
-    expect(splitDashboardModuleHealthIds(ids).overflowIds).toEqual([]);
   });
 
   it('técnico y contratista tienen Programación de navegación y no piden resúmenes en el fan-out', () => {

@@ -11,12 +11,11 @@ import {
   type ReactNode,
   type Ref,
 } from 'react';
-import { ExpedienteStatus, UserRole } from '@iwana/shared';
-import { Badge, ProgressMeter } from '@iwana/ui';
+import { ExpedienteStatus, UserRole, type SubscriberQueueCounts } from '@iwana/shared';
+import { Badge, cn } from '@iwana/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   PortalAlert,
-  PortalDashboardMetric,
   PortalEmptyState,
   PortalModuleHealthChip,
   PortalNavListRow,
@@ -37,10 +36,13 @@ import { loadAuditFeed } from '@/lib/audit-feed-cache';
 import {
   ApiError,
   assuranceApi,
+  billingCyclesApi,
   commercialApi,
   crmApi,
   dashboardApi,
   inventoryApi,
+  networkApi,
+  subscribersApi,
   tenantSelfApi,
   wfmApi,
   type AssuranceDashboardSummary,
@@ -55,34 +57,38 @@ import {
   type WfmDashboardAlert,
   type WfmDashboardSummary,
 } from '@/lib/api-client';
-import {
-  getAssuranceTicketPriorityLabel,
-  getAssuranceTicketTypeLabel,
-} from '@/components/assurance/assurance-labels';
-import { formatExpedienteStatus } from '@/components/crm/expedientes/expediente-ui';
 import { TenantSummaryCard } from './TenantSummaryCard';
-import { OnboardingAlerts } from './OnboardingAlerts';
 import { RecentActivityPanel } from './RecentActivityPanel';
 import {
+  DASHBOARD_AREA_REGISTRY,
+  DASHBOARD_ATTENTION_SOURCES,
   getDashboardRoleComposition,
   isUserRole,
   resolveDashboardBlock,
   resolveDashboardDataSources,
   resolveDashboardMetric,
-  resolveDashboardMetricAccent,
-  resolvePromotedFoldedBlockIds,
   splitDashboardModuleHealthIds,
   toLocalDayKey,
+  type DashboardAreaId,
+  type DashboardAttentionId,
   type DashboardBlockId,
   type DashboardDataSourceId,
   type DashboardMetricId,
-  type DashboardMetricSourceStatus,
   type DashboardModuleHealthId,
   type DashboardRoleComposition,
 } from './dashboard-role-composition';
 import { resolveModuleHealthChip, type ModuleHealthSnapshot } from './dashboard-module-health';
-import { resolveTodayFocus } from './dashboard-today-focus';
-import type { OnboardingOperationState } from './OnboardingAlerts';
+import { resolveAttentionQueue } from './dashboard-attention-queue';
+import { DashboardAttentionQueue } from './DashboardAttentionQueue';
+import {
+  DashboardAreaCards,
+  casePrioritySegments,
+  subscriberBaseSegments,
+  type DashboardAreaHealth,
+  type DashboardProvisioningCounts,
+} from './DashboardAreaCards';
+import { DashboardPulse, type DashboardPulseCell } from './DashboardPulse';
+import { DashboardStackBar, formatDashboardNumber } from './dashboard-visuals';
 
 type LoadStatus = 'idle' | 'loading' | 'updating' | 'success' | 'error';
 
@@ -105,6 +111,12 @@ interface DashboardSourcesState {
   inventory: SourceState<InventoryDashboardSummary>;
   crm: SourceState<CrmPipelineSummary>;
   audit: SourceState<AuditLogEntry[]>;
+  subscribers: SourceState<SubscriberQueueCounts>;
+  /** Servicios con corte programado hoy. */
+  cutoff: SourceState<number>;
+  provisioning: SourceState<DashboardProvisioningCounts>;
+  /** Productos con sugerencia de reposición. */
+  replenishment: SourceState<number>;
 }
 
 const CLOSED_PIPELINE_STATUSES = new Set<string>([
@@ -113,14 +125,6 @@ const CLOSED_PIPELINE_STATUSES = new Set<string>([
 ]);
 
 const TAB_REFRESH_MS = 5 * 60 * 1000;
-
-/**
- * B2 adaptativo por altura (Opción A aprobada): la columna dominante entra en
- * modo banda cuando su altura baja de este umbral y sale al superar el de
- * salida (histéresis para evitar parpadeo durante resizes intermedios).
- */
-export const DOMINANT_BAND_THRESHOLD = 420;
-export const DOMINANT_BAND_EXIT = 460;
 
 function emptySource<T>(): SourceState<T> {
   return { status: 'idle', data: null, error: null, lastSuccessAt: null };
@@ -137,6 +141,10 @@ function createInitialSources(): DashboardSourcesState {
     inventory: emptySource(),
     crm: emptySource(),
     audit: emptySource(),
+    subscribers: emptySource(),
+    cutoff: emptySource(),
+    provisioning: emptySource(),
+    replenishment: emptySource(),
   };
 }
 
@@ -149,6 +157,8 @@ function assignSource(
   (state as Record<DashboardDataSourceId, SourceState<unknown>>)[id] = value;
 }
 
+const FORBIDDEN_SUMMARY_MESSAGE = 'No tienes acceso a este resumen.';
+
 function mapSourceError(error: unknown, fallback: string): string {
   const candidate =
     error instanceof ApiError
@@ -158,7 +168,7 @@ function mapSourceError(error: unknown, fallback: string): string {
         : null;
   if (candidate) {
     if (candidate.status === 401) return 'Tu sesión expiró. Inicia sesión nuevamente.';
-    if (candidate.status === 403) return 'No tienes acceso a este resumen.';
+    if (candidate.status === 403) return FORBIDDEN_SUMMARY_MESSAGE;
     return candidate.message || fallback;
   }
   return fallback;
@@ -216,6 +226,8 @@ function openPipelineCount(pipeline: CrmPipelineSummary | null): number | null {
 
 function metricValue(metricId: DashboardMetricId, sources: DashboardSourcesState): number | null {
   switch (metricId) {
+    case 'P-1':
+      return sources.subscribers.data?.active ?? null;
     case 'I-1':
       return sources.wfm.data?.todayCount ?? null;
     case 'I-2':
@@ -252,6 +264,8 @@ function metricDelta(
     if (overdueSla > 0) return { label: `${overdueSla} con atención vencida`, tone: 'warning' };
   }
   if (metricId === 'I-3') {
+    const breached = sources.assurance.data?.breachedCount ?? 0;
+    if (breached > 0) return { label: `${breached} fuera de tiempo`, tone: 'danger' };
     const atRisk = sources.assurance.data?.atRiskCount ?? 0;
     if (atRisk > 0) return { label: `${atRisk} en riesgo`, tone: 'warning' };
   }
@@ -260,6 +274,70 @@ function metricDelta(
     if (breached > 0) return { label: `${breached} incumplidos`, tone: 'danger' };
   }
   return undefined;
+}
+
+/** Frase que interpreta la cifra con datos de la misma fuente. */
+function metricHint(
+  metricId: DashboardMetricId,
+  sources: DashboardSourcesState,
+): string | undefined {
+  const n = formatDashboardNumber;
+  switch (metricId) {
+    case 'P-1': {
+      const data = sources.subscribers.data;
+      return data ? `${n(data.suspended)} suspendidos` : undefined;
+    }
+    case 'I-1': {
+      const data = sources.wfm.data;
+      return data
+        ? `${n(data.enRouteCount)} en ruta · ${n(data.upcomingCount)} en los próximos 7 días`
+        : undefined;
+    }
+    case 'I-2': {
+      const inbox = sources.wfm.data?.pendingInbox;
+      return inbox ? `${n(inbox.totalOpen)} abiertas en la bandeja` : undefined;
+    }
+    case 'I-3': {
+      const data = sources.assurance.data;
+      return data ? `${n(data.resolvedTodayCount)} resueltos hoy` : undefined;
+    }
+    case 'I-5': {
+      const data = sources.commercial.data;
+      return data ? `${n(data.catalogActiveCount)} en el catálogo activo` : undefined;
+    }
+    case 'I-7': {
+      const data = sources.crm.data;
+      return data ? `${n(data.total)} registradas en total` : undefined;
+    }
+    case 'I-4':
+    case 'I-6':
+      return undefined;
+    default: {
+      const _exhaustive: never = metricId;
+      return _exhaustive;
+    }
+  }
+}
+
+/** Mini visual de la celda; solo con dato real de la misma fuente. */
+function metricVisual(metricId: DashboardMetricId, sources: DashboardSourcesState): ReactNode {
+  if (metricId === 'P-1' && sources.subscribers.data) {
+    return (
+      <DashboardStackBar
+        segments={subscriberBaseSegments(sources.subscribers.data)}
+        ariaLabel="Base de suscriptores"
+      />
+    );
+  }
+  if (metricId === 'I-3' && sources.assurance.data) {
+    return (
+      <DashboardStackBar
+        segments={casePrioritySegments(sources.assurance.data.byPriority)}
+        ariaLabel="Casos abiertos por prioridad"
+      />
+    );
+  }
+  return null;
 }
 
 function metricSourceStatus(
@@ -316,27 +394,65 @@ function buildModuleHealthSnapshot(
   };
 }
 
-function resolveOnboardingOperationState(sources: DashboardSourcesState): OnboardingOperationState {
-  const operationSources = [sources.commercial, sources.crm, sources.inventory];
-  if (
-    operationSources.some(
-      (source) =>
-        source.status === 'idle' || source.status === 'loading' || source.status === 'error',
-    )
-  ) {
-    return 'unknown';
-  }
+/** Cifra de cada fila de la cola de atención; `null` = la fuente no entregó el dato. */
+function attentionCounts(
+  sources: DashboardSourcesState,
+): Partial<Record<DashboardAttentionId, number | null>> {
+  const wfm = sources.wfm.data;
+  const assurance = sources.assurance.data;
+  const commercial = sources.commercial.data;
+  return {
+    'cases-breached': assurance?.breachedCount ?? null,
+    'cases-at-risk': assurance?.atRiskCount ?? null,
+    'visits-overdue': wfm?.overdueCount ?? null,
+    'requests-overdue': wfm?.pendingInbox?.overdueSlaCount ?? null,
+    'requests-ready': wfm?.pendingInbox?.readyToScheduleCount ?? null,
+    'offers-at-risk': commercial?.offersAtRiskCount ?? null,
+    'plans-without-price': commercial?.missingCurrentPriceCount ?? null,
+    'cutoff-today': sources.cutoff.data,
+    'provisioning-failed': sources.provisioning.data?.failed ?? null,
+    'provisioning-unfinished': sources.provisioning.data?.closedUnprovisioned ?? null,
+    'fiscal-incomplete': sources.subscribers.data?.fiscalIncomplete ?? null,
+    'stock-below-minimum': sources.replenishment.data,
+    'configuration-pending': sources['tenant-summary'].data?.alerts.length ?? null,
+  };
+}
 
-  const universeCounts = [
-    sources.commercial.data?.catalogActiveCount,
-    sources.crm.data?.total,
-    sources.inventory.data?.itemsCount,
-  ];
-  const availableCounts = universeCounts.filter(
-    (count): count is number => typeof count === 'number',
-  );
-  if (availableCounts.length !== universeCounts.length) return 'unknown';
-  return availableCounts.some((count) => count > 0) ? 'active' : 'not-started';
+/** Etapas abiertas del embudo con su conteo, para la card de Oportunidades. */
+function openPipelineByStatus(pipeline: CrmPipelineSummary | null) {
+  if (!pipeline) return null;
+  const openByStatus: Record<string, number> = {};
+  for (const [status, count] of Object.entries(pipeline.data)) {
+    if (!CLOSED_PIPELINE_STATUSES.has(status)) openByStatus[status] = count;
+  }
+  return { openByStatus, open: openPipelineCount(pipeline) ?? 0 };
+}
+
+/** Áreas cuyo estado ya deriva `dashboard-module-health`. */
+const MODULE_HEALTH_AREA_IDS = ['help-desk', 'scheduling', 'opportunities', 'inventory'] as const;
+
+function subscribersAreaHealth(sources: DashboardSourcesState): DashboardAreaHealth {
+  const { label, href } = DASHBOARD_AREA_REGISTRY.subscribers;
+  const data = sources.subscribers.data;
+  if (!data) return { label, status: 'unknown', href };
+  if (data.fiscalIncomplete > 0) {
+    return { label, status: 'attention', href: `${href}?queue=fiscalIncomplete` };
+  }
+  if (data.contactPending > 0) {
+    return { label, status: 'attention', href: `${href}?queue=contactPending` };
+  }
+  return { label, status: 'ok', href };
+}
+
+function provisioningAreaHealth(sources: DashboardSourcesState): DashboardAreaHealth {
+  const { label, href } = DASHBOARD_AREA_REGISTRY.provisioning;
+  const data = sources.provisioning.data;
+  if (!data) return { label, status: 'unknown', href };
+  if (data.failed > 0) return { label, status: 'at-risk', href: `${href}?queue=FAILED` };
+  if (data.closedUnprovisioned > 0) {
+    return { label, status: 'attention', href: `${href}?queue=CLOSED_UNPROVISIONED` };
+  }
+  return { label, status: 'ok', href };
 }
 
 interface DashboardCacheEntry {
@@ -374,21 +490,33 @@ async function fetchSource(sourceId: DashboardDataSourceId, slug: string): Promi
       return crmApi.getPipelineSummary(slug);
     case 'audit':
       return loadAuditFeed({ slug, force: true });
+    case 'subscribers':
+      return subscribersApi.queueCounts(slug);
+    case 'cutoff': {
+      // Solo interesa el total: se pide la página mínima.
+      const agenda = await billingCyclesApi.cutoffAgenda({ date: toLocalDayKey(), limit: 1 }, slug);
+      return agenda.meta.total;
+    }
+    case 'provisioning': {
+      // Solo interesan los totales de cada cola.
+      const [inExecution, failed, closedUnprovisioned] = await Promise.all(
+        (['IN_EXECUTION', 'FAILED', 'CLOSED_UNPROVISIONED'] as const).map((queue) =>
+          networkApi.listProvisioningInbox({ queue, limit: 1 }, slug),
+        ),
+      );
+      return {
+        inExecution: inExecution!.meta.total,
+        failed: failed!.meta.total,
+        closedUnprovisioned: closedUnprovisioned!.meta.total,
+      };
+    }
+    case 'replenishment':
+      return (await inventoryApi.listReplenishmentSuggestions(slug)).length;
     default: {
       const _exhaustive: never = sourceId;
       return _exhaustive;
     }
   }
-}
-
-function MetricsSkeleton({ metricIds }: { metricIds: readonly DashboardMetricId[] }) {
-  return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-busy="true">
-      {metricIds.map((metricId) => (
-        <PortalSkeletonBlock key={metricId} className="h-24 rounded-2xl" />
-      ))}
-    </div>
-  );
 }
 
 function IdentityOnlyCard({ branding }: { branding: TenantPublicBranding | null }) {
@@ -501,82 +629,6 @@ function fieldAlertSeverityVariant(
   return 'info';
 }
 
-function TodayFocusBlock({
-  requestedSources,
-  sources,
-  onRetrySource,
-}: {
-  requestedSources: readonly DashboardDataSourceId[];
-  sources: DashboardSourcesState;
-  onRetrySource: (sourceId: DashboardDataSourceId) => void;
-}) {
-  const focus = resolveTodayFocus(requestedSources, {
-    wfm: {
-      status: sources.wfm.status,
-      todayCount: sources.wfm.data?.todayCount ?? null,
-      overdueCount: sources.wfm.data?.overdueCount ?? null,
-    },
-    assurance: {
-      status: sources.assurance.status,
-      openCount: sources.assurance.data?.openCount ?? null,
-      atRiskCount: sources.assurance.data?.atRiskCount ?? null,
-      breachedCount: sources.assurance.data?.breachedCount ?? null,
-    },
-    commercial: {
-      status: sources.commercial.status,
-      catalogSellableActiveCount: sources.commercial.data?.catalogSellableActiveCount ?? null,
-      catalogActiveCount: sources.commercial.data?.catalogActiveCount ?? null,
-    },
-  });
-
-  if (focus.kind === 'hidden') return null;
-  if (focus.kind === 'loading') {
-    return <BlockLoading title="Foco de hoy" rows={2} />;
-  }
-  if (focus.kind === 'error') {
-    return (
-      <BlockError
-        title="Foco de hoy"
-        message={focus.message}
-        onRetry={() => onRetrySource(focus.retrySource)}
-      />
-    );
-  }
-  if (focus.kind === 'empty') {
-    return (
-      <PortalPanel compact title={focus.title}>
-        <BlockEmpty
-          title="Sin carga que medir"
-          description={focus.description}
-          action={
-            <Link href={focus.href} className={portalInlineTextLinkClassName}>
-              {focus.actionLabel}
-            </Link>
-          }
-        />
-      </PortalPanel>
-    );
-  }
-
-  return (
-    <PortalPanel compact title={focus.title} description={focus.label}>
-      <ProgressMeter
-        value={focus.percent}
-        label={focus.hint}
-        ariaLabel={`${focus.label}: ${focus.percent} por ciento`}
-      />
-      <p className="mt-3 text-sm text-gray-700 dark:text-gray-300">
-        <span className="font-mono tabular-nums">{focus.done}</span>
-        {' de '}
-        <span className="font-mono tabular-nums">{focus.total}</span>
-      </p>
-      <Link href={focus.href} className={`${portalInlineTextLinkClassName} mt-2`}>
-        {focus.actionLabel}
-      </Link>
-    </PortalPanel>
-  );
-}
-
 function FieldAttentionBlock({
   sources,
   onRetry,
@@ -652,98 +704,6 @@ function FieldAttentionBlock({
               ))}
             </tbody>
           </table>
-        </div>
-      )}
-    </PortalPanel>
-  );
-}
-
-function HelpDeskBlock({
-  sources,
-  onRetry,
-}: {
-  sources: DashboardSourcesState;
-  onRetry: () => void;
-}) {
-  const state = sources.assurance;
-  const title = resolveDashboardBlock('help-desk').title;
-  if (state.status === 'loading' && !state.data) {
-    return <BlockLoading title={title} rows={3} />;
-  }
-  if (state.status === 'error' && !state.data) {
-    return (
-      <BlockError
-        title={title}
-        message="No pudimos cargar el resumen de la mesa de ayuda. Reintenta en unos minutos."
-        onRetry={onRetry}
-      />
-    );
-  }
-  const openCount = state.data?.openCount ?? 0;
-  const byPriority = Object.entries(state.data?.byPriority ?? {}).filter(([, count]) => count > 0);
-  const byType = Object.entries(state.data?.byType ?? {}).filter(([, count]) => count > 0);
-
-  return (
-    <PortalPanel compact title={title}>
-      {state.status === 'updating' ? (
-        <p className="mb-3 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
-          Actualizando
-        </p>
-      ) : null}
-      {openCount === 0 ? (
-        <BlockEmpty
-          title="Sin casos pendientes"
-          description="No hay casos abiertos ahora. Entra a la mesa de ayuda para registrar uno nuevo si hace falta."
-          action={
-            <Link href="/dashboard/assurance" className={portalInlineTextLinkClassName}>
-              Ver la mesa de ayuda
-            </Link>
-          }
-        />
-      ) : (
-        <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
-          <p>
-            {openCount} casos abiertos · {state.data?.atRiskCount ?? 0} en riesgo
-          </p>
-          {byPriority.length > 0 ? (
-            <div>
-              <p className="portal-eyebrow-muted mb-2">Por prioridad</p>
-              <ul className="space-y-1">
-                {byPriority.map(([priority, count]) => (
-                  <li key={priority}>
-                    <Link
-                      href={`/dashboard/assurance?priority=${encodeURIComponent(priority)}`}
-                      className={portalInlineTextLinkClassName}
-                    >
-                      {getAssuranceTicketPriorityLabel(priority)} · {count}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          {byType.length > 0 ? (
-            <div>
-              <p className="portal-eyebrow-muted mb-2">Por tipo</p>
-              <ul className="space-y-1">
-                {byType.map(([type, count]) => (
-                  <li key={type}>
-                    <Link
-                      href={`/dashboard/assurance?type=${encodeURIComponent(type)}`}
-                      className={portalInlineTextLinkClassName}
-                    >
-                      {getAssuranceTicketTypeLabel(type)} · {count}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          {byPriority.length === 0 && byType.length === 0 ? (
-            <Link href="/dashboard/assurance?status=OPEN" className={portalInlineTextLinkClassName}>
-              Abrir mesa de ayuda
-            </Link>
-          ) : null}
         </div>
       )}
     </PortalPanel>
@@ -853,152 +813,6 @@ function CommercialAttentionBlock({
   );
 }
 
-function PipelineBlock({
-  sources,
-  onRetry,
-}: {
-  sources: DashboardSourcesState;
-  onRetry: () => void;
-}) {
-  const state = sources.crm;
-  const title = resolveDashboardBlock('pipeline').title;
-  if (state.status === 'loading' && !state.data) {
-    return <BlockLoading title={title} rows={2} />;
-  }
-  if (state.status === 'error' && !state.data) {
-    return (
-      <BlockError
-        title={title}
-        message="No pudimos cargar el embudo de oportunidades. Reintenta en unos minutos."
-        onRetry={onRetry}
-      />
-    );
-  }
-  const total = state.data?.total ?? 0;
-  const open = openPipelineCount(state.data) ?? 0;
-  const openStatuses = Object.entries(state.data?.data ?? {}).filter(
-    ([status, count]) => count > 0 && !CLOSED_PIPELINE_STATUSES.has(status),
-  );
-
-  return (
-    <PortalPanel compact title={title}>
-      {state.status === 'updating' ? (
-        <p className="mb-3 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
-          Actualizando
-        </p>
-      ) : null}
-      {total === 0 ? (
-        <BlockEmpty
-          title="Aún no hay oportunidades"
-          description="Registra la primera oportunidad para empezar a seguir el embudo comercial."
-          action={
-            <Link href="/dashboard/crm/expedientes" className={portalInlineTextLinkClassName}>
-              Registrar la primera oportunidad
-            </Link>
-          }
-        />
-      ) : open === 0 ? (
-        <BlockEmpty
-          title="Sin oportunidades abiertas"
-          description="No hay oportunidades en seguimiento ahora. Puedes revisar el historial del embudo."
-          action={
-            <Link href="/dashboard/crm/expedientes" className={portalInlineTextLinkClassName}>
-              Ver el historial
-            </Link>
-          }
-        />
-      ) : (
-        <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
-          <p>
-            {open} en seguimiento · {total} en total
-          </p>
-          <ul className="space-y-1">
-            {openStatuses.map(([status, count]) => (
-              <li key={status} className="flex items-center justify-between gap-3">
-                <span>{formatExpedienteStatus(status)}</span>
-                <span className="font-mono tabular-nums text-gray-900 dark:text-white">
-                  {count}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <Link
-            href="/dashboard/crm/expedientes?view=open"
-            className={portalInlineTextLinkClassName}
-          >
-            Ver oportunidades
-          </Link>
-        </div>
-      )}
-    </PortalPanel>
-  );
-}
-
-function InventoryBlock({
-  sources,
-  onRetry,
-}: {
-  sources: DashboardSourcesState;
-  onRetry: () => void;
-}) {
-  const state = sources.inventory;
-  const title = resolveDashboardBlock('inventory').title;
-  if (state.status === 'loading' && !state.data) {
-    return <BlockLoading title={title} rows={2} />;
-  }
-  if (state.status === 'error' && !state.data) {
-    return (
-      <BlockError
-        title={title}
-        message="No pudimos cargar el estado del almacén. Reintenta en unos minutos."
-        onRetry={onRetry}
-      />
-    );
-  }
-  const itemsCount = state.data?.itemsCount ?? 0;
-  return (
-    <PortalPanel compact title={title}>
-      {state.status === 'updating' ? (
-        <p className="mb-3 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
-          Actualizando
-        </p>
-      ) : null}
-      {itemsCount === 0 ? (
-        <BlockEmpty
-          title="Aún no hay productos en inventario"
-          description="Registra el primer producto operativo para ver existencias y valor estimado aquí."
-          action={
-            <Link href="/dashboard/inventory" className={portalInlineTextLinkClassName}>
-              Registrar el primer producto
-            </Link>
-          }
-        />
-      ) : (
-        <dl className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <dt className="text-gray-500 dark:text-gray-400">Existencias</dt>
-            <dd className="mt-1 font-medium text-gray-900 dark:text-white">
-              {state.data?.totalOnHand ?? 'Sin dato disponible'}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-gray-500 dark:text-gray-400">Valor estimado</dt>
-            <dd className="mt-1 font-medium text-gray-900 dark:text-white">
-              {state.data
-                ? new Intl.NumberFormat('es-CO', {
-                    style: 'currency',
-                    currency: 'COP',
-                    maximumFractionDigits: 0,
-                  }).format(state.data.estimatedTotalValue)
-                : 'Sin dato disponible'}
-            </dd>
-          </div>
-        </dl>
-      )}
-    </PortalPanel>
-  );
-}
-
 function renderDashboardBlock({
   blockId,
   sources,
@@ -1026,10 +840,6 @@ function renderDashboardBlock({
           onRetry={() => onRetrySource('wfm')}
         />
       );
-    case 'help-desk':
-      return (
-        <HelpDeskBlock key={blockId} sources={sources} onRetry={() => onRetrySource('assurance')} />
-      );
     case 'commercial-attention':
       return (
         <CommercialAttentionBlock
@@ -1041,41 +851,6 @@ function renderDashboardBlock({
           onRetry={() => onRetrySource('commercial')}
         />
       );
-    case 'pipeline':
-      return <PipelineBlock key={blockId} sources={sources} onRetry={() => onRetrySource('crm')} />;
-    case 'inventory':
-      return (
-        <InventoryBlock
-          key={blockId}
-          sources={sources}
-          onRetry={() => onRetrySource('inventory')}
-        />
-      );
-    case 'next-configuration': {
-      const summary = sources['tenant-summary'];
-      if (summary.status === 'loading' && !summary.data) {
-        return <BlockLoading key={blockId} title={resolveDashboardBlock(blockId).title} rows={2} />;
-      }
-      if (summary.status === 'error' && !summary.data) {
-        return (
-          <BlockError
-            key={blockId}
-            title={resolveDashboardBlock(blockId).title}
-            message="No pudimos cargar el próximo paso de configuración. Reintenta en unos minutos."
-            onRetry={() => onRetrySource('tenant-summary')}
-          />
-        );
-      }
-      return (
-        <section key={blockId} aria-label={resolveDashboardBlock(blockId).title}>
-          <OnboardingAlerts
-            alerts={summary.data?.alerts ?? []}
-            isUpdating={summary.status === 'updating'}
-            operationState={resolveOnboardingOperationState(sources)}
-          />
-        </section>
-      );
-    }
     case 'change-history': {
       const audit = sources.audit;
       return (
@@ -1197,13 +972,9 @@ export function DashboardClient() {
   const [partialStale, setPartialStale] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [highlightCommercial, setHighlightCommercial] = useState(false);
-  const [foldedOpen, setFoldedOpen] = useState(false);
   const [moduleHealthOverflowOpen, setModuleHealthOverflowOpen] = useState(false);
-  // B2 adaptativo: false = retícula spec (8/4); true = banda full-width + apoyo en grilla.
-  const [bandMode, setBandMode] = useState(false);
   const lastFetchedAtRef = useRef<string | null>(null);
   const commercialHeadingRef = useRef<HTMLHeadingElement | null>(null);
-  const dominantColumnRef = useRef<HTMLDivElement | null>(null);
 
   const loadSources = useCallback(
     async (options: {
@@ -1355,28 +1126,7 @@ export function DashboardClient() {
     if (!reduceMotion && typeof heading.scrollIntoView === 'function') {
       heading.scrollIntoView({ block: 'start' });
     }
-  }, [foldedOpen, highlightCommercial]);
-
-  // B2 adaptativo: mide la altura de la columna dominante y alterna modo banda
-  // con histéresis. Sin bloque dominante la banda no aplica (apoyo a 12 cols).
-  // ResizeObserver es nativo; jsdom no lo define, de ahí el guard.
-  useLayoutEffect(() => {
-    setBandMode(false);
-    if (!composition?.dominantBlockId) return;
-    if (typeof ResizeObserver === 'undefined') return;
-    const node = dominantColumnRef.current;
-    if (!node) return;
-    const observer = new ResizeObserver((entries) => {
-      const height = entries[0]?.contentRect.height ?? 0;
-      setBandMode((current) => {
-        if (!current && height < DOMINANT_BAND_THRESHOLD) return true;
-        if (current && height > DOMINANT_BAND_EXIT) return false;
-        return current;
-      });
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [composition]);
+  }, [highlightCommercial]);
 
   if (!user || !role || !composition) {
     return (
@@ -1401,76 +1151,56 @@ export function DashboardClient() {
   const firstLoadPending = !initialLoadDone;
   const today = toLocalDayKey();
 
-  const supportIds = composition.supportBlockIds;
-  const metricValues: Partial<Record<DashboardMetricId, number | null>> = {};
-  const metricStatuses: Partial<Record<DashboardMetricId, DashboardMetricSourceStatus>> = {};
-  for (const metricId of composition.metricIds) {
-    metricValues[metricId] = metricValue(metricId, sources);
-    metricStatuses[metricId] = metricSourceStatus(metricId, sources);
-  }
-  const { promotedBlockIds, remainingFoldedBlockIds } = resolvePromotedFoldedBlockIds({
-    foldedBlockIds: composition.foldedBlockIds,
-    metricValues,
-    metricStatuses,
+  const requestedSources = resolveDashboardDataSources(role);
+  const hasAttention = composition.attentionIds.length > 0;
+  // Sin permiso sobre una fuente no es un fallo: esa fila no se compone para esta persona.
+  const attentionQueue = resolveAttentionQueue({
+    allowedIds: composition.attentionIds.filter(
+      (id) => sources[DASHBOARD_ATTENTION_SOURCES[id]].error !== FORBIDDEN_SUMMARY_MESSAGE,
+    ),
+    sourceStatus: (id) => sources[id].status,
+    counts: attentionCounts(sources),
+    todayLocalDate: today,
   });
-  const foldedCount = remainingFoldedBlockIds.length;
 
-  // B2: contenido de la columna dominante (orden fijo: dominante → promovidos →
-  // «Ver más» → plegados). Se comparte entre modo spec (8 cols) y modo banda
-  // (full width) para no duplicar markup.
-  const dominantColumnContent: ReactNode = composition.dominantBlockId ? (
-    <>
-      {renderDashboardBlock({
-        blockId: composition.dominantBlockId,
-        sources,
-        composition,
-        highlightCommercial,
-        onRetrySource: retrySource,
-        role,
-        commercialHeadingRef,
-      })}
-      {promotedBlockIds.map((blockId) =>
-        renderDashboardBlock({
-          blockId,
-          sources,
-          composition,
-          highlightCommercial,
-          onRetrySource: retrySource,
-          role,
-          commercialHeadingRef,
-        }),
-      )}
-      {foldedCount > 0 ? (
-        <div className="space-y-3">
-          <button
-            type="button"
-            onClick={() => setFoldedOpen((open) => !open)}
-            className={`${portalInlineTextLinkClassName} ${interactiveFocusClassName}`}
-            aria-expanded={foldedOpen}
-          >
-            {foldedOpen
-              ? 'Ocultar resúmenes adicionales'
-              : `Ver más · ${foldedCount} ${foldedCount === 1 ? 'resumen' : 'resúmenes'}`}
-          </button>
-          {foldedOpen
-            ? remainingFoldedBlockIds.map((blockId) =>
-                renderDashboardBlock({
-                  blockId,
-                  sources,
-                  composition,
-                  highlightCommercial,
-                  onRetrySource: retrySource,
-                  role,
-                  commercialHeadingRef,
-                }),
-              )
-            : null}
-        </div>
-      ) : null}
-    </>
-  ) : null;
+  const healthSnapshot = buildModuleHealthSnapshot(sources, requestedSources, today);
+  const areaHealth = {
+    ...Object.fromEntries(
+      MODULE_HEALTH_AREA_IDS.map((id) => {
+        const chip = resolveModuleHealthChip(id, healthSnapshot);
+        return [id, { label: chip.label, status: chip.status, href: chip.href }];
+      }),
+    ),
+    subscribers: subscribersAreaHealth(sources),
+    provisioning: provisioningAreaHealth(sources),
+  } as Record<DashboardAreaId, DashboardAreaHealth>;
 
-  const supportBlocks = supportIds.map((blockId) =>
+  const pulseCells: DashboardPulseCell[] = composition.metricIds.map((metricId) => {
+    const def = resolveDashboardMetric(metricId);
+    const status = metricSourceStatus(metricId, sources);
+    const href = def.buildHref(today);
+    return {
+      id: metricId,
+      label: def.label,
+      value: metricValue(metricId, sources),
+      delta: metricDelta(metricId, sources),
+      hint: metricHint(metricId, sources),
+      visual: metricVisual(metricId, sources),
+      state: status === 'loading' ? 'loading' : status === 'error' ? 'error' : 'idle',
+      updating: status === 'updating',
+      href,
+      // I-6 no tiene filtro único en destino: enfoca la atención comercial del propio inicio.
+      onClick: href ? undefined : () => setHighlightCommercial(true),
+      onRetry: () => {
+        for (const sourceId of def.sources) retrySource(sourceId);
+      },
+    };
+  });
+
+  const hasAreas = composition.areaIds.length > 0;
+  const hasSupport = composition.supportBlockIds.length > 0;
+
+  const renderBlock = (blockId: DashboardBlockId) =>
     renderDashboardBlock({
       blockId,
       sources,
@@ -1479,12 +1209,11 @@ export function DashboardClient() {
       onRetrySource: retrySource,
       role,
       commercialHeadingRef,
-    }),
-  );
+    });
 
   return (
     <div className="space-y-4">
-      {/* B0 · Identidad (U-B0bis) */}
+      {/* B0 · Identidad (U-B0bis: sin controles en el encabezado) */}
       <PageHeader
         title={companyTitle}
         subtitle={
@@ -1516,84 +1245,15 @@ export function DashboardClient() {
         }
       />
 
-      <TodayFocusBlock
-        requestedSources={resolveDashboardDataSources(role)}
-        sources={sources}
-        onRetrySource={retrySource}
-      />
+      {/* B1 · Pulso: una superficie con hasta cinco celdas */}
+      <DashboardPulse cells={pulseCells} loading={firstLoadPending} />
 
-      {/* B1 · Indicadores núcleo — grilla unificada de hasta 4 por fila (UX §2.2 · U-D5) */}
-      {composition.metricIds.length > 0 ? (
-        <section aria-label="Indicadores núcleo">
-          {firstLoadPending ? (
-            <MetricsSkeleton metricIds={composition.metricIds} />
-          ) : (
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-              {composition.metricIds.map((metricId) => {
-                const def = resolveDashboardMetric(metricId);
-                const status = metricSourceStatus(metricId, sources);
-                const value = metricValue(metricId, sources);
-                const delta = metricDelta(metricId, sources);
-                const href = def.buildHref(today);
-                const metricState =
-                  status === 'loading' ? 'loading' : status === 'error' ? 'error' : 'idle';
-
-                // U-D2: description visible solo al actualizar; en idle el estado se lee en la propia tarjeta.
-                const description =
-                  status === 'updating' ? (
-                    <span aria-live="polite">Actualizando · {def.description}</span>
-                  ) : undefined;
-
-                const common = {
-                  label: def.label,
-                  value,
-                  density: 'compact' as const,
-                  ...(description ? { description } : {}),
-                  accent: resolveDashboardMetricAccent({
-                    declared: def.accent,
-                    value,
-                    hasDelta: Boolean(delta),
-                  }),
-                  state: metricState as 'idle' | 'loading' | 'error',
-                  icon: def.icon,
-                  ...(delta ? { delta } : {}),
-                  ...(metricState === 'error'
-                    ? {
-                        onRetry: () => {
-                          for (const sourceId of def.sources) {
-                            retrySource(sourceId);
-                          }
-                        },
-                      }
-                    : {}),
-                };
-
-                if (href) {
-                  return <PortalDashboardMetric key={metricId} {...common} href={href} />;
-                }
-
-                return (
-                  <PortalDashboardMetric
-                    key={metricId}
-                    {...common}
-                    onClick={() => {
-                      setHighlightCommercial(true);
-                      setFoldedOpen(true);
-                    }}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </section>
-      ) : null}
-
-      {/* B1b · Salud de la operación */}
+      {/* Chips de navegación: solo roles de ejecución en campo */}
       {composition.moduleHealthIds.length > 0 ? (
         <ModuleHealthBand
           moduleHealthIds={composition.moduleHealthIds}
           sources={sources}
-          requestedSources={resolveDashboardDataSources(role)}
+          requestedSources={requestedSources}
           today={today}
           firstLoadPending={firstLoadPending}
           overflowOpen={moduleHealthOverflowOpen}
@@ -1602,52 +1262,70 @@ export function DashboardClient() {
         />
       ) : null}
 
-      {/* B2 / B2b — adaptativo por altura (Opción A): banda si la columna
-          dominante es baja, retícula spec 8/4 en caso contrario. Sin columna
-          vacía cuando el rol no tiene bloques de apoyo. */}
-      {composition.dominantBlockId || supportIds.length > 0 ? (
-        bandMode && composition.dominantBlockId ? (
-          <div className="flex flex-col gap-3">
-            <div ref={dominantColumnRef} className="flex flex-col gap-3">
-              {dominantColumnContent}
+      {/* B2 · Por área (8) + Requiere tu atención (4) */}
+      {hasAttention || hasAreas ? (
+        <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-12">
+          {hasAttention ? (
+            // Primera en el DOM (lectura y móvil); a la derecha en escritorio.
+            <div className={hasAreas ? 'xl:order-last xl:col-span-4' : 'xl:col-span-12'}>
+              <DashboardAttentionQueue
+                queue={attentionQueue}
+                onRetry={() => {
+                  for (const sourceId of attentionQueue.failedSources) retrySource(sourceId);
+                }}
+              />
             </div>
-            {supportIds.length === 3 ? (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {supportBlocks}
-              </div>
-            ) : supportIds.length === 2 ? (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{supportBlocks}</div>
-            ) : supportIds.length === 1 ? (
-              <div className="grid grid-cols-1 gap-3 xl:max-w-2xl">{supportBlocks}</div>
-            ) : null}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-12">
-            {composition.dominantBlockId ? (
-              <div
-                ref={dominantColumnRef}
-                className={`flex flex-col gap-3 ${supportIds.length > 0 ? 'xl:col-span-8' : 'xl:col-span-12'}`}
-              >
-                {dominantColumnContent}
-              </div>
-            ) : null}
-
-            {supportIds.length > 0 ? (
-              <div
-                className={`flex flex-col gap-3 ${composition.dominantBlockId ? 'xl:col-span-4' : 'xl:col-span-12'}`}
-              >
-                {supportBlocks}
-              </div>
-            ) : null}
-          </div>
-        )
+          ) : null}
+          {hasAreas ? (
+            <div className={hasAttention ? 'xl:col-span-8' : 'xl:col-span-12'}>
+              <DashboardAreaCards
+                areaIds={composition.areaIds}
+                health={areaHealth}
+                assurance={sources.assurance}
+                wfm={sources.wfm}
+                pipeline={{
+                  status: sources.crm.status,
+                  data: openPipelineByStatus(sources.crm.data),
+                  error: sources.crm.error,
+                }}
+                subscribers={sources.subscribers}
+                provisioning={sources.provisioning}
+                inventory={sources.inventory}
+                onRetrySource={retrySource}
+              />
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
-      {/* B3 · Estado de la empresa */}
+      {/* B4 · Detalle del rol (7) + historial (5) */}
+      {composition.dominantBlockId || hasSupport ? (
+        <div
+          className={cn(
+            'grid grid-cols-1 items-start gap-3',
+            composition.dominantBlockId && hasSupport && 'xl:grid-cols-12',
+          )}
+        >
+          {composition.dominantBlockId ? (
+            <div className={hasSupport ? 'xl:col-span-7' : undefined}>
+              {renderBlock(composition.dominantBlockId)}
+            </div>
+          ) : null}
+          {hasSupport ? (
+            <div
+              className={cn('flex flex-col gap-3', composition.dominantBlockId && 'xl:col-span-5')}
+            >
+              {composition.supportBlockIds.map(renderBlock)}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Identidad de la empresa: solo roles sin composición operativa */}
       {composition.showOperationalTenantCard ? (
         <section aria-label="Estado de la empresa">
           {(() => {
-            const requested = new Set(resolveDashboardDataSources(role));
+            const requested = new Set(requestedSources);
             const waitsForMe = requested.has('tenant-me');
             const waitsForSummary = requested.has('tenant-summary');
             const meStatus = sources['tenant-me'].status;
@@ -1657,7 +1335,7 @@ export function DashboardClient() {
             const sourcePending = (status: typeof meStatus) =>
               status === 'idle' || status === 'loading';
             // Solo esperar fuentes que el rol pide. Vista base no llama tenant-me
-            // ni summary: si se espera idle, B3 queda en esqueleto para siempre.
+            // ni summary: si se espera idle, la ficha queda en esqueleto para siempre.
             const b3Pending =
               !hasOperational &&
               (waitsForMe || waitsForSummary
