@@ -39,7 +39,7 @@ Agentes: `sr-backend` (B0, B1, B2), `sec-eng` (B0-SEC y re-revisión en G3), `ds
 | G6 | `test-change-reviewer` | Sin regresión; dos decisiones ratificadas por AI-EM-ARCH (§4) y dos huecos de cobertura cerrados con pruebas |
 | D4 | `jest src/modules/billing/dashboard` (API) · integración `DB_NAME=test` de N1 | 2 suites / 31 tests (200 para ADMIN, ACCOUNTANT y SALES; 403 para los 9 roles restantes y para SALES sin alguno de los dos permisos) · 1 suite / 6 tests |
 | D4 | Specs del inicio (dashboard + cliente N1–N3 + caché + logout) · `tsc --noEmit` de api y portal · `audit-ui.mjs` | 13 suites / 243 tests (antes 237) · 0 errores · sin hallazgos |
-| D4 | E2E del inicio con build de producción (`--retries=0`) | 46 / 46 en verde con una copia temporal de la config en el puerto 3012 (borrada). **No verificada en la config oficial**: el 3002 estaba ocupado por un servidor de otra sesión (PID 7344), no se liberó. Dos fallos de la primera corrida eran selectores de la prueba (nombre accesible de la fila de la cola; «$» del valor de Inventario para NOC) y se corrigieron sin cambiar la regla |
+| D4 | E2E del inicio con build de producción (`--retries=0`) | 46 / 46 en verde con una copia temporal de la config en el puerto 3012 (borrada). Repetida después con la config oficial `e2e/playwright.portal.config.ts` en el 3002, ya libre: 46 / 46 en verde (1,8 min). Dos fallos de la primera corrida eran selectores de la prueba (nombre accesible de la fila de la cola; «$» del valor de Inventario para NOC) y se corrigieron sin cambiar la regla |
 | D4 | `sec-eng` · `test-change-reviewer` | GO (SALES ya tenía lectura nominal de documentos y pagos; sin umbral k) · sin regresión; la negación de dinero para SUPPORT y NOC queda reforzada |
 
 ### 2.1 Carraca de conteos
