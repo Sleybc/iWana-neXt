@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AccessPermissionKey, type LegalText } from '@iwana/shared';
 import { usePermissions } from '@/components/access-control/permissions-context';
 import { privacyApi } from '@/lib/api-client';
@@ -15,7 +15,10 @@ function setMockSearch(query: string) {
 
 jest.mock('next/navigation', () => ({
   usePathname: () => '/dashboard/privacy',
-  useRouter: () => ({ replace: mockRouterReplace }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { replace: mockRouterReplace });
+  })(),
   useSearchParams: () => mockSearch,
 }));
 
@@ -443,6 +446,70 @@ describe('PrivacyWorkspace', () => {
     expect(mockPrivacyApi.updatePurposes).toHaveBeenCalledWith({
       items: [{ purpose: 'CONTACTO_COMERCIAL', enabled: false }],
     });
+    confirm.mockRestore();
+  });
+
+  it('la plantilla de contrato exige HTML y la declaración de asesoría jurídica', async () => {
+    setMockSearch('view=legal');
+    mockUsePermissions.mockReturnValue({
+      status: 'ready',
+      effectivePermissions: new Set([
+        AccessPermissionKey.PRIVACY_READ,
+        AccessPermissionKey.PRIVACY_MANAGE,
+      ]),
+      hasPermission: () => true,
+      hasAnyPermission: () => true,
+      retry: jest.fn(),
+    });
+    mockPrivacyApi.listPurposes.mockResolvedValue([]);
+    mockPrivacyApi.createLegalText.mockResolvedValue({});
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<PrivacyWorkspace />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Crear nueva versión' }));
+    fireEvent.change(screen.getByLabelText('Tipo'), { target: { value: 'CONTRATO_SERVICIO' } });
+    const format = screen.getByLabelText('Formato');
+    expect(format).toHaveValue('HTML');
+    expect(
+      within(format)
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['HTML']);
+    fireEvent.change(screen.getByLabelText('Versión'), { target: { value: 'c-1.0' } });
+    fireEvent.change(screen.getByLabelText('Contenido'), {
+      target: { value: '<h1>Contrato sintético</h1><script>alert(1)</script>' },
+    });
+    expect(document.querySelector('script')).toBeNull();
+    expect(
+      screen.getByText(/<h1>Contrato sintético<\/h1>/, { selector: 'div' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Contrato sintético' })).not.toBeInTheDocument();
+
+    const publish = screen.getByRole('button', { name: 'Publicar versión' });
+    expect(publish).toBeDisabled();
+    fireEvent.click(screen.getByRole('checkbox', { name: /Aprobado por asesoría jurídica/ }));
+    expect(publish).toBeEnabled();
+    fireEvent.click(publish);
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Los nuevos contratos'));
+    expect(mockPrivacyApi.createLegalText).toHaveBeenCalledWith({
+      type: 'CONTRATO_SERVICIO',
+      version: 'c-1.0',
+      content: '<h1>Contrato sintético</h1><script>alert(1)</script>',
+      format: 'HTML',
+      url: null,
+      legalApprovalDeclaration: 'APROBADO_POR_ASESORIA_JURIDICA',
+    });
+    await waitFor(() => expect(mockPrivacyApi.listLegalTexts).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText('Publicando…')).not.toBeInTheDocument());
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Crear nueva versión' }));
+    fireEvent.change(screen.getByLabelText('Tipo'), { target: { value: 'AUTORIZACION' } });
+    expect(screen.getByLabelText('Formato')).toHaveValue('MARKDOWN');
+    expect(
+      screen.queryByRole('checkbox', { name: /Aprobado por asesoría jurídica/ }),
+    ).not.toBeInTheDocument();
     confirm.mockRestore();
   });
 

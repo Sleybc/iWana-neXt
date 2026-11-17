@@ -10,7 +10,10 @@ const mockDeleteAdditionalProduct = jest.fn();
 const mockReplace = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: mockReplace }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { replace: mockReplace });
+  })(),
   usePathname: () => '/dashboard/commercial',
   useSearchParams: () => new URLSearchParams('tab=products'),
 }));

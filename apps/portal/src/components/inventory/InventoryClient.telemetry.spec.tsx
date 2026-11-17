@@ -24,25 +24,29 @@ jest.mock('next/navigation', () => ({
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
-  useAuth: () => ({
-    user: {
-      id: 'user-admin',
-      emailHash: 'hash',
-      role: 'ADMIN',
-      type: 'tenant',
-      tenantId: 'tenant-1',
-      displayName: 'Admin',
-      subtitle: 'Administrador',
-      firstName: 'Admin',
-      lastName: 'Test',
-    },
-    isAuthenticated: true,
-    isLoading: false,
-    login: jest.fn(),
-    completeMfaLogin: jest.fn(),
-    logout: jest.fn(),
-    refreshProfile: jest.fn(),
-  }),
+  useAuth: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () =>
+      (ctx ??= {
+        user: {
+          id: 'user-admin',
+          emailHash: 'hash',
+          role: 'ADMIN',
+          type: 'tenant',
+          tenantId: 'tenant-1',
+          displayName: 'Admin',
+          subtitle: 'Administrador',
+          firstName: 'Admin',
+          lastName: 'Test',
+        },
+        isAuthenticated: true,
+        isLoading: false,
+        login: jest.fn(),
+        completeMfaLogin: jest.fn(),
+        logout: jest.fn(),
+        refreshProfile: jest.fn(),
+      });
+  })(),
 }));
 
 jest.mock('@/lib/api-client', () => ({

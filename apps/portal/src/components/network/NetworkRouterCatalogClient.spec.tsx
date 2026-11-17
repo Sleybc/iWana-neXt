@@ -50,11 +50,15 @@ jest.mock('@/components/access-control/permissions-context', () => ({
 }));
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({
-    push: mockRouterPush,
-    replace: mockRouterReplace,
-    back: mockRouterBack,
-  }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () =>
+      (router ??= {
+        push: mockRouterPush,
+        replace: mockRouterReplace,
+        back: mockRouterBack,
+      });
+  })(),
   usePathname: () => '/dashboard/network/routers',
   useSearchParams: () => new URLSearchParams(),
 }));

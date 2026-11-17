@@ -54,7 +54,10 @@ jest.mock('./useOperatingWindow', () => ({
 
 jest.mock('next/navigation', () => ({
   usePathname: () => pathnameMock,
-  useRouter: () => ({ replace: replaceMock, push: pushMock }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { replace: replaceMock, push: pushMock });
+  })(),
   useSearchParams: () => searchParamsMock,
 }));
 

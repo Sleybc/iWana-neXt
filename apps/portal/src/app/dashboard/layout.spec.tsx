@@ -25,7 +25,10 @@ let latestTopHeaderProps: {
 } = {};
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: replaceMock }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { replace: replaceMock });
+  })(),
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({

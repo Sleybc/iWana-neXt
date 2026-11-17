@@ -24,10 +24,16 @@ import { SubscriberInstalledEquipmentCard } from './SubscriberOverviewCards';
 import { useSubscriberEquipment } from './use-subscriber-equipment';
 
 const mockGranted = { current: new Set<AccessPermissionKey>() };
+// Identidad estable entre renders, como el contexto real; `hasPermission` lee `mockGranted`
+// en cada llamada, así que los permisos de cada prueba siguen aplicando.
 jest.mock('@/components/access-control/permissions-context', () => ({
-  usePermissions: () => ({
-    hasPermission: (key: AccessPermissionKey) => mockGranted.current.has(key),
-  }),
+  usePermissions: (() => {
+    let permissions: { hasPermission: (key: AccessPermissionKey) => boolean } | undefined;
+    return () =>
+      (permissions ??= {
+        hasPermission: (key: AccessPermissionKey) => mockGranted.current.has(key),
+      });
+  })(),
 }));
 
 const SUBSCRIBER_ID = 'subscriber-synthetic';

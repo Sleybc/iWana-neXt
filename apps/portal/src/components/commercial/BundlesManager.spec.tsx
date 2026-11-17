@@ -15,7 +15,10 @@ const mockReplace = jest.fn();
 let mockSearchParams = new URLSearchParams('tab=bundles');
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: mockReplace }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { replace: mockReplace });
+  })(),
   usePathname: () => '/dashboard/commercial',
   useSearchParams: () => mockSearchParams,
 }));

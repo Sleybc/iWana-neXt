@@ -15,7 +15,10 @@ jest.mock('@/components/access-control/permissions-context', () => ({
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
-  useAuth: () => ({ user: { id: 'user-123' } }),
+  useAuth: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () => (ctx ??= { user: { id: 'user-123' } });
+  })(),
 }));
 
 describe('operations/layout', () => {

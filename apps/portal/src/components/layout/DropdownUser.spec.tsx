@@ -16,7 +16,10 @@ const logoutMock = jest.fn().mockResolvedValue(undefined);
 const pushMock = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { push: pushMock });
+  })(),
 }));
 
 jest.mock('next/link', () => ({
@@ -33,13 +36,17 @@ jest.mock('next/link', () => ({
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
-  useAuth: () => ({
-    user: {
-      displayName: 'Operador Portal',
-      subtitle: 'Administrador',
-    },
-    logout: logoutMock,
-  }),
+  useAuth: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () =>
+      (ctx ??= {
+        user: {
+          displayName: 'Operador Portal',
+          subtitle: 'Administrador',
+        },
+        logout: logoutMock,
+      });
+  })(),
 }));
 
 async function openUserMenu(user: ReturnType<typeof userEvent.setup>) {

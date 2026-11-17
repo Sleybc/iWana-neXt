@@ -15,15 +15,22 @@ const mockPush = jest.fn();
 const mockReplace = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({
-    push: mockPush,
-    replace: mockReplace,
-  }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () =>
+      (router ??= {
+        push: mockPush,
+        replace: mockReplace,
+      });
+  })(),
   useSearchParams: () => new URLSearchParams(window.location.search),
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
-  useAuth: () => ({ user: { id: 'user-123' } }),
+  useAuth: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () => (ctx ??= { user: { id: 'user-123' } });
+  })(),
 }));
 
 jest.mock('@/lib/api-client', () => ({

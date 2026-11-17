@@ -9,7 +9,10 @@ let pathnameMock = '/dashboard';
 let searchParamsMock = new URLSearchParams();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { push: pushMock });
+  })(),
   usePathname: () => pathnameMock,
   useSearchParams: () => searchParamsMock,
 }));

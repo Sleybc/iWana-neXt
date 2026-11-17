@@ -50,16 +50,20 @@ jest.mock('next/navigation', () => {
       }, []);
       return mockSearchParams;
     },
-    useRouter: () => ({
-      replace: (href: string, opts?: { scroll?: boolean }) => {
-        mockReplace(href, opts);
-        mockApplyHref(href);
-      },
-      push: (href: string, opts?: { scroll?: boolean }) => {
-        mockPush(href, opts);
-        mockApplyHref(href);
-      },
-    }),
+    useRouter: (() => {
+      let router: Record<string, unknown> | undefined;
+      return () =>
+        (router ??= {
+          replace: (href: string, opts?: { scroll?: boolean }) => {
+            mockReplace(href, opts);
+            mockApplyHref(href);
+          },
+          push: (href: string, opts?: { scroll?: boolean }) => {
+            mockPush(href, opts);
+            mockApplyHref(href);
+          },
+        });
+    })(),
   };
 });
 

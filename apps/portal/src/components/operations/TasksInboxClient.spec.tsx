@@ -30,15 +30,22 @@ jest.mock('next/link', () => ({
 }));
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({
-    push: mockPush,
-    replace: mockReplace,
-  }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () =>
+      (router ??= {
+        push: mockPush,
+        replace: mockReplace,
+      });
+  })(),
   useSearchParams: () => searchParamsMock,
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
-  useAuth: () => ({ user: { id: 'user-123', role: 'ADMIN' } }),
+  useAuth: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () => (ctx ??= { user: { id: 'user-123', role: 'ADMIN' } });
+  })(),
 }));
 
 // Permisos mutables: por defecto sin permiso de creación (conducta previa del

@@ -10,7 +10,10 @@ import { OperationsLandingRedirect } from './OperationsLandingRedirect';
 const mockReplace = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: jest.fn(), replace: mockReplace }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { push: jest.fn(), replace: mockReplace });
+  })(),
 }));
 
 const mockUsePermissions = jest.fn();

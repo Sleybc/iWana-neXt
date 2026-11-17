@@ -27,10 +27,14 @@ const mockReplace = jest.fn();
 let searchParamsMock = new URLSearchParams();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({
-    push: mockPush,
-    replace: mockReplace,
-  }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () =>
+      (router ??= {
+        push: mockPush,
+        replace: mockReplace,
+      });
+  })(),
   useSearchParams: () => searchParamsMock,
 }));
 
@@ -39,6 +43,7 @@ jest.mock('next/navigation', () => ({
 let mockCurrentUser: { id: string; role: UserRole } = { id: 'user-123', role: UserRole.ADMIN };
 
 jest.mock('@/components/auth/AuthProvider', () => ({
+  // ctx-inestable-intencional: el valor depende de estado mutable que cambia por prueba.
   useAuth: () => ({ user: mockCurrentUser }),
 }));
 

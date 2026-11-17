@@ -9,7 +9,10 @@ const replaceMock = jest.fn();
 const pushMock = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: replaceMock, push: pushMock }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { replace: replaceMock, push: pushMock });
+  })(),
   usePathname: () => '/dashboard/commercial',
   useSearchParams: () => mockSearchParams,
 }));
@@ -17,10 +20,14 @@ jest.mock('next/navigation', () => ({
 jest.mock('@/components/auth/AuthProvider', () => {
   const user = { id: 'user-1', role: 'ADMIN', tenantId: 'tenant-1' };
   return {
-    useAuth: () => ({
-      user,
-      isLoading: false,
-    }),
+    useAuth: (() => {
+      let ctx: Record<string, unknown> | undefined;
+      return () =>
+        (ctx ??= {
+          user,
+          isLoading: false,
+        });
+    })(),
   };
 });
 

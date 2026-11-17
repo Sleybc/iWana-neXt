@@ -12,15 +12,22 @@ const completeMfaLoginMock = jest.fn();
 const clearTerminalSessionErrorMock = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { push: pushMock });
+  })(),
   usePathname: () => '/dashboard/inventory',
 }));
 
 jest.mock('./AuthProvider', () => ({
-  useAuth: () => ({
-    login: loginMock,
-    completeMfaLogin: completeMfaLoginMock,
-  }),
+  useAuth: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () =>
+      (ctx ??= {
+        login: loginMock,
+        completeMfaLogin: completeMfaLoginMock,
+      });
+  })(),
 }));
 
 jest.mock('@/lib/api-client', () => ({

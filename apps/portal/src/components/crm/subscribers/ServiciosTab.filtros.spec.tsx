@@ -8,7 +8,10 @@ jest.mock('@/lib/api-client', () => ({
   contractsApi: { remove: jest.fn() },
 }));
 jest.mock('@/components/access-control/permissions-context', () => ({
-  usePermissions: () => ({ hasPermission: () => false }),
+  usePermissions: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () => (ctx ??= { hasPermission: () => false });
+  })(),
 }));
 jest.mock('./use-billing-cycles', () => ({
   useBillingCycles: () => ({ cycles: [], loading: false, error: null, retry: jest.fn() }),

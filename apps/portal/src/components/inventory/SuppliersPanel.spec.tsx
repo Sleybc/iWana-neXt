@@ -5,10 +5,14 @@ import { SuppliersPanel } from './SuppliersPanel';
 
 const pushMock = jest.fn();
 const replaceMock = jest.fn();
+// Referencia estable: `useTableQueryState` depende de `router` y un objeto nuevo en
+// cada render recreaba `loadPage` y relanzaba la carga en bucle, con el pager
+// deshabilitado durante cada recarga (CI run 42298936387). El router de Next es estable.
+const routerMock = { push: pushMock, replace: replaceMock };
 let searchParamsMock = new URLSearchParams();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock, replace: replaceMock }),
+  useRouter: () => routerMock,
   usePathname: () => '/dashboard/inventory',
   useSearchParams: () => searchParamsMock,
 }));

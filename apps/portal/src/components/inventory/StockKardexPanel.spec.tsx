@@ -10,7 +10,10 @@ const replaceMock = jest.fn();
 let searchParamsMock = new URLSearchParams();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock, replace: replaceMock }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { push: pushMock, replace: replaceMock });
+  })(),
   usePathname: () => '/dashboard/inventory',
   useSearchParams: () => searchParamsMock,
 }));

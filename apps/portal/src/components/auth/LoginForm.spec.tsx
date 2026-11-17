@@ -6,15 +6,23 @@ const pushMock = jest.fn();
 const loginMock = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({
-    push: pushMock,
-  }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () =>
+      (router ??= {
+        push: pushMock,
+      });
+  })(),
 }));
 
 jest.mock('./AuthProvider', () => ({
-  useAuth: () => ({
-    login: loginMock,
-  }),
+  useAuth: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () =>
+      (ctx ??= {
+        login: loginMock,
+      });
+  })(),
 }));
 
 function LoginFormWrapper({ initialTenantSlug = '' }: { initialTenantSlug?: string }) {

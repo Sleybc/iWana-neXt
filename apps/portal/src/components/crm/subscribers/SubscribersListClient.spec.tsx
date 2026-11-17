@@ -20,6 +20,7 @@ let searchParamsMock = new URLSearchParams();
 let mockAuthRole = 'ADMIN';
 
 jest.mock('@/components/auth/AuthProvider', () => ({
+  // ctx-inestable-intencional: el valor depende de estado mutable que cambia por prueba.
   useAuth: () => ({ user: { role: mockAuthRole, tenantId: 'tenant-synthetic' } }),
 }));
 

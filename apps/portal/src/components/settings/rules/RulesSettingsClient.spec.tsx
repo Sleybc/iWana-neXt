@@ -6,15 +6,22 @@ import { RulesSettingsClient } from './RulesSettingsClient';
 const replaceMock = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: replaceMock, push: jest.fn() }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { replace: replaceMock, push: jest.fn() });
+  })(),
   useSearchParams: () => new URLSearchParams(),
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
-  useAuth: () => ({
-    user: { id: 'user-1', role: UserRole.ADMIN, tenantId: 'tenant-1' },
-    isLoading: false,
-  }),
+  useAuth: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () =>
+      (ctx ??= {
+        user: { id: 'user-1', role: UserRole.ADMIN, tenantId: 'tenant-1' },
+        isLoading: false,
+      });
+  })(),
 }));
 
 jest.mock('next/dynamic', () => ({

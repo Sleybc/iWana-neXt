@@ -24,12 +24,18 @@ const mockReplace = jest.fn();
 let searchParamsMock = new URLSearchParams();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mockPush, replace: mockReplace }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { push: mockPush, replace: mockReplace });
+  })(),
   useSearchParams: () => searchParamsMock,
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
-  useAuth: () => ({ user: { id: 'tech-001', role: UserRole.TECHNICIAN } }),
+  useAuth: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () => (ctx ??= { user: { id: 'tech-001', role: UserRole.TECHNICIAN } });
+  })(),
 }));
 
 jest.mock('@/lib/api-client', () => ({

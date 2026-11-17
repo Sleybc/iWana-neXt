@@ -6,7 +6,10 @@ import { CommercialAlertsStrip } from './CommercialAlertsStrip';
 const pushMock = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock, replace: jest.fn() }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { push: pushMock, replace: jest.fn() });
+  })(),
 }));
 
 function buildSummary(

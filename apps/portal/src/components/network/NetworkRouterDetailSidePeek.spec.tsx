@@ -13,7 +13,10 @@ import { NetworkRouterDetailSidePeek } from './NetworkRouterDetailSidePeek';
 const mockPush = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { push: mockPush });
+  })(),
 }));
 
 const router: RouterDetailDto = {

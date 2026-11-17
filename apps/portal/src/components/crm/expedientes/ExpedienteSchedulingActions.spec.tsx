@@ -9,7 +9,10 @@ import { useCrmInstallationFieldWork } from './useCrmInstallationFieldWork';
 const mockPush = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { push: mockPush });
+  })(),
 }));
 
 jest.mock('@/components/scheduling/visit-request-origin-orchestration', () => ({

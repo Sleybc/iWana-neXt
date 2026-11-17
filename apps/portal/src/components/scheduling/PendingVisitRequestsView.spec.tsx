@@ -38,7 +38,10 @@ let searchParamsMock = new URLSearchParams();
 
 jest.mock('next/navigation', () => ({
   usePathname: () => '/dashboard/scheduling/pending-visits',
-  useRouter: () => ({ replace: replaceMock }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { replace: replaceMock });
+  })(),
   useSearchParams: () => searchParamsMock,
 }));
 

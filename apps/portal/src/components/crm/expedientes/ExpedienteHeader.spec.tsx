@@ -4,7 +4,10 @@ import { ExpedienteHeader } from './ExpedienteHeader';
 const push = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { push });
+  })(),
 }));
 
 jest.mock('next/link', () => ({
