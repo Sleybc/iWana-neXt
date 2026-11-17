@@ -40,7 +40,7 @@ GitHub Copilot, OpenCode, Codex y Claude Code son asistentes activos del workspa
 | Prompts | `docs/prompts/` | Unica carpeta de prompts, para los dos subtipos. Deben remitir a `AGENTS.md`, artefactos del modulo y restricciones reales. |
 | Reglas por path | `.github/instructions/*.instructions.md` | Complementan la capa global y no deben competir con `AGENTS.md`. |
 | MCP | `.opencode/opencode.json` para OpenCode | En Codex la disponibilidad depende de la sesion activa; no crear config ficticia del repo. |
-| Agentes / subagentes | Skills de workflow (`brainstorming`, `writing-plans`, `architect-review`, `subagent-driven-development`) | Preferir flujos compartidos del repo antes que agentes paralelos por proveedor. |
+| Agentes / subagentes | Skills de workflow (`brainstorming`, `writing-plans`, `architect-review`, `executing-plans`) | Preferir flujos compartidos del repo antes que agentes paralelos por proveedor. |
 
 ## Reglas de mantenimiento
 

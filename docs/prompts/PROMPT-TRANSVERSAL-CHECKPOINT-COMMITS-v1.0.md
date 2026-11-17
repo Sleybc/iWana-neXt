@@ -216,3 +216,27 @@ El único distinto es este prompt: la versión del árbol es la del stash más l
 | X | `docs: checkpoint commit report and prompts` | `INFORME-TRANSVERSAL-CHECKPOINT-COMMITS-v1.0.md`, este prompt y sus lanzadores `LAUNCH-v1.0` a `v1.5` |
 
 **Si un índice aislado no da 0 bloqueantes:** `[BLOQUEO]` con la lista de hallazgos. No se ajustan documentos sin pasar por AI-EM-ARCH. Sin push.
+
+---
+
+## F3 · Push y G6.5 — ordenado por el CTO el 2026-10-31
+
+**Base:** 8 commits locales sobre `origin/main` (`1ce4f263`): A `55e46e9a`, B `130a70ee`, C `30b2fb01`, G `2b70e9d4`, S `9cf7f91b`, DH `316c5b4e`, BB `66899c3b` y X `6dbdda8a`. El stash está vacío y quedan 132 rutas sin commitear (D, E, F y exclusiones), que **no viajan**.
+
+**`plat-ops`:**
+1. Comprueba que `main` sigue en `6dbdda8a` y que `git fetch` no trae nada nuevo de `origin/main`. Si `origin` avanzó: `[BLOQUEO]`, sin rebase ni merge por cuenta propia.
+2. `git push origin main`, sin `--force` ni `--no-verify`. Si un hook falla: `[BLOQUEO]` con su salida.
+3. **G6.5 (ADR-069):** sigue con `gh run list --branch main` y `gh run watch` la corrida del SHA `6dbdda8a` hasta que termine. Informa el ID de la corrida, cada job con su resultado y su duración.
+4. **CI en rojo:** no corrijas código. Identifica el job y el primer error y clasifícalo por ola (A, B, C, G o documentos) o como entorno o flaky. Emite `[BLOQUEO]` para que AI-EM-ARCH abra el bloque correctivo con el dueño. Prohibido revertir commits publicados sin orden del CTO.
+5. **Cierre:** añade §F3 al informe del checkpoint con el SHA publicado, la corrida, el veredicto de G6.5 y la lista de lo que sigue local. Ese informe queda sin commitear hasta el próximo cierre documental.
+
+---
+
+## Incidente posterior: corrupción por staging parcial (2026-10-31)
+
+**Hecho.** La verificación del commit G (`2b70e9d4`), que llevaba **solo algunos hunks** de `apps/api/src/modules/crm/contracts/contracts.service.ts`, usó `stash push --keep-index` y `pop` con el archivo parcialmente en el índice. Al restaurarlo, git **reordenó líneas** de la copia de trabajo: mismo contenido, otro orden, y el archivo dejó de compilar. Lo publicado no se afectó (CI en verde). Lo detectó V3b de MOD05 Fase 09, y la reparación es §R3-bis de su prompt.
+
+**Regla 4-ter, obligatoria para cualquier commit con archivos parcialmente en el índice (D → E → F incluido):**
+1. Antes del `stash push`, copia **completos** fuera del repo los archivos parcialmente en el índice (`git diff --name-only` ∩ `git diff --cached --name-only`) y registra su SHA-256.
+2. Después del `pop`, compara el SHA-256 de cada uno con su copia.
+3. Si alguno difiere: **no se commitea**. Se restaura ese archivo desde su copia, que es la versión previa al stash, y se emite `[BLOQUEO]` con la lista de archivos.

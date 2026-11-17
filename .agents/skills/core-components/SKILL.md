@@ -58,7 +58,12 @@ Los tipos (`*Props`, `AvatarSize`, `AvatarVariant`, `FormStatusState`, `ModalLay
 
 ### Lo que NO existe hoy
 
-No importar nada de esta lista desde `@iwana/ui`: `Textarea`, `Checkbox` suelto (existe `CheckboxCard`), `Toast`, `Table`, `Sidebar`, `PageHeader` (existe `SectionHeader`), `MetricCard`, `Stack`, `Inline`, `Container`, `Section`, `Text`, `Heading`, `Label`, `EmptyState`, `Modal` (existen `Dialog` y `ModalLayer`). Las primitives del portal (`PortalPanel`, `PortalAlert`, `PortalEmptyState`, `PortalSkeletonBlock`) viven en `apps/portal/src/components/shared/portal-ui.tsx`, no en `@iwana/ui`. Una primitive nueva se añade a `packages/ui/src/index.ts` (la implementa fe-platform) y se refleja aquí en el mismo cambio.
+No importar nada de esta lista desde `@iwana/ui`: `Textarea`, `Checkbox` suelto (existe `CheckboxCard`), `Toast`, `Table`, `Sidebar`, `PageHeader` (existe `SectionHeader`), `MetricCard`, `Stack`, `Inline`, `Container`, `Section`, `Text`, `Heading`, `Label`, `EmptyState`, `Modal` (existen `Dialog` y `ModalLayer`). Las primitives del portal (`PortalPanel`, `PortalAlert`, `PortalEmptyState`, `PortalSkeletonBlock`) viven en `apps/portal/src/components/shared/portal-ui.tsx`, no en `@iwana/ui`. Sus contratos de densidad (dueño `ds-owner`) viven en `docs/specs/2026-11-10-mod05-ficha-suscriptor-estilo-uisp-ux.md` §8:
+
+- v1.0 (2026-11-10, §8.1–8.5) — `PortalPanel density="dense"` y `PortalFieldRow`/`PortalFieldList` (aditivo, D1 MOD05).
+- v1.1 (2026-11-16, §8.6) — `PortalFieldList columns`, `PortalFieldRow emptyLabel` y ancho del panel con riel (aditivo, MOD10).
+
+Una primitive nueva se añade a `packages/ui/src/index.ts` (la implementa fe-platform) y se refleja aquí en el mismo cambio.
 
 ### Cómo verificar este inventario
 

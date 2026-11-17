@@ -1,9 +1,9 @@
 # Informe transversal — checkpoints de commits
 
-**Versión:** 1.2  
-**Changelog:** v1.2 (2026-10-31): añade §F1b con las SHA y cifras verificadas de S, DH y BB; registra la verificación precommit de X. v1.1 (2026-10-31): incorpora §F1 con la secuencia local A/B/C/G y el NO-GO de H; añade §F2 con la revisión documental de F1b.  
+**Versión:** 1.3
+**Changelog:** v1.3 (2026-10-31): añade §F3 con la publicación de X, G6.5 y el inventario de trabajo que continúa local. v1.2 (2026-10-31): añade §F1b con las SHA y cifras verificadas de S, DH y BB; registra la verificación precommit de X. v1.1 (2026-10-31): incorpora §F1 con la secuencia local A/B/C/G y el NO-GO de H; añade §F2 con la revisión documental de F1b.
 **Fecha:** 2026-10-31  
-**Estado:** Cierre local F1b — S, DH y BB creados; X se verifica antes de su commit. Sin push.  
+**Estado:** Cierre F3 — X publicado en `main`; G6.5 PASS. El trabajo D/E/F continúa local y sin commit.
 **Nombre de archivo:** ruta estable con sufijo histórico `v1.0`, referenciada por el prompt de checkpoint.  
 **Encargo:** [PROMPT-TRANSVERSAL-CHECKPOINT-COMMITS-v1.0](../prompts/PROMPT-TRANSVERSAL-CHECKPOINT-COMMITS-v1.0.md)
 
@@ -287,3 +287,21 @@ El NO-GO de H documentado en §F2 era anterior a D-def. El gate DH se ejecutó s
 | X | `docs: checkpoint commit report and prompts` | Se informa en la respuesta de cierre; este informe forma parte del commit | 8 | BLOQUEANTE: 0 · AVISO: 153 · 88 ADR indexados | BLOQUEANTE: 0 · AVISO: 3 · 2130 Markdown escaneados | Limpio |
 
 Los commits S, DH y BB se crearon en `main`; sus hooks `lint-staged` y `commitlint` terminaron con salida 0. El índice X contiene este informe, el prompt transversal y sus seis lanzadores (`LAUNCH-v1.0` a `v1.5`). Se registró la evidencia de X y se repite el gate sobre esta versión final del índice antes del commit. La SHA propia de X se informa al cierre porque este informe forma parte del commit.
+
+## F3 · Push y G6.5 — 2026-10-31
+
+Se verificó `main` en `6dbdda8afb8793966487bd05ab62e681c16d1f1f`. Antes del push, `origin/main` estaba en `1ce4f263509ec5e76639ab8e2ab6d139e9140364`; `git fetch origin` no encontró avances. `git push origin main` terminó con salida 0 y publicó `6dbdda8a` (`1ce4f263..6dbdda8a`). La referencia remota comprobada al cierre apunta a la misma SHA.
+
+**G6.5: PASS.** La corrida [CI #41249281896](https://github.com/Sleybc/iWana-neXt/actions/runs/41249281896), sobre `6dbdda8a`, concluyó `success` el 2026-10-31 a las 22:55:56 UTC. Los cinco jobs terminaron correctamente:
+
+| Job | Resultado | Duración |
+|---|---|---:|
+| E2E portal | success | 10m 10s |
+| E2E operativo R4.1 — API + storage + BullMQ reales | success | 14m 48s |
+| Integridad de citas ADR | success | 14s |
+| Build y validación de imágenes production | success | 3m 23s |
+| Lint + Typecheck + Build + Unit tests | success | 13m 53s |
+
+También concluyó `success` el workflow [E2E Web Admin Smoke #41249281954](https://github.com/Sleybc/iWana-neXt/actions/runs/41249281954), con su job `Admin bootstrap smoke` en 1m 22s. Se observaron avisos de deprecación de Node 20 en actions y de migración de `ubuntu-latest`; no falló ningún job.
+
+**Lo que sigue local:** antes de esta actualización, `git status --porcelain=v1` contaba 134 rutas: 74 modificadas y 60 sin seguimiento, con 0 staged. El informe agrega una ruta modificada más; queda un total de 135 (75 modificadas, 60 sin seguimiento, 0 staged). Incluye el trabajo de D/E/F que permanece abierto, cambios de MOD05 en ciclo de facturación, cambio de plan y revisión 360°, evidencia/informes asociados, los dos `next-env.d.ts` y cambios locales del prompt transversal, entre otros. No se incluyeron en este push. Este cierre §F3 del informe queda deliberadamente local y sin commit.

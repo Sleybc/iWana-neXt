@@ -11,7 +11,7 @@
 | Fin de ola 1 | ✅ | 2026-11-16 | Contrato A1 v1.0 y `PortalTimeline` v1.1 congelados (§Ola 1) |
 | G6 ola 2 | ✅ | 2026-11-16 | CA-4 y CA-5 en verde contra Postgres real; conteos ≥ W0 |
 | G6 cierre | ✅ | 2026-11-16 | `gate-verifier` GO; E2E en verde; `audit-ui` sin hallazgos nuevos; `sec-eng` GO (C1 resuelta); `boundary-reviewer` sin hallazgos abiertos |
-| G6.5 | Pendiente | — | Requiere push autorizado y CI de `main` en verde |
+| G6.5 | ✅ | 2026-11-16 | CI run 43970469726 sobre `65a3c12f`: todos los jobs en `success`, incluido «E2E operativo R4.1». E2E Web Admin Smoke 43970469660 `success`. El rojo previo (runs 43964281661 y 43965254502) y su corrección están en §Publicación |
 
 ## Decisiones de ejecución
 
@@ -191,7 +191,26 @@ Cuando el CTO dé el G0 de la spec de bloqueo en proyecciones, su fila `inventor
   - `pnpm-lock.yaml`: solo cambian `next` y `@next/*` de 16.4.2 a 16.4.6, más una deduplicación de `caniuse-lite`. Se reformateó con Prettier, como el resto del lockfile.
   - `pnpm install --frozen-lockfile` OK; `pnpm audit --prod` da 0 avisos de `next`; typecheck de portal y web sin errores; `next build` de portal (54 páginas) y de web (15 páginas) con «Next.js 16.4.6», exit 0 y sin el aviso de vulnerabilidad.
 
+## Publicación (2026-11-16)
+
+- **`f789098e`** (otra sesión, «feat(storage): …», ya publicado) commiteó el índice compartido mientras esta sesión lo armaba, y se llevó 44 de los 47 archivos del encargo. Los tres archivos que mezclan hunks ajenos (`api-client.ts`, `portal-ui.tsx`, `SubscriberOverviewTab.tsx`) aún no estaban en el índice. Por eso `main` referenciaba `getSubscriberEquipment`, `PortalTimeline` y `equipmentCard` sin definirlos: CI run 43964281661 en `failure` (Typecheck y la compilación del portal en la E2E).
+- **`e22ce7e0`** `fix(portal): add the subscriber equipment client, timeline and overview slot` añade solo esos 7 hunks.
+  - Se commiteó con un índice temporal (`GIT_INDEX_FILE`), sin stash, porque otra sesión estaba activa en el árbol. Los hunks ajenos siguen en el árbol.
+  - Verificación previa sobre el árbol exportado (`HEAD` más la corrección): typecheck del portal exit 0; portal `crm/subscribers` + `inventory` + `shared`, 160 suites, 1517 tests en verde y 1 omitido.
+  - Prettier, ESLint y commitlint se corrieron a mano: con un índice temporal, lint-staged habría tocado el árbol compartido.
+- **CI run 43965254502** sobre `e22ce7e0`: Lint + Typecheck + Build + Unit tests `success` (incluye `subscriber-equipment.postgres.integration.spec.ts` contra Postgres real); E2E portal `success`; imágenes `success`; E2E Web Admin Smoke 43965254397 `success`.
+- **«E2E operativo R4.1»: `failure`.** 364 pasan, 4 omitidas y 1 falla: `portal-mod05-equipos-suscriptor-live.spec.ts:412`. La tarjeta «Equipos instalados» aparece, pero no muestra el modelo sembrado («ONT QA 10C52218»). En local pasó dos veces.
+- **Causa: regresión del cliente del portal, no del entorno.**
+  - Los endpoints de Inventario responden sin el envoltorio `{ data }`, y `getAsset` ya pide `returnFullResponse: true`. `getSubscriberEquipment` no lo pedía, así que con el `request()` de `main` devolvía `undefined` y la tarjeta y la pestaña quedaban vacías.
+  - En local pasó porque el árbol trae un cambio ajeno sin commitear en `request()` que devuelve los cuerpos sin envoltorio. Las pruebas de componente no lo veían porque mockean `inventoryApi`.
+  - Fase roja reproducida sobre `HEAD` exportado: `Received: undefined`.
+- **`65a3c12f`** `fix(portal): read the subscriber equipment response without a data envelope` cambia una línea, `{ returnFullResponse: true }`, y añade `apps/portal/src/lib/api-client-subscriber-equipment.spec.ts` con 3 pruebas.
+  - Verificación sobre `HEAD` exportado más la corrección: 3/3 en verde; typecheck del portal exit 0; portal `src/lib` + `crm/subscribers`, 72 suites y 680 tests en verde.
+  - Se commiteó con índice temporal, igual que `e22ce7e0`.
+- **CI run 43970469726** sobre `65a3c12f`: los seis jobs en `success` (Lint + Typecheck + Build + Unit tests, E2E portal, E2E operativo R4.1, imágenes, citas ADR y detección de docs). E2E Web Admin Smoke 43970469660 en `success`.
+- **Lección:** una prueba de componente que mockea el cliente de API no cubre la forma de la respuesta. Un endpoint nuevo lleva su spec de `api-client` contra el `request()` real.
+
 ## Pendientes
 
-- **G6.5:** commit y push solo a pedido del usuario, y después el CI de `main` en verde.
+- **Este informe:** la actualización con G6.5 queda local y viaja en el siguiente commit funcional (ADR-107 D4).
 - **Fase 2** (spec §6): cada punto necesita su G0.

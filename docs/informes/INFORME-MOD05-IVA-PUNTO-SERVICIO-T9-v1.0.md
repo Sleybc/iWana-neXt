@@ -1,7 +1,7 @@
 # INFORME MOD05 — IVA por punto de servicio · T9
 
 **Versión:** 1.0 · **Fecha:** 2026-10-12 · **Bloque:** T9 — soporte privado de estrato C-API-3 v1.2  
-**Estado:** Completado  
+**Estado:** Completado · la regla de almacenamiento privado (párrafo de entrega y deuda P2) está superada por la [v1.1](INFORME-MOD05-IVA-PUNTO-SERVICIO-T9-v1.1.md) del 2026-10-30  
 **Referencias:** [ADR-093](../adrs/ADR-093-Tratamiento-IVA-Internet-por-Punto-y-Linea-de-Servicio.md) · [Plan v1.2](../plans/2026-10-12-mod05-iva-punto-servicio.md) · [Prompt v1.2](../prompts/PROMPT-MOD05-IVA-PUNTO-SERVICIO-v1.2.md) · [Spec UX](../specs/2026-10-12-mod05-iva-punto-servicio-ux-spec.md)
 
 ## Entrega

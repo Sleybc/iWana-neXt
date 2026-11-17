@@ -1,8 +1,8 @@
 # Spec UX — MOD05 Suscriptores · Ficha y formularios con la composición de UISP
 
-**Versión:** 1.0
+**Versión:** 1.1 (2026-11-16: §8.6, densidad v1.1 para MOD10; aditiva)
 **Estado:** Aprobado (G0) por el usuario en sesión el 2026-11-10 · decisiones D1–D5 resueltas · Plan: [2026-11-10-mod05-ficha-suscriptor-estilo-uisp](../plans/2026-11-10-mod05-ficha-suscriptor-estilo-uisp.md)
-**Fecha:** 2026-11-10
+**Fecha:** 2026-11-16 (v1.0: 2026-11-10)
 **Emisor:** Claude Code, con criterio de AI-PROD-UX
 **Alcance de pantalla:** `/dashboard/crm/subscribers/[id]` y los formularios que abre
 **Origen:** [referencia UISP CRM v1.1](../referencias/REFERENCIA-UISP-CRM-MOD05-v1.1.md) §15.9 (instancia real, evidencia C26)
@@ -169,3 +169,55 @@ Contraste calculado sobre tokens reales (texto ≤14 px, umbral 4,5:1):
 6. axe sin violaciones de contraste en claro y oscuro sobre la ficha; revisión `iwana-identity-ui-review` sin P0/P1.
 7. Ningún componente nuevo en `packages/ui`; ninguna variante de `Card` tocada.
 8. Changelog del DS (`core-components`) registra: «v1.x — `PortalPanel density="dense"` y `PortalFieldRow/PortalFieldList` (aditivo, D1 MOD05)».
+
+### 8.6 Densidad v1.1 (MOD10)
+
+**Dueño:** `ds-owner` · **Fecha:** 2026-11-16 · **Estado:** congelado para el bloque FE-DS del [plan MOD10](../plans/2026-11-16-mod10-detalle-ticket.md) (v1.1). Cambio aditivo (carril rápido §3bis.3): no altera 8.1–8.5 ni a los consumidores actuales, no crea primitives en `@iwana/ui` ni tokens; §8.4 sigue vigente. Origen: [spec MOD10](2026-11-16-mod10-detalle-ticket-ux.md) §5 y D5.
+
+**API**
+
+| Componente | Prop nueva | Tipo | Default | Regla |
+|---|---|---|---|---|
+| `PortalFieldList` | `columns` | `1 \| 2` | `1` | `1` renderiza exactamente v1.0. `2`: una columna bajo `sm`, dos desde `sm`, llenado por filas (orden del DOM = orden de lectura); sin `grid-flow-col` ni `order-*` |
+| `PortalFieldRow` | `emptyLabel` | `string` | — | Solo actúa con `empty`: reemplaza «Sin dato» por su texto («Sin área», «No requiere», «Sin vincular»). Sin `empty` se ignora y se pinta el valor. Texto no vacío y revisado con `system-vocabulary-review` |
+
+**Clases exactas**
+
+| Elemento | Clases |
+|---|---|
+| `PortalFieldList columns={1}` | Sin cambio: `portalFieldListClassName` de 8.2 |
+| `PortalFieldList columns={2}` (constante `portalFieldListTwoColumnClassName`) | `grid grid-cols-1 *:border-gray-100 dark:*:border-dark-border [&>*+*]:border-t sm:grid-cols-2 sm:gap-x-6 sm:[&>*:nth-child(2)]:border-t-0` |
+| `PortalFieldRow` dentro de dos columnas | Sin cambio (8.2); a dos columnas, la etiqueta mide `minmax(7rem,38%)` de su columna |
+| Valor vacío con o sin `emptyLabel` | Sin cambio: `portalFieldEmptyValueClassName` (`text-gray-500 dark:text-gray-400`); `mono` no se aplica al vacío |
+| Panel del ticket, paso 1 (`PortalSidePeek className`) | `max-w-3xl` (768 px, el ancho de hoy) |
+| Panel del ticket, paso 2 con riel (D5) | `max-w-3xl lg:max-w-4xl` (896 px desde 1024 px de viewport) |
+| Cuerpo con riel, paso 2 | `flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-6`; riel de 320 px a la derecha; bajo `lg` el riel va antes del hilo (spec MOD10 §3 J) |
+
+Por qué `lg:max-w-4xl` y no más: a 1024 px quedan 128 px de bandeja visibles y a 1440 px, 544 px, que mantienen el contexto de tabla del side peek (Firma §2.7); el hilo conserva unos 512 px, suficientes para leer, junto al riel de 320 px. `max-w-5xl` cubriría la bandeja entera a 1024 px. Los anchos arbitrarios de otros side peeks (`md:max-w-[48rem]`, `md:max-w-[44rem]` en Privacy) quedan como deuda de consolidación de `fe-platform`, fuera de esta fase.
+
+Por qué el separador no usa `divide-y` a dos columnas: `divide-y` pone borde entre todos los hermanos y deja la primera fila de la segunda columna con línea y la de la primera sin ella. Con la regla de arriba, cada columna empieza sin línea y el resto de filas la lleva, igual que v1.0 en una columna.
+
+**Estados (sobre 8.3)**
+
+| Estado | v1.1 |
+|---|---|
+| Cargando | `columns={2}`: cuatro `PortalSkeletonBlock` `h-4` (dos por columna) dentro de la misma lista, para que la altura no salte al resolver |
+| Vacío por campo | `empty` + `emptyLabel`: texto propio atenuado; la fila nunca se oculta |
+| Error, deshabilitado, solo lectura, éxito, hover y foco | Sin cambio respecto de 8.3 |
+
+**Accesibilidad (sobre 8.4)**
+
+- El valor atenuado es texto leído: sin `aria-hidden`, sin `sr-only` alterno ni `aria-label` que lo reemplace. El vacío no depende solo del color: lo dice el texto.
+- Contraste: los pares de 8.4 aplican solo sobre `bg-white` y `--color-dark-surface-2`, que es el fondo del panel; otro fondo exige recalcular antes de usarlo.
+- Lista a dos columnas sigue siendo `dl` con filas `div > dt + dd`; el foco y la lectura siguen el DOM.
+- El riel es región: cada tarjeta, `PortalPanel density="dense" as="section" labelled` (8.1).
+
+**Criterios de aceptación v1.1**
+
+1. `PortalFieldList` sin `columns` o con `columns={1}` renderiza las clases de v1.0; las pruebas existentes de `portal-panel-density.spec.tsx` pasan sin cambiar expectativas.
+2. `columns={2}` aplica exactamente las clases de esta sección; a 375 px una columna sin desborde horizontal; desde 640 px dos columnas, sin línea sobre la primera fila de cada columna.
+3. `empty` + `emptyLabel` muestra ese texto con la clase de vacío; `empty` sin `emptyLabel` muestra «Sin dato»; `emptyLabel` sin `empty` muestra el valor.
+4. Panel del ticket: 768 px bajo `lg`; 896 px desde `lg` en el paso 2; ningún valor arbitrario de ancho en el panel.
+5. axe sin violaciones en claro y oscuro sobre el panel; `iwana-identity-ui-review` sin P0/P1.
+6. Ningún hex ni token nuevo (`globals.css` intacto); ninguna primitive nueva en `packages/ui`.
+7. `core-components` registra: «v1.1 — `PortalFieldList columns`, `PortalFieldRow emptyLabel` y ancho del panel con riel (aditivo, MOD10)».
