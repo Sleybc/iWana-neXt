@@ -495,6 +495,25 @@ describe('subscriberId query serialization across support lists', () => {
       `/api/v1/wfm/events?subscriberId=${subscriberId}`,
     ]);
   });
+
+  it('pide el orden por urgencia sin sortBy ni sortDir (el API rechaza ambos juntos)', async () => {
+    const fetchMock = jest.fn(async (_input: RequestInfo | URL) =>
+      createJsonResponse(200, { data: [], meta: { total: 0, page: 1, limit: 100, totalPages: 0 } }),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const { assuranceApi } = await import('./api-client');
+    const subscriberId = 'd4d65035-f6c2-4afd-95f2-cc12f00a4cc9';
+
+    await assuranceApi.tickets.list(
+      { subscriberId, limit: 100, order: 'urgency', sortBy: 'createdAt', sortDir: 'desc' },
+      'isp-demo',
+    );
+
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]), 'http://portal.local');
+    expect(url.searchParams.get('order')).toBe('urgency');
+    expect(url.searchParams.has('sortBy')).toBe(false);
+    expect(url.searchParams.has('sortDir')).toBe(false);
+  });
 });
 
 describe('tasksApi execution order payloads', () => {

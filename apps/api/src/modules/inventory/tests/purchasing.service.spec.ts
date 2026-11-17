@@ -1,3 +1,5 @@
+import { plainToInstance } from 'class-transformer';
+import { UpdatePurchaseRequestDto, UpdatePurchaseRequestSchema } from '../dto';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import {
@@ -858,6 +860,50 @@ describe('PurchasingService', () => {
     expect(savedLines[0]).toEqual(
       expect.objectContaining({ inventoryItemId: 'item-001', unitOfMeasure: 'metro' }),
     );
+  });
+
+  it('PATCH parcial con la instancia del DTO no borra fecha requerida ni notas', async () => {
+    const neededByDate = '2026-12-01';
+    const requestRecord = {
+      id: 'pr-partial-001',
+      tenantId: 'tenant-001',
+      title: 'Título original',
+      status: PurchaseRequestStatus.DRAFT,
+      priority: PurchaseRequestPriority.NORMAL,
+      requestingArea: 'Logística',
+      justification: null,
+      neededByDate,
+      notes: 'Entregar en bodega norte',
+      updatedAt: new Date(),
+    };
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockResolvedValue(requestRecord),
+      count: jest.fn().mockResolvedValue(0),
+      find: jest.fn().mockResolvedValue([]),
+      remove: jest.fn().mockResolvedValue(undefined),
+      create: jest.fn((_entity, payload) => payload),
+      save: jest.fn().mockImplementation(async (_entity, payload) => ({ ...payload })),
+    };
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+      emptyTaxCatalogPort,
+    );
+    // Igual que el controlador: el ValidationPipe global entrega la instancia del DTO
+    // (todas sus propiedades declaradas) y luego se valida con Zod.
+    const body = UpdatePurchaseRequestSchema.parse(
+      plainToInstance(UpdatePurchaseRequestDto, { title: 'Solo cambia el título' }),
+    );
+
+    const result = await service.updatePurchaseRequest('pr-partial-001', body, actor);
+
+    expect(result.title).toBe('Solo cambia el título');
+    expect(result.neededByDate).toBe(neededByDate);
+    expect(result.notes).toBe('Entregar en bodega norte');
   });
 
   it('blocks updatePurchaseRequest when status is APPROVED', async () => {

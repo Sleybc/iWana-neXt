@@ -480,7 +480,8 @@ async function expectNoSeriousAxeViolations(page: Page, label: string): Promise<
     Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => null))),
   );
   const result = await new AxeBuilder({ page })
-    .include('aside')
+    // MOD10 §3 A: el panel es un diálogo con nombre (PortalSidePeek).
+    .include('[role="dialog"]')
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
     .analyze();
   const blocking = result.violations.filter(
@@ -528,6 +529,8 @@ test.describe('MOD09 · adjuntos en comentarios de tickets', () => {
     await expect(blocked.getByRole('button')).toHaveCount(0);
 
     // Validación previa del navegador: un tipo no admitido no se agrega.
+    // El redactor está contraído en reposo: al enfocarlo aparece «Adjuntar archivos».
+    await page.getByLabel('Nuevo comentario').focus();
     const input = page.getByLabel('Adjuntar archivos');
     await expect(input).toHaveAttribute('data-testid', 'ticket-comment-attachments-input');
     await input.setInputFiles([
@@ -673,6 +676,7 @@ test.describe('MOD09 · adjuntos en comentarios de tickets', () => {
       });
     });
     await openTicketComments(page);
+    await page.getByLabel('Nuevo comentario').focus();
     await page.getByLabel('Adjuntar archivos').setInputFiles([
       { name: 'foto-visita.png', mimeType: 'image/png', buffer: PNG },
       { name: 'recorrido.mp4', mimeType: 'video/mp4', buffer: MP4 },
@@ -721,6 +725,7 @@ test.describe('MOD09 · adjuntos en comentarios de tickets', () => {
     await openTicketComments(page);
 
     // El navegador solo ve nombre y tipo: la firma la valida la API.
+    await page.getByLabel('Nuevo comentario').focus();
     await page
       .getByLabel('Adjuntar archivos')
       .setInputFiles([{ name: 'foto-visita.png', mimeType: 'image/png', buffer: FAKE_PNG }]);
@@ -753,6 +758,9 @@ test.describe('MOD09 · adjuntos en comentarios de tickets', () => {
     await expect(page.getByText('Informe previo del caso.')).toBeVisible();
     await expect(page.getByText('Nota interna con el acta firmada.')).toHaveCount(0);
     await expect(page.getByText('acta-interna.pdf')).toHaveCount(0);
+    // En toda la página, como antes de P1: con el redactor contraído en reposo (ronda CA-2) el
+    // conmutador «Interno» no está pintado, así que cualquier «Interno» sería la insignia de un
+    // comentario interno filtrado (en el hilo o en la sección de adjuntos).
     await expect(page.getByText('Interno', { exact: true })).toHaveCount(0);
     expect(calls.links.some((link) => link.attachmentId === 'att-interno')).toBe(false);
   });

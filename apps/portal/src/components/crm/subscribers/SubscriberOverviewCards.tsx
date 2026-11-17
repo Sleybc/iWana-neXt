@@ -27,7 +27,7 @@ import {
   portalFieldRowClassName,
   portalPanelDenseActionClassName,
 } from '@/components/shared/portal-ui';
-import { compareTickets, isActiveTicket } from './SubscriberTicketsSection';
+import { compareTickets, needsAttention } from '@/components/assurance/assurance-ticket-model';
 import {
   isOpenVisitEntry,
   loadSubscriberVisitEntries,
@@ -58,7 +58,7 @@ function shareInFlight<T>(load: (subscriberId: string) => Promise<T>) {
 /** Tickets del suscriptor (hasta 100), compartidos entre tarjetas. */
 export const loadSubscriberTickets = shareInFlight(
   async (subscriberId: string): Promise<AssuranceTicket[]> =>
-    (await assuranceApi.tickets.list({ subscriberId, limit: 100 })).data,
+    (await assuranceApi.tickets.list({ subscriberId, limit: 100, order: 'urgency' })).data,
 );
 
 /** Visitas del suscriptor, compartidas entre tarjetas. */
@@ -272,7 +272,7 @@ export function SubscriberActiveTicketsCard({
   onOpenSupport: () => void;
 }) {
   const loadTickets = useCallback(async (): Promise<AssuranceTicket[]> => {
-    return (await loadSubscriberTickets(subscriberId)).filter(isActiveTicket).sort(compareTickets);
+    return (await loadSubscriberTickets(subscriberId)).filter(needsAttention).sort(compareTickets);
   }, [subscriberId]);
   const load = useCardLoad(loadTickets, true);
   return (

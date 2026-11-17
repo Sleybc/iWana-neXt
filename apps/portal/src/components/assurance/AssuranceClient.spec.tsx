@@ -9,24 +9,32 @@ import { createAssuranceVisitRequestAndRoute } from '@/components/scheduling/vis
 
 const mockRouterPush = jest.fn();
 const mockRouterReplace = jest.fn();
+// Referencias estables: los hooks reales (router, auth, permisos) devuelven la misma
+// identidad entre renders. Un objeto nuevo por render entra en las dependencias de
+// `useTableQueryState`/`loadPage` y relanza la carga en bucle (44 llamadas a
+// `tickets.list` en una sola prueba; 3 con mocks estables). Esa carga extra es la
+// que dejaba sin CPU al picker en CI (run 41805430065).
+const mockRouter = { push: mockRouterPush, replace: mockRouterReplace };
 const mockHasPermission = jest.fn().mockReturnValue(true);
 let searchParamsMock = new URLSearchParams();
+const mockAuth = {
+  user: { id: 'user-1', role: UserRole.ADMIN, tenantId: 'tenant-1' },
+  isLoading: false,
+};
+const mockPermissions = { hasPermission: mockHasPermission };
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mockRouterPush, replace: mockRouterReplace }),
+  useRouter: () => mockRouter,
   usePathname: () => '/dashboard/assurance',
   useSearchParams: () => searchParamsMock,
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
-  useAuth: () => ({
-    user: { id: 'user-1', role: UserRole.ADMIN, tenantId: 'tenant-1' },
-    isLoading: false,
-  }),
+  useAuth: () => mockAuth,
 }));
 
 jest.mock('@/components/access-control/permissions-context', () => ({
-  usePermissions: () => ({ hasPermission: mockHasPermission }),
+  usePermissions: () => mockPermissions,
 }));
 
 jest.mock('@/components/scheduling/visit-request-origin-orchestration', () => ({
@@ -192,9 +200,9 @@ describe('AssuranceClient', () => {
     await user.click(await screen.findByRole('button', { name: 'Nuevo ticket' }));
     await user.type(screen.getByRole('combobox', { name: 'Suscriptor' }), 'Acme');
     await user.click(await screen.findByRole('option', { name: 'Acme Colombia — Bogotá' }));
-    await user.type(screen.getByLabelText('Asunto operativo'), 'Sin servicio');
+    await user.type(screen.getByLabelText('Asunto'), 'Sin servicio');
     await user.selectOptions(
-      screen.getByLabelText('Decisión de campo'),
+      screen.getByLabelText('Visita técnica'),
       TicketFieldDecision.FIELD_SERVICE_REQUIRED,
     );
     await user.selectOptions(screen.getByLabelText('Siguiente paso'), 'send-to-pending');
@@ -224,9 +232,9 @@ describe('AssuranceClient', () => {
     await user.click(await screen.findByRole('button', { name: 'Nuevo ticket' }));
     await user.type(screen.getByRole('combobox', { name: 'Suscriptor' }), 'Acme');
     await user.click(await screen.findByRole('option', { name: 'Acme Colombia — Bogotá' }));
-    await user.type(screen.getByLabelText('Asunto operativo'), 'Sin servicio');
+    await user.type(screen.getByLabelText('Asunto'), 'Sin servicio');
     await user.selectOptions(
-      screen.getByLabelText('Decisión de campo'),
+      screen.getByLabelText('Visita técnica'),
       TicketFieldDecision.FIELD_SERVICE_REQUIRED,
     );
     expect(screen.queryByLabelText('Siguiente paso')).not.toBeInTheDocument();
@@ -285,7 +293,6 @@ describe('AssuranceClient', () => {
     render(<AssuranceClient />);
 
     await user.click(await screen.findByRole('button', { name: 'Ver detalle' }));
-    await user.click(await screen.findByRole('tab', { name: 'Acciones' }));
     await user.click(await screen.findByRole('button', { name: 'Crear tarea vinculada' }));
 
     expect(mockRouterPush).toHaveBeenCalledWith(

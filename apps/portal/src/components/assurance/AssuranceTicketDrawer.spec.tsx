@@ -82,15 +82,15 @@ function renderDrawer(value: AssuranceTicket) {
 describe('AssuranceTicketDrawer — datos del caso (2026-11-16)', () => {
   it('sin SLA: no muestra la insignia de tiempo ni los vencimientos; muestra apertura y cierre reales', () => {
     renderDrawer(ticket());
-    const panel = screen.getByRole('complementary');
-    expect(within(panel).getByText('Abierto')).toBeInTheDocument();
+    const panel = screen.getByRole('dialog', { name: 'UISP-25790' });
+    expect(within(panel).getByText('Abierto', { selector: 'dt' })).toBeInTheDocument();
     // «Cerrado» aparece como estado y como fecha de cierre.
     expect(within(panel).getAllByText('Cerrado')).toHaveLength(2);
     expect(within(panel).getByText('Importación')).toBeInTheDocument();
     expect(within(panel).getByText('Sin vincular')).toBeInTheDocument();
     expect(panel).not.toHaveTextContent('En tiempo');
-    expect(panel).not.toHaveTextContent('Primera respuesta SLA');
-    expect(panel).not.toHaveTextContent('Resolución SLA');
+    expect(panel).not.toHaveTextContent('Responder antes de');
+    expect(panel).not.toHaveTextContent('Resolver antes de');
     expect(panel).not.toHaveTextContent('Ref. solicitante');
     expect(panel).not.toHaveTextContent('Ref. objeto');
     expect(panel).not.toHaveTextContent('56B52E94');
@@ -108,10 +108,10 @@ describe('AssuranceTicketDrawer — datos del caso (2026-11-16)', () => {
         slaResolveByAt: '2026-06-27T13:00:00.000Z',
       }),
     );
-    const panel = screen.getByRole('complementary');
+    const panel = screen.getByRole('dialog', { name: 'UISP-25790' });
     expect(panel).toHaveTextContent('En tiempo');
-    expect(panel).toHaveTextContent('Primera respuesta SLA');
-    expect(panel).toHaveTextContent('Resolución SLA');
+    expect(panel).toHaveTextContent('Responder antes de');
+    expect(panel).toHaveTextContent('Resolver antes de');
   });
 });
 
@@ -155,7 +155,7 @@ describe('AssuranceTicketDrawer — comentario importado sin texto (D4)', () => 
         onLinkWorkOrder={noop}
       />,
     );
-    const article = screen.getByRole('complementary').querySelector('article');
+    const article = screen.getByRole('dialog', { name: 'UISP-25790' }).querySelector('article');
     expect(article).not.toBeNull();
     expect(article!.querySelector('p.leading-6')).toBeNull();
   });
@@ -164,7 +164,7 @@ describe('AssuranceTicketDrawer — comentario importado sin texto (D4)', () => 
 describe('AssuranceTicketDrawer — cierre de importados', () => {
   it('no muestra «Cerrado» como fecha cuando coincide con la apertura (importados sin cierre real)', () => {
     renderDrawer(ticket({ closedAt: '2026-06-24T20:13:00.000Z' }));
-    const panel = screen.getByRole('complementary');
+    const panel = screen.getByRole('dialog', { name: 'UISP-25790' });
     // Solo la insignia de estado; no hay fecha de cierre falsa.
     expect(within(panel).getAllByText('Cerrado')).toHaveLength(1);
   });

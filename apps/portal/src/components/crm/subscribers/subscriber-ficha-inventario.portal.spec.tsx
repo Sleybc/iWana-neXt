@@ -334,7 +334,9 @@ describe('Ficha del suscriptor — inventario de no regresión (W0, CA-1)', () =
     expect(within(panel).getByRole('heading', { name: 'Tickets' })).toBeInTheDocument();
     expect(within(panel).getByRole('heading', { name: 'Visitas' })).toBeInTheDocument();
     expect(await within(panel).findByText('Este suscriptor no tiene tickets')).toBeInTheDocument();
-    expect(await within(panel).findByText('Este suscriptor no tiene visitas')).toBeInTheDocument();
+    expect(
+      await within(panel).findByText(/Este suscriptor no tiene visitas propias/),
+    ).toBeInTheDocument();
   });
 });
 
@@ -464,7 +466,9 @@ describe('Ficha del suscriptor — Equipos (spec 2026-11-16)', () => {
     expect(screen.getByRole('tab', { name: 'Equipos' })).toHaveAttribute('aria-selected', 'true');
     expect(within(panel).getByRole('table', { name: 'Equipos instalados' })).toBeInTheDocument();
     expect(within(panel).getByRole('heading', { name: 'Materiales usados' })).toBeInTheDocument();
-    expect(within(panel).getByRole('heading', { name: 'Historial de equipos' })).toBeInTheDocument();
+    expect(
+      within(panel).getByRole('heading', { name: 'Historial de equipos' }),
+    ).toBeInTheDocument();
     expect(spy).toHaveBeenCalledTimes(1);
     expect(spy).toHaveBeenCalledWith('subscriber-synthetic');
   });

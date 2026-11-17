@@ -27,13 +27,10 @@ import {
   getAssuranceQueueLabel,
   getAssuranceSlaStatusLabel,
   getAssuranceSlaStatusVariant,
-  getAssuranceTicketPriorityLabel,
-  getAssuranceTicketPriorityVariant,
-  getAssuranceTicketStatusLabel,
-  getAssuranceTicketStatusVariant,
   getAssuranceTicketTypeLabel,
-  getAssuranceUserDisplayName,
+  getAssuranceAssigneeLabel,
 } from './assurance-labels';
+import { TicketPriorityBadge, TicketStatusBadge } from './ticket-badges';
 
 const TICKETS_RESOURCE = { singular: 'ticket', plural: 'tickets' } as const;
 
@@ -108,7 +105,7 @@ export function AssuranceTicketsTable({
         <PortalSectionHeader
           eyebrow="Mesa de ayuda"
           title="Cola operativa de tickets"
-          description="Filtra por estado, prioridad, tipo o cola para operar la bandeja de la empresa autenticada."
+          description="Filtra por estado, prioridad, tipo o área para operar la bandeja de la empresa autenticada."
           actions={
             canManage ? (
               <Button type="button" variant="primary" onClick={onOpenCreate}>
@@ -167,7 +164,7 @@ export function AssuranceTicketsTable({
           />
           <Select
             id="assurance-filter-queue"
-            label="Cola"
+            label="Área"
             value={filters.queueName ?? ''}
             options={[{ value: '', label: 'Todas' }, ...ASSURANCE_QUEUE_OPTIONS]}
             onChange={(event) =>
@@ -207,7 +204,7 @@ export function AssuranceTicketsTable({
                     'Tipo',
                     'Estado',
                     'Prioridad',
-                    'Cola y responsable',
+                    'Área y responsable',
                     'SLA',
                     'Actualización',
                     'Acciones',
@@ -285,14 +282,10 @@ export function AssuranceTicketsTable({
                       <Badge variant="primary">{getAssuranceTicketTypeLabel(ticket.type)}</Badge>
                     </td>
                     <td className={portalDataTableCellClassName}>
-                      <Badge variant={getAssuranceTicketStatusVariant(ticket.status)}>
-                        {getAssuranceTicketStatusLabel(ticket.status)}
-                      </Badge>
+                      <TicketStatusBadge status={ticket.status} />
                     </td>
                     <td className={portalDataTableCellClassName}>
-                      <Badge variant={getAssuranceTicketPriorityVariant(ticket.priority)}>
-                        {getAssuranceTicketPriorityLabel(ticket.priority)}
-                      </Badge>
+                      <TicketPriorityBadge priority={ticket.priority} />
                     </td>
                     <td className={portalDataTableCellClassName}>
                       <div className="space-y-1">
@@ -302,8 +295,8 @@ export function AssuranceTicketsTable({
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                           {ticket.assignedUserId
                             ? (assigneeLabelById.get(ticket.assignedUserId) ??
-                              getAssuranceUserDisplayName(null))
-                            : 'Sin asignar'}
+                              getAssuranceAssigneeLabel(ticket.assignedUserId, null))
+                            : getAssuranceAssigneeLabel(null, null)}
                         </p>
                       </div>
                     </td>

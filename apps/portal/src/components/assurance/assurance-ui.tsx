@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import { cn } from '@iwana/ui';
-import { PortalPanel } from '@/components/shared/portal-ui';
+import { AlertTriangle, ShieldAlert } from 'lucide-react';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { PortalAlert, PortalPanel } from '@/components/shared/portal-ui';
 
 export const assuranceTextareaClassName =
   'min-h-[120px] w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 shadow-sm transition-colors duration-200 placeholder:text-gray-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-iwana-primary dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-400';
@@ -12,12 +13,6 @@ interface AssuranceSectionCardProps {
   actions?: ReactNode;
   className?: string;
   children: ReactNode;
-}
-
-interface AssuranceKeyValueItemProps {
-  label: string;
-  value: ReactNode;
-  className?: string;
 }
 
 export function AssuranceSectionCard({
@@ -41,18 +36,34 @@ export function AssuranceSectionCard({
   );
 }
 
-export function AssuranceKeyValueItem({ label, value, className }: AssuranceKeyValueItemProps) {
+/**
+ * Sesión no resuelta o rol sin acceso a la mesa de ayuda. Igual en la bandeja y en la página del
+ * ticket (spec MOD10 §3 K: misma carga y permisos).
+ */
+export function AssuranceAccessState({ reason }: { reason: 'session' | 'role' }) {
+  if (reason === 'session') {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Mesa de ayuda" subtitle="Error al cargar el módulo" />
+        <PortalAlert
+          variant="error"
+          title="Módulo temporalmente no disponible"
+          description="No fue posible resolver la sesión del portal para cargar la mesa de ayuda. Inicia sesión nuevamente para recuperar el acceso."
+          icon={AlertTriangle}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div
-      className={cn(
-        'rounded-2xl border border-gray-200 bg-[#fbfcf8] p-4 dark:border-dark-border dark:bg-dark-surface-3',
-        className,
-      )}
-    >
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
-        {label}
-      </p>
-      <div className="mt-2 text-sm font-medium text-gray-900 dark:text-white">{value}</div>
+    <div className="space-y-6">
+      <PageHeader title="Mesa de ayuda" subtitle="Acceso restringido" />
+      <PortalAlert
+        variant="warning"
+        title="Tu rol no tiene acceso a esta vista"
+        description="La mesa de ayuda del portal solo está disponible para operación de soporte, NOC y equipos técnicos autorizados."
+        icon={ShieldAlert}
+      />
     </div>
   );
 }

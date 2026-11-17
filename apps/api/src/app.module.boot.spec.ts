@@ -51,6 +51,7 @@ import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { AppModule } from './app.module';
 import { REDIS_CLIENT } from './modules/redis/redis.module';
+import { TicketsService } from './modules/assurance/services/tickets.service';
 
 describe('AppModule boot', () => {
   const syntheticEnv: Record<string, string> = {
@@ -101,6 +102,15 @@ describe('AppModule boot', () => {
       .compile();
 
     expect(moduleRef.get(AppModule)).toBeDefined();
+    // Puertos @Optional de TicketsService (spec MOD05 Soporte §16 B-1/B-2): si el cableado se
+    // rompe, Nest los deja undefined en silencio y el listado pierde nombre, visita y orden.
+    const tickets = moduleRef.get(TicketsService, { strict: false }) as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(tickets['assigneeNamesPort']).toBeDefined();
+    expect(tickets['executionOrderReadPort']).toBeDefined();
+    expect(tickets['effectivePermissionsService']).toBeDefined();
     await moduleRef.close();
   }, 120_000);
 });

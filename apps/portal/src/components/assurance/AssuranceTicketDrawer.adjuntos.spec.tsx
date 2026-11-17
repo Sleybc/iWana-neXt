@@ -171,6 +171,8 @@ describe('Nuevo comentario con archivos (criterio 1)', () => {
     const user = userEvent.setup({ applyAccept: false });
     renderDrawer();
 
+    // Ajuste CA-2 aprobado 2026-11-16: el redactor se expande al enfocarlo.
+    await user.click(screen.getByLabelText('Nuevo comentario'));
     await user.upload(screen.getByLabelText('Adjuntar archivos'), [
       fakeFile('foto.jpg', 'image/jpeg', 2 * MIB),
       fakeFile('acta.pdf', 'application/pdf', MIB),
@@ -201,7 +203,7 @@ describe('Nuevo comentario con archivos (criterio 1)', () => {
     const pdf = fakeFile('acta.pdf', 'application/pdf', MIB);
 
     await user.type(screen.getByLabelText('Nuevo comentario'), 'Se cambió la ONU');
-    await user.click(screen.getByLabelText('Marcar como comentario interno'));
+    await user.click(screen.getByRole('checkbox', { name: 'Interno' }));
     await user.upload(screen.getByLabelText('Adjuntar archivos'), [photo, pdf]);
     await user.click(screen.getByRole('button', { name: 'Agregar comentario' }));
 

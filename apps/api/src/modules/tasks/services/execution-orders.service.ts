@@ -101,9 +101,13 @@ import type {
 import type {
   ExecutionOrderReadPort,
   ExecutionOrderReference,
+  ExecutionOrderTicketLookup,
   ExecutionSnapshot,
   InstallationOrdersQuery,
+  LinkExecutionOrderToTicketInput,
+  LinkExecutionOrderToTicketResult,
   ProvisioningEvidenceSummary,
+  TicketExecutionOrderSummary,
 } from '../ports/execution-order-read.port';
 import {
   SERVICE_PROVISIONING_READ_PORT,
@@ -177,6 +181,15 @@ interface ExecutionSnapshotRow {
   customer_display_label: string;
   closed_at: Date | string | null;
   result: string | null;
+}
+
+/** Fila mínima de la orden vista desde un ticket (sin datos del cliente). */
+interface TicketOrderSummaryRow {
+  id: string;
+  execution_order_number: string;
+  status: string;
+  result: string | null;
+  closed_at: Date | string | null;
 }
 
 /** ADR-068 §Eventos mínimos: solo eventos cuyo owner es MOD11 son redriveables. */
@@ -563,6 +576,118 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
         total: Number(totalRows[0]?.total ?? 0),
       };
     });
+  }
+
+  async findLatestForTicketWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    ticketId: string,
+  ): Promise<{ latest: TicketExecutionOrderSummary; count: number } | null> {
+    const rows = (await manager.query(
+      `SELECT id::text AS id, execution_order_number, status, result, closed_at,
+              count(*) OVER ()::int AS total
+         FROM execution_orders
+        WHERE tenant_id = $1::uuid AND ticket_id = $2 AND is_annulled = false
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1`,
+      [tenantId, ticketId],
+    )) as Array<TicketOrderSummaryRow & { total: number }>;
+    const row = rows[0];
+    return row ? { latest: this.mapTicketOrderSummary(row), count: Number(row.total) } : null;
+  }
+
+  async findLatestForTicketsWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    ticketIds: readonly string[],
+  ): Promise<ReadonlyMap<string, TicketExecutionOrderSummary>> {
+    const ids = [...new Set(ticketIds)];
+    const orders = new Map<string, TicketExecutionOrderSummary>();
+    if (ids.length === 0) return orders;
+    const rows = (await manager.query(
+      `SELECT DISTINCT ON (ticket_id)
+              ticket_id, id::text AS id, execution_order_number, status, result, closed_at
+         FROM execution_orders
+        WHERE tenant_id = $1::uuid AND ticket_id = ANY($2::varchar[]) AND is_annulled = false
+        ORDER BY ticket_id, created_at DESC, id DESC`,
+      [tenantId, ids],
+    )) as Array<TicketOrderSummaryRow & { ticket_id: string }>;
+    for (const row of rows) orders.set(row.ticket_id, this.mapTicketOrderSummary(row));
+    return orders;
+  }
+
+  async findByNumber(executionOrderNumber: string): Promise<ExecutionOrderTicketLookup | null> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rows = (await qr.query(
+        `SELECT id::text AS id, execution_order_number, status, result, closed_at,
+                is_annulled, ticket_id
+           FROM execution_orders
+          WHERE tenant_id = $1::uuid AND execution_order_number = $2
+          LIMIT 1`,
+        [tenantId, executionOrderNumber],
+      )) as Array<TicketOrderSummaryRow & { is_annulled: boolean; ticket_id: string | null }>;
+      const row = rows[0];
+      return row
+        ? {
+            ...this.mapTicketOrderSummary(row),
+            isAnnulled: row.is_annulled,
+            ticketId: row.ticket_id,
+          }
+        : null;
+    });
+  }
+
+  /**
+   * MOD10 D4: el vínculo manual ticket → orden de ejecución lo escribe MOD11, dueño de la
+   * tabla. Solo enlaza una orden sin ticket o ya de este ticket; sube `version` (ETag).
+   */
+  async linkTicketWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    input: LinkExecutionOrderToTicketInput,
+  ): Promise<LinkExecutionOrderToTicketResult> {
+    const rows = (await manager.query(
+      `SELECT id::text AS id, execution_order_number, status, result, closed_at,
+              is_annulled, ticket_id
+         FROM execution_orders
+        WHERE tenant_id = $1::uuid AND id = $2::uuid
+        FOR UPDATE`,
+      [tenantId, input.executionOrderId],
+    )) as Array<TicketOrderSummaryRow & { is_annulled: boolean; ticket_id: string | null }>;
+    const row = rows[0];
+    if (!row || row.is_annulled) {
+      throw new NotFoundException({
+        code: 'EXECUTION_ORDER_NOT_FOUND',
+        message: 'La orden de trabajo no existe.',
+      });
+    }
+    const order = this.mapTicketOrderSummary(row);
+    if (row.ticket_id === input.ticketId) return { order, outcome: 'ALREADY_LINKED' };
+    if (row.ticket_id) {
+      throw new ConflictException({
+        code: 'EXECUTION_ORDER_LINKED_TO_OTHER_TICKET',
+        message: 'La orden de trabajo ya está vinculada a otro caso.',
+      });
+    }
+    await manager.query(
+      `UPDATE execution_orders
+          SET ticket_id = $3, version = version + 1, updated_by_user_id = $4::uuid,
+              updated_at = now()
+        WHERE tenant_id = $1::uuid AND id = $2::uuid AND ticket_id IS NULL`,
+      [tenantId, input.executionOrderId, input.ticketId, input.actorUserId],
+    );
+    return { order, outcome: 'LINKED' };
+  }
+
+  private mapTicketOrderSummary(row: TicketOrderSummaryRow): TicketExecutionOrderSummary {
+    return {
+      id: row.id,
+      executionOrderNumber: row.execution_order_number,
+      status: row.status as ExecutionOrderStatus,
+      result: (row.result as ExecutionOrderResult | null) ?? null,
+      closedAt: row.closed_at ? new Date(row.closed_at).toISOString() : null,
+    };
   }
 
   private mapExecutionSnapshot(row: ExecutionSnapshotRow): ExecutionSnapshot {

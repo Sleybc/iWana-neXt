@@ -4,7 +4,7 @@
  * Cubre el flujo observable de Fase 01 con mocks estables del contrato HTTP:
  * - SUPPORT crea un ticket desde el portal.
  * - SUPPORT comenta el ticket.
- * - SUPPORT lo mueve a IN_PROGRESS, solicita trabajo de campo y luego lo resuelve.
+ * - SUPPORT lo mueve a IN_PROGRESS, solicita una visita técnica y luego lo resuelve.
  * - El timeline refleja los hitos funcionales visibles.
  */
 
@@ -620,8 +620,10 @@ test('support can create, comment, escalate to field service and resolve a ticke
   const subscriberPicker = page.getByRole('combobox', { name: 'Suscriptor' });
   await subscriberPicker.fill('Ada');
   await page.getByRole('option', { name: 'Ada Sintética — Bogotá' }).click();
-  await page.getByLabel('Asunto operativo').fill('Intermitencia de acceso en sede principal');
-  await page.getByLabel('Referencia del objeto').fill('service-001');
+  await page
+    .getByLabel('Asunto', { exact: true })
+    .fill('Intermitencia de acceso en sede principal');
+  await page.getByLabel('Referencia', { exact: true }).fill('SRV-001');
   await page.getByRole('button', { name: 'Crear ticket' }).click();
 
   await expect(page.getByText('El ticket TK-20260509-001 fue creado.')).toBeVisible();
@@ -638,32 +640,42 @@ test('support can create, comment, escalate to field service and resolve a ticke
   await expect(page.getByText('Comentario registrado.')).toBeVisible();
   await expect(page.getByText('Se valida degradación y se requiere seguimiento.')).toBeVisible();
 
-  await page.getByRole('tab', { name: 'Acciones' }).click();
+  // MOD10 paso 1 (spec §3 B): Estado vive en la cabecera del panel, sin pestaña «Acciones».
   await page.getByRole('combobox', { name: 'Nuevo estado' }).click();
   await page.getByRole('option', { name: 'En progreso', exact: true }).click();
-  await page.getByRole('button', { name: 'Aplicar transición' }).click();
+  await page.getByRole('button', { name: 'Guardar estado' }).click();
   await expect(page.getByText('Estado actualizado.')).toBeVisible();
 
-  await page.getByLabel('Nota para WFM').fill('Validar potencia en sitio y estado de CPE.');
-  await page.getByRole('button', { name: 'Solicitar trabajo de campo' }).click();
-  await expect(page.getByText('Escalamiento a trabajo de campo registrado.')).toBeVisible();
+  // §3 E: «Solicitar visita» despliega su formulario en línea; §4: nota para el equipo de campo.
+  await page.getByRole('button', { name: 'Solicitar visita' }).click();
+  await page
+    .getByRole('textbox', { name: 'Nota para el equipo de campo' })
+    .fill('Validar potencia en sitio y estado de CPE.');
+  await page.getByRole('button', { name: 'Confirmar solicitud' }).click();
+  await expect(page.getByText('Solicitud de visita técnica registrada.')).toBeVisible();
 
-  await page.getByLabel('Identificador de work order').fill(WORK_ORDER_ID);
-  await page.getByRole('button', { name: 'Vincular work order' }).click();
-  await expect(page.getByText('Work order vinculada al ticket.')).toBeVisible();
+  // §3 E + §4: «Vincular orden de trabajo» despliega su formulario; campo «Orden de trabajo».
+  await page.getByRole('button', { name: 'Vincular orden de trabajo' }).click();
+  await page.getByRole('textbox', { name: 'Orden de trabajo', exact: true }).fill(WORK_ORDER_ID);
+  await page.getByRole('button', { name: 'Confirmar vínculo' }).click();
+  await expect(page.getByText('Orden de trabajo vinculada al caso.')).toBeVisible();
 
   await page.getByRole('combobox', { name: 'Nuevo estado' }).click();
   await page.getByRole('option', { name: 'Resuelto', exact: true }).click();
-  await page.getByLabel('Nota operativa').fill('El caso queda resuelto tras coordinar visita.');
-  await page.getByRole('button', { name: 'Aplicar transición' }).click();
+  // §4: «Nota operativa» → «Nota»; exact para no tomar «Nota de vínculo» ni la del equipo de campo.
+  await page
+    .getByRole('textbox', { name: 'Nota', exact: true })
+    .fill('El caso queda resuelto tras coordinar visita.');
+  await page.getByRole('button', { name: 'Guardar estado' }).click();
   await expect(page.getByText('Estado actualizado.')).toBeVisible();
 
-  await page.getByRole('tab', { name: 'Timeline' }).click();
-  const timeline = page.locator('ol');
+  // §3 F + §4: filtro «Historial» (antes pestaña «Timeline») con su lista nombrada.
+  await page.getByRole('tab', { name: 'Historial' }).click();
+  const timeline = page.getByRole('list', { name: 'Historial del caso' });
   await expect(timeline.getByText('Ticket creado', { exact: true })).toBeVisible();
   await expect(timeline.getByText('Comentario agregado', { exact: true })).toBeVisible();
-  await expect(timeline.getByText('Trabajo de campo solicitado', { exact: true })).toBeVisible();
-  await expect(timeline.getByText('Work order vinculada', { exact: true })).toBeVisible();
+  await expect(timeline.getByText('Visita técnica solicitada', { exact: true })).toBeVisible();
+  await expect(timeline.getByText('Orden de trabajo vinculada', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
   const firstRow = page.locator('tbody tr').first();

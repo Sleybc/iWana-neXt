@@ -1,3 +1,5 @@
+import { UpdateVisitRequestContextDto } from '../dto/update-visit-request-context.dto';
+import { plainToInstance } from 'class-transformer';
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
@@ -859,6 +861,61 @@ describe('VisitRequestsService', () => {
     );
   });
 
+  it('no toma el ticket de Mesa de ayuda (originRef) como expediente al agendar', async () => {
+    const ticketId = '86416cee-14f1-433b-9307-d9ab14bde1a6';
+    const visitRequest = {
+      id: 'vr-assurance-origin-ref',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.READY_TO_SCHEDULE,
+      workType: WfmWorkType.SUPPORT,
+      priority: WorkOrderPriority.LOW,
+      title: 'Visita desde ticket',
+      description: null,
+      organizationSiteId: null,
+      address: 'Cra 1 # 2-3',
+      municipality: 'Bogotá',
+      sector: 'Centro',
+      latitude: null,
+      longitude: null,
+      expedienteId: null,
+      subscriberId: null,
+      ticketId,
+      contractId: null,
+      originContext: WorkOrderSourceContext.ASSURANCE,
+      originRef: ticketId,
+      originLabel: 'Ticket TK-20261117-003',
+    };
+    const manager = buildManager({
+      findOne: jest.fn().mockResolvedValue(visitRequest),
+      save: jest.fn().mockImplementation(async (_entity, entity) => ({
+        id: 'se-assurance',
+        workOrderId: null,
+        ...entity,
+      })),
+    });
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    await service.scheduleVisitRequest(
+      'vr-assurance-origin-ref',
+      {
+        assignedUserId: '550e8400-e29b-41d4-a716-446655440000',
+        scheduledStartAt: '2026-06-01T14:00:00Z',
+        scheduledEndAt: '2026-06-01T15:00:00Z',
+        createWorkOrder: false,
+      },
+      { sub: 'admin-001', role: UserRole.ADMIN } as never,
+    );
+
+    expect(manager.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ expedienteId: null, ticketId }),
+    );
+    const updates = (manager.update as jest.Mock).mock.calls[0][2];
+    expect(updates).not.toHaveProperty('expedienteId');
+  });
+
   it('permite agendar una solicitud stale cuando el contexto real ya está listo', async () => {
     const visitRequest = {
       id: 'vr-stale-schedule',
@@ -1218,6 +1275,57 @@ describe('VisitRequestsService', () => {
       { id: 'vr-requires-ctx', tenantId: TENANT_CONTEXT.tenantId },
       expect.objectContaining({ status: VisitRequestStatus.REQUIRES_RESCHEDULE }),
     );
+  });
+
+  it('PATCH parcial de contexto con la instancia del DTO no borra los campos no enviados (D11)', async () => {
+    const visitRequest = {
+      id: 'vr-ticket-ctx',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.NEEDS_CONTEXT,
+      retryCount: 0,
+      address: null,
+      municipality: null,
+      requestedWindowStartAt: null,
+      requestedWindowEndAt: null,
+      description: 'Notas del ticket',
+      sector: null,
+      latitude: null,
+      longitude: null,
+      organizationSiteId: null,
+      expedienteId: null,
+      subscriberId: '33333333-3333-4333-8333-333333333333',
+      ticketId: '86416cee-14f1-433b-9307-d9ab14bde1a6',
+      contractId: null,
+      originContext: WorkOrderSourceContext.ASSURANCE,
+      slaDueAt: null,
+    };
+    const manager = buildManager({
+      findOne: jest.fn().mockResolvedValue(visitRequest),
+    });
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+    // Lo que entrega el ValidationPipe global: instancia con todas las propiedades declaradas.
+    const dto = plainToInstance(UpdateVisitRequestContextDto, {
+      address: 'Calle 10 # 20-30',
+      municipality: 'Bogotá',
+      subscriberId: null,
+    });
+
+    await service.updateVisitRequestContext('vr-ticket-ctx', dto, {
+      sub: 'admin-001',
+      role: UserRole.ADMIN,
+    } as never);
+
+    const updates = (manager.update as jest.Mock).mock.calls[0][2];
+    expect(updates).toMatchObject({
+      address: 'Calle 10 # 20-30',
+      municipality: 'Bogotá',
+      ticketId: '86416cee-14f1-433b-9307-d9ab14bde1a6',
+      description: 'Notas del ticket',
+      // null explícito sí borra.
+      subscriberId: null,
+    });
   });
 
   it('exige attemptDecision cuando retryCount >= 3 (B4)', async () => {

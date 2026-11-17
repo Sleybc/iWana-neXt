@@ -649,6 +649,7 @@ describe('TicketsService', () => {
         manager: {
           findOne: jest.fn().mockResolvedValue({
             id: 'ticket-002',
+            ticketNumber: 'TK-20260509-002',
             tenantId: 'tenant-001',
             assignedUserId: actor.sub,
             status: TicketStatus.IN_PROGRESS,
@@ -685,6 +686,7 @@ describe('TicketsService', () => {
     expect(fieldServicePort.requestFieldService).toHaveBeenCalledWith(
       expect.objectContaining({
         ticketId: 'ticket-002',
+        ticketNumber: 'TK-20260509-002',
         tenantId: 'tenant-001',
         schemaName: 'tenant_001',
       }),

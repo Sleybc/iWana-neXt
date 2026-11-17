@@ -1,11 +1,12 @@
-import type { ChangeEvent } from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ChangeEvent, ComponentProps } from 'react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   TicketFieldDecision,
   TicketPriority,
   TicketRequesterType,
   TicketSource,
+  TicketSubjectType,
   TicketType,
   PersonType,
 } from '@iwana/shared';
@@ -83,6 +84,22 @@ function buildAssignee() {
 }
 
 const SUBSCRIBER_ID = '22222222-2222-4222-8222-222222222222';
+const CONTRACT_ID = '33333333-3333-4333-8333-333333333333';
+
+function buildPolicy() {
+  return {
+    id: 'policy-1',
+    tenantId: 'tenant-1',
+    name: 'Default',
+    appliesToType: null,
+    appliesToPriority: null,
+    firstResponseMinutes: 60,
+    resolutionMinutes: 240,
+    isActive: true,
+    createdAt: '2026-05-01T00:00:00.000Z',
+    updatedAt: '2026-05-01T00:00:00.000Z',
+  };
+}
 
 function buildSubscriberListResponse() {
   return {
@@ -111,7 +128,7 @@ async function chooseSubscriber() {
 }
 
 function fillSubject() {
-  fireEvent.change(screen.getByLabelText('Asunto operativo'), {
+  fireEvent.change(screen.getByLabelText('Asunto'), {
     target: { value: 'Sin conectividad en bodega principal' },
   });
 }
@@ -178,7 +195,7 @@ describe('AssuranceCreateTicketForm', () => {
     fireEvent.change(screen.getByLabelText('Responsable'), {
       target: { value: '11111111-1111-4111-8111-111111111111' },
     });
-    fireEvent.change(screen.getByLabelText('Cola funcional'), {
+    fireEvent.change(screen.getByLabelText('Área'), {
       target: { value: 'SUPPORT' },
     });
 
@@ -265,41 +282,182 @@ describe('AssuranceCreateTicketForm', () => {
     });
   });
 
-  it('fija tipo e identidad recibidos desde la ficha como solo lectura', async () => {
-    const onSubmit = jest.fn().mockResolvedValue(undefined);
-
+  it('CA-9 Mesa de ayuda conserva la disposición y los rótulos nuevos de sus campos', () => {
     render(
       <AssuranceCreateTicketForm
         assignees={[]}
         slaPolicies={[]}
-        onSubmit={onSubmit}
+        onSubmit={jest.fn()}
         onCancel={jest.fn()}
         isSubmitting={false}
         error={null}
-        subscriber={{ id: SUBSCRIBER_ID, label: 'Acme Colombia SAS', sublabel: 'Bogotá' }}
       />,
     );
 
-    const subscriber = screen.getByLabelText('Suscriptor');
-    expect(subscriber).toHaveAttribute('readonly');
-    expect(subscriber).toHaveValue('Acme Colombia SAS');
-    expect(screen.queryByRole('combobox', { name: 'Suscriptor' })).not.toBeInTheDocument();
+    const labels = Array.from(document.querySelectorAll('form label')).map((label) =>
+      label.textContent?.trim(),
+    );
+    expect(labels).toEqual([
+      'Tipo de ticket',
+      'Prioridad',
+      'Tipo de solicitante',
+      'Suscriptor',
+      'Asunto',
+      'Relacionado con',
+      'Referencia',
+      'Origen',
+      'Visita técnica',
+      'Descripción',
+      'Responsable',
+      'Área',
+      'Plazo de atención',
+    ]);
+    expect(screen.getByText('Número de servicio o equipo')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/service-001/u)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Plazo de atención')).toBeDisabled();
+    expect(screen.queryByText('Más opciones')).not.toBeInTheDocument();
+  });
 
-    const requesterType = screen.getByLabelText('Tipo de solicitante');
-    expect(requesterType).toBeDisabled();
-    await userEvent.setup().selectOptions(requesterType, TicketRequesterType.INTERNAL_USER);
-    expect(requesterType).toHaveValue(TicketRequesterType.SUBSCRIBER);
+  it('CA-13 Mesa de ayuda ofrece el plazo predeterminado cuando hay políticas', () => {
+    render(
+      <AssuranceCreateTicketForm
+        assignees={[]}
+        slaPolicies={[buildPolicy()]}
+        onSubmit={jest.fn()}
+        onCancel={jest.fn()}
+        isSubmitting={false}
+        error={null}
+      />,
+    );
 
-    fillSubject();
-    fireEvent.click(screen.getByRole('button', { name: 'Crear ticket' }));
+    expect(
+      within(screen.getByLabelText('Plazo de atención')).getByRole('option', {
+        name: 'Usar el plazo predeterminado',
+      }),
+    ).toBeInTheDocument();
+  });
 
-    await waitFor(() => {
-      expect(onSubmit).toHaveBeenCalledWith({
-        ticket: expect.objectContaining({
-          requesterType: TicketRequesterType.SUBSCRIBER,
-          requesterRefId: SUBSCRIBER_ID,
-        }),
-        followUpAction: 'ticket-only',
+  describe('desde el suscriptor (CA-9)', () => {
+    const subscriberItem = { id: SUBSCRIBER_ID, label: 'Acme Colombia SAS', sublabel: 'Bogotá' };
+    const services = [{ id: CONTRACT_ID, label: 'Hogar Fibra 300' }];
+
+    function renderFromSubscriber(
+      overrides: Partial<ComponentProps<typeof AssuranceCreateTicketForm>> = {},
+    ) {
+      const onSubmit = jest.fn().mockResolvedValue(undefined);
+      render(
+        <AssuranceCreateTicketForm
+          assignees={[buildAssignee()]}
+          slaPolicies={[]}
+          onSubmit={onSubmit}
+          onCancel={jest.fn()}
+          isSubmitting={false}
+          error={null}
+          subscriber={subscriberItem}
+          subscriberServices={services}
+          {...overrides}
+        />,
+      );
+      return onSubmit;
+    }
+
+    it('muestra a lo sumo seis campos al abrir y el suscriptor no es un campo', () => {
+      renderFromSubscriber();
+
+      const visible = [...screen.queryAllByRole('combobox'), ...screen.queryAllByRole('textbox')];
+      expect(visible.length).toBeLessThanOrEqual(6);
+      expect(screen.getByRole('combobox', { name: 'Tipo de ticket' })).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: 'Prioridad' })).toBeInTheDocument();
+      expect(screen.getByRole('textbox', { name: 'Asunto' })).toBeInTheDocument();
+      expect(screen.getByRole('textbox', { name: 'Descripción' })).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: 'Visita técnica' })).toBeInTheDocument();
+      expect(screen.queryByLabelText('Suscriptor')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Tipo de solicitante')).not.toBeInTheDocument();
+      for (const name of ['Relacionado con', 'Origen', 'Responsable', 'Área']) {
+        expect(screen.queryByRole('combobox', { name })).not.toBeInTheDocument();
+      }
+      expect(screen.getByRole('button', { name: 'Más opciones' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+    });
+
+    it('muestra «Siguiente paso» solo cuando la visita es requerida', () => {
+      renderFromSubscriber({ allowWfmFollowUp: true });
+
+      expect(screen.queryByRole('combobox', { name: 'Siguiente paso' })).not.toBeInTheDocument();
+      fireEvent.change(screen.getByRole('combobox', { name: 'Visita técnica' }), {
+        target: { value: TicketFieldDecision.FIELD_SERVICE_REQUIRED },
+      });
+      expect(screen.getByRole('combobox', { name: 'Siguiente paso' })).toBeInTheDocument();
+    });
+
+    it('agrupa el resto en «Más opciones» sin referencia libre y sin plazo si no hay políticas', () => {
+      renderFromSubscriber();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Más opciones' }));
+      const related = screen.getByRole('combobox', { name: 'Relacionado con' });
+      expect(related).toHaveDisplayValue('Este suscriptor');
+      expect(within(related).getByRole('option', { name: 'Hogar Fibra 300' })).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: 'Origen' })).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: 'Responsable' })).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: 'Área' })).toBeInTheDocument();
+      expect(screen.queryByLabelText('Referencia')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Plazo de atención')).not.toBeInTheDocument();
+      expect(screen.getByText('No hay plazos de atención configurados')).toBeInTheDocument();
+    });
+
+    it('ofrece el plazo predeterminado cuando hay políticas', () => {
+      renderFromSubscriber({ slaPolicies: [buildPolicy()] });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Más opciones' }));
+      expect(screen.getByRole('combobox', { name: 'Plazo de atención' })).toHaveDisplayValue(
+        'Usar el plazo predeterminado',
+      );
+      expect(screen.queryByText('No hay plazos de atención configurados')).not.toBeInTheDocument();
+    });
+
+    it('envía el mismo contrato que antes con los valores por defecto', async () => {
+      const onSubmit = renderFromSubscriber();
+
+      fillSubject();
+      fireEvent.click(screen.getByRole('button', { name: 'Crear ticket' }));
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledWith({
+          ticket: {
+            type: TicketType.CUSTOMER_INCIDENT,
+            priority: TicketPriority.NORMAL,
+            source: TicketSource.PORTAL,
+            subject: 'Sin conectividad en bodega principal',
+            requesterType: TicketRequesterType.SUBSCRIBER,
+            requesterRefId: SUBSCRIBER_ID,
+            fieldDecision: TicketFieldDecision.NOT_REQUIRED,
+          },
+          followUpAction: 'ticket-only',
+        });
+      });
+    });
+
+    it('relaciona el ticket con uno de los servicios del suscriptor', async () => {
+      const onSubmit = renderFromSubscriber();
+
+      fillSubject();
+      fireEvent.click(screen.getByRole('button', { name: 'Más opciones' }));
+      fireEvent.change(screen.getByRole('combobox', { name: 'Relacionado con' }), {
+        target: { value: CONTRACT_ID },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Crear ticket' }));
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledWith({
+          ticket: expect.objectContaining({
+            requesterRefId: SUBSCRIBER_ID,
+            subjectType: TicketSubjectType.CONTRACT,
+            subjectRefId: CONTRACT_ID,
+          }),
+          followUpAction: 'ticket-only',
+        });
       });
     });
   });

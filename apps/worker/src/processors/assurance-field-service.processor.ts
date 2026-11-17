@@ -67,7 +67,10 @@ export class AssuranceFieldServiceProcessor extends WorkerHost {
         status: VisitRequestStatus.NEEDS_CONTEXT,
         originContext: WorkOrderSourceContext.ASSURANCE,
         originRef: payload.ticketId,
-        originLabel: `Ticket ${payload.ticketId}`,
+        // Rótulo visible en Programación: el número del ticket, nunca su identificador interno.
+        originLabel: payload.ticketNumber
+          ? `Ticket ${payload.ticketNumber}`
+          : 'Ticket de Mesa de ayuda',
         workType: WfmWorkType.SUPPORT,
         priority: this.mapPriority(payload.priority),
         title: payload.subject.slice(0, 160),

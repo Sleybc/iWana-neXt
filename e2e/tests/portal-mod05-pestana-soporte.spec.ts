@@ -406,7 +406,7 @@ test.describe('MOD05 · pestaña Soporte', () => {
       page.getByRole('button', { name: 'Ver detalle de visita: Visita técnica, Programado' }),
     ).toBeVisible();
 
-    expect(calls.tickets).toEqual([`?subscriberId=${SUBSCRIBER_ID}&limit=100`]);
+    expect(calls.tickets).toEqual([`?subscriberId=${SUBSCRIBER_ID}&limit=100&order=urgency`]);
     expect(calls.visitRequests).toEqual([
       `?subscriberId=${SUBSCRIBER_ID}&page=1&limit=100&scope=all`,
     ]);
@@ -440,9 +440,12 @@ test.describe('MOD05 · pestaña Soporte', () => {
 
     await page.getByRole('button', { name: 'Crear ticket', exact: true }).click();
     const dialog = page.getByRole('dialog');
-    await expect(dialog.getByLabel('Suscriptor')).toHaveValue('Ada Sintética');
-    await expect(dialog.getByLabel('Suscriptor')).toHaveAttribute('readonly', '');
-    await dialog.getByLabel('Asunto operativo').fill('Solicitud sintética vinculada');
+    // Spec §8 (H14): el suscriptor va en el encabezado, no como campo.
+    await expect(
+      dialog.getByRole('heading', { name: 'Crear ticket para Ada Sintética' }),
+    ).toBeVisible();
+    await expect(dialog.getByLabel('Suscriptor')).toHaveCount(0);
+    await dialog.getByLabel('Asunto', { exact: true }).fill('Solicitud sintética vinculada');
     await dialog.getByRole('button', { name: 'Crear ticket', exact: true }).click();
 
     await expect.poll(() => calls.creates.length).toBe(1);
@@ -482,7 +485,7 @@ test.describe('MOD05 · pestaña Soporte', () => {
 
     await page.goto(`/dashboard/crm/subscribers/${SUBSCRIBER_ID}?tab=soporte`);
     const withFiles = page.getByRole('button', {
-      name: 'Abrir ticket TK-2026-0701: Intermitencia sintética, con 3 adjuntos',
+      name: 'Abrir ticket TK-2026-0701: Intermitencia sintética, Abierto, prioridad normal, con 3 adjuntos',
     });
     await expect(withFiles).toBeVisible();
     const clip = withFiles.getByTestId('ticket-attachment-clip');
@@ -491,7 +494,7 @@ test.describe('MOD05 · pestaña Soporte', () => {
     await expect(clip).toContainText('3');
 
     const withoutFiles = page.getByRole('button', {
-      name: 'Abrir ticket TK-2026-0706: Consulta sin archivos',
+      name: 'Abrir ticket TK-2026-0706: Consulta sin archivos, Abierto, prioridad normal',
       exact: true,
     });
     await expect(withoutFiles).toBeVisible();

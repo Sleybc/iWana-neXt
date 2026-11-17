@@ -13,6 +13,8 @@ import {
 import { ASSURANCE_FIELD_SERVICE_QUEUE } from '@iwana/shared';
 import { WfmModule } from '../wfm/wfm.module';
 import { SubscribersModule } from '../crm/subscribers/subscribers.module';
+import { ExecutionOrderSchedulingModule } from '../tasks/execution-order-scheduling.module';
+import { AssuranceAssigneeNamesModule } from '../users/ports/assurance-assignee-names.module';
 import { AssuranceController } from './assurance.controller';
 import { AccessControlModule } from '../access-control/access-control.module';
 import { MediaModule } from '../media/media.module';
@@ -34,6 +36,10 @@ import { TicketAttachmentsService } from './services/ticket-attachments.service'
   imports: [
     forwardRef(() => WfmModule),
     SubscribersModule,
+    // Puerto de lectura de órdenes de ejecución (MOD10 D4) sin importar TasksModule (ciclo).
+    ExecutionOrderSchedulingModule,
+    // Nombre del responsable en el listado (spec MOD05 Soporte §16 B-1), solo el puerto.
+    AssuranceAssigneeNamesModule,
     TypeOrmModule.forFeature([
       SupportTicket,
       TicketComment,

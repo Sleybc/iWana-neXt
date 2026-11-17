@@ -15,6 +15,8 @@ import type {
   TicketCommentAttachment,
   TicketCommentAttachmentsField,
   TicketListAttachmentCountField,
+  TicketListItemExtension,
+  ListTicketsOrder,
 } from '@iwana/shared';
 
 import {
@@ -3449,6 +3451,10 @@ export interface AssuranceTicket {
   updatedAt: string;
   /** Solo en el listado (`GET /tickets`): adjuntos visibles para quien consulta. */
   attachmentCount?: TicketListAttachmentCountField['attachmentCount'];
+  /** Solo en el listado, paso 2 (spec MOD05 Soporte §16 B-1, B-2). */
+  assignedUserDisplayName?: TicketListItemExtension['assignedUserDisplayName'];
+  activeVisit?: TicketListItemExtension['activeVisit'];
+  executionOrder?: TicketListItemExtension['executionOrder'];
 }
 
 export interface AssuranceTicketComment extends TicketCommentAttachmentsField {
@@ -3591,6 +3597,8 @@ export interface ListAssuranceTicketsParams {
   limit?: number | undefined;
   sortBy?: string | undefined;
   sortDir?: 'asc' | 'desc' | undefined;
+  /** Orden del servidor (§16 B-3). Con `order` no se envían `sortBy` ni `sortDir` (el API responde 400 si llega `sortBy`). */
+  order?: ListTicketsOrder | undefined;
 }
 
 /** Dual-emit Ola 1: `total`/`page`/`limit` planos + `meta` ADR-065. */
@@ -3667,8 +3675,12 @@ export const assuranceApi = {
       if (params?.assignedUserId) searchParams.set('assignedUserId', params.assignedUserId);
       if (params?.page) searchParams.set('page', String(params.page));
       if (params?.limit) searchParams.set('limit', String(params.limit));
-      if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
-      if (params?.sortDir) searchParams.set('sortDir', params.sortDir);
+      if (params?.order) {
+        searchParams.set('order', params.order);
+      } else {
+        if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
+        if (params?.sortDir) searchParams.set('sortDir', params.sortDir);
+      }
 
       const query = searchParams.toString();
       const response = await request<{

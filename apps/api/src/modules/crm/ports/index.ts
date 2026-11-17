@@ -22,6 +22,8 @@ export {
 export {
   CrmSubscriberReadPort,
   type CrmSubscriberSummarySnapshot,
+  type CrmTicketPartyLookup,
+  type CrmTicketPartySnapshot,
 } from './crm-subscriber-read.port';
 export { TicketReferencePort, type TicketReference } from './ticket-reference.port';
 export { WorkOrderReferencePort, type WorkOrderReference } from './work-order-reference.port';

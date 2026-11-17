@@ -2,6 +2,24 @@ import type { TitularWriteReference } from './titular-write-reference';
 import type { QueryRunner } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 
+/** Referencia de un ticket a un titular CRM (solicitante o relacionado). */
+export type CrmTicketPartyLookup = TitularWriteReference;
+
+/**
+ * Proyección mínima de un titular para el detalle de un ticket (MOD10, R4).
+ * - AVAILABLE: nombre servido (puede ser nulo si el registro no tiene nombre).
+ * - PROTECTED: titular suprimido o con DATOS_BLOQUEADOS vigente; nombre siempre nulo.
+ * - NOT_FOUND: referencia no UUID, inexistente o borrada.
+ */
+export interface CrmTicketPartySnapshot {
+  type: CrmTicketPartyLookup['type'];
+  id: string;
+  state: 'AVAILABLE' | 'PROTECTED' | 'NOT_FOUND';
+  displayName: string | null;
+  /** Ficha a la que enlazar; para CONTRACT es el suscriptor titular. */
+  profile: { kind: 'SUBSCRIBER' | 'EXPEDIENTE'; id: string } | null;
+}
+
 export interface CrmSubscriberSummarySnapshot {
   id: string;
   status: string;
@@ -15,6 +33,17 @@ export abstract class CrmSubscriberReadPort {
     references: TitularWriteReference[],
     qr: QueryRunner,
   ): Promise<void>;
+
+  /**
+   * Resuelve nombre visible y ficha de las referencias de un ticket dentro de la
+   * transacción del llamante (`qr`), aplicando supresión y DATOS_BLOQUEADOS sin
+   * excepción por permiso. Descarta referencias no UUID antes de consultar. Lanza si las
+   * marcas de privacidad no se pueden verificar: el llamante debe ocultar el nombre.
+   */
+  abstract resolveTicketParties(
+    references: CrmTicketPartyLookup[],
+    qr: QueryRunner,
+  ): Promise<CrmTicketPartySnapshot[]>;
 
   abstract findSummaryByExpedienteId(
     expedienteId: string,

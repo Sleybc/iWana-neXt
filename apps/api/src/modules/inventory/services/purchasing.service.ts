@@ -1220,8 +1220,10 @@ export class PurchasingService {
         if (validated.requestingArea !== undefined)
           request.requestingArea = validated.requestingArea;
         if (validated.justification !== undefined) request.justification = validated.justification;
-        if ('neededByDate' in validated) request.neededByDate = validated.neededByDate ?? null;
-        if ('notes' in validated) request.notes = validated.notes ?? null;
+        // `undefined` = no enviado (el ValidationPipe entrega la instancia del DTO con todas
+        // sus propiedades, así que `in` siempre es cierto); `null` sí borra.
+        if (validated.neededByDate !== undefined) request.neededByDate = validated.neededByDate;
+        if (validated.notes !== undefined) request.notes = validated.notes;
         request.updatedAt = new Date();
         await manager.save(PurchaseRequest, request);
 

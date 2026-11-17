@@ -10,6 +10,7 @@ import {
   TicketStatus,
   TicketType,
 } from '@iwana/shared';
+import type { ContractResponse } from '@iwana/shared';
 import type { AssuranceTicket, AssuranceTicketComment, SubscriberRecord } from '@/lib/api-client';
 import { assuranceApi, usersApi, wfmApi } from '@/lib/api-client';
 import { SubscriberSupportTab } from './SubscriberSupportTab';
@@ -128,12 +129,15 @@ describe('SubscriberSupportTab', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Crear ticket' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByLabelText('Suscriptor')).toHaveValue('Ada Lovelace');
-    expect(within(dialog).getByText('Bogotá')).toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText('Asunto operativo'), {
+    // Spec §8 (H14): el suscriptor va en el encabezado, no como campo.
+    expect(
+      within(dialog).getByRole('heading', { name: 'Crear ticket para Ada Lovelace' }),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('Suscriptor')).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText('Asunto'), {
       target: { value: 'Sin conexión' },
     });
-    fireEvent.change(within(dialog).getByLabelText('Decisión de campo'), {
+    fireEvent.change(within(dialog).getByLabelText('Visita técnica'), {
       target: { value: TicketFieldDecision.FIELD_SERVICE_REQUIRED },
     });
     expect(within(dialog).queryByLabelText('Siguiente paso')).not.toBeInTheDocument();
@@ -151,6 +155,32 @@ describe('SubscriberSupportTab', () => {
     expect(assuranceApi.tickets.list).not.toHaveBeenCalled();
   });
 
+  it('ofrece en «Relacionado con» los servicios ya cargados en la ficha', async () => {
+    mockPermissions.current = new Set([AccessPermissionKey.ASSURANCE_TICKETS_MANAGE]);
+    render(
+      <SubscriberSupportTab
+        subscriber={subscriber}
+        contracts={[{ id: 'contract-1', alias: 'hogar_fibra_300' } as ContractResponse]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Crear ticket' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Asunto'), {
+      target: { value: 'Sin conexión' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Más opciones' }));
+    fireEvent.click(within(dialog).getByRole('combobox', { name: 'Relacionado con' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Hogar Fibra 300' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Crear ticket$/u }));
+
+    await waitFor(() =>
+      expect(assuranceApi.tickets.create).toHaveBeenCalledWith(
+        expect.objectContaining({ subjectType: 'CONTRACT', subjectRefId: 'contract-1' }),
+      ),
+    );
+  });
+
   it('refresca solo Tickets cuando el perfil tiene permiso de lectura y gestión', async () => {
     mockPermissions.current = new Set([
       AccessPermissionKey.ASSURANCE_TICKETS_READ,
@@ -163,7 +193,7 @@ describe('SubscriberSupportTab', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Crear ticket' }));
     const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText('Asunto operativo'), {
+    fireEvent.change(within(dialog).getByLabelText('Asunto'), {
       target: { value: 'Sin conexión' },
     });
     fireEvent.click(within(dialog).getByRole('button', { name: /^Crear ticket$/u }));
@@ -219,6 +249,24 @@ describe('SubscriberSupportTab', () => {
       await user.type(box, text);
       await user.click(screen.getByRole('button', { name: 'Agregar comentario' }));
     }
+
+    it('no ofrece «Abrir en página»: la página filtra por rol y esta pestaña por permiso (MOD10 P2a)', async () => {
+      mockPermissions.current = new Set([
+        AccessPermissionKey.ASSURANCE_TICKETS_READ,
+        AccessPermissionKey.ASSURANCE_TICKETS_MANAGE,
+      ]);
+      (assuranceApi.tickets.list as jest.Mock).mockResolvedValue({ data: [ticket] });
+      (assuranceApi.tickets.get as jest.Mock).mockResolvedValue(ticket);
+      (assuranceApi.tickets.listComments as jest.Mock).mockResolvedValue([]);
+      (assuranceApi.tickets.listTimeline as jest.Mock).mockResolvedValue([]);
+      const user = userEvent.setup();
+      render(<SubscriberSupportTab subscriber={subscriber} />);
+      await user.click(await screen.findByRole('button', { name: /^Abrir ticket TK-1/u }));
+      expect(await screen.findByRole('dialog', { name: 'TK-1' })).toBeInTheDocument();
+      await waitFor(() => expect(assuranceApi.tickets.get).toHaveBeenCalled());
+      expect(await screen.findByLabelText('Nuevo comentario')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /Abrir en página/u })).not.toBeInTheDocument();
+    });
 
     it('guarda el comentario y recarga el listado y el ticket abierto', async () => {
       (assuranceApi.tickets.submitComment as jest.Mock).mockResolvedValue(

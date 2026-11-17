@@ -67,16 +67,19 @@ describe('SubscriberTicketsSection — clip de adjuntos (criterio 4)', () => {
     );
 
     const withThree = await screen.findByRole('button', {
-      name: 'Abrir ticket TK-1: Caso TK-1, con 3 adjuntos',
+      name: /^Abrir ticket TK-1: Caso TK-1, .*, con 3 adjuntos$/,
     });
     expect(within(withThree).getByTestId('ticket-attachment-clip')).toHaveTextContent(
       'Con 3 adjuntos',
     );
     expect(
-      screen.getByRole('button', { name: 'Abrir ticket TK-4: Caso TK-4, con 1 adjunto' }),
+      screen.getByRole('button', { name: /^Abrir ticket TK-4: Caso TK-4, .*, con 1 adjunto$/ }),
     ).toBeInTheDocument();
 
-    for (const name of ['Abrir ticket TK-2: Caso TK-2', 'Abrir ticket TK-3: Caso TK-3']) {
+    for (const name of [
+      /^Abrir ticket TK-2: Caso TK-2, [^,]+, [^,]+$/,
+      /^Abrir ticket TK-3: Caso TK-3, [^,]+, [^,]+$/,
+    ]) {
       const row = screen.getByRole('button', { name });
       expect(within(row).queryByTestId('ticket-attachment-clip')).not.toBeInTheDocument();
     }

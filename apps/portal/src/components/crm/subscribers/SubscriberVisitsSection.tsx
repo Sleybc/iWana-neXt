@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ScheduleEventStatus, VisitRequestStatus, WorkOrderSourceContext } from '@iwana/shared';
-import { Badge, Button, ModalLayer, overlayEdgeClassName } from '@iwana/ui';
-import { X } from 'lucide-react';
+import { Badge, Button, cn, interactiveFocusClassName } from '@iwana/ui';
 import type { SubscriberRecord, WfmScheduleEvent, WfmVisitRequest } from '@/lib/api-client';
 import { wfmApi } from '@/lib/api-client';
 import {
@@ -20,14 +19,19 @@ import {
 import { buildPendingVisitSchedulingHref } from '@/components/scheduling/pending-visit-scheduling-handoff';
 import {
   PortalAlert,
-  PortalEmptyState,
   PortalPanel,
+  PortalSidePeek,
   PortalSkeletonBlock,
 } from '@/components/shared/portal-ui';
+
+/** Id del panel: la franja de resumen de Tickets salta aquí («Visitas próximas»). */
+export const SUBSCRIBER_VISITS_PANEL_ID = 'subscriber-visits-panel';
 
 interface SubscriberVisitsSectionProps {
   subscriber: SubscriberRecord;
   canRead: boolean;
+  /** Visitas cargadas (o `null` si fallaron): la pestaña cuenta las próximas para la franja. */
+  onEntriesChange?: (entries: VisitEntry[] | null) => void;
 }
 
 export type VisitEntry = {
@@ -66,9 +70,10 @@ const FUTURE_EVENT_STATUSES = new Set<ScheduleEventStatus>([
 ]);
 
 function getOriginLabel(expedienteId: string | null, contractId: string | null): string {
-  if (expedienteId) return 'Expediente';
+  // «Expediente» es el nombre interno; quien usa el portal lo conoce como oportunidad.
+  if (expedienteId) return 'Oportunidad';
   if (contractId) return 'Contrato';
-  return 'Sin expediente o contrato vinculado';
+  return 'Sin oportunidad ni contrato vinculado';
 }
 
 function validDate(value: string | null | undefined): number | null {
@@ -193,128 +198,45 @@ function buildAgendamientoHref(entry: VisitEntry): string {
   return '/dashboard/scheduling/agenda';
 }
 
-function VisitRow({
-  entry,
-  onOpen,
-}: {
-  entry: VisitEntry;
-  onOpen: (entry: VisitEntry, opener: HTMLButtonElement) => void;
-}) {
+function VisitRow({ entry, onOpen }: { entry: VisitEntry; onOpen: (entry: VisitEntry) => void }) {
   const dateLabel = validDate(entry.date) ? formatWfmDateTime(entry.date) : 'Pendiente de fecha';
   return (
-    <li className="border-b border-gray-100 last:border-b-0 dark:border-dark-border">
+    <li>
       <button
         type="button"
-        className="w-full rounded-xl px-3 py-3 text-left transition-colors hover:bg-iwana-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:hover:bg-dark-surface-3"
+        className={cn(
+          'flex min-h-11 w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-xl px-3 py-2 text-left transition-colors hover:bg-iwana-surface-soft dark:hover:bg-dark-surface-3',
+          interactiveFocusClassName,
+        )}
         aria-label={`Ver detalle de visita: ${entry.workType}, ${entry.statusLabel}`}
-        onClick={(event) => onOpen(entry, event.currentTarget)}
+        onClick={(event) => {
+          // PortalSidePeek devuelve el foco al elemento activo al abrir; Safari no enfoca al hacer clic.
+          event.currentTarget.focus();
+          onOpen(entry);
+        }}
       >
-        <span className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-sm font-medium text-gray-900 dark:text-white">
-            {entry.workType}
-          </span>
-          <Badge variant={entry.statusVariant}>{entry.statusLabel}</Badge>
-        </span>
-        <span className="mt-2 block text-xs text-gray-600 dark:text-gray-300">
-          Origen: {entry.origin}
-        </span>
-        <span className="mt-1 block text-xs text-gray-600 dark:text-gray-300">{dateLabel}</span>
+        <span className="text-sm font-medium text-gray-900 dark:text-white">{entry.workType}</span>
+        <Badge variant={entry.statusVariant}>{entry.statusLabel}</Badge>
+        <span className="text-xs text-gray-600 dark:text-gray-300">Origen: {entry.origin}</span>
+        <span className="text-xs text-gray-600 dark:text-gray-300 sm:ml-auto">{dateLabel}</span>
       </button>
     </li>
   );
 }
 
-function VisitDetailPanel({
-  entry,
-  openerRef,
-  onClose,
-}: {
-  entry: VisitEntry;
-  openerRef: React.RefObject<HTMLButtonElement | null>;
-  onClose: () => void;
-}) {
-  const panelRef = useRef<HTMLElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const opener = openerRef.current;
-    const frameId = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
-    document.body.classList.add('overflow-hidden');
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-      if (event.key !== 'Tab' || !panelRef.current) return;
-      const focusable = Array.from(
-        panelRef.current.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      );
-      if (!focusable.length) {
-        event.preventDefault();
-        panelRef.current.focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (!first || !last) return;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      window.removeEventListener('keydown', handleKeyDown);
-      document.body.classList.remove('overflow-hidden');
-      opener?.focus();
-    };
-  }, [onClose, openerRef]);
-
-  const dateLabel = validDate(entry.date) ? formatWfmDateTime(entry.date) : 'Pendiente de fecha';
-
+/** Detalle de solo lectura en `PortalSidePeek`: foco, `Escape` y retorno los da la primitive (§5.4). */
+function VisitDetailPanel({ entry, onClose }: { entry: VisitEntry | null; onClose: () => void }) {
+  const dateLabel =
+    entry && validDate(entry.date) ? formatWfmDateTime(entry.date) : 'Pendiente de fecha';
   return (
-    <ModalLayer align="end" onVeilClick={onClose}>
-      <aside
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="subscriber-visit-detail-title"
-        tabIndex={-1}
-        className={`${overlayEdgeClassName} relative flex h-full w-full flex-col border-l bg-white shadow-iwana-soft dark:bg-dark-surface-2 md:max-w-[32rem]`}
-      >
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-border">
-          <div>
-            <h2
-              id="subscriber-visit-detail-title"
-              className="text-base font-semibold text-gray-900 dark:text-white"
-            >
-              Detalle de la visita
-            </h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-              Consulta de solo lectura.
-            </p>
-          </div>
-          <Button
-            ref={closeButtonRef}
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="min-h-11 min-w-11"
-            aria-label="Cerrar detalle de la visita"
-            onClick={onClose}
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
-            <span>Cerrar</span>
-          </Button>
-        </header>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+    <PortalSidePeek
+      open={entry !== null}
+      onClose={onClose}
+      title="Detalle de la visita"
+      description="Consulta de solo lectura."
+    >
+      {entry ? (
+        <>
           <dl className="space-y-4">
             <div>
               <dt className="text-xs font-semibold text-gray-500 dark:text-gray-400">
@@ -351,28 +273,36 @@ function VisitDetailPanel({
           >
             Abrir en Agendamiento
           </Link>
-        </div>
-      </aside>
-    </ModalLayer>
+        </>
+      ) : null}
+    </PortalSidePeek>
   );
 }
 
-export function SubscriberVisitsSection({ subscriber, canRead }: SubscriberVisitsSectionProps) {
+export function SubscriberVisitsSection({
+  subscriber,
+  canRead,
+  onEntriesChange,
+}: SubscriberVisitsSectionProps) {
   const [entries, setEntries] = useState<VisitEntry[]>([]);
   const [loading, setLoading] = useState(canRead);
   const [showSkeleton, setShowSkeleton] = useState(false);
   const [error, setError] = useState(false);
   const [selectedVisit, setSelectedVisit] = useState<VisitEntry | null>(null);
-  const openerRef = useRef<HTMLButtonElement | null>(null);
+  const onEntriesChangeRef = useRef(onEntriesChange);
+  onEntriesChangeRef.current = onEntriesChange;
 
   const loadVisits = useCallback(async () => {
     if (!canRead || subscriber.privacyRestricted) return;
     setLoading(true);
     setError(false);
     try {
-      setEntries(await loadSubscriberVisitEntries(subscriber.id));
+      const loaded = await loadSubscriberVisitEntries(subscriber.id);
+      setEntries(loaded);
+      onEntriesChangeRef.current?.(loaded);
     } catch {
       setError(true);
+      onEntriesChangeRef.current?.(null);
     } finally {
       setLoading(false);
     }
@@ -405,9 +335,9 @@ export function SubscriberVisitsSection({ subscriber, canRead }: SubscriberVisit
     }
     if (loading && showSkeleton) {
       return (
-        <div className="space-y-3" aria-label="Cargando visitas" aria-busy="true">
-          <PortalSkeletonBlock className="h-24 rounded-xl" />
-          <PortalSkeletonBlock className="h-24 rounded-xl" />
+        <div className="space-y-2" aria-label="Cargando visitas" aria-busy="true">
+          <PortalSkeletonBlock className="h-11 rounded-xl" />
+          <PortalSkeletonBlock className="h-11 rounded-xl" />
         </div>
       );
     }
@@ -433,12 +363,11 @@ export function SubscriberVisitsSection({ subscriber, canRead }: SubscriberVisit
       );
     }
     if (entries.length === 0) {
+      // Vacío de una línea (§7): la sección no reserva espacio sin visitas.
       return (
-        <PortalEmptyState
-          embedded
-          title="Este suscriptor no tiene visitas"
-          description="Las visitas asociadas a este suscriptor aparecerán aquí."
-        />
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          Este suscriptor no tiene visitas propias. Las visitas de un ticket se ven en el ticket.
+        </p>
       );
     }
     return (
@@ -447,14 +376,7 @@ export function SubscriberVisitsSection({ subscriber, canRead }: SubscriberVisit
         className="divide-y divide-gray-100 dark:divide-dark-border"
       >
         {entries.map((entry) => (
-          <VisitRow
-            key={entry.key}
-            entry={entry}
-            onOpen={(visit, opener) => {
-              openerRef.current = opener;
-              setSelectedVisit(visit);
-            }}
-          />
+          <VisitRow key={entry.key} entry={entry} onOpen={setSelectedVisit} />
         ))}
       </ul>
     );
@@ -462,15 +384,10 @@ export function SubscriberVisitsSection({ subscriber, canRead }: SubscriberVisit
 
   return (
     <>
-      <PortalPanel
-        title="Visitas"
-        description="Solicitudes y eventos de programación vinculados a este suscriptor."
-      >
+      <PortalPanel id={SUBSCRIBER_VISITS_PANEL_ID} title="Visitas" density="dense">
         {content}
       </PortalPanel>
-      {selectedVisit ? (
-        <VisitDetailPanel entry={selectedVisit} openerRef={openerRef} onClose={closeVisit} />
-      ) : null}
+      <VisitDetailPanel entry={selectedVisit} onClose={closeVisit} />
     </>
   );
 }

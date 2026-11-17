@@ -2,8 +2,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { Allow, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { z } from 'zod';
-import type { ListMeta } from '@iwana/shared';
+import type { ListMeta, ListTicketsOrder } from '@iwana/shared';
 import {
+  ListTicketsOrderSchema,
+  TICKET_LIST_ORDERS,
   TicketFieldDecision,
   SlaBreachStatus,
   TicketPriority,
@@ -121,20 +123,33 @@ export const LinkWorkOrderSchema = z.object({
   notes: z.string().optional().nullable(),
 });
 
-export const ListTicketsQuerySchema = z.object({
-  status: z.nativeEnum(TicketStatus).optional(),
-  type: z.nativeEnum(TicketType).optional(),
-  priority: z.nativeEnum(TicketPriority).optional(),
-  slaBreachStatus: z.nativeEnum(SlaBreachStatus).optional(),
-  queueName: z.nativeEnum(TicketQueue).optional(),
-  requesterRefId: z.string().max(160).optional(),
-  subscriberId: z.string().uuid().optional(),
-  assignedUserId: z.string().uuid().optional(),
-  page: z.coerce.number().int().min(1).optional().default(1),
-  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
-  sortBy: z.string().optional(),
-  sortDir: z.enum(['asc', 'desc']).optional(),
-});
+export const ListTicketsQuerySchema = z
+  .object({
+    status: z.nativeEnum(TicketStatus).optional(),
+    type: z.nativeEnum(TicketType).optional(),
+    priority: z.nativeEnum(TicketPriority).optional(),
+    slaBreachStatus: z.nativeEnum(SlaBreachStatus).optional(),
+    queueName: z.nativeEnum(TicketQueue).optional(),
+    requesterRefId: z.string().max(160).optional(),
+    subscriberId: z.string().uuid().optional(),
+    assignedUserId: z.string().uuid().optional(),
+    page: z.coerce.number().int().min(1).optional().default(1),
+    limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+    sortBy: z.string().optional(),
+    sortDir: z.enum(['asc', 'desc']).optional(),
+    /** Spec MOD05 pestaña Soporte §16 B-3: `urgency` ordena en servidor como la pestaña. */
+    order: ListTicketsOrderSchema,
+  })
+  .superRefine((value, ctx) => {
+    // applySort reemplazaría el ORDER BY de urgencia: la combinación es ambigua y se rechaza.
+    if (value.order === 'urgency' && value.sortBy) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['sortBy'],
+        message: 'sortBy no se combina con order=urgency',
+      });
+    }
+  });
 
 export type CreateTicketInput = z.input<typeof CreateTicketSchema>;
 export type UpdateTicketInput = z.input<typeof UpdateTicketSchema>;
@@ -412,6 +427,17 @@ export class ListTicketsQueryDto {
   @ApiPropertyOptional({ enum: ['asc', 'desc'], description: 'Dirección de ordenamiento' })
   @Allow()
   sortDir?: 'asc' | 'desc';
+
+  @ApiPropertyOptional({
+    enum: TICKET_LIST_ORDERS,
+    default: 'recent',
+    description:
+      'recent: más reciente primero. urgency: abiertos primero (vencido, en riesgo, prioridad, ' +
+      'plazo más próximo, más antiguo); luego resueltos, cerrados y cancelados, el más reciente primero. ' +
+      'urgency no admite sortBy (400).',
+  })
+  @Allow()
+  order?: ListTicketsOrder;
 }
 
 export interface ListTicketsResponseDto {

@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AccessPermissionKey, TicketFieldDecision } from '@iwana/shared';
+import type { ContractResponse } from '@iwana/shared';
 import type {
   AssuranceCommentSubmission,
   AssuranceSlaPolicy,
@@ -19,15 +20,21 @@ import type {
 } from '@/lib/api-client';
 import { assuranceApi, usersApi } from '@/lib/api-client';
 import { usePermissions } from '@/components/access-control/permissions-context';
-import { formatSubscriberName } from './subscriber-ui';
-import { SubscriberTicketsSection } from './SubscriberTicketsSection';
-import { SubscriberVisitsSection } from './SubscriberVisitsSection';
+import { formatContractAlias, formatSubscriberName } from './subscriber-ui';
+import { SUBSCRIBER_TICKETS_PANEL_ID, SubscriberTicketsSection } from './SubscriberTicketsSection';
+import {
+  SUBSCRIBER_VISITS_PANEL_ID,
+  SubscriberVisitsSection,
+  isOpenVisitEntry,
+  type VisitEntry,
+} from './SubscriberVisitsSection';
 import { AssuranceCreateTicketForm } from '@/components/assurance/AssuranceCreateTicketForm';
 import type { AssuranceCreateTicketSubmitPayload } from '@/components/assurance/AssuranceCreateTicketForm';
 import { AssuranceTicketDrawer } from '@/components/assurance/AssuranceTicketDrawer';
 import { getTicketCommentAttachmentError } from '@/components/assurance/ticket-attachments';
 import { createAssuranceVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
-import { PortalAlert } from '@/components/shared/portal-ui';
+import { PortalSuccessAlert } from '@/components/shared/portal-ui';
+import { getAssuranceTicketStatusLabel } from '@/components/assurance/assurance-labels';
 import {
   Button,
   Dialog,
@@ -39,7 +46,11 @@ import {
 
 interface SubscriberSupportTabProps {
   subscriber: SubscriberRecord;
+  /** Servicios ya cargados en la ficha; se ofrecen en «Relacionado con» al crear (spec §8). */
+  contracts?: ContractResponse[];
 }
+
+const NO_CONTRACTS: ContractResponse[] = [];
 
 type DrawerAction =
   | 'comment'
@@ -60,20 +71,42 @@ async function loadOperationalUsers(): Promise<InternalUser[]> {
   return [...collected.values()];
 }
 
-export function SubscriberSupportTab({ subscriber }: SubscriberSupportTabProps) {
+/** Lleva el foco al encabezado de un panel de la pestaña (CA-11 y franja de resumen). */
+function focusPanelHeading(panelId: string): void {
+  const panel = document.getElementById(panelId);
+  const heading = panel?.querySelector<HTMLElement>('h2, h3');
+  panel?.scrollIntoView?.({ block: 'start' });
+  if (!heading) return;
+  heading.tabIndex = -1;
+  heading.focus();
+}
+
+export function SubscriberSupportTab({
+  subscriber,
+  contracts = NO_CONTRACTS,
+}: SubscriberSupportTabProps) {
   const router = useRouter();
   const { hasPermission } = usePermissions();
   const canReadTickets = hasPermission(AccessPermissionKey.ASSURANCE_TICKETS_READ);
   const canManageTickets = hasPermission(AccessPermissionKey.ASSURANCE_TICKETS_MANAGE);
   const canReadVisits = hasPermission(AccessPermissionKey.WFM_SCHEDULE_READ);
   const canManageWfmSchedule = hasPermission(AccessPermissionKey.WFM_SCHEDULE_MANAGE);
+  const canReadUsers = hasPermission(AccessPermissionKey.USERS_READ);
+  // Nombres de responsables al montar, en paralelo con la lista (spec §12 paso 1, CA-4).
+  const shouldLoadUsers =
+    !subscriber.privacyRestricted && (canManageTickets || (canReadTickets && canReadUsers));
+  const shouldLoadPolicies = !subscriber.privacyRestricted && (canReadTickets || canManageTickets);
   const [createOpen, setCreateOpen] = useState(false);
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createFeedback, setCreateFeedback] = useState('');
   const [refreshTicketsKey, setRefreshTicketsKey] = useState(0);
   const [assignees, setAssignees] = useState<InternalUser[]>([]);
+  const [usersPending, setUsersPending] = useState(shouldLoadUsers);
   const [slaPolicies, setSlaPolicies] = useState<AssuranceSlaPolicy[]>([]);
+  const [createdTicketId, setCreatedTicketId] = useState<string | null>(null);
+  const [visitEntries, setVisitEntries] = useState<VisitEntry[] | null>(null);
+  const [closeAnnouncement, setCloseAnnouncement] = useState('');
 
   const [drawerTicket, setDrawerTicket] = useState<AssuranceTicket | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -89,19 +122,26 @@ export function SubscriberSupportTab({ subscriber }: SubscriberSupportTabProps) 
   const refreshTickets = useCallback(() => setRefreshTicketsKey((current) => current + 1), []);
 
   useEffect(() => {
-    if (!createOpen || !canManageTickets || subscriber.privacyRestricted) return;
+    if (!shouldLoadUsers && !shouldLoadPolicies) return;
     let active = true;
-    void Promise.allSettled([loadOperationalUsers(), assuranceApi.slaPolicies.list()]).then(
-      ([usersResult, policiesResult]) => {
-        if (!active) return;
-        setAssignees(usersResult.status === 'fulfilled' ? usersResult.value : []);
-        setSlaPolicies(policiesResult.status === 'fulfilled' ? policiesResult.value : []);
-      },
-    );
+    void Promise.allSettled([
+      shouldLoadUsers ? loadOperationalUsers() : Promise.resolve([]),
+      shouldLoadPolicies ? assuranceApi.slaPolicies.list() : Promise.resolve([]),
+    ]).then(([usersResult, policiesResult]) => {
+      if (!active) return;
+      setAssignees(usersResult.status === 'fulfilled' ? usersResult.value : []);
+      setSlaPolicies(policiesResult.status === 'fulfilled' ? policiesResult.value : []);
+      setUsersPending(false);
+    });
     return () => {
       active = false;
     };
-  }, [canManageTickets, createOpen, subscriber.privacyRestricted]);
+  }, [shouldLoadPolicies, shouldLoadUsers]);
+
+  const dismissCreateFeedback = useCallback(() => {
+    setCreateFeedback('');
+    setCreatedTicketId(null);
+  }, []);
 
   const closeCreate = useCallback(() => {
     if (createSubmitting) return;
@@ -139,6 +179,7 @@ export function SubscriberSupportTab({ subscriber }: SubscriberSupportTabProps) 
         setCreateFeedback(
           canReadTickets ? 'Ticket creado y vinculado al suscriptor' : 'Ticket creado',
         );
+        setCreatedTicketId(createdTicket.id);
         if (canReadTickets) refreshTickets();
       } catch {
         setCreateError('Revisa la información e inténtalo de nuevo.');
@@ -160,6 +201,8 @@ export function SubscriberSupportTab({ subscriber }: SubscriberSupportTabProps) 
     (ticket: AssuranceTicket, opener: HTMLButtonElement) => {
       if (!canReadTickets || subscriber.privacyRestricted) return;
       setTicketOpener(opener);
+      dismissCreateFeedback();
+      setCloseAnnouncement('');
       setDrawerTicket(ticket);
       setDrawerOpen(true);
       setDrawerLoading(true);
@@ -172,12 +215,10 @@ export function SubscriberSupportTab({ subscriber }: SubscriberSupportTabProps) 
         assuranceApi.tickets.get(ticket.id),
         assuranceApi.tickets.listComments(ticket.id),
         assuranceApi.tickets.listTimeline(ticket.id),
-        canManageTickets ? loadOperationalUsers() : Promise.resolve([]),
-      ]).then(([ticketResult, commentsResult, timelineResult, usersResult]) => {
+      ]).then(([ticketResult, commentsResult, timelineResult]) => {
         setDrawerTicket(ticketResult.status === 'fulfilled' ? ticketResult.value : ticket);
         setComments(commentsResult.status === 'fulfilled' ? commentsResult.value : []);
         setTimeline(timelineResult.status === 'fulfilled' ? timelineResult.value : []);
-        if (usersResult.status === 'fulfilled') setAssignees(usersResult.value);
         if (
           ticketResult.status === 'rejected' ||
           commentsResult.status === 'rejected' ||
@@ -188,7 +229,7 @@ export function SubscriberSupportTab({ subscriber }: SubscriberSupportTabProps) 
         setDrawerLoading(false);
       });
     },
-    [canManageTickets, canReadTickets, subscriber.privacyRestricted],
+    [canReadTickets, dismissCreateFeedback, subscriber.privacyRestricted],
   );
 
   /** Relee el ticket abierto tras un comentario, como la mesa de ayuda; conserva lo que falle. */
@@ -207,13 +248,30 @@ export function SubscriberSupportTab({ subscriber }: SubscriberSupportTabProps) 
   );
 
   const closeDrawer = useCallback(() => {
+    const closedTicket = drawerTicket;
     setDrawerOpen(false);
     setDrawerTicket(null);
-    setTicketOpener((opener) => {
-      opener?.focus();
-      return null;
-    });
-  }, []);
+    setTicketOpener(null);
+    // Foco a la fila que lo abrió; si salió del filtro, al encabezado con anuncio (§6, CA-11).
+    if (ticketOpener?.isConnected) {
+      ticketOpener.focus();
+      return;
+    }
+    focusPanelHeading(SUBSCRIBER_TICKETS_PANEL_ID);
+    if (closedTicket) {
+      setCloseAnnouncement(
+        `El ticket ${closedTicket.ticketNumber} pasó a ${getAssuranceTicketStatusLabel(
+          closedTicket.status,
+        ).toLowerCase()}`,
+      );
+    }
+  }, [drawerTicket, ticketOpener]);
+
+  const upcomingVisits = useMemo(
+    () => (canReadVisits && visitEntries ? visitEntries.filter(isOpenVisitEntry).length : null),
+    [canReadVisits, visitEntries],
+  );
+  const showVisits = useCallback(() => focusPanelHeading(SUBSCRIBER_VISITS_PANEL_ID), []);
 
   const runDrawerAction = useCallback(
     async (
@@ -255,41 +313,71 @@ export function SubscriberSupportTab({ subscriber }: SubscriberSupportTabProps) 
     [subscriber],
   );
 
+  const subscriberServices = useMemo(
+    () =>
+      contracts.map((contract) => ({
+        id: contract.id,
+        label:
+          formatContractAlias(contract.alias) || contract.installationAddress?.trim() || 'Servicio',
+      })),
+    [contracts],
+  );
+
   if (subscriber.privacyRestricted) return null;
 
   return (
     <div className="space-y-4">
-      {createFeedback ? <PortalAlert variant="success" title={createFeedback} /> : null}
+      {/* Sin lectura de tickets no hay lista: el aviso va arriba (con lectura va sobre la lista, §7). */}
+      {createFeedback && !canReadTickets ? (
+        <PortalSuccessAlert message={createFeedback} onDismiss={dismissCreateFeedback} />
+      ) : null}
 
-      {/* «Crear ticket» va en la cabecera del panel: fuera de él desalineaba las dos columnas. */}
-      {/* Los tickets usan dos tercios: son la lista larga; Visitas suele tener pocos eventos. */}
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <SubscriberTicketsSection
-          subscriber={subscriber}
-          canRead={canReadTickets}
-          users={assignees}
-          refreshKey={refreshTicketsKey}
-          onOpenTicket={openTicket}
-          actions={
-            canManageTickets ? (
-              <Button
-                type="button"
-                variant="secondary"
-                className="min-h-11 gap-1.5"
-                onClick={() => {
-                  setCreateError(null);
-                  setCreateFeedback('');
-                  setCreateOpen(true);
-                }}
-              >
-                <Plus className="h-4 w-4" aria-hidden />
-                Crear ticket
-              </Button>
-            ) : undefined
-          }
-        />
-        <SubscriberVisitsSection subscriber={subscriber} canRead={canReadVisits} />
-      </div>
+      {/* Dirección A (§3): una columna; Tickets a ancho completo y Visitas compacta debajo. */}
+      <SubscriberTicketsSection
+        subscriber={subscriber}
+        canRead={canReadTickets}
+        users={assignees}
+        usersPending={usersPending}
+        slaPoliciesConfigured={slaPolicies.length > 0}
+        upcomingVisits={upcomingVisits}
+        onShowVisits={showVisits}
+        refreshKey={refreshTicketsKey}
+        onOpenTicket={openTicket}
+        onFiltersChange={dismissCreateFeedback}
+        highlightTicketId={createdTicketId}
+        notice={
+          createFeedback && canReadTickets ? (
+            <PortalSuccessAlert message={createFeedback} onDismiss={dismissCreateFeedback} />
+          ) : null
+        }
+        actions={
+          canManageTickets ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="min-h-11 gap-1.5 sm:min-h-9"
+              onClick={() => {
+                setCreateError(null);
+                dismissCreateFeedback();
+                setCreateOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+              Crear ticket
+            </Button>
+          ) : undefined
+        }
+      />
+      <SubscriberVisitsSection
+        subscriber={subscriber}
+        canRead={canReadVisits}
+        onEntriesChange={setVisitEntries}
+      />
+
+      <p className="sr-only" role="status">
+        {closeAnnouncement}
+      </p>
 
       <Dialog
         open={createOpen}
@@ -297,14 +385,15 @@ export function SubscriberSupportTab({ subscriber }: SubscriberSupportTabProps) 
       >
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Crear ticket</DialogTitle>
-            <DialogDescription>
-              El ticket quedará vinculado a {subscriberPickerItem.label}.
+            <DialogTitle>Crear ticket para {subscriberPickerItem.label}</DialogTitle>
+            <DialogDescription className="sr-only">
+              El ticket quedará vinculado a este suscriptor.
             </DialogDescription>
           </DialogHeader>
           {canManageTickets ? (
             <AssuranceCreateTicketForm
               subscriber={subscriberPickerItem}
+              subscriberServices={subscriberServices}
               allowWfmFollowUp={canManageWfmSchedule}
               assignees={assignees}
               slaPolicies={slaPolicies}
@@ -318,6 +407,8 @@ export function SubscriberSupportTab({ subscriber }: SubscriberSupportTabProps) 
       </Dialog>
 
       <AssuranceTicketDrawer
+        // La página propia filtra por rol y esta pestaña por permiso (MOD10 P2a, decisión 2026-11-16).
+        showOpenInPage={false}
         open={drawerOpen}
         ticket={drawerTicket}
         comments={comments}

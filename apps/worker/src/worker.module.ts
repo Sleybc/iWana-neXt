@@ -11,6 +11,7 @@ import Redis from 'ioredis';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { dataSourceOptions, SafeTypeOrmLogger } from '@iwana/db';
+import { WORKER_ENTITIES } from './worker-entities';
 import { createStorageAdapter, STORAGE_PORT, type StoragePort } from '@iwana/storage';
 import {
   ASSURANCE_FIELD_SERVICE_QUEUE,
@@ -179,7 +180,7 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
         username: config.get<string>('DB_USER', 'iwana'),
         password: config.get<string>('DB_PASSWORD', ''),
         database: config.get<string>('DB_NAME', 'iwana'),
-        entities: dataSourceOptions.entities ?? [],
+        entities: WORKER_ENTITIES,
         migrations: dataSourceOptions.migrations ?? [],
         migrationsTableName: dataSourceOptions.migrationsTableName ?? 'typeorm_migrations',
         migrationsRun: false,

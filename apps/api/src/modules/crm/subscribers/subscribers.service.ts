@@ -97,7 +97,12 @@ import {
   isBlockingLegalComplianceStatus,
 } from '../provisioning-readiness';
 import { PlanCatalogReadPort } from '../../commercial/ports/plan-catalog-read.port';
-import { CrmSubscriberReadPort } from '../ports/crm-subscriber-read.port';
+import {
+  CrmSubscriberReadPort,
+  type CrmTicketPartyLookup,
+  type CrmTicketPartySnapshot,
+} from '../ports/crm-subscriber-read.port';
+import { resolveTicketParties } from './ticket-party-resolution';
 import { CrmQuoteReadPort } from '../ports/crm-quote-read.port';
 import { ContractAutoCreationPort } from '../ports/contract-auto-creation.port';
 import { ANONYMIZED } from '../privacy-adapters/titular-erasure/titular-erasure-sql';
@@ -1530,6 +1535,13 @@ export class SubscribersService implements CrmSubscriberReadPort {
 
   assertWritableReferences(references: TitularWriteReference[], qr: QueryRunner): Promise<void> {
     return assertTitularWritable(references, qr);
+  }
+
+  resolveTicketParties(
+    references: CrmTicketPartyLookup[],
+    qr: QueryRunner,
+  ): Promise<CrmTicketPartySnapshot[]> {
+    return resolveTicketParties(references, qr, this.privacyMarksReadPort);
   }
 
   async findSummaryByExpedienteId(

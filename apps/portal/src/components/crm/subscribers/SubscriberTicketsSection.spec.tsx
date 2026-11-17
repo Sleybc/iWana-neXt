@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { TicketStatus, TicketPriority } from '@iwana/shared';
+import { SlaBreachStatus, TicketStatus, TicketPriority } from '@iwana/shared';
 import type { AssuranceTicket, SubscriberRecord } from '@/lib/api-client';
 import { assuranceApi } from '@/lib/api-client';
 import { SubscriberTicketsSection } from './SubscriberTicketsSection';
@@ -51,6 +51,7 @@ describe('SubscriberTicketsSection', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     onOpenTicket.mockReset();
+    window.history.replaceState(null, '', '/');
   });
 
   it('no consulta Assurance sin permiso de lectura', () => {
@@ -113,7 +114,10 @@ describe('SubscriberTicketsSection', () => {
       within(list)
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label')),
-    ).toEqual(['Abrir ticket TK-1001: TK-1001', 'Abrir ticket TK-1002: TK-1002']);
+    ).toEqual([
+      'Abrir ticket TK-1001: TK-1001, Abierto, prioridad normal',
+      'Abrir ticket TK-1002: TK-1002, En progreso, prioridad normal',
+    ]);
     expect(screen.getByRole('button', { name: 'Abiertos (2)' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -125,14 +129,15 @@ describe('SubscriberTicketsSection', () => {
       .getAllByRole('button')
       .map((button) => button.getAttribute('aria-label'));
     expect(labels).toEqual([
-      'Abrir ticket TK-1001: TK-1001',
-      'Abrir ticket TK-1002: TK-1002',
-      'Abrir ticket TK-1003: TK-1003',
-      'Abrir ticket TK-1004: TK-1004',
+      'Abrir ticket TK-1001: TK-1001, Abierto, prioridad normal',
+      'Abrir ticket TK-1002: TK-1002, En progreso, prioridad normal',
+      'Abrir ticket TK-1003: TK-1003, Resuelto, prioridad normal',
+      'Abrir ticket TK-1004: TK-1004, Cerrado, prioridad normal',
     ]);
     expect(assuranceApi.tickets.list).toHaveBeenCalledWith({
       subscriberId: subscriber.id,
       limit: 100,
+      order: 'urgency',
     });
   });
 
@@ -175,11 +180,84 @@ describe('SubscriberTicketsSection', () => {
       'aria-pressed',
       'true',
     );
-    expect(list).toHaveTextContent('Abierto el 24 jun 2026');
-    expect(list).toHaveTextContent('Responsable: Numa Patrón');
-    expect(list).toHaveTextContent('El usuario solicita un cambio de ONU por intermitencia.');
+    // Spec 2026-11-17 §4: «Abierto {fecha}», el nombre sin prefijo y sin descripción en la fila.
+    expect(list).toHaveTextContent('Abierto 24/06/2026');
+    expect(list).toHaveTextContent('Numa Patrón');
+    expect(list).not.toHaveTextContent('El usuario solicita un cambio de ONU por intermitencia.');
     expect(list).not.toHaveTextContent('Vence');
     expect(list).not.toHaveTextContent('SLA');
+  });
+
+  it('plazo pasado sin estado vencido no se cuenta como vencido (P3: manda slaBreachStatus)', async () => {
+    (assuranceApi.tickets.list as jest.Mock).mockResolvedValue({
+      data: [
+        ticket({
+          id: 'a',
+          ticketNumber: 'TK-A',
+          status: TicketStatus.OPEN,
+          slaResolveByAt: '2026-01-01T00:00:00.000Z',
+        }),
+        ticket({
+          id: 'b',
+          ticketNumber: 'TK-B',
+          status: TicketStatus.OPEN,
+          slaResolveByAt: '2099-01-01T00:00:00.000Z',
+          slaBreachStatus: SlaBreachStatus.RESOLUTION_BREACHED,
+        }),
+      ],
+    });
+    render(
+      <SubscriberTicketsSection
+        subscriber={subscriber}
+        canRead
+        refreshKey={0}
+        onOpenTicket={onOpenTicket}
+        slaPoliciesConfigured
+      />,
+    );
+    expect(
+      await screen.findByRole('button', { name: 'Ver 1 tickets vencidos' }),
+    ).toBeInTheDocument();
+  });
+
+  it('paso 2: nombre del API sin usuarios, fecha de visita en la fila y total del servidor (CA-15, CA-16)', async () => {
+    (assuranceApi.tickets.list as jest.Mock).mockResolvedValue({
+      data: [
+        ticket({
+          id: 'a',
+          ticketNumber: 'TK-A',
+          status: TicketStatus.FIELD_SERVICE_REQUESTED,
+          slaResolveByAt: null,
+          assignedUserId: 'user-1',
+          assignedUserDisplayName: 'Numa Patrón',
+          activeVisit: {
+            id: '11111111-1111-4111-8111-111111111111',
+            status: 'SCHEDULED',
+            windowKind: 'SCHEDULED',
+            windowStartAt: new Date(2026, 10, 18, 8, 0).toISOString(),
+            windowEndAt: new Date(2026, 10, 18, 12, 0).toISOString(),
+            scheduleEventId: null,
+          },
+          executionOrder: null,
+        } as never),
+      ],
+      meta: { total: 140 },
+    });
+    render(
+      <SubscriberTicketsSection
+        subscriber={subscriber}
+        canRead
+        refreshKey={0}
+        onOpenTicket={onOpenTicket}
+      />,
+    );
+    const list = await screen.findByRole('list', { name: 'Tickets vinculados' });
+    expect(list).toHaveTextContent('Numa Patrón');
+    expect(list).toHaveTextContent('Visita 18 nov, 8:00–12:00');
+    expect(list).not.toHaveTextContent('Visita solicitada');
+    expect(
+      screen.getByText('Se muestran 1 de 140 tickets, los más urgentes primero.'),
+    ).toBeInTheDocument();
   });
 
   it('permite reintentar solo la consulta de tickets y presenta el vacío definitivo', async () => {

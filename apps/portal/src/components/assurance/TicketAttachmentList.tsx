@@ -43,6 +43,8 @@ const KIND_ICONS = {
 } satisfies Record<TicketAttachmentKind, unknown>;
 
 const actionButtonClassName = 'min-h-11 gap-1.5';
+/** Acciones de icono en la fila compacta: 44 px bajo `sm`, alto del texto desde `sm` (§8.4). */
+const compactActionButtonClassName = 'h-11 w-11 shrink-0 sm:h-8 sm:w-8';
 
 /**
  * Enlace firmado del adjunto: se pide al mostrar (miniatura) o al hacer clic, y solo se
@@ -195,37 +197,59 @@ function TicketAttachmentItem({
         : 'Ver foto';
   const showOpenButton = !(kind === 'image' && variant === 'preview') && videoUrl === null;
 
+  const compact = variant === 'compact';
+
   return (
     <li
       data-testid="ticket-attachment"
       data-attachment-status={status}
-      className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface-2"
+      className={
+        compact
+          ? 'py-0.5'
+          : 'rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface-2'
+      }
     >
-      <div className="flex flex-wrap items-start gap-3">
+      {/* Resumen del caso (`compact`): una fila; el nombre se trunca y conserva el texto completo. */}
+      <div className={compact ? 'flex items-center gap-2' : 'flex flex-wrap items-start gap-3'}>
         <Icon
-          className="mt-0.5 h-5 w-5 shrink-0 text-iwana-primary dark:text-iwana-primary-300"
+          className={cn(
+            'h-5 w-5 shrink-0 text-iwana-primary dark:text-iwana-primary-300',
+            !compact && 'mt-0.5',
+          )}
           aria-hidden
         />
-        <div className="min-w-0 flex-1">
-          <p className="break-all text-sm font-medium text-gray-900 dark:text-white">
+        <div className={compact ? 'flex min-w-0 flex-1 items-baseline gap-2' : 'min-w-0 flex-1'}>
+          <p
+            className={cn(
+              'text-sm font-medium text-gray-900 dark:text-white',
+              compact ? 'min-w-0 truncate' : 'break-all',
+            )}
+            title={compact ? attachment.filename : undefined}
+          >
             {attachment.filename}
           </p>
-          <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">
+          <p
+            className={cn(
+              'text-xs text-gray-600 dark:text-gray-300',
+              compact ? 'shrink-0 whitespace-nowrap' : 'mt-0.5',
+            )}
+          >
             {getTicketAttachmentKindLabel(attachment.contentType)} ·{' '}
             {formatTicketAttachmentSize(attachment.sizeBytes)}
           </p>
         </div>
         {available ? (
-          <div className="flex flex-wrap gap-2">
+          <div className={compact ? 'flex shrink-0 gap-1' : 'flex flex-wrap gap-2'}>
             {showOpenButton ? (
               <Button
                 type="button"
-                variant="secondary"
-                size="sm"
-                className={actionButtonClassName}
+                variant={compact ? 'ghost' : 'secondary'}
+                size={compact ? 'icon' : 'sm'}
+                className={compact ? compactActionButtonClassName : actionButtonClassName}
                 loading={pending === 'inline'}
                 disabled={pending !== null}
                 aria-label={`${openLabel}: ${attachment.filename}`}
+                title={compact ? openLabel : undefined}
                 onClick={() =>
                   void (kind === 'video' && variant === 'preview' ? playVideo() : openInNewTab())
                 }
@@ -235,21 +259,22 @@ function TicketAttachmentItem({
                 ) : (
                   <ExternalLink className="h-4 w-4" aria-hidden />
                 )}
-                {openLabel}
+                {compact ? null : openLabel}
               </Button>
             ) : null}
             <Button
               type="button"
               variant="ghost"
-              size="sm"
-              className={actionButtonClassName}
+              size={compact ? 'icon' : 'sm'}
+              className={compact ? compactActionButtonClassName : actionButtonClassName}
               loading={pending === 'attachment'}
               disabled={pending !== null}
               aria-label={`Descargar ${attachment.filename}`}
+              title={compact ? 'Descargar' : undefined}
               onClick={() => void download()}
             >
               <Download className="h-4 w-4" aria-hidden />
-              Descargar
+              {compact ? null : 'Descargar'}
             </Button>
           </div>
         ) : (

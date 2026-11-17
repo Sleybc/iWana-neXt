@@ -346,7 +346,12 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
       {
         id: 'soporte',
         label: 'Soporte',
-        content: <SubscriberSupportTab subscriber={subscriber} />,
+        content: (
+          <SubscriberSupportTab
+            subscriber={subscriber}
+            contracts={subscriber360?.contracts ?? []}
+          />
+        ),
       },
       {
         // Pestaña propia como en UISP (decisión del usuario, 2026-11-10). La ficha ya exige

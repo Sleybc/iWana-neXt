@@ -1,7 +1,7 @@
 # MOD05 — Pestaña Soporte del suscriptor · Spec UX
 
 **Versión:** 1.0 · **Fecha:** 2026-10-20
-**Estado:** Congelada para implementación (S3)
+**Estado:** Congelada para implementación (S3) · **Enmienda 2026-11-16:** el «sin modificarlo» de §2 y del cierre queda sustituido por la [spec del detalle del ticket](2026-11-16-mod10-detalle-ticket-ux.md), aprobada por el usuario; el resto sigue vigente
 **Emisor:** AI-PROD-UX
 **Alcance:** ficha del suscriptor y selector de suscriptor del formulario de tickets de Assurance.
 

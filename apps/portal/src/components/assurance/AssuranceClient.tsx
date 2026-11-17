@@ -1,16 +1,8 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import {
-  AlertTriangle,
-  Loader2,
-  ShieldAlert,
-  Ticket,
-  TimerReset,
-  Wrench,
-  Workflow,
-} from 'lucide-react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Loader2, Ticket, TimerReset, Wrench, Workflow } from 'lucide-react';
 import {
   Badge,
   Dialog,
@@ -19,23 +11,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@iwana/ui';
-import { AccessPermissionKey, UserRole, TicketFieldDecision } from '@iwana/shared';
+import { AccessPermissionKey, TicketFieldDecision } from '@iwana/shared';
 import type { ListMeta } from '@iwana/shared';
 import type {
-  AssuranceCommentSubmission,
   AssuranceDashboardSummary,
   AssuranceSlaPolicy,
   AssuranceTicket,
-  AssuranceTicketComment,
-  AssuranceTimelineEvent,
-  AssignAssuranceTicketDto,
   InternalUser,
-  LinkAssuranceWorkOrderDto,
   ListAssuranceTicketsParams,
-  RequestAssuranceFieldServiceDto,
-  TransitionAssuranceTicketDto,
 } from '@/lib/api-client';
-import { ApiError, assuranceApi, usersApi } from '@/lib/api-client';
+import { ApiError, assuranceApi } from '@/lib/api-client';
+import { mergeUrlSearchParams, withSearchParams } from '@/lib/merge-url-search-params';
 import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
 import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { useTableQueryState } from '@/lib/use-table-query-state';
@@ -58,24 +44,18 @@ import {
   getAssuranceTicketTypeLabel,
   getAssuranceUserDisplayName,
 } from './assurance-labels';
-import { AssuranceSectionCard } from './assurance-ui';
+import { AssuranceAccessState, AssuranceSectionCard } from './assurance-ui';
 import { createAssuranceVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
+import { ASSURANCE_TICKET_QUERY_KEY } from './assurance-routes';
+import {
+  getAssuranceRoleAccess,
+  loadOperationalUsers,
+  mapAssuranceError,
+  useAssuranceTicketDetail,
+} from './use-assurance-ticket-detail';
 
-const USERS_PAGE_SIZE = 100;
 const TICKET_FILTER_KEYS = ['status', 'priority', 'type', 'queueName', 'slaBreachStatus'] as const;
 const PAGE_OUT_OF_RANGE_NOTICE = 'Esa página ya no existe. Mostrando la última página disponible.';
-
-function mapAssuranceError(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 401) return 'Tu sesión expiró. Inicia sesión nuevamente para continuar.';
-    if (error.status === 403)
-      return 'No tienes permisos para operar esta vista de la mesa de ayuda.';
-    if (error.status === 404) return 'El ticket consultado ya no está disponible.';
-    return error.message;
-  }
-
-  return 'No fue posible completar la operación. Intenta de nuevo.';
-}
 
 function mapAssuranceViewError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -85,25 +65,6 @@ function mapAssuranceViewError(error: unknown): string {
   }
 
   return mapAssuranceError(error);
-}
-
-async function loadOperationalUsers(): Promise<InternalUser[]> {
-  const collected = new Map<string, InternalUser>();
-  let cursor: string | undefined;
-
-  do {
-    const response = await usersApi.list(
-      cursor ? { cursor, limit: USERS_PAGE_SIZE } : { limit: USERS_PAGE_SIZE },
-    );
-
-    response.data.forEach((user) => {
-      collected.set(user.id, user);
-    });
-
-    cursor = response.meta.nextCursor ?? undefined;
-  } while (cursor);
-
-  return Array.from(collected.values());
 }
 
 function AssuranceSkeleton() {
@@ -122,6 +83,9 @@ function AssuranceSkeleton() {
 
 function AssuranceClientInner() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const ticketIdParam = searchParams.get(ASSURANCE_TICKET_QUERY_KEY);
   const { user, isLoading: authLoading } = useAuth();
   const { hasPermission } = usePermissions();
   const canManageWfmSchedule = hasPermission(AccessPermissionKey.WFM_SCHEDULE_MANAGE);
@@ -158,28 +122,11 @@ function AssuranceClientInner() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreateSubmitting, setIsCreateSubmitting] = useState(false);
 
-  const [selectedTicket, setSelectedTicket] = useState<AssuranceTicket | null>(null);
-  const [comments, setComments] = useState<AssuranceTicketComment[]>([]);
-  const [timeline, setTimeline] = useState<AssuranceTimelineEvent[]>([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isDrawerLoading, setIsDrawerLoading] = useState(false);
-  const [drawerError, setDrawerError] = useState<string | null>(null);
-  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [isCommentSubmitting, setIsCommentSubmitting] = useState(false);
-  const [isTransitionSubmitting, setIsTransitionSubmitting] = useState(false);
-  const [isAssignmentSubmitting, setIsAssignmentSubmitting] = useState(false);
-  const [isFieldServiceSubmitting, setIsFieldServiceSubmitting] = useState(false);
-  const [isLinkingWorkOrder, setIsLinkingWorkOrder] = useState(false);
 
-  const canViewAssurance =
-    user?.role === UserRole.ADMIN ||
-    user?.role === UserRole.NOC ||
-    user?.role === UserRole.SUPPORT ||
-    user?.role === UserRole.TECHNICIAN ||
-    user?.role === UserRole.CONTRACTOR;
-  const canManageAssurance =
-    user?.role === UserRole.ADMIN || user?.role === UserRole.NOC || user?.role === UserRole.SUPPORT;
+  const { canView: canViewAssurance, canManage: canManageAssurance } = getAssuranceRoleAccess(
+    user?.role,
+  );
   const canViewSummary = canManageAssurance;
   const assigneeLabelById = useMemo(
     () => new Map(assignees.map((entry) => [entry.id, getAssuranceUserDisplayName(entry)])),
@@ -352,22 +299,6 @@ function AssuranceClientInner() {
     if (!randomAccess) return;
   }, [randomAccess]);
 
-  const refreshSelectedTicket = useCallback(async (ticketId: string) => {
-    const [ticketResult, commentsResult, timelineResult] = await Promise.allSettled([
-      assuranceApi.tickets.get(ticketId),
-      assuranceApi.tickets.listComments(ticketId),
-      assuranceApi.tickets.listTimeline(ticketId),
-    ]);
-
-    if (ticketResult.status === 'rejected') {
-      throw ticketResult.reason;
-    }
-
-    setSelectedTicket(ticketResult.value);
-    setComments(commentsResult.status === 'fulfilled' ? commentsResult.value : []);
-    setTimeline(timelineResult.status === 'fulfilled' ? timelineResult.value : []);
-  }, []);
-
   useEffect(() => {
     if (authLoading) {
       return;
@@ -387,36 +318,57 @@ function AssuranceClientInner() {
     limit: ticketsMeta.limit || pageSize,
     total: ticketsMeta.total,
   });
+  const ticketDetail = useAssuranceTicketDetail({ onAfterAction: loadData });
+  const { open: openTicketDetail, clearMessages: clearTicketMessages } = ticketDetail;
+
+  /** Escribe o quita `?ticketId=` conservando filtros, página y orden (patrón `?executionOrderId=`). */
+  const writeTicketParam = useCallback(
+    (ticketId: string | null, history: 'push' | 'replace') => {
+      const href = withSearchParams(
+        pathname,
+        mergeUrlSearchParams(searchParams, { [ASSURANCE_TICKET_QUERY_KEY]: ticketId }),
+      );
+      if (history === 'push') router.push(href, { scroll: false });
+      else router.replace(href, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
   const openTicket = useCallback(
-    async (ticket: AssuranceTicket) => {
+    (ticket: AssuranceTicket) => {
       setIsDrawerOpen(true);
-      setSelectedTicket(ticket);
-      setComments([]);
-      setTimeline([]);
-      setDrawerError(null);
-      setActionFeedback(null);
-      setActionError(null);
-      setIsDrawerLoading(true);
+      void openTicketDetail(ticket.id, ticket);
+      // Abrir añade una entrada al historial: «Atrás» cierra el panel (spec §6 CA-11).
+      writeTicketParam(ticket.id, 'push');
+    },
+    [openTicketDetail, writeTicketParam],
+  );
 
-      try {
-        await refreshSelectedTicket(ticket.id);
-      } catch (drawerLoadError) {
-        setDrawerError(mapAssuranceError(drawerLoadError));
-      } finally {
-        setIsDrawerLoading(false);
+  const closeTicket = useCallback(() => {
+    setIsDrawerOpen(false);
+    clearTicketMessages();
+  }, [clearTicketMessages]);
+
+  // La URL manda (spec §6 CA-11): recargar con `?ticketId=` reabre el panel y «Atrás» (el
+  // parámetro desaparece) lo cierra. Solo se reacciona a cambios del parámetro, no a cada render.
+  const lastTicketParamRef = useRef<string | null | undefined>(undefined);
+  const openedTicketIdRef = useRef<string | null>(null);
+  openedTicketIdRef.current = isDrawerOpen ? ticketDetail.ticketId : null;
+  useEffect(() => {
+    if (authLoading || !user || !canViewAssurance) return;
+    const previous = lastTicketParamRef.current;
+    lastTicketParamRef.current = ticketIdParam;
+    if (previous === ticketIdParam) return;
+
+    if (ticketIdParam) {
+      if (openedTicketIdRef.current !== ticketIdParam) {
+        setIsDrawerOpen(true);
+        void openTicketDetail(ticketIdParam);
       }
-    },
-    [refreshSelectedTicket],
-  );
-
-  const reloadAfterAction = useCallback(
-    async (ticketId: string, successMessage: string) => {
-      await Promise.all([loadData(), refreshSelectedTicket(ticketId)]);
-      setActionFeedback(successMessage);
-      setActionError(null);
-    },
-    [loadData, refreshSelectedTicket],
-  );
+    } else if (previous) {
+      closeTicket();
+    }
+  }, [authLoading, canViewAssurance, closeTicket, openTicketDetail, ticketIdParam, user]);
 
   if (authLoading) {
     return (
@@ -431,31 +383,11 @@ function AssuranceClientInner() {
   }
 
   if (!user) {
-    return (
-      <div className="space-y-6">
-        <PageHeader title="Mesa de ayuda" subtitle="Error al cargar el módulo" />
-        <PortalAlert
-          variant="error"
-          title="Módulo temporalmente no disponible"
-          description="No fue posible resolver la sesión del portal para cargar la mesa de ayuda. Inicia sesión nuevamente para recuperar el acceso."
-          icon={AlertTriangle}
-        />
-      </div>
-    );
+    return <AssuranceAccessState reason="session" />;
   }
 
   if (!canViewAssurance) {
-    return (
-      <div className="space-y-6">
-        <PageHeader title="Mesa de ayuda" subtitle="Acceso restringido" />
-        <PortalAlert
-          variant="warning"
-          title="Tu rol no tiene acceso a esta vista"
-          description="La mesa de ayuda del portal solo está disponible para operación de soporte, NOC y equipos técnicos autorizados."
-          icon={ShieldAlert}
-        />
-      </div>
-    );
+    return <AssuranceAccessState reason="role" />;
   }
 
   return (
@@ -511,7 +443,7 @@ function AssuranceClientInner() {
             />
             <PortalDashboardMetric
               eyebrow="Mesa de ayuda"
-              label="Trabajo de campo"
+              label="Visitas técnicas"
               value={summary?.fieldServicePendingCount ?? null}
               icon={Wrench}
               description="Casos ya escalados hacia visita o ejecución externa."
@@ -653,7 +585,7 @@ function AssuranceClientInner() {
             onLoadMore={handleLoadMoreTickets}
             onOpenTicket={(ticket) => {
               setFeedback(null);
-              void openTicket(ticket);
+              openTicket(ticket);
             }}
             onOpenCreate={() => setIsCreateOpen(true)}
             canManage={canManageAssurance}
@@ -726,104 +658,23 @@ function AssuranceClientInner() {
 
       <AssuranceTicketDrawer
         open={isDrawerOpen}
-        ticket={selectedTicket}
-        comments={comments}
-        timeline={timeline}
+        {...ticketDetail.detailProps}
         assignees={assignees}
-        isLoading={isDrawerLoading}
-        error={drawerError}
-        actionFeedback={actionFeedback}
-        actionError={actionError}
-        isCommentSubmitting={isCommentSubmitting}
-        isTransitionSubmitting={isTransitionSubmitting}
-        isAssignmentSubmitting={isAssignmentSubmitting}
-        isFieldServiceSubmitting={isFieldServiceSubmitting}
-        isLinkingWorkOrder={isLinkingWorkOrder}
         canManage={canManageAssurance}
         canOperate={canViewAssurance}
         onCreateLinkedTask={() => {
-          if (!selectedTicket) return;
-          setIsDrawerOpen(false);
-          setActionError(null);
-          setActionFeedback(null);
+          const ticketId = ticketDetail.ticketId;
+          if (!ticketId) return;
+          closeTicket();
           router.push(
             // Emisor actualizado a la URL canónica (F2, spec 2026-09-13 §4.2).
-            `/dashboard/operations/tasks/new?ticketId=${encodeURIComponent(selectedTicket.id)}&fromAssurance=1`,
+            `/dashboard/operations/tasks/new?ticketId=${encodeURIComponent(ticketId)}&fromAssurance=1`,
           );
         }}
         onClose={() => {
-          setIsDrawerOpen(false);
-          setActionError(null);
-          setActionFeedback(null);
-        }}
-        onAddComment={async (payload: AssuranceCommentSubmission) => {
-          if (!selectedTicket) return false;
-          setIsCommentSubmitting(true);
-          try {
-            await assuranceApi.tickets.submitComment(selectedTicket.id, payload);
-          } catch (commentError) {
-            setActionError(mapAssuranceError(commentError));
-            return false;
-          } finally {
-            setIsCommentSubmitting(false);
-          }
-          try {
-            await reloadAfterAction(selectedTicket.id, 'Comentario registrado.');
-          } catch (reloadError) {
-            setActionError(mapAssuranceError(reloadError));
-          }
-          return true;
-        }}
-        onTransitionStatus={async (payload: TransitionAssuranceTicketDto) => {
-          if (!selectedTicket) return;
-          setIsTransitionSubmitting(true);
-          try {
-            await assuranceApi.tickets.transitionStatus(selectedTicket.id, payload);
-            await reloadAfterAction(selectedTicket.id, 'Estado actualizado.');
-          } catch (transitionError) {
-            setActionError(mapAssuranceError(transitionError));
-          } finally {
-            setIsTransitionSubmitting(false);
-          }
-        }}
-        onAssign={async (payload: AssignAssuranceTicketDto) => {
-          if (!selectedTicket) return;
-          setIsAssignmentSubmitting(true);
-          try {
-            await assuranceApi.tickets.assign(selectedTicket.id, payload);
-            await reloadAfterAction(selectedTicket.id, 'Asignación actualizada.');
-          } catch (assignError) {
-            setActionError(mapAssuranceError(assignError));
-          } finally {
-            setIsAssignmentSubmitting(false);
-          }
-        }}
-        onRequestFieldService={async (payload: RequestAssuranceFieldServiceDto) => {
-          if (!selectedTicket) return;
-          setIsFieldServiceSubmitting(true);
-          try {
-            await assuranceApi.tickets.requestFieldService(selectedTicket.id, payload);
-            await reloadAfterAction(
-              selectedTicket.id,
-              'Escalamiento a trabajo de campo registrado.',
-            );
-          } catch (fieldServiceError) {
-            setActionError(mapAssuranceError(fieldServiceError));
-          } finally {
-            setIsFieldServiceSubmitting(false);
-          }
-        }}
-        onLinkWorkOrder={async (payload: LinkAssuranceWorkOrderDto) => {
-          if (!selectedTicket) return;
-          setIsLinkingWorkOrder(true);
-          try {
-            await assuranceApi.tickets.linkWorkOrder(selectedTicket.id, payload);
-            await reloadAfterAction(selectedTicket.id, 'Work order vinculada al ticket.');
-          } catch (linkError) {
-            setActionError(mapAssuranceError(linkError));
-          } finally {
-            setIsLinkingWorkOrder(false);
-          }
+          closeTicket();
+          // Cerrar quita `?ticketId=` sin añadir otra entrada al historial.
+          writeTicketParam(null, 'replace');
         }}
       />
     </div>

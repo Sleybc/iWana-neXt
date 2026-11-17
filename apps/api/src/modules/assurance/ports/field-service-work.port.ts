@@ -1,4 +1,5 @@
 import type { EntityManager } from 'typeorm';
+import type { VisitRequestStatus } from '@iwana/shared';
 
 /**
  * Puerto de cancelación de trabajo de campo hacia WFM (MOD09).
@@ -18,7 +19,41 @@ export interface CancelActiveForTicketResult {
   visitRequestId: string | null;
 }
 
+/**
+ * Visita activa de un ticket para el detalle (MOD10 paso 2). Sin datos personales:
+ * ni dirección, ni coordenadas, ni contacto.
+ */
+export interface TicketActiveVisitSnapshot {
+  id: string;
+  status: VisitRequestStatus;
+  /** SCHEDULED: ventana del evento de agenda; REQUESTED: ventana pedida; null: sin ventana. */
+  windowKind: 'SCHEDULED' | 'REQUESTED' | null;
+  windowStartAt: string | null;
+  windowEndAt: string | null;
+  scheduleEventId: string | null;
+}
+
 export abstract class FieldServiceWorkPort {
+  /**
+   * Visita activa (estado fuera de CLOSED, CANCELLED, REJECTED, EXPIRED) del ticket, la
+   * más reciente. Corre con el manager de la transacción del llamante.
+   */
+  abstract findActiveForTicket(
+    manager: EntityManager,
+    tenantId: string,
+    ticketId: string,
+  ): Promise<TicketActiveVisitSnapshot | null>;
+
+  /**
+   * Lo mismo para una página del listado (spec MOD05 Soporte §16 B-2): una sola consulta. Los
+   * tickets sin visita activa quedan fuera del mapa.
+   */
+  abstract findActiveForTickets(
+    manager: EntityManager,
+    tenantId: string,
+    ticketIds: readonly string[],
+  ): Promise<ReadonlyMap<string, TicketActiveVisitSnapshot>>;
+
   /**
    * Cancela la visita activa asociada a un ticket si existe.
    *

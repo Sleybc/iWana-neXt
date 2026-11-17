@@ -29,10 +29,21 @@ import {
 import { memoryStorage } from 'multer';
 import {
   AccessPermissionKey,
+  ExecutionOrderLookupQuerySchema,
+  LinkExecutionOrderBodySchema,
   TICKET_ATTACHMENTS_MAX_PER_COMMENT,
   TICKET_COMMENT_ATTACHMENTS_REQUEST_MAX_BYTES,
   UserRole,
+  type ExecutionOrderLookupQuery,
+  type LinkExecutionOrderBody,
 } from '@iwana/shared';
+import { TICKET_STATUS_CHANGE_ROLES } from './services/ticket-transitions';
+import {
+  EXECUTION_ORDER_LOOKUP_OPENAPI,
+  LINK_EXECUTION_ORDER_BODY_OPENAPI,
+  LINK_EXECUTION_ORDER_RESPONSE_OPENAPI,
+  TICKET_DETAIL_OPENAPI,
+} from './ticket-detail.openapi';
 import { AuditOmitResponseFields } from '../audit/decorators/audit-omit-response-fields.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { resolveRouteRateLimit } from '../../common/rate-limit-env';
@@ -83,8 +94,8 @@ import {
   TICKET_COMMENT_ATTACHMENT_OPENAPI,
   TICKET_COMMENT_LIST_WITH_ATTACHMENTS_OPENAPI,
   TICKET_COMMENT_WITH_ATTACHMENTS_OPENAPI,
-  TICKET_LIST_WITH_ATTACHMENT_COUNT_OPENAPI,
 } from './ticket-attachments.openapi';
+import { TICKET_LIST_OPENAPI, TICKET_LIST_ORDER_QUERY_OPENAPI } from './ticket-list.openapi';
 
 const dashboardSummarySchema = {
   type: 'object',
@@ -165,10 +176,19 @@ export class AssuranceController {
     format: 'uuid',
     description: 'Limita los tickets al suscriptor y a sus contratos.',
   })
+  @ApiQuery({
+    name: 'order',
+    required: false,
+    schema: TICKET_LIST_ORDER_QUERY_OPENAPI,
+    description:
+      'recent: más reciente primero. urgency: abiertos primero (vencido, en riesgo, prioridad, ' +
+      'plazo más próximo, más antiguo); luego resueltos, cerrados y cancelados, el más reciente primero.',
+  })
   @ApiOkResponse({
     description:
-      'Tickets del tenant. Cada ticket trae `attachmentCount`: adjuntos que el usuario puede ver.',
-    schema: TICKET_LIST_WITH_ATTACHMENT_COUNT_OPENAPI,
+      'Tickets del tenant. Cada ticket trae `attachmentCount`, el nombre del responsable, la ' +
+      'visita activa y la orden de ejecución (nulas sin permiso de lectura de su módulo).',
+    schema: TICKET_LIST_OPENAPI,
   })
   async listTickets(
     @Query(new ZodValidationPipe(ListTicketsQuerySchema)) query: ListTicketsQueryDto,
@@ -202,7 +222,7 @@ export class AssuranceController {
 
   @Patch('tickets/:id/status')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
+  @Roles(...TICKET_STATUS_CHANGE_ROLES)
   @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_MANAGE)
   @ApiOperation({ summary: 'Transicionar estado del ticket' })
   transitionTicketStatus(
@@ -449,13 +469,73 @@ export class AssuranceController {
   @Post('tickets/:id/link-work-order')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
   @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_MANAGE)
-  @ApiOperation({ summary: 'Asociar una Work Order existente al ticket' })
+  @ApiOperation({
+    summary: 'Asociar una Work Order existente al ticket',
+    description:
+      'Heredado: vincula la orden de programación (WFM) por identificador. La orden vigente del ' +
+      'ticket es la de ejecución: usar POST /assurance/tickets/{id}/link-execution-order.',
+    deprecated: true,
+  })
   linkWorkOrder(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(LinkWorkOrderSchema)) dto: LinkWorkOrderDto,
     @CurrentUser() actor: JwtPayload,
   ) {
     return this.ticketsService.linkWorkOrder(id, dto, actor);
+  }
+
+  @Get('execution-orders/lookup')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_MANAGE)
+  @ApiOperation({
+    summary: 'Buscar una orden de trabajo por número para vincularla a un ticket',
+    description:
+      'Búsqueda exacta (sin prefijos) de la orden de ejecución por su número OTE-AAAAMMDD-NNN. ' +
+      'No devuelve datos del cliente. Mismo permiso que el vínculo manual.',
+  })
+  @ApiQuery({ name: 'number', required: true, type: String, example: 'OTE-20261116-001' })
+  @ApiQuery({ name: 'ticketId', required: false, type: String, format: 'uuid' })
+  @ApiOkResponse({ schema: EXECUTION_ORDER_LOOKUP_OPENAPI })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Número con formato inválido.' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Sin assurance.tickets.manage.' })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'EXECUTION_ORDER_NOT_FOUND: no existe o está anulada.',
+  })
+  lookupExecutionOrder(
+    @Query(new ZodValidationPipe(ExecutionOrderLookupQuerySchema)) query: ExecutionOrderLookupQuery,
+  ) {
+    return this.ticketsService.lookupExecutionOrder(query.number, query.ticketId);
+  }
+
+  @Post('tickets/:id/link-execution-order')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_MANAGE)
+  @ApiOperation({
+    summary: 'Vincular una orden de trabajo (ejecución) al ticket',
+    description:
+      'El módulo de órdenes escribe el vínculo; el historial del ticket registra ' +
+      'WORK_ORDER_LINKED con executionOrderId. Idempotente si la orden ya es de este ticket.',
+  })
+  @ApiBody({ schema: LINK_EXECUTION_ORDER_BODY_OPENAPI })
+  @ApiOkResponse({ schema: LINK_EXECUTION_ORDER_RESPONSE_OPENAPI })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Sin assurance.tickets.manage.' })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Ticket inexistente o EXECUTION_ORDER_NOT_FOUND (no existe o está anulada).',
+  })
+  @ApiResponse({
+    status: HttpStatus.CONFLICT,
+    description:
+      'EXECUTION_ORDER_LINKED_TO_OTHER_TICKET, o titular suprimido (misma guarda que link-work-order).',
+  })
+  linkExecutionOrder(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(LinkExecutionOrderBodySchema)) dto: LinkExecutionOrderBody,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.ticketsService.linkExecutionOrder(id, dto, actor);
   }
 
   @Get('tickets/:id')
@@ -468,9 +548,15 @@ export class AssuranceController {
     UserRole.AUDITOR,
   )
   @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_READ)
-  @ApiOperation({ summary: 'Obtener detalle de ticket' })
+  @ApiOperation({
+    summary: 'Obtener detalle de ticket',
+    description:
+      'Incluye nombres del solicitante y del relacionado (nulos si el titular está protegido o ' +
+      'sin permiso CRM), visita activa, orden de ejecución y estados destino para quien consulta.',
+  })
+  @ApiOkResponse({ schema: TICKET_DETAIL_OPENAPI })
   getTicket(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: JwtPayload) {
-    return this.ticketsService.getById(id, actor);
+    return this.ticketsService.getDetail(id, actor);
   }
 
   @Patch('tickets/:id')

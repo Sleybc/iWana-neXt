@@ -30,6 +30,7 @@ jest.mock('@iwana/db', () => {
 function buildPayload(overrides: Partial<FieldServiceRequest> = {}): FieldServiceRequest {
   return {
     ticketId: 'ticket-001',
+    ticketNumber: 'TK-20261117-003',
     tenantId: 'tenant-001',
     schemaName: 'tenant_test_ops',
     priority: 'CRITICAL',
@@ -95,11 +96,30 @@ describe('AssuranceFieldServiceProcessor', () => {
         status: VisitRequestStatus.NEEDS_CONTEXT,
         originContext: WorkOrderSourceContext.ASSURANCE,
         originRef: payload.ticketId,
+        originLabel: 'Ticket TK-20261117-003',
         workType: WfmWorkType.SUPPORT,
         priority: WorkOrderPriority.URGENT,
       }),
     );
     expect(manager.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('job encolado sin número de ticket: rótulo genérico, nunca el identificador interno', async () => {
+    const createQueryBuilder = jest.fn().mockReturnValue({
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue(null),
+    });
+    const { processor, manager } = buildProcessor({ createQueryBuilder });
+    const { ticketNumber: _omit, ...legacy } = buildPayload();
+
+    await processor.process({ name: 'request-field-service', data: legacy } as never);
+
+    expect(manager.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ originLabel: 'Ticket de Mesa de ayuda' }),
+    );
   });
 
   it('omite jobs duplicados cuando ya existe una solicitud activa', async () => {

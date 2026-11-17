@@ -11,8 +11,12 @@ import {
   TicketSubjectType,
   TicketTimelineEventType,
   TicketType,
+  UserRole,
 } from '@iwana/shared';
+import type { ExecutionOrderResult } from '@iwana/shared';
 import type { AssuranceTimelineEvent, InternalUser } from '@/lib/api-client';
+import { EXECUTION_ORDER_RESULT_LABELS } from '@/components/operations/operations-labels';
+import { getSystemBaseRoleLabel } from '@/lib/system-vocabulary';
 
 export type AssuranceBadgeVariant = NonNullable<BadgeProps['variant']>;
 
@@ -29,6 +33,13 @@ const dateTimeFormatter = new Intl.DateTimeFormat('es-CO', {
 const dateFormatter = new Intl.DateTimeFormat('es-CO', {
   dateStyle: 'medium',
 });
+
+/** Valores por defecto que el panel muestra atenuados (spec MOD10 §3 C, §4). */
+export const ASSURANCE_EMPTY_QUEUE_LABEL = 'Sin área';
+export const ASSURANCE_UNLINKED_WORK_ORDER_LABEL = 'Sin vincular';
+export const ASSURANCE_UNASSIGNED_LABEL = 'Sin asignar';
+export const ASSURANCE_UNAVAILABLE_ASSIGNEE_LABEL = 'Responsable no disponible';
+export const ASSURANCE_UNKNOWN_AUTHOR_LABEL = 'Usuario no disponible';
 
 export const ASSURANCE_TICKET_TYPE_LABELS: Record<TicketType, string> = {
   [TicketType.CUSTOMER_INCIDENT]: 'Incidente de cliente',
@@ -47,7 +58,7 @@ export const ASSURANCE_TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
   [TicketStatus.IN_PROGRESS]: 'En progreso',
   [TicketStatus.PENDING_CUSTOMER]: 'En espera del cliente',
   [TicketStatus.PENDING_INTERNAL]: 'En espera interna',
-  [TicketStatus.FIELD_SERVICE_REQUESTED]: 'Trabajo de campo solicitado',
+  [TicketStatus.FIELD_SERVICE_REQUESTED]: 'Visita técnica solicitada',
   [TicketStatus.RESOLVED]: 'Resuelto',
   [TicketStatus.CLOSED]: 'Cerrado',
   [TicketStatus.CANCELLED]: 'Cancelado',
@@ -99,7 +110,7 @@ export const ASSURANCE_SUBJECT_TYPE_LABELS: Record<TicketSubjectType, string> = 
   [TicketSubjectType.SERVICE]: 'Servicio',
   [TicketSubjectType.NETWORK_NODE]: 'Nodo de red',
   [TicketSubjectType.DEVICE]: 'Dispositivo',
-  [TicketSubjectType.WORK_ORDER]: 'Work order',
+  [TicketSubjectType.WORK_ORDER]: 'Orden de trabajo',
   [TicketSubjectType.INTERNAL_AREA]: 'Área interna',
   [TicketSubjectType.GENERAL]: 'General',
   [TicketSubjectType.EXPEDIENTE]: 'Expediente',
@@ -107,7 +118,8 @@ export const ASSURANCE_SUBJECT_TYPE_LABELS: Record<TicketSubjectType, string> = 
 
 export const ASSURANCE_QUEUE_LABELS: Record<TicketQueue, string> = {
   [TicketQueue.SUPPORT]: 'Soporte',
-  [TicketQueue.NOC]: 'NOC',
+  // Mismo nombre de producto que el perfil de monitoreo (`system-vocabulary.ts`, spec MOD10 §4 v1.1).
+  [TicketQueue.NOC]: getSystemBaseRoleLabel(UserRole.NOC),
   [TicketQueue.BILLING]: 'Facturación',
   [TicketQueue.OPERATIONS]: 'Operaciones',
   [TicketQueue.SALES]: 'Ventas',
@@ -119,16 +131,16 @@ export const ASSURANCE_SOURCE_LABELS: Record<TicketSource, string> = {
   [TicketSource.MANUAL]: 'Manual',
   [TicketSource.PORTAL]: 'Portal',
   [TicketSource.EMAIL]: 'Correo',
-  [TicketSource.NMS]: 'NMS',
-  [TicketSource.WFM]: 'WFM',
+  [TicketSource.NMS]: 'Monitoreo de red',
+  [TicketSource.WFM]: 'Programación',
   [TicketSource.MIGRATION]: 'Importación',
   [TicketSource.INTERNAL]: 'Interno',
 };
 
 export const ASSURANCE_FIELD_DECISION_LABELS: Record<TicketFieldDecision, string> = {
-  [TicketFieldDecision.NOT_REQUIRED]: 'No requiere campo',
-  [TicketFieldDecision.NEEDS_DIAGNOSIS]: 'Requiere diagnóstico',
-  [TicketFieldDecision.FIELD_SERVICE_REQUIRED]: 'Requiere trabajo de campo',
+  [TicketFieldDecision.NOT_REQUIRED]: 'No requiere',
+  [TicketFieldDecision.NEEDS_DIAGNOSIS]: 'Por definir tras diagnóstico',
+  [TicketFieldDecision.FIELD_SERVICE_REQUIRED]: 'Requerida',
 };
 
 export const ASSURANCE_SLA_STATUS_LABELS: Record<SlaBreachStatus, string> = {
@@ -151,11 +163,11 @@ export const ASSURANCE_TIMELINE_EVENT_LABELS: Record<TicketTimelineEventType, st
   [TicketTimelineEventType.REASSIGNED]: 'Reasignación registrada',
   [TicketTimelineEventType.STATUS_CHANGED]: 'Estado actualizado',
   [TicketTimelineEventType.COMMENT_ADDED]: 'Comentario agregado',
-  [TicketTimelineEventType.FIELD_SERVICE_REQUESTED]: 'Trabajo de campo solicitado',
-  [TicketTimelineEventType.WORK_ORDER_LINKED]: 'Work order vinculada',
+  [TicketTimelineEventType.FIELD_SERVICE_REQUESTED]: 'Visita técnica solicitada',
+  [TicketTimelineEventType.WORK_ORDER_LINKED]: 'Orden de trabajo vinculada',
   [TicketTimelineEventType.EXECUTION_ORDER_CLOSED]: 'Orden de trabajo cerrada',
-  [TicketTimelineEventType.SLA_BREACHED]: 'Incidencia SLA',
-  [TicketTimelineEventType.PQR_DEADLINE_SET]: 'Deadline PQR registrada',
+  [TicketTimelineEventType.SLA_BREACHED]: 'Plazo de atención vencido',
+  [TicketTimelineEventType.PQR_DEADLINE_SET]: 'Plazo de la PQR registrado',
   [TicketTimelineEventType.PRIORITY_CHANGED]: 'Prioridad actualizada',
   [TicketTimelineEventType.CLOSED]: 'Ticket cerrado',
 };
@@ -239,7 +251,7 @@ export function getAssuranceSubjectTypeLabel(value: string): string {
 
 export function getAssuranceQueueLabel(value: string | null | undefined): string {
   if (!value) {
-    return 'Sin cola';
+    return ASSURANCE_EMPTY_QUEUE_LABEL;
   }
 
   return ASSURANCE_QUEUE_LABELS[value as TicketQueue] ?? formatEnumFallback(value);
@@ -267,13 +279,43 @@ export function getAssuranceTimelineEventLabel(value: string): string {
   );
 }
 
-export function getAssuranceUserDisplayName(user: InternalUser | null | undefined): string {
-  if (!user) {
-    return 'No asignado';
-  }
-
+function formatAssuranceUserName(user: InternalUser): string {
   const fullName = formatFullName(user.firstName, user.lastName).trim();
   return fullName || user.email;
+}
+
+/**
+ * Nombre del responsable. Sin usuario resuelto devuelve «Sin asignar» (spec MOD10 §4). Lo usan el
+ * panel, la bandeja (`AssuranceTicketsTable`), el formulario de creación y la ficha
+ * (`SubscriberTicketsSection`, `AssuranceClient`); fuera del panel y de la bandeja siempre recibe
+ * un usuario, así que solo esas dos superficies heredan el rótulo nuevo.
+ */
+export function getAssuranceUserDisplayName(user: InternalUser | null | undefined): string {
+  return user ? formatAssuranceUserName(user) : ASSURANCE_UNASSIGNED_LABEL;
+}
+
+/**
+ * Responsable de un ticket según su referencia (spec MOD10 §4 v1.1): «Sin asignar» solo cuando
+ * no hay responsable; con referencia pero sin el usuario en la lista cargada (p. ej. Soporte sin
+ * gestión, que no carga la lista), «Responsable no disponible».
+ */
+export function getAssuranceAssigneeLabel(
+  assignedUserId: string | null | undefined,
+  user: InternalUser | null | undefined,
+): string {
+  if (!assignedUserId) return ASSURANCE_UNASSIGNED_LABEL;
+  return user ? formatAssuranceUserName(user) : ASSURANCE_UNAVAILABLE_ASSIGNEE_LABEL;
+}
+
+/** Autor de un comentario: sin usuario resuelto, «Usuario no disponible» (spec MOD10 §4). */
+export function getAssuranceAuthorDisplayName(user: InternalUser | null | undefined): string {
+  return user ? formatAssuranceUserName(user) : ASSURANCE_UNKNOWN_AUTHOR_LABEL;
+}
+
+/** Resultado de la orden en el historial: rótulo de Operaciones, nunca el valor crudo. */
+export function getAssuranceExecutionResultLabel(value: unknown): string {
+  if (typeof value !== 'string' || !value) return 'Sin resultado';
+  return EXECUTION_ORDER_RESULT_LABELS[value as ExecutionOrderResult] ?? formatEnumFallback(value);
 }
 
 export function getAssuranceTimelineDescription(
@@ -297,11 +339,11 @@ export function getAssuranceTimelineDescription(
     case TicketTimelineEventType.PRIORITY_CHANGED:
       return `Prioridad: ${getAssuranceTicketPriorityLabel(String(payload.previousPriority ?? ''))} → ${getAssuranceTicketPriorityLabel(String(payload.priority ?? ''))}`;
     case TicketTimelineEventType.FIELD_SERVICE_REQUESTED:
-      return 'Se escaló el caso a trabajo de campo.';
+      return 'Se solicitó una visita técnica.';
     case TicketTimelineEventType.WORK_ORDER_LINKED:
-      return `Work order ${formatAssuranceReference(typeof payload.workOrderId === 'string' ? payload.workOrderId : null)} vinculada al ticket.`;
+      return `Orden de trabajo ${formatAssuranceReference(typeof payload.workOrderId === 'string' ? payload.workOrderId : null)} vinculada al caso.`;
     case TicketTimelineEventType.EXECUTION_ORDER_CLOSED:
-      return `OT ${formatAssuranceReference(typeof payload.executionOrderId === 'string' ? payload.executionOrderId : null)} cerrada con resultado ${String(payload.result ?? 'sin resultado')}.`;
+      return `Orden de trabajo ${formatAssuranceReference(typeof payload.executionOrderId === 'string' ? payload.executionOrderId : null)} cerrada con resultado «${getAssuranceExecutionResultLabel(payload.result)}».`;
     case TicketTimelineEventType.COMMENT_ADDED:
       return payload.isInternal
         ? 'Comentario interno registrado.'
@@ -311,7 +353,7 @@ export function getAssuranceTimelineDescription(
     case TicketTimelineEventType.CREATED:
       return 'Caso creado y disponible para operación.';
     case TicketTimelineEventType.SLA_BREACHED:
-      return 'Se detectó un incumplimiento SLA para este ticket.';
+      return 'Se venció un plazo de atención de este caso.';
     case TicketTimelineEventType.PQR_DEADLINE_SET:
       return 'Se registró el control regulatorio inicial de la PQR.';
     default:

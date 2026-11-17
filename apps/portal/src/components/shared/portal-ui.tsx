@@ -2086,6 +2086,14 @@ export const portalPanelDenseActionClassName = cn(
 
 export const portalFieldListClassName = 'divide-y divide-gray-100 dark:divide-dark-border';
 
+/**
+ * Lista a dos columnas (densidad v1.1, spec MOD05 §8.6): una columna bajo `sm`, dos desde
+ * `sm`, llenado por filas. Sin `divide-y`: cada columna empieza sin línea y el resto de filas
+ * la lleva, igual que v1.0 en una columna.
+ */
+export const portalFieldListTwoColumnClassName =
+  'grid grid-cols-1 *:border-gray-100 dark:*:border-dark-border [&>*+*]:border-t sm:grid-cols-2 sm:gap-x-6 sm:[&>*:nth-child(2)]:border-t-0';
+
 export const portalFieldRowClassName =
   'grid grid-cols-1 gap-0.5 py-2 sm:grid-cols-[minmax(7rem,38%)_1fr] sm:gap-3';
 
@@ -2098,11 +2106,14 @@ export const portalFieldEmptyValueClassName = 'text-gray-500 dark:text-gray-400'
 
 export interface PortalFieldListProps {
   children: ReactNode;
+  /** `1` (por defecto) renderiza exactamente v1.0; `2` reparte las filas en dos columnas desde `sm`. */
+  columns?: 1 | 2 | undefined;
   className?: string | undefined;
 }
 
-export function PortalFieldList({ children, className }: PortalFieldListProps) {
-  return <dl className={cn(portalFieldListClassName, className)}>{children}</dl>;
+export function PortalFieldList({ children, columns = 1, className }: PortalFieldListProps) {
+  const base = columns === 2 ? portalFieldListTwoColumnClassName : portalFieldListClassName;
+  return <dl className={cn(base, className)}>{children}</dl>;
 }
 
 export interface PortalFieldRowProps {
@@ -2110,6 +2121,8 @@ export interface PortalFieldRowProps {
   children?: ReactNode;
   /** Muestra «Sin dato» atenuado en lugar del valor. */
   empty?: boolean | undefined;
+  /** Solo con `empty`: reemplaza «Sin dato» («Sin área», «No requiere»). Sin `empty` se ignora. */
+  emptyLabel?: string | undefined;
   /** `font-mono` para ID visible, documento enmascarado o importes. */
   mono?: boolean | undefined;
   /** Enlace o botón de icono al final del `dd`; debe llevar `aria-label` que nombre el dato. */
@@ -2121,6 +2134,7 @@ export function PortalFieldRow({
   label,
   children,
   empty = false,
+  emptyLabel,
   mono = false,
   action,
   className,
@@ -2130,7 +2144,7 @@ export function PortalFieldRow({
       <dt className={portalFieldLabelClassName}>{label}</dt>
       <dd className={portalFieldValueClassName}>
         {empty ? (
-          <span className={portalFieldEmptyValueClassName}>Sin dato</span>
+          <span className={portalFieldEmptyValueClassName}>{emptyLabel || 'Sin dato'}</span>
         ) : (
           <span className={cn('min-w-0', mono && 'font-mono')}>{children}</span>
         )}

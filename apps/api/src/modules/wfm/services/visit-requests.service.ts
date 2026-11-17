@@ -611,8 +611,10 @@ export class VisitRequestsService {
         );
       }
 
+      // `undefined` = no enviado: el ValidationPipe entrega una instancia del DTO con
+      // todas sus propiedades declaradas, así que «propia» no basta. `null` sí borra.
       const hasField = (field: keyof UpdateVisitRequestContextInput): boolean =>
-        Object.prototype.hasOwnProperty.call(validated, field);
+        validated[field] !== undefined;
 
       const organizationSiteId = hasField('organizationSiteId')
         ? (validated.organizationSiteId ?? null)
@@ -1290,7 +1292,12 @@ export class VisitRequestsService {
       return visitRequest.expedienteId;
     }
 
-    if (visitRequest.originRef && idPattern.test(visitRequest.originRef)) {
+    // Solo en CRM el originRef es el expediente; en Mesa de ayuda es el ticket.
+    if (
+      visitRequest.originContext === WorkOrderSourceContext.CRM &&
+      visitRequest.originRef &&
+      idPattern.test(visitRequest.originRef)
+    ) {
       return visitRequest.originRef;
     }
 

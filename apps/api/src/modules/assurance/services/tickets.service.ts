@@ -7,9 +7,18 @@ import {
   Injectable,
   NotFoundException,
   Optional,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Brackets, DataSource, EntityManager, In, QueryFailedError } from 'typeorm';
+import {
+  Brackets,
+  DataSource,
+  EntityManager,
+  In,
+  QueryFailedError,
+  type QueryRunner,
+  type SelectQueryBuilder,
+} from 'typeorm';
 import {
   SupportTicket,
   TenantContext,
@@ -32,6 +41,14 @@ import {
   TicketTimelineEventType,
   TicketType,
   UserRole,
+  AccessPermissionKey,
+  type ExecutionOrderLookupResponse,
+  type TicketDetailExtension,
+  type TicketExecutionOrder,
+  type TicketListItemExtension,
+  type TicketPartyRef,
+  type LinkExecutionOrderBody,
+  LinkExecutionOrderBodySchema,
 } from '@iwana/shared';
 import {
   AssignTicketInput,
@@ -54,12 +71,111 @@ import {
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { AssuranceFieldServicePort } from '../ports/assurance-field-service.port';
 import { FieldServiceWorkPort } from '../ports/field-service-work.port';
+import { AssuranceAssigneeNamesPort } from '../ports/assurance-assignee-names.port';
 import { PqrService } from './pqr.service';
 import { AT_RISK_THRESHOLD_RATIO, SlaService } from './sla.service';
 import { TimelineService } from './timeline.service';
-import { CrmSubscriberReadPort } from '../../crm/ports/crm-subscriber-read.port';
+import {
+  CrmSubscriberReadPort,
+  type CrmTicketPartyLookup,
+  type CrmTicketPartySnapshot,
+} from '../../crm/ports/crm-subscriber-read.port';
+import {
+  EXECUTION_ORDER_READ_PORT,
+  type ExecutionOrderReadPort,
+  type TicketExecutionOrderSummary,
+} from '../../tasks/ports/execution-order-read.port';
+import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
+import {
+  allowedTicketTransitions,
+  isValidTicketTransition,
+  needsPqrCompletionCheck,
+  requiresPqrCompletion,
+  TICKET_OWNERSHIP_RESTRICTED_ROLES,
+} from './ticket-transitions';
 
-const RESTRICTED_ROLES: UserRole[] = [UserRole.TECHNICIAN, UserRole.CONTRACTOR];
+const RESTRICTED_ROLES: readonly UserRole[] = TICKET_OWNERSHIP_RESTRICTED_ROLES;
+
+/** Tipos de referencia que CRM sabe nombrar, con el permiso de lectura que exige cada uno. */
+const CRM_PARTY_READ_PERMISSION: Readonly<
+  Record<CrmTicketPartyLookup['type'], AccessPermissionKey>
+> = {
+  SUBSCRIBER: AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+  CONTRACT: AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+  EXPEDIENTE: AccessPermissionKey.CRM_EXPEDIENTES_READ,
+};
+
+function crmPartyType(type: string | null | undefined): CrmTicketPartyLookup['type'] | null {
+  return type === 'SUBSCRIBER' || type === 'CONTRACT' || type === 'EXPEDIENTE' ? type : null;
+}
+
+function toExecutionOrderView(order: TicketExecutionOrderSummary): TicketExecutionOrder {
+  return {
+    id: order.id,
+    number: order.executionOrderNumber,
+    status: order.status,
+    result: order.result,
+    closedAt: order.closedAt,
+  };
+}
+
+export type TicketDetailView = SupportTicket & TicketDetailExtension;
+
+const PRIORITY_RANK_SQL = `CASE st.priority
+  WHEN '${TicketPriority.CRITICAL}' THEN 0
+  WHEN '${TicketPriority.URGENT}' THEN 1
+  WHEN '${TicketPriority.HIGH}' THEN 2
+  WHEN '${TicketPriority.NORMAL}' THEN 3
+  WHEN '${TicketPriority.LOW}' THEN 4
+  ELSE 5 END`;
+
+/** Resuelto, cerrado o cancelado: fuera de «abiertos» (spec MOD05 Soporte §5.2, D1). */
+const LIST_CLOSED_STATUSES_SQL = [
+  TicketStatus.RESOLVED,
+  TicketStatus.CLOSED,
+  TicketStatus.CANCELLED,
+]
+  .map((status) => `'${status}'`)
+  .join(', ');
+
+/**
+ * Orden por urgencia (spec MOD05 Soporte §5.1, §16 B-3), espejo de `compareTickets` del portal.
+ * Abiertos: vencido → en riesgo → prioridad → plazo pendiente más próximo (sin plazo al final)
+ * → más antiguo. Luego resueltos y cerrados, el más reciente primero. `id` desempata para que
+ * la paginación sea estable. Solo literales de enums y columnas propias: sin entrada del usuario.
+ */
+function applyUrgencyOrder(qb: SelectQueryBuilder<SupportTicket>, slaCaseExpr: string): void {
+  const isClosed = `(st.status IN (${LIST_CLOSED_STATUSES_SQL}))`;
+  qb.addSelect(`CASE WHEN ${isClosed} THEN 1 ELSE 0 END`, 'urgency_closed')
+    .addSelect(
+      `CASE WHEN ${isClosed} THEN 2 ELSE CASE (${slaCaseExpr})
+         WHEN '${SlaBreachStatus.RESOLUTION_BREACHED}' THEN 0
+         WHEN '${SlaBreachStatus.FIRST_RESPONSE_BREACHED}' THEN 0
+         WHEN '${SlaBreachStatus.AT_RISK}' THEN 1
+         ELSE 2 END END`,
+      'urgency_deadline_state',
+    )
+    .addSelect(`CASE WHEN ${isClosed} THEN 5 ELSE ${PRIORITY_RANK_SQL} END`, 'urgency_priority')
+    .addSelect(
+      `CASE WHEN ${isClosed} THEN NULL ELSE LEAST(
+         CASE WHEN st.first_responded_at IS NULL THEN st.sla_first_response_at END,
+         CASE WHEN st.resolved_at IS NULL AND st.closed_at IS NULL THEN st.sla_resolve_by_at END
+       ) END`,
+      'urgency_deadline',
+    )
+    .addSelect(`CASE WHEN ${isClosed} THEN NULL ELSE st.created_at END`, 'urgency_opened_at')
+    .addSelect(
+      `CASE WHEN ${isClosed} THEN COALESCE(st.closed_at, st.resolved_at, st.updated_at) END`,
+      'urgency_closed_at',
+    )
+    .orderBy('urgency_closed', 'ASC')
+    .addOrderBy('urgency_deadline_state', 'ASC')
+    .addOrderBy('urgency_priority', 'ASC')
+    .addOrderBy('urgency_deadline', 'ASC', 'NULLS LAST')
+    .addOrderBy('urgency_opened_at', 'ASC')
+    .addOrderBy('urgency_closed_at', 'DESC', 'NULLS LAST')
+    .addOrderBy('st.id', 'DESC');
+}
 const TICKET_NUMBER_RETRY_LIMIT = 3;
 
 /**
@@ -76,41 +192,6 @@ const INSTALLATION_OPEN_STATUSES = [
   TicketStatus.PENDING_INTERNAL,
   TicketStatus.FIELD_SERVICE_REQUESTED,
 ];
-
-const VALID_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
-  [TicketStatus.OPEN]: [TicketStatus.ASSIGNED, TicketStatus.IN_PROGRESS, TicketStatus.CANCELLED],
-  [TicketStatus.ASSIGNED]: [
-    TicketStatus.IN_PROGRESS,
-    TicketStatus.PENDING_CUSTOMER,
-    TicketStatus.PENDING_INTERNAL,
-    TicketStatus.CANCELLED,
-  ],
-  [TicketStatus.IN_PROGRESS]: [
-    TicketStatus.PENDING_CUSTOMER,
-    TicketStatus.PENDING_INTERNAL,
-    TicketStatus.FIELD_SERVICE_REQUESTED,
-    TicketStatus.RESOLVED,
-    TicketStatus.CANCELLED,
-  ],
-  [TicketStatus.PENDING_CUSTOMER]: [
-    TicketStatus.IN_PROGRESS,
-    TicketStatus.RESOLVED,
-    TicketStatus.CANCELLED,
-  ],
-  [TicketStatus.PENDING_INTERNAL]: [
-    TicketStatus.IN_PROGRESS,
-    TicketStatus.FIELD_SERVICE_REQUESTED,
-    TicketStatus.CANCELLED,
-  ],
-  [TicketStatus.FIELD_SERVICE_REQUESTED]: [
-    TicketStatus.IN_PROGRESS,
-    TicketStatus.RESOLVED,
-    TicketStatus.CANCELLED,
-  ],
-  [TicketStatus.RESOLVED]: [TicketStatus.CLOSED, TicketStatus.IN_PROGRESS],
-  [TicketStatus.CLOSED]: [],
-  [TicketStatus.CANCELLED]: [],
-};
 
 type UniqueConstraintDriverError = {
   code?: string;
@@ -143,6 +224,14 @@ export class TicketsService {
     @Optional()
     @Inject(FieldServiceWorkPort)
     private readonly fieldServiceWorkPort?: FieldServiceWorkPort,
+    @Optional()
+    @Inject(EXECUTION_ORDER_READ_PORT)
+    private readonly executionOrderReadPort?: ExecutionOrderReadPort,
+    @Optional()
+    private readonly effectivePermissionsService?: EffectivePermissionsService,
+    @Optional()
+    @Inject(AssuranceAssigneeNamesPort)
+    private readonly assigneeNamesPort?: AssuranceAssigneeNamesPort,
   ) {}
 
   async generateTicketNumber(
@@ -291,6 +380,7 @@ export class TicketsService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = ListTicketsQuerySchema.parse(query);
     const { page, limit } = clampPage(validated.page, validated.limit);
+    const permissions = await this.loadPermissions(actor);
     const subscriberContractIds = validated.subscriberId
       ? await this.crmSubscriberReadPort.listContractIds(
           tenantId,
@@ -419,7 +509,11 @@ export class TicketsService {
       const totalCount = await qb.getCount();
 
       // Default primero: TypeORM orderBy() reemplaza el ORDER BY acumulado (O-7(b)).
-      qb.orderBy('st.created_at', 'DESC').addOrderBy('st.id', 'DESC');
+      if (validated.order === 'urgency') {
+        applyUrgencyOrder(qb, slaCaseExpr);
+      } else {
+        qb.orderBy('st.created_at', 'DESC').addOrderBy('st.id', 'DESC');
+      }
       const sortResult = applySort(qb, SORTABLE_FIELDS, validated.sortBy, validated.sortDir);
 
       const { entities, raw } = await qb
@@ -428,9 +522,11 @@ export class TicketsService {
         .getRawAndEntities();
 
       // Merge: el campo derivado sla_breach_status viaja en raw
+      const extensions = await this.loadListExtensions(qr.manager, tenantId, entities, permissions);
       const data = entities.map((ticket, idx) => ({
         ...ticket,
         slaBreachStatus: (raw[idx] as Record<string, unknown>)?.sla_breach_status,
+        ...extensions(ticket),
       }));
 
       return { data, total: totalCount, sortResult };
@@ -466,6 +562,274 @@ export class TicketsService {
       this._ensureOwnership(ticket, actor);
       return { ...ticket, slaBreachStatus: this.slaService.deriveBreachStatus(ticket) };
     });
+  }
+
+  /**
+   * Detalle del ticket con nombres, visita, orden de ejecución y destinos de estado (spec
+   * MOD10 2026-11-16 §5, D4 = ejecución). Todas las lecturas ajenas van por puertos públicos y
+   * con el manager de esta transacción: una conexión por petición.
+   */
+  async getDetail(id: string, actor: JwtPayload): Promise<TicketDetailView> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const permissions = await this.loadPermissions(actor);
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const ticket = await qr.manager.findOne(SupportTicket, { where: { id, tenantId } });
+      if (!ticket) {
+        throw new NotFoundException(`Ticket ${id} no encontrado`);
+      }
+      this._ensureOwnership(ticket, actor);
+
+      const { requester, relatedTo } = await this.resolveTicketParties(ticket, qr, permissions);
+
+      const activeVisit = this.fieldServiceWorkPort
+        ? await this.fieldServiceWorkPort.findActiveForTicket(qr.manager, tenantId, id)
+        : null;
+
+      const orders = this.executionOrderReadPort
+        ? await this.executionOrderReadPort.findLatestForTicketWithManager(qr.manager, tenantId, id)
+        : null;
+
+      const pqrRecordComplete = needsPqrCompletionCheck(ticket.type, ticket.status)
+        ? await this.pqrService.isPqrRecordComplete(qr.manager, id, tenantId)
+        : true;
+
+      return {
+        ...ticket,
+        slaBreachStatus: this.slaService.deriveBreachStatus(ticket),
+        requester,
+        relatedTo,
+        activeVisit: activeVisit
+          ? {
+              id: activeVisit.id,
+              status: activeVisit.status,
+              windowKind: activeVisit.windowKind,
+              windowStartAt: activeVisit.windowStartAt,
+              windowEndAt: activeVisit.windowEndAt,
+              scheduleEventId: activeVisit.scheduleEventId,
+            }
+          : null,
+        executionOrder: orders ? toExecutionOrderView(orders.latest) : null,
+        executionOrderCount: orders?.count ?? 0,
+        allowedTransitions: allowedTicketTransitions(ticket, actor, permissions, pqrRecordComplete),
+      };
+    });
+  }
+
+  /**
+   * Búsqueda exacta de una orden de ejecución por número (bloque L). 404 si no existe o
+   * está anulada. Sin datos del cliente.
+   */
+  async lookupExecutionOrder(
+    executionOrderNumber: string,
+    ticketId: string | undefined,
+  ): Promise<ExecutionOrderLookupResponse> {
+    const order = await this.requireExecutionOrderReadPort().findByNumber(executionOrderNumber);
+    if (!order || order.isAnnulled) {
+      throw new NotFoundException({
+        code: 'EXECUTION_ORDER_NOT_FOUND',
+        message: 'No hay una orden de trabajo con ese número.',
+      });
+    }
+    return {
+      ...toExecutionOrderView(order),
+      linkedTicket: !order.ticketId ? 'NONE' : order.ticketId === ticketId ? 'THIS' : 'OTHER',
+    };
+  }
+
+  /**
+   * Vínculo manual ticket → orden de ejecución (D4). MOD11 escribe `ticket_id`; el historial
+   * del ticket registra `WORK_ORDER_LINKED` con `executionOrderId`. `work_order_id` no cambia.
+   */
+  async linkExecutionOrder(
+    id: string,
+    input: LinkExecutionOrderBody,
+    actor: JwtPayload,
+  ): Promise<TicketExecutionOrder & { outcome: 'LINKED' | 'ALREADY_LINKED' }> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const validated = LinkExecutionOrderBodySchema.parse(input);
+    const port = this.requireExecutionOrderReadPort();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const ticket = await qr.manager.findOne(SupportTicket, { where: { id, tenantId } });
+      if (!ticket) {
+        throw new NotFoundException(`Ticket ${id} no encontrado`);
+      }
+      this._ensureOwnership(ticket, actor);
+      await this.crmSubscriberReadPort.assertWritableReferences(
+        ticketTitularReferences(ticket),
+        qr,
+      );
+
+      const { order, outcome } = await port.linkTicketWithManager(qr.manager, tenantId, {
+        executionOrderId: validated.executionOrderId,
+        ticketId: id,
+        actorUserId: actor.sub,
+      });
+
+      if (outcome === 'LINKED') {
+        await this.timelineService.recordWithManager(qr.manager, {
+          ticketId: id,
+          tenantId,
+          eventType: TicketTimelineEventType.WORK_ORDER_LINKED,
+          payload: {
+            executionOrderId: order.id,
+            executionOrderNumber: order.executionOrderNumber,
+            notes: validated.notes ?? null,
+          },
+          actorUserId: actor.sub,
+        });
+      }
+
+      return { ...toExecutionOrderView(order), outcome };
+    });
+  }
+
+  private requireExecutionOrderReadPort(): ExecutionOrderReadPort {
+    if (!this.executionOrderReadPort) {
+      throw new ServiceUnavailableException({
+        code: 'EXECUTION_ORDERS_UNAVAILABLE',
+        message: 'Las órdenes de trabajo no están disponibles.',
+      });
+    }
+    return this.executionOrderReadPort;
+  }
+
+  /**
+   * Campos del listado (spec MOD05 pestaña Soporte §16 B-1, B-2): nombre del responsable,
+   * visita activa y orden de ejecución, en lote (una consulta por puerto y página) y con el
+   * manager de esta transacción. Visita y orden solo con el permiso de lectura de su módulo.
+   */
+  private async loadListExtensions(
+    manager: EntityManager,
+    tenantId: string,
+    tickets: readonly SupportTicket[],
+    permissions: ReadonlySet<string>,
+  ): Promise<(ticket: SupportTicket) => TicketListItemExtension> {
+    const ticketIds = tickets.map((ticket) => ticket.id);
+    const assigneeIds = tickets
+      .map((ticket) => ticket.assignedUserId)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+    const canReadVisits = permissions.has(AccessPermissionKey.WFM_SCHEDULE_READ);
+    const canReadOrders = permissions.has(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ);
+    const empty = new Map<string, never>();
+
+    const names =
+      this.assigneeNamesPort && assigneeIds.length > 0
+        ? await this.assigneeNamesPort.findDisplayNames(manager, tenantId, assigneeIds)
+        : empty;
+    const visits =
+      this.fieldServiceWorkPort && canReadVisits && ticketIds.length > 0
+        ? await this.fieldServiceWorkPort.findActiveForTickets(manager, tenantId, ticketIds)
+        : empty;
+    const orders =
+      this.executionOrderReadPort && canReadOrders && ticketIds.length > 0
+        ? await this.executionOrderReadPort.findLatestForTicketsWithManager(
+            manager,
+            tenantId,
+            ticketIds,
+          )
+        : empty;
+
+    return (ticket) => {
+      const visit = visits.get(ticket.id);
+      const order = orders.get(ticket.id);
+      return {
+        assignedUserDisplayName: ticket.assignedUserId
+          ? (names.get(ticket.assignedUserId) ?? null)
+          : null,
+        activeVisit: visit
+          ? {
+              id: visit.id,
+              status: visit.status,
+              windowKind: visit.windowKind,
+              windowStartAt: visit.windowStartAt,
+              windowEndAt: visit.windowEndAt,
+              scheduleEventId: visit.scheduleEventId,
+            }
+          : null,
+        executionOrder: order ? toExecutionOrderView(order) : null,
+      };
+    };
+  }
+
+  /** Permisos efectivos de quien consulta; sin el servicio, ninguno (fail-closed). */
+  private async loadPermissions(actor: JwtPayload): Promise<ReadonlySet<string>> {
+    if (!this.effectivePermissionsService) return new Set();
+    return new Set(
+      await this.effectivePermissionsService.getEffectivePermissionsForUser(actor.sub),
+    );
+  }
+
+  /**
+   * Nombres del solicitante y del relacionado (R4). El nombre sale nulo sin permiso de lectura
+   * CRM del tipo, con titular protegido, con referencia no resoluble o si CRM falla. La
+   * lectura CRM corre en un SAVEPOINT: un error no aborta la transacción del detalle.
+   */
+  private async resolveTicketParties(
+    ticket: SupportTicket,
+    qr: QueryRunner,
+    permissions: ReadonlySet<string>,
+  ): Promise<{ requester: TicketPartyRef; relatedTo: TicketPartyRef | null }> {
+    const slots = [
+      { type: ticket.requesterType as string, refId: ticket.requesterRefId ?? null },
+      ...(ticket.subjectType
+        ? [{ type: ticket.subjectType as string, refId: ticket.subjectRefId ?? null }]
+        : []),
+    ];
+
+    const lookups: CrmTicketPartyLookup[] = [];
+    for (const slot of slots) {
+      const crmType = crmPartyType(slot.type);
+      if (crmType && slot.refId && permissions.has(CRM_PARTY_READ_PERMISSION[crmType])) {
+        lookups.push({ type: crmType, id: slot.refId });
+      }
+    }
+
+    let resolved: CrmTicketPartySnapshot[] | null = [];
+    if (lookups.length > 0) {
+      await qr.query('SAVEPOINT ticket_detail_parties');
+      try {
+        resolved = await this.crmSubscriberReadPort.resolveTicketParties(lookups, qr);
+        await qr.query('RELEASE SAVEPOINT ticket_detail_parties');
+      } catch {
+        await qr.query('ROLLBACK TO SAVEPOINT ticket_detail_parties');
+        resolved = null;
+      }
+    }
+
+    const toRef = (slot: { type: string; refId: string | null }): TicketPartyRef => {
+      const base = { type: slot.type as TicketPartyRef['type'], refId: slot.refId };
+      const crmType = crmPartyType(slot.type);
+      if (!crmType) {
+        return { ...base, displayName: null, nameState: 'NOT_APPLICABLE', profile: null };
+      }
+      if (!slot.refId) {
+        return { ...base, displayName: null, nameState: 'NOT_FOUND', profile: null };
+      }
+      if (!permissions.has(CRM_PARTY_READ_PERMISSION[crmType])) {
+        return { ...base, displayName: null, nameState: 'NOT_PERMITTED', profile: null };
+      }
+      if (resolved === null) {
+        return { ...base, displayName: null, nameState: 'UNAVAILABLE', profile: null };
+      }
+      const match = resolved.find((item) => item.type === crmType && item.id === slot.refId);
+      if (!match) {
+        return { ...base, displayName: null, nameState: 'UNAVAILABLE', profile: null };
+      }
+      return {
+        ...base,
+        displayName: match.state === 'AVAILABLE' ? match.displayName : null,
+        nameState: match.state,
+        profile: match.profile,
+      };
+    };
+
+    const [requesterSlot, relatedSlot] = slots;
+    return {
+      requester: toRef(requesterSlot!),
+      relatedTo: ticket.subjectType && relatedSlot ? toRef(relatedSlot) : null,
+    };
   }
 
   async update(id: string, input: UpdateTicketInput, actor: JwtPayload): Promise<SupportTicket> {
@@ -578,18 +942,14 @@ export class TicketsService {
 
       this._ensureOwnership(ticket, actor);
 
-      const allowedTransitions = VALID_TRANSITIONS[ticket.status] ?? [];
-      if (!allowedTransitions.includes(validated.status)) {
+      if (!isValidTicketTransition(ticket.status, validated.status)) {
         throw new BadRequestException(
           `Transición inválida: ${ticket.status} -> ${validated.status}`,
         );
       }
 
       // Verificar completitud regulatoria PQR para transiciones a RESOLVED o CLOSED
-      if (
-        ticket.type === TicketType.PQR &&
-        (validated.status === TicketStatus.RESOLVED || validated.status === TicketStatus.CLOSED)
-      ) {
+      if (requiresPqrCompletion(ticket.type, validated.status)) {
         const isComplete = await this.pqrService.isPqrRecordComplete(qr.manager, id, tenantId);
         if (!isComplete) {
           throw new BadRequestException(
@@ -722,6 +1082,7 @@ export class TicketsService {
 
       await this.fieldServicePort.requestFieldService({
         ticketId: id,
+        ticketNumber: ticket.ticketNumber ?? null,
         tenantId,
         schemaName,
         priority: ticket.priority,

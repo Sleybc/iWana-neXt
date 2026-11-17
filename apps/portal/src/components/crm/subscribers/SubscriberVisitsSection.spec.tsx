@@ -163,9 +163,10 @@ describe('SubscriberVisitsSection', () => {
     expect(
       await screen.findByRole('heading', { name: 'Detalle de la visita' }),
     ).toBeInTheDocument();
-    const closeButton = screen.getByRole('button', { name: 'Cerrar detalle de la visita' });
+    // PortalSidePeek (spec 2026-11-17 §5.4): su botón de cierre se llama «Cerrar».
+    const closeButton = screen.getByRole('button', { name: 'Cerrar' });
     await waitFor(() => expect(closeButton).toHaveFocus());
-    expect(screen.getByText('Expediente')).toBeInTheDocument();
+    expect(screen.getByText('Oportunidad')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Abrir en Agendamiento' })).toHaveAttribute(
       'href',
       expect.stringContaining('visitRequestId=visit-pending'),
@@ -174,7 +175,7 @@ describe('SubscriberVisitsSection', () => {
       screen.queryByRole('button', { name: /Editar|Cancelar visita/ }),
     ).not.toBeInTheDocument();
 
-    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() =>
       expect(
         screen.queryByRole('heading', { name: 'Detalle de la visita' }),
@@ -193,7 +194,11 @@ describe('SubscriberVisitsSection', () => {
 
     expect(await screen.findByText('No fue posible cargar las visitas')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
-    expect(await screen.findByText('Este suscriptor no tiene visitas')).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        'Este suscriptor no tiene visitas propias. Las visitas de un ticket se ven en el ticket.',
+      ),
+    ).toBeInTheDocument();
     await waitFor(() => expect(wfmApi.visitRequests.list).toHaveBeenCalledTimes(2));
     expect(wfmApi.events.list).toHaveBeenCalledTimes(2);
   });

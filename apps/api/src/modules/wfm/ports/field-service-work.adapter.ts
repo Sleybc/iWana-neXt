@@ -5,7 +5,44 @@ import { VisitRequestStatus } from '@iwana/shared';
 import {
   FieldServiceWorkPort,
   CancelActiveForTicketResult,
+  type TicketActiveVisitSnapshot,
 } from '../../assurance/ports/field-service-work.port';
+
+const TERMINAL_VISIT_STATUSES: readonly VisitRequestStatus[] = [
+  VisitRequestStatus.CLOSED,
+  VisitRequestStatus.CANCELLED,
+  VisitRequestStatus.REJECTED,
+  VisitRequestStatus.EXPIRED,
+];
+
+interface ActiveVisitRow {
+  id: string;
+  status: VisitRequestStatus;
+  requested_window_start_at: Date | string | null;
+  requested_window_end_at: Date | string | null;
+  schedule_event_id: string | null;
+  scheduled_start_at: Date | string | null;
+  scheduled_end_at: Date | string | null;
+}
+
+function toIso(value: Date | string | null): string | null {
+  if (value == null) return null;
+  return (value instanceof Date ? value : new Date(value)).toISOString();
+}
+
+/** Ventana del evento de agenda si está programada; si no, la pedida. Sin datos personales. */
+function toActiveVisitSnapshot(row: ActiveVisitRow): TicketActiveVisitSnapshot {
+  const scheduled = row.scheduled_start_at != null;
+  const requested = row.requested_window_start_at != null;
+  return {
+    id: row.id,
+    status: row.status,
+    windowKind: scheduled ? 'SCHEDULED' : requested ? 'REQUESTED' : null,
+    windowStartAt: toIso(scheduled ? row.scheduled_start_at : row.requested_window_start_at),
+    windowEndAt: toIso(scheduled ? row.scheduled_end_at : row.requested_window_end_at),
+    scheduleEventId: row.schedule_event_id,
+  };
+}
 
 /**
  * Adapter WFM que implementa FieldServiceWorkPort.
@@ -18,6 +55,61 @@ import {
  */
 @Injectable()
 export class FieldServiceWorkAdapter extends FieldServiceWorkPort {
+  async findActiveForTicket(
+    manager: EntityManager,
+    tenantId: string,
+    ticketId: string,
+  ): Promise<TicketActiveVisitSnapshot | null> {
+    const rows = (await manager.query(
+      `SELECT vr.id::text AS id, vr.status, vr.requested_window_start_at,
+              vr.requested_window_end_at, vr.schedule_event_id::text AS schedule_event_id,
+              se.scheduled_start_at, se.scheduled_end_at
+         FROM visit_requests vr
+         LEFT JOIN schedule_events se
+           ON se.id = vr.schedule_event_id
+          AND se.tenant_id = vr.tenant_id
+          AND se.deleted_at IS NULL
+        WHERE vr.tenant_id = $1::uuid
+          AND vr.ticket_id = $2
+          AND vr.deleted_at IS NULL
+          AND vr.status::text <> ALL($3::text[])
+        ORDER BY vr.created_at DESC, vr.id DESC
+        LIMIT 1`,
+      [tenantId, ticketId, TERMINAL_VISIT_STATUSES],
+    )) as ActiveVisitRow[];
+    const row = rows[0];
+    return row ? toActiveVisitSnapshot(row) : null;
+  }
+
+  async findActiveForTickets(
+    manager: EntityManager,
+    tenantId: string,
+    ticketIds: readonly string[],
+  ): Promise<ReadonlyMap<string, TicketActiveVisitSnapshot>> {
+    const ids = [...new Set(ticketIds)];
+    const visits = new Map<string, TicketActiveVisitSnapshot>();
+    if (ids.length === 0) return visits;
+    const rows = (await manager.query(
+      `SELECT DISTINCT ON (vr.ticket_id)
+              vr.ticket_id, vr.id::text AS id, vr.status, vr.requested_window_start_at,
+              vr.requested_window_end_at, vr.schedule_event_id::text AS schedule_event_id,
+              se.scheduled_start_at, se.scheduled_end_at
+         FROM visit_requests vr
+         LEFT JOIN schedule_events se
+           ON se.id = vr.schedule_event_id
+          AND se.tenant_id = vr.tenant_id
+          AND se.deleted_at IS NULL
+        WHERE vr.tenant_id = $1::uuid
+          AND vr.ticket_id = ANY($2::varchar[])
+          AND vr.deleted_at IS NULL
+          AND vr.status::text <> ALL($3::text[])
+        ORDER BY vr.ticket_id, vr.created_at DESC, vr.id DESC`,
+      [tenantId, ids, TERMINAL_VISIT_STATUSES],
+    )) as Array<ActiveVisitRow & { ticket_id: string }>;
+    for (const row of rows) visits.set(row.ticket_id, toActiveVisitSnapshot(row));
+    return visits;
+  }
+
   async cancelActiveForTicket(
     manager: EntityManager,
     tenantId: string,
