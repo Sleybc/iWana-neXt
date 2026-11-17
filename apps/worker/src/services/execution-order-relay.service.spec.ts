@@ -18,7 +18,7 @@ function mockConfig(config: Record<string, string> = {}): ConfigService {
 describe('ExecutionOrderRelayService', () => {
   let relayService: ExecutionOrderRelayService;
   let eventsQueue: { add: TestMock };
-  let relayQueue: { add: TestMock };
+  let relayQueue: { add: TestMock; removeRepeatable: TestMock };
   let telemetryRedis: { set: TestMock };
   let poolClient: {
     query: TestMock;
@@ -31,6 +31,7 @@ describe('ExecutionOrderRelayService', () => {
     };
     relayQueue = {
       add: jest.fn<(...args: never[]) => Promise<unknown>>().mockResolvedValue(undefined),
+      removeRepeatable: jest.fn<(...args: never[]) => Promise<unknown>>().mockResolvedValue(true),
     };
     telemetryRedis = {
       set: jest.fn<(...args: never[]) => Promise<unknown>>().mockResolvedValue('OK'),
@@ -63,6 +64,39 @@ describe('ExecutionOrderRelayService', () => {
         jobId: 'execution-order-inventory-source-cleanup-worker',
       }),
     );
+  });
+
+  it.each<[string, number, string]>([
+    ['scan-execution-outbox', 5000, 'execution-outbox-scanner'],
+    ['scan-pending-inventory-consumptions', 60_000, 'execution-order-inventory-rescanner'],
+    [
+      'clean-expired-inventory-source-failures',
+      INVENTORY_SOURCE_CLEANUP_INTERVAL_MS,
+      'execution-order-inventory-source-cleanup-worker',
+    ],
+  ])('reprograma %s con retención acotada de ejecuciones', async (name, every, jobId) => {
+    await relayService.onApplicationBootstrap();
+
+    expect(relayQueue.removeRepeatable).toHaveBeenCalledWith(name, { every }, jobId);
+    expect(relayQueue.add).toHaveBeenCalledWith(
+      name,
+      {},
+      {
+        repeat: { every },
+        jobId,
+        removeOnComplete: { count: 50 },
+        removeOnFail: { count: 100 },
+      },
+    );
+    const removeOrder =
+      relayQueue.removeRepeatable.mock.invocationCallOrder[
+        relayQueue.removeRepeatable.mock.calls.findIndex(([n]) => n === (name as never))
+      ];
+    const addOrder =
+      relayQueue.add.mock.invocationCallOrder[
+        relayQueue.add.mock.calls.findIndex(([n]) => n === (name as never))
+      ];
+    expect(removeOrder).toBeLessThan(addOrder as number);
   });
 
   it.each<[string, { age: number }]>([

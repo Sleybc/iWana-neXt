@@ -173,12 +173,20 @@ export class InventoryExecutionRequestProcessor
   }
 
   async onApplicationBootstrap(): Promise<void> {
+    // Se retira antes de registrarlo: cada ejecución hereda las opciones de la
+    // anterior, así que sin este paso la retención no llegaría a un repetible
+    // ya programado. Sin retención, cada ejecución completada queda en Redis.
+    const repeat = { every: INVENTORY_SOURCE_CLEANUP_INTERVAL_MS };
+    const jobId = 'inventory-source-cleanup-api';
+    await this.requestsQueue.removeRepeatable(INVENTORY_SOURCE_CLEANUP_JOB, repeat, jobId);
     await this.requestsQueue.add(
       INVENTORY_SOURCE_CLEANUP_JOB,
       {},
       {
-        repeat: { every: INVENTORY_SOURCE_CLEANUP_INTERVAL_MS },
-        jobId: 'inventory-source-cleanup-api',
+        repeat,
+        jobId,
+        removeOnComplete: { count: 50 },
+        removeOnFail: { count: 100 },
       },
     );
   }

@@ -128,7 +128,7 @@ describe('InventoryExecutionRequestProcessor', () => {
   };
   let responseQueue: { add: jest.Mock; clean: jest.Mock };
   let dlqQueue: { add: jest.Mock };
-  let requestQueue: { add: jest.Mock; clean: jest.Mock };
+  let requestQueue: { add: jest.Mock; clean: jest.Mock; removeRepeatable: jest.Mock };
   let queryRunner: { query: jest.Mock; manager: { query: jest.Mock; findOne: jest.Mock } };
   let receipt: Record<string, unknown> | null;
   let receiptReads: number;
@@ -220,6 +220,7 @@ describe('InventoryExecutionRequestProcessor', () => {
     requestQueue = {
       add: jest.fn().mockResolvedValue({ id: 'cleanup-scheduled' }),
       clean: jest.fn().mockResolvedValue([]),
+      removeRepeatable: jest.fn().mockResolvedValue(true),
     };
     processor = new InventoryExecutionRequestProcessor(
       dataSource as unknown as DataSource,
@@ -277,7 +278,17 @@ describe('InventoryExecutionRequestProcessor', () => {
       expect.objectContaining({
         jobId: 'inventory-source-cleanup-api',
         repeat: { every: INVENTORY_SOURCE_CLEANUP_INTERVAL_MS },
+        removeOnComplete: { count: 50 },
+        removeOnFail: { count: 100 },
       }),
+    );
+    expect(requestQueue.removeRepeatable).toHaveBeenCalledWith(
+      'clean-expired-inventory-source-failures',
+      { every: INVENTORY_SOURCE_CLEANUP_INTERVAL_MS },
+      'inventory-source-cleanup-api',
+    );
+    expect(requestQueue.removeRepeatable.mock.invocationCallOrder[0]).toBeLessThan(
+      requestQueue.add.mock.invocationCallOrder[0] as number,
     );
     expect(INVENTORY_SOURCE_MAX_AGE_MS).toBe(24 * 60 * 60 * 1000);
     expect(INVENTORY_SOURCE_CLEANUP_INTERVAL_MS).toBe(60 * 60 * 1000);

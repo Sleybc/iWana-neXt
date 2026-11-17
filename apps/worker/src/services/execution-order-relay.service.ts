@@ -50,6 +50,15 @@ const RELAY_SCAN_CONCURRENCY = RELAY_POOL_MAX - 1;
 const INVENTORY_SOURCE_CLEANUP_JOB = 'clean-expired-inventory-source-failures';
 const INVENTORY_SOURCE_JOB_RETENTION_SECONDS = 24 * 60 * 60;
 const NON_INVENTORY_SOURCE_JOB_RETENTION_SECONDS = 30 * 24 * 60 * 60;
+/**
+ * Retención de las ejecuciones de los trabajos repetibles. Sin ella BullMQ
+ * conserva cada ejecución completada para siempre: el escáner de 5 s dejaba
+ * ~17.000 hashes diarios en Redis, que corre con `noeviction`.
+ */
+const RECURRING_JOB_RETENTION = {
+  removeOnComplete: { count: 50 },
+  removeOnFail: { count: 100 },
+} as const;
 const DEFAULT_RELAY_SCAN_TIMESTAMP_KEY = 'iwana:platform:execution-order-relay:last-scan-at';
 const SAFE_RELAY_ERROR_TYPES = new Set(['Error', 'QueryFailedError', 'TimeoutError', 'AbortError']);
 const INVENTORY_OUTBOX_EVENT_TYPES = new Set([
@@ -119,30 +128,28 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
   }
 
   async onApplicationBootstrap(): Promise<void> {
-    await this.queue.add(
-      'scan-execution-outbox',
-      {},
-      {
-        repeat: { every: 5000 },
-        jobId: 'execution-outbox-scanner',
-      },
-    );
-    await this.queue.add(
+    await this.scheduleRecurring('scan-execution-outbox', 5000, 'execution-outbox-scanner');
+    await this.scheduleRecurring(
       'scan-pending-inventory-consumptions',
-      {},
-      {
-        repeat: { every: 60_000 },
-        jobId: 'execution-order-inventory-rescanner',
-      },
+      60_000,
+      'execution-order-inventory-rescanner',
     );
-    await this.queue.add(
+    await this.scheduleRecurring(
       INVENTORY_SOURCE_CLEANUP_JOB,
-      {},
-      {
-        repeat: { every: INVENTORY_SOURCE_CLEANUP_INTERVAL_MS },
-        jobId: 'execution-order-inventory-source-cleanup-worker',
-      },
+      INVENTORY_SOURCE_CLEANUP_INTERVAL_MS,
+      'execution-order-inventory-source-cleanup-worker',
     );
+  }
+
+  /**
+   * Cada ejecución hereda las opciones de la anterior, y `add` no reemplaza la
+   * ya programada si cae en el mismo intervalo. Retirar el repetible antes de
+   * registrarlo garantiza que la retención llegue también a instalaciones que
+   * ya lo tenían programado sin ella.
+   */
+  private async scheduleRecurring(name: string, every: number, jobId: string): Promise<void> {
+    await this.queue.removeRepeatable(name, { every }, jobId);
+    await this.queue.add(name, {}, { repeat: { every }, jobId, ...RECURRING_JOB_RETENTION });
   }
 
   /** Expone estado del relay para el health endpoint. */

@@ -60,12 +60,19 @@ export class ExpiredScheduleEventsProcessor extends WorkerHost implements OnAppl
   }
 
   async onApplicationBootstrap(): Promise<void> {
+    // Se retira antes de registrarlo: cada ejecución hereda las opciones de la
+    // anterior, así que sin este paso la retención no llegaría a un repetible
+    // ya programado. Sin retención, cada ejecución completada queda en Redis.
+    const repeat = { pattern: '*/15 * * * *' };
+    await this.queue.removeRepeatable('expired-sweep', repeat, 'expired-schedule-events-sweep');
     await this.queue.add(
       'expired-sweep',
       {},
       {
-        repeat: { pattern: '*/15 * * * *' },
+        repeat,
         jobId: 'expired-schedule-events-sweep',
+        removeOnComplete: { count: 50 },
+        removeOnFail: { count: 100 },
       },
     );
     this.logger.log(

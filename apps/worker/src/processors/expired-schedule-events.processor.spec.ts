@@ -73,6 +73,43 @@ describe('ExpiredScheduleEventsProcessor', () => {
     jest.clearAllMocks();
   });
 
+  describe('onApplicationBootstrap', () => {
+    it('reprograma el barrido con retención acotada de ejecuciones', async () => {
+      const { ConfigService } = jest.requireMock('@nestjs/config') as {
+        ConfigService: jest.MockedClass<new () => { get: jest.Mock }>;
+      };
+      const queue = {
+        add: jest.fn().mockResolvedValue(undefined),
+        removeRepeatable: jest.fn().mockResolvedValue(true),
+      };
+      const processor = new ExpiredScheduleEventsProcessor(
+        new ConfigService() as never,
+        queue as never,
+      );
+
+      await processor.onApplicationBootstrap();
+
+      expect(queue.removeRepeatable).toHaveBeenCalledWith(
+        'expired-sweep',
+        { pattern: '*/15 * * * *' },
+        'expired-schedule-events-sweep',
+      );
+      expect(queue.add).toHaveBeenCalledWith(
+        'expired-sweep',
+        {},
+        {
+          repeat: { pattern: '*/15 * * * *' },
+          jobId: 'expired-schedule-events-sweep',
+          removeOnComplete: { count: 50 },
+          removeOnFail: { count: 100 },
+        },
+      );
+      expect(queue.removeRepeatable.mock.invocationCallOrder[0]).toBeLessThan(
+        queue.add.mock.invocationCallOrder[0] as number,
+      );
+    });
+  });
+
   describe('process', () => {
     it('debe conectar al pool, iterar tenants y liberar el cliente', async () => {
       mockClient.query.mockResolvedValueOnce({
