@@ -269,7 +269,6 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
             subscriber360={subscriber360}
             canReadPrivacy={canReadPrivacy}
             onNavigate={selectSubscriberTab}
-            onReload={() => loadSubscriber(true)}
             statement={statement.data}
             accountSummary={
               canReadBilling ? (

@@ -214,28 +214,13 @@ test('V1 real: búsqueda exacta, tabs, teclado, facturación y móvil', async ({
     'true',
   );
   console.info('V1 CA3/CA4: recarga, fallback y teclado reales');
-  expect(
-    Boolean(detail.expedienteSummary),
-    'El fixture live requiere oportunidad para verificar CA5.',
-  ).toBe(true);
-  if (detail.expedienteSummary) {
-    await page.route('**/crm/expedientes/*/sections/billing', (route) =>
-      route.fulfill({
-        status: 409,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          code: 'QA_FORCED',
-          message: 'Error sintético de facturación para V1',
-        }),
-      }),
-    );
-    await page.getByRole('button', { name: 'Editar facturación', exact: true }).click();
-    await page.getByRole('button', { name: 'Guardar facturación', exact: true }).click();
-    await expect(
-      page.getByText('Error sintético de facturación para V1', { exact: true }),
-    ).toBeVisible();
-    console.info('V1 CA5: error forzado interceptado visible; ninguna escritura enviada');
-  }
+  const billing = page.getByRole('region', { name: 'Facturación', exact: true });
+  await expect(billing.getByText('Ciclo de facturación', { exact: true })).toBeVisible();
+  await expect(billing.getByText('Nombre fiscal', { exact: true })).toBeVisible();
+  await expect(billing.getByText('Registrado en la venta', { exact: true })).toHaveCount(0);
+  await expect(
+    billing.getByRole('button', { name: 'Editar facturación', exact: true }),
+  ).toHaveCount(0);
   // El bloque «Cambiar estado → Suspendido» quedó obsoleto con a583e9f0: la
   // suspensión es un comando de ciclo de vida sobre servicios de un suscriptor
   // ACTIVE, y aquí es PROSPECT. La cubre portal-mod05-lifecycle.spec.ts.
@@ -353,14 +338,6 @@ test('V1 controlado: búsqueda exacta, tabs, facturación y móvil', async ({ pa
       expect(route.request().postDataJSON()).toEqual({ documentNumber: '1000000001' });
       data = [subscriber];
     } else if (path.endsWith('/crm/subscribers')) data = [subscriber];
-    else if (path.endsWith('/sections/billing')) {
-      await route.fulfill({
-        status: 409,
-        contentType: 'application/json',
-        body: JSON.stringify({ code: 'QA_FORCED', message: 'Fallo sintético de facturación' }),
-      });
-      return;
-    }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -420,9 +397,13 @@ test('V1 controlado: búsqueda exacta, tabs, facturación y móvil', async ({ pa
     'aria-selected',
     'true',
   );
-  await page.getByRole('button', { name: 'Editar facturación', exact: true }).click();
-  await page.getByRole('button', { name: 'Guardar facturación', exact: true }).click();
-  await expect(page.getByText('Fallo sintético de facturación', { exact: true })).toBeVisible();
+  const billing = page.getByRole('region', { name: 'Facturación', exact: true });
+  await expect(billing.getByText('Ciclo de facturación', { exact: true })).toBeVisible();
+  await expect(billing.getByText('Nombre fiscal', { exact: true })).toBeVisible();
+  await expect(billing.getByText('Registrado en la venta', { exact: true })).toHaveCount(0);
+  await expect(
+    billing.getByRole('button', { name: 'Editar facturación', exact: true }),
+  ).toHaveCount(0);
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/dashboard/crm/subscribers/qa-subscriber?tab=datos');
   await expect(page.getByRole('tab', { name: 'Datos', exact: true })).toBeVisible();

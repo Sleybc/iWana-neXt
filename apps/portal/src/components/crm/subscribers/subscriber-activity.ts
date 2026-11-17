@@ -136,18 +136,40 @@ export function statementToActivity(statement: BillingAccountStatement): Activit
   return [...documents, ...payments];
 }
 
+const CIVIL_DATE = /^(\d{4})-(\d{2})-(\d{2})$/u;
+
+/**
+ * Las fechas civiles (`YYYY-MM-DD`: emisión de factura, fecha de pago) no tienen hora. `new Date`
+ * las lee como medianoche UTC y en Colombia se veían como «7:00 p. m.» del día anterior: se leen
+ * como medianoche local.
+ */
+function parseActivityDate(value: string): { date: Date; civil: boolean } {
+  const civil = CIVIL_DATE.exec(value);
+  if (civil) {
+    return {
+      date: new Date(Number(civil[1]), Number(civil[2]) - 1, Number(civil[3])),
+      civil: true,
+    };
+  }
+  return { date: new Date(value), civil: false };
+}
+
 function timestamp(value: string): number {
-  const time = new Date(value).getTime();
+  const time = parseActivityDate(value).date.getTime();
   return Number.isNaN(time) ? 0 : time;
 }
 
-/** Más reciente primero; empate estable por clave para no reordenar al paginar. */
+/** Más reciente primero; el desempate descendente coincide con notas y estados en la API. */
 export function sortActivity(items: ActivityItem[]): ActivityItem[] {
-  return [...items].sort((a, b) => timestamp(b.at) - timestamp(a.at) || a.key.localeCompare(b.key));
+  return [...items].sort((a, b) => timestamp(b.at) - timestamp(a.at) || b.key.localeCompare(a.key));
 }
 
 export function formatActivityDate(value: string): string {
-  const date = new Date(value);
+  const { date, civil } = parseActivityDate(value);
   if (Number.isNaN(date.getTime())) return 'Sin fecha';
-  return new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+  // Una fecha civil se muestra sin hora: no tiene una que mostrar.
+  return new Intl.DateTimeFormat(
+    'es-CO',
+    civil ? { dateStyle: 'medium' } : { dateStyle: 'medium', timeStyle: 'short' },
+  ).format(date);
 }

@@ -178,28 +178,66 @@ describe('SubscriberActivityCard', () => {
     expect(within(list).getByText('Factura FE-10')).toBeInTheDocument();
   });
 
-  it('«Ver más» muestra el resto y pide la página siguiente cuando la fuente tiene más', async () => {
+  it('pagina de cinco en cinco, carga más al llegar al límite y vuelve sin consultar de nuevo', async () => {
     const user = userEvent.setup();
     const first = Array.from({ length: 12 }, (_, index) =>
       lifecycle(`lc-${index}`, `2026-10-${String(20 - index).padStart(2, '0')}T10:00:00.000Z`),
     );
     lifecycleSpy.mockResolvedValueOnce({ data: first, meta: meta({ hasMore: true }) });
+    lifecycleSpy.mockRejectedValueOnce(new Error('caída temporal'));
     lifecycleSpy.mockResolvedValueOnce({
       data: [lifecycle('lc-old', '2026-01-01T10:00:00.000Z')],
       meta: meta({ page: 2, hasMore: false }),
     });
     renderCard();
-    expect(within(await findList()).getAllByRole('listitem')).toHaveLength(10);
-    await user.click(screen.getByRole('button', { name: 'Ver más' }));
-    await waitFor(() =>
-      expect(
-        within(screen.getByRole('list', { name: 'Actividad del suscriptor' })).getAllByRole(
-          'listitem',
-        ),
-      ).toHaveLength(14),
-    );
+    const firstPage = (await findList()).textContent;
+    const previous = screen.getByRole('button', { name: 'Página anterior' });
+    const next = screen.getByRole('button', { name: 'Página siguiente' });
+    expect(within(await findList()).getAllByRole('listitem')).toHaveLength(5);
+    expect(previous).toBeDisabled();
+    await user.click(next);
+    expect(screen.getByText('Registros 6–10')).toBeInTheDocument();
+    expect((await findList()).textContent).not.toBe(firstPage);
+    expect(lifecycleSpy).toHaveBeenCalledTimes(1);
+    await user.click(next);
+    expect(
+      await screen.findByText('No pudimos cargar más actividad. Intenta de nuevo.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Registros 6–10')).toBeInTheDocument();
     expect(lifecycleSpy).toHaveBeenLastCalledWith(SUBSCRIBER_ID, { page: 2, limit: 20 });
-    expect(screen.queryByRole('button', { name: 'Ver más' })).not.toBeInTheDocument();
+    await user.click(next);
+    expect(await screen.findByText('Registros 11–14 de 14')).toBeInTheDocument();
+    expect(within(await findList()).getAllByRole('listitem')).toHaveLength(4);
+    expect(lifecycleSpy).toHaveBeenLastCalledWith(SUBSCRIBER_ID, { page: 2, limit: 20 });
+    expect(next).toBeDisabled();
+    await user.click(previous);
+    expect(screen.getByText('Registros 6–10 de 14')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Estados' }));
+    expect(screen.getByText('Registros 1–5 de 13')).toBeInTheDocument();
+    expect(lifecycleSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('mantiene el orden de notas con la misma fecha al incorporar el siguiente lote', async () => {
+    const user = userEvent.setup();
+    const sameDate = '2026-11-10T10:00:00.000Z';
+    const notes = Array.from({ length: 21 }, (_, index) => {
+      const number = 21 - index;
+      return note(String(number).padStart(2, '0'), `Nota de prueba ${number}`, sameDate);
+    });
+    notesSpy
+      .mockResolvedValueOnce({ data: notes.slice(0, 20), meta: meta({ hasMore: true }) })
+      .mockResolvedValueOnce({ data: notes.slice(20), meta: meta({ page: 2 }) });
+    renderCard();
+    await findList();
+    await user.click(screen.getByRole('button', { name: 'Notas' }));
+    const next = screen.getByRole('button', { name: 'Página siguiente' });
+    for (let page = 0; page < 4; page += 1) {
+      expect(within(await findList()).getByText(`Nota de prueba ${21 - page * 5}`)).toBeVisible();
+      await user.click(next);
+    }
+    expect(await screen.findByText('Registros 21–21 de 21')).toBeVisible();
+    expect(within(await findList()).getByText('Nota de prueba 1')).toBeVisible();
+    expect(notesSpy).toHaveBeenCalledTimes(2);
   });
 
   it('error total: conserva la cabecera y «Reintentar» vuelve a consultar', async () => {
@@ -313,13 +351,13 @@ describe('SubscriberActivityCard', () => {
 });
 
 describe('subscriber-activity (composición pura)', () => {
-  it('ordena de lo más reciente a lo más antiguo con empate estable', () => {
+  it('ordena de lo más reciente a lo más antiguo y desempata como la API', () => {
     const items: ActivityItem[] = [
       { key: 'b', kind: 'nota', at: '2026-01-01T00:00:00Z', title: 'b' },
       { key: 'a', kind: 'nota', at: '2026-01-01T00:00:00Z', title: 'a' },
       { key: 'c', kind: 'nota', at: '2026-02-01T00:00:00Z', title: 'c' },
     ];
-    expect(sortActivity(items).map((item) => item.key)).toEqual(['c', 'a', 'b']);
+    expect(sortActivity(items).map((item) => item.key)).toEqual(['c', 'b', 'a']);
   });
 
   it('no nombra el servicio de un titular anonimizado', () => {

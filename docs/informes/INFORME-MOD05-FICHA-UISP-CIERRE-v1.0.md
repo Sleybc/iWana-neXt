@@ -89,3 +89,13 @@ docs 444 · código 4882 · pruebas 3794.
 
 1. Ejecutar el E2E y CA-7/CA-8 con el entorno arriba; luego push y G6.5.
 2. Fases ya decididas: etiquetas manuales + importación desde UISP; «Cierre de venta» (contrato firmado + primer cobro).
+
+## 8. Ajuste de Actividad (2026-11-17)
+
+La Vista general muestra cinco registros por página debajo de «Nueva nota», con texto más pequeño, rango visible y navegación anterior/siguiente, siguiendo el patrón de «Registros» observado en UISP. El total aparece cuando se han agotado las fuentes paginadas del filtro.
+
+«Nueva nota» usa un campo de una sola línea con «Guardar nota» a su derecha. El aviso y el contador quedan debajo.
+
+La tarjeta «Facturación» de Vista general muestra el ciclo actual, el nombre fiscal y el último pago. Se retiraron la referencia de la venta y su edición en esa tarjeta por solicitud del usuario.
+
+Se retiraron dos pruebas dedicadas al formulario eliminado. La prueba de la tarjeta comprueba los tres datos vigentes y los recorridos E2E verifican la vista de solo lectura.

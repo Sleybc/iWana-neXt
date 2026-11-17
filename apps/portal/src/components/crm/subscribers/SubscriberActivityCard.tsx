@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from 'react';
-import { Button } from '@iwana/ui';
-import { History } from 'lucide-react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import { Button, Input } from '@iwana/ui';
+import { ChevronLeft, ChevronRight, History } from 'lucide-react';
 import {
   AccessPermissionKey,
   SUBSCRIBER_NOTE_BODY_MAX_LENGTH,
@@ -12,12 +12,7 @@ import {
 } from '@iwana/shared';
 import { ApiError, subscribersApi, type AssuranceTicket, type Contract } from '@/lib/api-client';
 import { usePermissions } from '@/components/access-control/permissions-context';
-import {
-  PortalAlert,
-  PortalEmptyState,
-  PortalFilterChip,
-  portalTextareaClassName,
-} from '@/components/shared/portal-ui';
+import { PortalAlert, PortalEmptyState, PortalFilterChip } from '@/components/shared/portal-ui';
 import {
   loadSubscriberTickets,
   loadSubscriberVisits,
@@ -38,8 +33,7 @@ import {
   type ActivityKind,
 } from './subscriber-activity';
 
-/** Filas visibles por paso de «Ver más». */
-export const ACTIVITY_PAGE_SIZE = 10;
+const ACTIVITY_PAGE_SIZE = 5;
 /** Tamaño de página pedido a las fuentes paginadas (estados y notas). */
 const REMOTE_PAGE_LIMIT = 20;
 
@@ -155,15 +149,17 @@ export function SubscriberActivityCard({
   const [extraNotes, setExtraNotes] = useState<SubscriberNote[]>([]);
   const [cursors, setCursors] = useState<Record<PagedKey, PagedCursor> | null>(null);
   const [filter, setFilter] = useState<ActivityKind | 'todas'>('todas');
-  const [shown, setShown] = useState(ACTIVITY_PAGE_SIZE);
+  const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState(false);
+  const pageRevision = useRef(0);
 
   useEffect(() => {
+    pageRevision.current += 1;
     setExtraLifecycle([]);
     setExtraNotes([]);
     setCursors(load.data?.cursors ?? null);
-    setShown(ACTIVITY_PAGE_SIZE);
+    setPage(1);
     setMoreError(false);
   }, [load.data]);
 
@@ -195,35 +191,68 @@ export function SubscriberActivityCard({
   }, [load.data, extraLifecycle, extraNotes, contracts, anonymized, showBilling, statement]);
 
   const filtered = filter === 'todas' ? items : items.filter((item) => item.kind === filter);
-  const visible = filtered.slice(0, shown);
+  const start = (page - 1) * ACTIVITY_PAGE_SIZE;
+  const end = start + ACTIVITY_PAGE_SIZE;
+  const visible = filtered.slice(start, end);
   const pendingSources = (Object.keys(cursors ?? {}) as PagedKey[]).filter(
     (key) =>
       cursors?.[key].hasMore &&
       (filter === 'todas' || filter === (key === 'lifecycle' ? 'servicio' : 'nota')),
   );
-  const canShowMore = filtered.length > shown || pendingSources.length > 0;
+  const hasNextPage = filtered.length > end || pendingSources.length > 0;
 
-  async function showMore() {
+  function resetPage() {
+    pageRevision.current += 1;
+    setPage(1);
     setMoreError(false);
-    if (filtered.length - shown < ACTIVITY_PAGE_SIZE && pendingSources.length > 0 && cursors) {
+  }
+
+  async function nextPage() {
+    const revision = pageRevision.current;
+    setMoreError(false);
+    const lastOnNextPage = filtered[end + ACTIVITY_PAGE_SIZE - 1];
+    // Trae la fuente antes de mostrar filas más antiguas que su última entrada cargada.
+    const sourcesToLoad = pendingSources.filter((key) => {
+      const kind = key === 'lifecycle' ? 'servicio' : 'nota';
+      const lastFromSource = filtered.filter((item) => item.kind === kind).at(-1);
+      return (
+        !lastOnNextPage ||
+        !lastFromSource ||
+        sortActivity([lastFromSource, lastOnNextPage])[0] === lastFromSource
+      );
+    });
+    if (sourcesToLoad.length > 0 && cursors) {
       setLoadingMore(true);
       try {
         const next = { ...cursors };
-        await Promise.all(
-          pendingSources.map(async (key) => {
+        const responses = await Promise.all(
+          sourcesToLoad.map(async (key) => {
             const params = { page: cursors[key].page + 1, limit: REMOTE_PAGE_LIMIT };
-            if (key === 'lifecycle') {
-              const response = await subscribersApi.lifecycleChanges(subscriberId, params);
-              setExtraLifecycle((prev) => [...prev, ...response.data]);
-              next.lifecycle = { page: params.page, hasMore: response.meta.hasMore };
-            } else {
-              const response = await subscribersApi.listNotes(subscriberId, params);
-              setExtraNotes((prev) => [...prev, ...response.data]);
-              next.notes = { page: params.page, hasMore: response.meta.hasMore };
-            }
+            return key === 'lifecycle'
+              ? {
+                  key,
+                  params,
+                  response: await subscribersApi.lifecycleChanges(subscriberId, params),
+                }
+              : { key, params, response: await subscribersApi.listNotes(subscriberId, params) };
           }),
         );
+        let hasNextRow = filtered.length > end;
+        const loadedKeys = new Set(filtered.map((item) => item.key));
+        for (const { key, params, response } of responses) {
+          next[key] = { page: params.page, hasMore: response.meta.hasMore };
+          if (key === 'lifecycle') {
+            setExtraLifecycle((prev) => [...prev, ...response.data]);
+            hasNextRow ||= response.data.some(
+              (record) => !loadedKeys.has(lifecycleToActivity(record, contracts, anonymized).key),
+            );
+          } else {
+            setExtraNotes((prev) => [...prev, ...response.data]);
+            hasNextRow ||= response.data.some((note) => !loadedKeys.has(noteToActivity(note).key));
+          }
+        }
         setCursors(next);
+        if (!hasNextRow) return;
       } catch {
         setMoreError(true);
         return;
@@ -231,7 +260,7 @@ export function SubscriberActivityCard({
         setLoadingMore(false);
       }
     }
-    setShown((value) => value + ACTIVITY_PAGE_SIZE);
+    if (revision === pageRevision.current) setPage(page + 1);
   }
 
   const canWriteNote = canManage && !anonymized && !restricted;
@@ -246,7 +275,10 @@ export function SubscriberActivityCard({
         canWriteNote && !load.data?.forbidden ? (
           <SubscriberNoteComposer
             subscriberId={subscriberId}
-            onCreated={(note) => setExtraNotes((prev) => [note, ...prev])}
+            onCreated={(note) => {
+              setExtraNotes((prev) => [note, ...prev]);
+              resetPage();
+            }}
           />
         ) : null
       }
@@ -270,6 +302,7 @@ export function SubscriberActivityCard({
                     type="button"
                     variant="secondary"
                     className="min-h-11"
+                    disabled={loadingMore}
                     onClick={load.reload}
                   >
                     Reintentar
@@ -277,17 +310,17 @@ export function SubscriberActivityCard({
                 }
               />
             ) : null}
-            <div
-              role="group"
+            <fieldset
               aria-label="Filtrar actividad por tipo"
               className="flex flex-wrap gap-2"
+              disabled={loadingMore}
             >
               <PortalFilterChip
                 active={filter === 'todas'}
                 className="min-h-11 sm:min-h-0"
                 onClick={() => {
                   setFilter('todas');
-                  setShown(ACTIVITY_PAGE_SIZE);
+                  resetPage();
                 }}
               >
                 Todas
@@ -299,13 +332,13 @@ export function SubscriberActivityCard({
                   className="min-h-11 sm:min-h-0"
                   onClick={() => {
                     setFilter(kind);
-                    setShown(ACTIVITY_PAGE_SIZE);
+                    resetPage();
                   }}
                 >
                   {ACTIVITY_KIND_LABELS[kind]}
                 </PortalFilterChip>
               ))}
-            </div>
+            </fieldset>
             {visible.length === 0 ? (
               <PortalEmptyState
                 embedded
@@ -324,26 +357,23 @@ export function SubscriberActivityCard({
             ) : (
               <ol
                 aria-label="Actividad del suscriptor"
-                className="divide-y divide-gray-100 dark:divide-dark-border"
+                className="divide-y divide-gray-100 text-xs dark:divide-dark-border"
               >
                 {visible.map((item) => (
-                  <li key={item.key} className="py-2">
+                  <li key={item.key} className="py-1.5">
                     <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                      <p className="min-w-0 break-words text-sm font-medium text-gray-900 dark:text-white">
+                      <p className="min-w-0 break-words font-medium text-gray-900 dark:text-white">
                         {item.title}
                       </p>
-                      <time
-                        dateTime={item.at}
-                        className="shrink-0 text-sm text-gray-500 dark:text-gray-400"
-                      >
+                      <time dateTime={item.at} className="text-gray-600 dark:text-gray-400">
                         {formatActivityDate(item.at)}
                       </time>
                     </div>
                     {item.detail ? (
-                      <p className="text-sm text-gray-500 dark:text-gray-400">{item.detail}</p>
+                      <p className="text-gray-600 dark:text-gray-400">{item.detail}</p>
                     ) : null}
                     {item.body ? (
-                      <p className="mt-1 whitespace-pre-line break-words text-sm text-gray-700 dark:text-gray-200">
+                      <p className="mt-1 whitespace-pre-line break-words text-gray-700 dark:text-gray-200">
                         {item.body}
                       </p>
                     ) : null}
@@ -357,18 +387,45 @@ export function SubscriberActivityCard({
                 title="No pudimos cargar más actividad. Intenta de nuevo."
               />
             ) : null}
-            {canShowMore ? (
-              <div className="flex justify-center">
+            {page > 1 || hasNextPage ? (
+              <nav
+                aria-label="Paginación de actividad"
+                className="flex flex-wrap items-center justify-end gap-x-2 border-t border-gray-100 pt-2 dark:border-dark-border"
+              >
+                <span
+                  role="status"
+                  className="text-xs tabular-nums text-gray-600 dark:text-gray-400"
+                >
+                  {visible.length > 0 ? `Registros ${start + 1}–${start + visible.length}` : null}
+                  {pendingSources.length === 0 ? ` de ${filtered.length}` : null}
+                </span>
                 <Button
                   type="button"
-                  variant="secondary"
-                  className="min-h-11"
-                  loading={loadingMore}
-                  onClick={() => void showMore()}
+                  variant="ghost"
+                  size="icon"
+                  className="size-11"
+                  aria-label="Página anterior"
+                  disabled={page === 1 || loadingMore}
+                  onClick={() => {
+                    setMoreError(false);
+                    setPage((value) => value - 1);
+                  }}
                 >
-                  Ver más
+                  <ChevronLeft className="size-4" aria-hidden />
                 </Button>
-              </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-11"
+                  aria-label="Página siguiente"
+                  disabled={!hasNextPage}
+                  loading={loadingMore}
+                  onClick={() => void nextPage()}
+                >
+                  <ChevronRight className="size-4" aria-hidden />
+                </Button>
+              </nav>
             ) : null}
           </div>
         )
@@ -434,19 +491,29 @@ function SubscriberNoteComposer({
       className="space-y-2 border-b border-gray-100 pb-3 dark:border-dark-border"
       aria-label="Agregar nota"
     >
-      <label htmlFor={fieldId} className="text-sm font-medium text-gray-900 dark:text-white">
-        Nueva nota
-      </label>
-      <textarea
-        id={fieldId}
-        value={body}
-        maxLength={SUBSCRIBER_NOTE_BODY_MAX_LENGTH}
-        rows={3}
-        disabled={saving}
-        aria-describedby={`${helpId} ${counterId}`}
-        className={portalTextareaClassName}
-        onChange={(event) => setBody(event.target.value)}
-      />
+      <div className="flex items-end gap-2">
+        <Input
+          id={fieldId}
+          type="text"
+          label="Nueva nota"
+          value={body}
+          maxLength={SUBSCRIBER_NOTE_BODY_MAX_LENGTH}
+          disabled={saving}
+          aria-describedby={`${helpId} ${counterId}`}
+          className="h-11"
+          containerClassName="min-w-0 flex-1"
+          onChange={(event) => setBody(event.target.value)}
+        />
+        <Button
+          type="submit"
+          size="sm"
+          className="h-11 shrink-0"
+          loading={saving}
+          disabled={!trimmed}
+        >
+          Guardar nota
+        </Button>
+      </div>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p id={helpId} className="text-sm text-gray-500 dark:text-gray-400">
           No escribas datos sensibles: documentos, contraseñas, datos de salud o de pago. La nota no
@@ -464,11 +531,6 @@ function SubscriberNoteComposer({
       >
         {success}
       </p>
-      <div className="flex justify-end">
-        <Button type="submit" className="min-h-11" loading={saving} disabled={!trimmed}>
-          Guardar nota
-        </Button>
-      </div>
     </form>
   );
 }

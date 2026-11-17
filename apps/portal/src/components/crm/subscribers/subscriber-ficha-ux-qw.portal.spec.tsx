@@ -1,16 +1,15 @@
-import { act, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import {
   CustomerSegment,
   DocumentType,
-  ExpedienteStatus,
   PersonType,
   SubscriberStatus,
   VatResponsibility,
   VatTreatment,
 } from '@iwana/shared';
-import { ApiError, crmApi, subscribersApi } from '@/lib/api-client';
+import { subscribersApi } from '@/lib/api-client';
 import type { Subscriber360Response, SubscriberRecord } from '@/lib/api-client';
 import { SubscriberDetailClient } from './SubscriberDetailClient';
 import { SubscriberTabsContainer } from './SubscriberTabsContainer';
@@ -21,10 +20,16 @@ jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'subscriber-synthetic' }),
   usePathname: () => '/dashboard/crm/subscribers/subscriber-synthetic',
   useSearchParams: () => new URLSearchParams(mockQuery),
-  useRouter: () => ({ push: jest.fn(), replace: mockReplace }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { push: jest.fn(), replace: mockReplace });
+  })(),
 }));
 jest.mock('@/components/access-control/permissions-context', () => ({
-  usePermissions: () => ({ hasPermission: () => false }),
+  usePermissions: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () => (ctx ??= { hasPermission: () => false });
+  })(),
 }));
 jest.mock('./TaxProfileBlock', () => ({ TaxProfileBlock: () => <div>Perfil tributario</div> }));
 jest.mock('./ServiciosTab', () => ({ ServiciosTab: () => <div>Servicios disponibles</div> }));
@@ -194,90 +199,6 @@ describe('Ficha de suscriptor — quick wins F2', () => {
     expect(first).toHaveFocus();
     expect(screen.getByLabelText('Borrador')).toHaveValue('Edición pendiente');
     expect(await axe(container)).toHaveNoViolations();
-  });
-  it('CA5 muestra el mensaje de error de la API dentro de facturación', async () => {
-    const response = buildSubscriber360(buildSubscriber());
-    response.expedienteSummary = {
-      id: 'opportunity-synthetic',
-      fullName: null,
-      status: ExpedienteStatus.NUEVO_POTENCIAL,
-      source: null,
-      createdAt: '2026-10-01T10:00:00.000Z',
-      statusChangedAt: null,
-      paymentMethod: 'PSE',
-      billingCycle: 'Mensual',
-      fiscalName: 'Titular sintético',
-      interestedPlanId: null,
-      additionalProductIds: [],
-      additionalServiceIds: [],
-      commercialNotes: null,
-    };
-    jest.spyOn(subscribersApi, 'get360').mockResolvedValue(response);
-    jest
-      .spyOn(crmApi, 'updateExpedienteSection')
-      .mockRejectedValue(
-        new ApiError(422, 'VALIDATION_ERROR', 'Selecciona un método de pago permitido.'),
-      );
-    render(<SubscriberDetailClient mode="detail" />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Editar facturación' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar facturación' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Selecciona un método de pago permitido.',
-    );
-  });
-
-  it('conserva el borrador real de facturación al cambiar de tab y anuncia el éxito después de recargar', async () => {
-    const response = buildSubscriber360(buildSubscriber());
-    response.expedienteSummary = {
-      id: 'opportunity-synthetic',
-      fullName: null,
-      status: ExpedienteStatus.NUEVO_POTENCIAL,
-      source: null,
-      createdAt: '2026-10-01T10:00:00.000Z',
-      statusChangedAt: null,
-      paymentMethod: 'PSE',
-      billingCycle: 'Mensual',
-      fiscalName: 'Titular sintético',
-      interestedPlanId: null,
-      additionalProductIds: [],
-      additionalServiceIds: [],
-      commercialNotes: null,
-    };
-    jest.spyOn(subscribersApi, 'get360').mockResolvedValue(response);
-    let finishSave: (() => void) | undefined;
-    jest.spyOn(crmApi, 'updateExpedienteSection').mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finishSave = () =>
-            resolve({ data: { id: 'opportunity-synthetic' } } as Awaited<
-              ReturnType<typeof crmApi.updateExpedienteSection>
-            >);
-        }),
-    );
-    const user = userEvent.setup();
-    render(<SubscriberDetailClient mode="detail" />);
-    await user.click(await screen.findByRole('button', { name: 'Editar facturación' }));
-    await user.clear(screen.getByRole('textbox', { name: 'Método de pago' }));
-    await user.type(screen.getByRole('textbox', { name: 'Método de pago' }), 'Transferencia');
-    await user.click(screen.getByRole('tab', { name: 'Servicios' }));
-    await user.click(screen.getByRole('tab', { name: 'Vista general' }));
-    expect(screen.getByRole('textbox', { name: 'Método de pago' })).toHaveValue('Transferencia');
-    await user.click(screen.getByRole('button', { name: 'Guardar facturación' }));
-    expect(screen.getByRole('button', { name: 'Guardar facturación' })).toHaveAttribute(
-      'aria-busy',
-      'true',
-    );
-    expect(screen.getByRole('button', { name: 'Cancelar edición de facturación' })).toBeDisabled();
-    await act(async () => {
-      finishSave?.();
-    });
-    expect(await screen.findByText('Facturación guardada.')).toHaveAttribute('aria-live', 'polite');
-    expect(subscribersApi.get360).toHaveBeenCalledTimes(2);
-    expect(crmApi.updateExpedienteSection).toHaveBeenCalledWith(
-      'opportunity-synthetic',
-      'billing',
-      expect.objectContaining({ paymentMethod: 'Transferencia' }),
-    );
   });
   it('usa Link para volver y deja tipo y segmento como texto secundario', async () => {
     render(<SubscriberDetailClient mode="detail" />);

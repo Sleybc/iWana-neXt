@@ -107,14 +107,18 @@ function build360(overrides: Partial<Subscriber360Response> = {}): Subscriber360
   };
 }
 
-function renderTab(data: Subscriber360Response, canReadPrivacy = false) {
+function renderTab(
+  data: Subscriber360Response,
+  canReadPrivacy = false,
+  statement?: Parameters<typeof lastPaymentLabel>[0],
+) {
   const onNavigate = jest.fn();
   const utils = render(
     <SubscriberOverviewTab
       subscriber360={data}
       canReadPrivacy={canReadPrivacy}
       onNavigate={onNavigate}
-      onReload={jest.fn().mockResolvedValue(undefined)}
+      statement={statement ?? null}
     />,
   );
   return { ...utils, onNavigate };
@@ -178,9 +182,11 @@ describe('SubscriberOverviewTab', () => {
     expect(screen.queryByText(/Segmento/)).not.toBeInTheDocument();
   });
 
-  it('muestra el contacto y la oportunidad con su estado y enlace', () => {
+  it('muestra la facturación actual junto al contacto y la oportunidad de origen', () => {
     renderTab(
       build360({
+        subscriber: { ...buildSubscriber(), firstName: 'Titular', lastName: 'Actual' },
+        contracts: [buildContract({ billingCycleDay: 1 })],
         expedienteSummary: {
           id: 'opportunity-synthetic',
           fullName: null,
@@ -197,14 +203,23 @@ describe('SubscriberOverviewTab', () => {
           commercialNotes: null,
         },
       }),
+      false,
+      {
+        documents: [],
+        payments: [{ paidAt: '2026-11-13', method: 'EFECTIVO', status: 'REGISTRADO' }],
+      } as unknown as Parameters<typeof lastPaymentLabel>[0],
     );
     const contact = screen.getByRole('region', { name: 'Contacto' });
     expect(within(contact).getByText('titular@example.test')).toBeInTheDocument();
     const billing = screen.getByRole('region', { name: 'Facturación' });
-    // Lo anotado en la venta queda como referencia, debajo de los datos reales.
-    expect(within(billing).getByText('Registrado en la venta')).toBeInTheDocument();
-    expect(within(billing).getByText('PSE')).toBeInTheDocument();
-    expect(within(billing).getByText('Sin configurar')).toBeInTheDocument();
+    expect(within(billing).getByText('Día 1 de cada mes')).toBeInTheDocument();
+    expect(within(billing).getByText('Titular Actual')).toBeInTheDocument();
+    expect(within(billing).getByText('Efectivo · 13 de noviembre de 2026')).toBeInTheDocument();
+    expect(within(billing).queryByText('Registrado en la venta')).not.toBeInTheDocument();
+    expect(within(billing).queryByText('PSE')).not.toBeInTheDocument();
+    expect(
+      within(billing).queryByRole('button', { name: 'Editar facturación' }),
+    ).not.toBeInTheDocument();
     const origin = screen.getByRole('region', { name: /Oportunidad de origen/ });
     expect(
       within(origin).getByRole('link', { name: 'Abrir oportunidad de origen' }),

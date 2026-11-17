@@ -122,6 +122,8 @@ Solo frontend. **No** cambia ningún contrato de `@iwana/shared` ni de la API.
 
 ### QW3 — Edición de facturación
 
+**Actualización 2026-11-17.** Por solicitud del usuario, la tarjeta de Vista general queda de solo lectura con el ciclo actual, el nombre fiscal y el último pago. Se retira el formulario de referencia de la venta.
+
 | Regla | Detalle |
 | --- | --- |
 | R3.1 | `<input>` y `<button>` crudos se reemplazan por `Input` y `Button` de `@iwana/ui` |
@@ -175,7 +177,7 @@ Solo frontend. **No** cambia ningún contrato de `@iwana/shared` ni de la API.
 | CA2 | El valor buscado en modo exacto nunca aparece en la URL | test de componente |
 | CA3 | Recargar la ficha conserva la tab; `?tab=financiero` cae en Vista general | test de componente + navegador |
 | CA4 | Las tabs se recorren con flechas, `Home` y `End`, y cada tab apunta a su `tabpanel` | test de componente (axe sin violaciones) |
-| CA5 | Un fallo al guardar facturación muestra el error en pantalla | test de componente |
+| CA5 | La tarjeta de Vista general muestra los datos de facturación vigentes y el último pago | test de componente y E2E |
 | CA6 | «Razón» solo aparece y es obligatoria para Suspender y Cancelar; el mensaje de la API se muestra | test de componente |
 | CA7 | `ContractCard` y el badge del suscriptor usan la misma escala de variantes | test de componente |
 | CA8 | `audit-ui.mjs` sobre `components/crm/subscribers` da P0-P3 en 0 | script |

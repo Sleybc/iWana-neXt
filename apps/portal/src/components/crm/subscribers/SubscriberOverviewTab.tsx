@@ -1,18 +1,12 @@
 'use client';
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { Badge, Button, Input, cn } from '@iwana/ui';
-import { ChevronRight, FileText, Pencil, Plus, Wifi, X } from 'lucide-react';
+import { Badge, Button, cn } from '@iwana/ui';
+import { ChevronRight, FileText, Plus, Wifi } from 'lucide-react';
 import { AccessPermissionKey, type BillingAccountStatement } from '@iwana/shared';
-import {
-  ApiError,
-  crmApi,
-  type Contract,
-  type ContractStatus,
-  type Subscriber360Response,
-} from '@/lib/api-client';
+import type { Contract, ContractStatus, Subscriber360Response } from '@/lib/api-client';
 import { usePermissions } from '@/components/access-control/permissions-context';
 import { formatBillingMoney, PAYMENT_METHODS } from '@/components/billing/billing-copy';
 import { formatBillingDate } from './billing-cycle-ui';
@@ -58,8 +52,6 @@ interface SubscriberOverviewTabProps {
   subscriber360: Subscriber360Response;
   canReadPrivacy: boolean;
   onNavigate: (tabId: OverviewTabId) => void;
-  /** Recarga la ficha sin desmontar las pestañas. */
-  onReload: () => Promise<void>;
   /** Panel de estado de cuenta; lo arma la ficha solo si existe la pestaña Facturación. */
   accountSummary?: ReactNode;
   /** Estado de cuenta ya leído por la ficha; alimenta la insignia de deuda vencida. */
@@ -68,9 +60,7 @@ interface SubscriberOverviewTabProps {
   equipmentCard?: ReactNode;
 }
 
-const termClassName = 'text-xs font-medium text-gray-500 dark:text-gray-400';
 const emptyValueClassName = 'text-gray-500 dark:text-gray-400';
-const bodyNoteClassName = 'pb-2 text-sm text-gray-500 dark:text-gray-400';
 
 // Orden de lectura del resumen: lo vigente primero.
 const SUMMARY_STATUSES: ContractStatus[] = ['ACTIVE', 'SUSPENDED', 'DRAFT', 'TERMINATED'];
@@ -84,32 +74,6 @@ const STATUS_COUNT_LABELS: Record<ContractStatus, [string, string]> = {
 const MAX_SERVICE_ROWS = 3;
 // Solicitudes de privacidad que aún esperan respuesta.
 const OPEN_REQUEST_STATUSES = new Set(['RADICADA', 'INCOMPLETA', 'EN_TRAMITE', 'PRORROGADA']);
-
-const BILLING_FIELDS = [
-  {
-    key: 'paymentMethod',
-    label: 'Método de pago',
-    placeholder: 'Transferencia, PSE, efectivo...',
-  },
-  {
-    key: 'billingCycle',
-    label: 'Ciclo de facturación',
-    placeholder: 'Mensual, quincenal...',
-  },
-  {
-    key: 'fiscalName',
-    label: 'Nombre fiscal',
-    placeholder: 'Razón fiscal para facturación',
-  },
-] as const;
-
-type BillingDraft = Record<(typeof BILLING_FIELDS)[number]['key'], string>;
-
-function mapError(error: unknown): string {
-  return error instanceof ApiError
-    ? error.message
-    : 'No fue posible completar la operación del suscriptor.';
-}
 
 /** Días de corte de los servicios activos: «Día 1 de cada mes» o «Días 1 y 15 de cada mes». */
 export function activeBillingCycleLabel(contracts: readonly Contract[]): string | null {
@@ -198,7 +162,6 @@ export function SubscriberOverviewTab({
   subscriber360,
   canReadPrivacy,
   onNavigate,
-  onReload,
   accountSummary,
   statement = null,
   equipmentCard,
@@ -230,19 +193,6 @@ export function SubscriberOverviewTab({
       }),
     [subscriber, anonymizedAt, contracts, statement],
   );
-  const canEditBilling =
-    Boolean(expedienteSummary) && !subscriber.privacyRestricted && !anonymizedAt;
-
-  const [billingEditing, setBillingEditing] = useState(false);
-  const [billingSaving, setBillingSaving] = useState(false);
-  const [billingError, setBillingError] = useState<string | null>(null);
-  const [billingSuccess, setBillingSuccess] = useState('');
-  const [billingDraft, setBillingDraft] = useState<BillingDraft>({
-    paymentMethod: '',
-    billingCycle: '',
-    fiscalName: '',
-  });
-
   // ── Servicios: conteo por estado y los primeros servicios vigentes ────────
   const visibleContracts = contracts.filter((contract) => contract.status !== 'ARCHIVED');
   const statusCounts = SUMMARY_STATUSES.map((status) => ({
@@ -262,28 +212,6 @@ export function SubscriberOverviewTab({
     OPEN_REQUEST_STATUSES.has(request.status),
   );
   const overdueRequests = openRequests.filter((request) => request.isOverdue).length;
-
-  async function saveBilling() {
-    if (!expedienteSummary) return;
-    const payload: Record<string, unknown> = {};
-    for (const { key } of BILLING_FIELDS) {
-      const value = billingDraft[key].trim();
-      if (value) payload[key] = value;
-    }
-    setBillingSaving(true);
-    setBillingError(null);
-    setBillingSuccess('');
-    try {
-      await crmApi.updateExpedienteSection(expedienteSummary.id, 'billing', payload);
-      await onReload();
-      setBillingEditing(false);
-      setBillingSuccess('Facturación guardada.');
-    } catch (saveError) {
-      setBillingError(mapError(saveError));
-    } finally {
-      setBillingSaving(false);
-    }
-  }
 
   const servicesPanel = (
     <PortalPanel
@@ -367,149 +295,25 @@ export function SubscriberOverviewTab({
   const cycleLabel = activeBillingCycleLabel(contracts);
   const paymentLabel = statement ? lastPaymentLabel(statement) : null;
   // Lo que rige la facturación hoy: ciclo de los servicios, nombre del cliente y último pago.
-  const currentBillingList = (
-    <PortalFieldList>
-      <PortalFieldRow label="Ciclo de facturación">
-        {cycleLabel ?? <span className={emptyValueClassName}>Sin servicio activo</span>}
-      </PortalFieldRow>
-      <PortalFieldRow label="Nombre fiscal">
-        {anonymizedAt
-          ? privacyDisplayValue(null, { anonymizedAt })
-          : formatSubscriberName(subscriber)}
-      </PortalFieldRow>
-      {statement ? (
-        <PortalFieldRow label="Último pago">
-          {paymentLabel ?? <span className={emptyValueClassName}>Sin pagos registrados</span>}
-        </PortalFieldRow>
-      ) : null}
-    </PortalFieldList>
-  );
   const billingPanel = (
-    <PortalPanel
-      as="section"
-      labelled
-      density="dense"
-      title="Facturación"
-      actions={
-        canEditBilling && !billingEditing ? (
-          <button
-            type="button"
-            className={cn(portalPanelDenseActionClassName, 'gap-1.5')}
-            aria-label="Editar facturación"
-            onClick={() => {
-              setBillingDraft({
-                paymentMethod: expedienteSummary?.paymentMethod ?? '',
-                billingCycle: expedienteSummary?.billingCycle ?? '',
-                fiscalName: expedienteSummary?.fiscalName ?? '',
-              });
-              setBillingError(null);
-              setBillingSuccess('');
-              setBillingEditing(true);
-            }}
-          >
-            <Pencil className="h-3.5 w-3.5" aria-hidden />
-            Editar
-          </button>
-        ) : undefined
-      }
-      contentClassName="space-y-3"
-    >
-      {expedienteSummary ? (
-        <p className={bodyNoteClassName}>
+    <PortalPanel as="section" labelled density="dense" title="Facturación">
+      <PortalFieldList>
+        <PortalFieldRow label="Ciclo de facturación">
+          {cycleLabel ?? <span className={emptyValueClassName}>Sin servicio activo</span>}
+        </PortalFieldRow>
+        <PortalFieldRow label="Nombre fiscal">
           {anonymizedAt
-            ? 'Datos anonimizados: la facturación ya no se puede editar.'
-            : 'Así se le factura hoy. Debajo, lo que se anotó en la venta como referencia.'}
-        </p>
-      ) : null}
-      <p
-        role="status"
-        aria-live="polite"
-        className={cn(
-          'text-sm font-medium text-emerald-700 dark:text-emerald-300',
-          !billingSuccess && 'sr-only',
-        )}
-      >
-        {billingSuccess}
-      </p>
-      {billingError && (
-        <PortalAlert
-          variant="error"
-          live="assertive"
-          title="No fue posible guardar la facturación"
-          description={billingError}
-        />
-      )}
-      {!expedienteSummary ? (
-        currentBillingList
-      ) : billingEditing && canEditBilling ? (
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {BILLING_FIELDS.map(({ key, label, placeholder }) => (
-              <label
-                key={key}
-                className={cn('flex flex-col gap-1', key === 'fiscalName' && 'sm:col-span-2')}
-              >
-                <span className={termClassName}>{label}</span>
-                <Input
-                  disabled={billingSaving}
-                  placeholder={placeholder}
-                  type="text"
-                  value={billingDraft[key]}
-                  onChange={(event) =>
-                    setBillingDraft((prev) => ({ ...prev, [key]: event.target.value }))
-                  }
-                />
-              </label>
-            ))}
-          </div>
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              className="min-h-11"
-              disabled={billingSaving}
-              aria-label="Cancelar edición de facturación"
-              onClick={() => setBillingEditing(false)}
-            >
-              <X className="h-3.5 w-3.5" aria-hidden />
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              className="min-h-11"
-              aria-label="Guardar facturación"
-              loading={billingSaving}
-              onClick={() => void saveBilling()}
-            >
-              Guardar
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {currentBillingList}
-          <div className="border-t border-gray-100 pt-3 dark:border-dark-border">
-            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              Registrado en la venta
-            </p>
-            <PortalFieldList>
-              {BILLING_FIELDS.map(({ key, label }) => {
-                const value = expedienteSummary[key];
-                return (
-                  <PortalFieldRow key={key} label={label}>
-                    {key === 'fiscalName' && anonymizedAt
-                      ? privacyDisplayValue(null, { anonymizedAt })
-                      : value || <span className={emptyValueClassName}>Sin configurar</span>}
-                  </PortalFieldRow>
-                );
-              })}
-            </PortalFieldList>
-          </div>
-        </div>
-      )}
+            ? privacyDisplayValue(null, { anonymizedAt })
+            : formatSubscriberName(subscriber)}
+        </PortalFieldRow>
+        {statement ? (
+          <PortalFieldRow label="Último pago">
+            {paymentLabel ?? <span className={emptyValueClassName}>Sin pagos registrados</span>}
+          </PortalFieldRow>
+        ) : null}
+      </PortalFieldList>
     </PortalPanel>
   );
-
   const originPanel = (
     <PortalPanel
       as="section"
