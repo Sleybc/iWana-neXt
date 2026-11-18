@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { UserRole } from '@iwana/shared';
+import { UserRole, type LinkExecutionOrderBody } from '@iwana/shared';
 import type {
   AssuranceCommentSubmission,
   AssuranceTicket,
@@ -9,7 +9,6 @@ import type {
   AssuranceTimelineEvent,
   AssignAssuranceTicketDto,
   InternalUser,
-  LinkAssuranceWorkOrderDto,
   RequestAssuranceFieldServiceDto,
   TransitionAssuranceTicketDto,
 } from '@/lib/api-client';
@@ -233,10 +232,11 @@ export function useAssuranceTicketDetail({ onAfterAction }: UseAssuranceTicketDe
   );
 
   const onLinkWorkOrder = useCallback(
-    (payload: LinkAssuranceWorkOrderDto) =>
+    // D4: el vínculo manual es de la orden de ejecución, buscada por número (spec §3 L).
+    (payload: LinkExecutionOrderBody) =>
       runAction(
         setIsLinkingWorkOrder,
-        (ticketId) => assuranceApi.tickets.linkWorkOrder(ticketId, payload),
+        (ticketId) => assuranceApi.tickets.linkExecutionOrder(ticketId, payload),
         ASSURANCE_ACTION_MESSAGES.workOrder,
       ),
     [runAction],

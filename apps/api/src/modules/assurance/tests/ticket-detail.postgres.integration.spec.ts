@@ -7,6 +7,7 @@ import {
   TenantContext,
   TicketPqrRecord,
   TicketTimelineEvent,
+  VisitRequest,
 } from '@iwana/db';
 import {
   AccessPermissionKey,
@@ -51,6 +52,10 @@ const allowedDatabaseName = /^(test|iwana_it_[a-z0-9_]+)$/u;
 const schemaName = `tenant_assurance_detail_${randomBytes(5).toString('hex')}`;
 const q = `"${schemaName}"`;
 const tenantId = randomUUID();
+/** Otro tenant: su propio schema migrado y su propio id. */
+const otherSchemaName = `${schemaName}_otro`;
+const qOther = `"${otherSchemaName}"`;
+const otherTenantId = randomUUID();
 const actorId = randomUUID();
 
 if (dbAvailable && !allowedDatabaseName.test(databaseName)) {
@@ -66,6 +71,8 @@ const ALL_READ = [
   AccessPermissionKey.CRM_EXPEDIENTES_READ,
   // Con permiso de ver datos bloqueados: el detalle del ticket igual los oculta (R4).
   AccessPermissionKey.CRM_BLOCKED_DATA_READ,
+  AccessPermissionKey.WFM_SCHEDULE_READ,
+  AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
 ];
 
 describeWithDb('Assurance detalle del ticket — PostgreSQL real, adaptadores reales', () => {
@@ -74,6 +81,8 @@ describeWithDb('Assurance detalle del ticket — PostgreSQL real, adaptadores re
   let service: TicketsService;
   let permissions: string[] = ALL_READ;
   let crmShouldFail = false;
+  let marksPort: PrivacyMarksAdapter | undefined;
+  let realMarksPort: PrivacyMarksAdapter;
 
   const ids = {
     plainSubscriber: randomUUID(),
@@ -84,6 +93,17 @@ describeWithDb('Assurance detalle del ticket — PostgreSQL real, adaptadores re
     blockedContract: randomUUID(),
     plainExpediente: randomUUID(),
     blockedExpediente: randomUUID(),
+    // S-4: supresión por el lado del expediente y del contrato.
+    anonymizedExpediente: randomUUID(),
+    expedienteOfAnonymized: randomUUID(),
+    subscriberOfExpediente: randomUUID(),
+    anonymizedContract: randomUUID(),
+    // S-8: expediente cuyo único suscriptor está borrado y con DATOS_BLOQUEADOS.
+    expedienteOfDeleted: randomUUID(),
+    deletedBlockedSubscriber: randomUUID(),
+    deletedBlockedParty: randomUUID(),
+    // Suscriptor de otro tenant (mismo schema, otro tenant_id).
+    foreignSubscriber: randomUUID(),
   };
 
   const actor = (role: UserRole = UserRole.SUPPORT, sub = actorId): JwtPayload => ({
@@ -178,7 +198,13 @@ describeWithDb('Assurance detalle del ticket — PostgreSQL real, adaptadores re
       username: credentials.username,
       password: credentials.password,
       database: databaseName,
-      entities: [SupportTicket, TicketTimelineEvent, TicketPqrRecord, PartyPrivacyMarkEntity],
+      entities: [
+        SupportTicket,
+        TicketTimelineEvent,
+        TicketPqrRecord,
+        PartyPrivacyMarkEntity,
+        VisitRequest,
+      ],
       migrations: [],
       synchronize: false,
       logging: false,
@@ -253,11 +279,96 @@ describeWithDb('Assurance detalle del ticket — PostgreSQL real, adaptadores re
       [ids.blockedParty],
     );
 
+    // S-4 / S-8: expediente suprimido, expediente de un suscriptor suprimido, contrato de un
+    // suscriptor suprimido y expediente cuyo suscriptor está borrado con DATOS_BLOQUEADOS.
+    await sql(
+      `INSERT INTO expediente_records
+         (id, tenant_id, full_name, created_by, anonymized_at, anonymized_request_id)
+       VALUES ($1, $4, 'Expediente Suprimido', $5, now(), gen_random_uuid()),
+              ($2, $4, 'Expediente De Suprimido', $5, NULL, NULL),
+              ($3, $4, 'Expediente De Borrado', $5, NULL, NULL)`,
+      [
+        ids.anonymizedExpediente,
+        ids.expedienteOfAnonymized,
+        ids.expedienteOfDeleted,
+        tenantId,
+        actorId,
+      ],
+    );
+    await sql(
+      `INSERT INTO party (id, party_type, document_type, document_number, display_name)
+       VALUES ($1, 'NATURAL', 'CC', $2, 'Titular Borrado')`,
+      [ids.deletedBlockedParty, `DOC-${ids.deletedBlockedParty.slice(0, 8)}`],
+    );
+    await sql(
+      `INSERT INTO subscribers
+         (id, tenant_id, party_id, expediente_id, anonymized_at, anonymized_request_id, deleted_at,
+          person_type, customer_segment, document_type, document_number_encrypted, first_name,
+          last_name, stratum, vat_treatment, address, created_by)
+       SELECT f.id, $1, f.party_id, f.expediente_id, f.anonymized_at,
+              CASE WHEN f.anonymized_at IS NULL THEN NULL ELSE gen_random_uuid() END, f.deleted_at,
+              'NATURAL', 'RESIDENTIAL', 'CC', 'sintetico-cifrado', f.first_name, 'Sintética', 3,
+              'STANDARD', 'Dirección sintética', $2
+         FROM (VALUES
+           ($3::uuid, NULL::uuid, $4::uuid, now(), NULL::timestamptz, 'Dora'),
+           ($5::uuid, $6::uuid, $7::uuid, NULL::timestamptz, now(), 'Elena')
+         ) AS f(id, party_id, expediente_id, anonymized_at, deleted_at, first_name)`,
+      [
+        tenantId,
+        actorId,
+        ids.subscriberOfExpediente,
+        ids.expedienteOfAnonymized,
+        ids.deletedBlockedSubscriber,
+        ids.deletedBlockedParty,
+        ids.expedienteOfDeleted,
+      ],
+    );
+    await sql(
+      `INSERT INTO contracts (id, tenant_id, subscriber_id, plan_id, plan_snapshot_json)
+       VALUES ($1, $2, $3, 'fixture-plan', '{}'::jsonb)`,
+      [ids.anonymizedContract, tenantId, ids.anonymizedSubscriber],
+    );
+    await sql(
+      `INSERT INTO party_privacy_marks (party_id, mark, event, occurred_at)
+       VALUES ($1, 'DATOS_BLOQUEADOS', 'OPEN', now())`,
+      [ids.deletedBlockedParty],
+    );
+
+    // Otro tenant: fila en este schema con otro tenant_id, y su propio schema efímero con las
+    // migraciones tenant completas, como cualquier tenant real.
+    await admin.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, 'Otro tenant sintético', $2, $3, 'ACTIVE', 'detail-it-otro@example.invalid')`,
+      [otherTenantId, `assurance-detail-otro-${otherTenantId.slice(0, 8)}`, otherSchemaName],
+    );
+    await admin.query(`CREATE SCHEMA ${qOther}`);
+    const otherDataSource = createTenantDataSource(
+      admin,
+      otherSchemaName,
+      `detail-${otherSchemaName}`,
+    );
+    await otherDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(otherDataSource);
+    } finally {
+      await otherDataSource.destroy();
+    }
+    await sql(
+      `INSERT INTO subscribers
+         (id, tenant_id, person_type, customer_segment, document_type, document_number_encrypted,
+          first_name, last_name, stratum, vat_treatment, address, created_by)
+       VALUES ($1, $2, 'NATURAL', 'RESIDENTIAL', 'CC', 'sintetico-cifrado', 'Fabio', 'Ajeno', 3,
+               'STANDARD', 'Dirección sintética', $3)`,
+      [ids.foreignSubscriber, otherTenantId, actorId],
+    );
+
     // Adaptadores reales. SubscribersService y ExecutionOrdersService se instancian sin sus
     // dependencias ajenas a estas lecturas (mismo patrón que crm-subscriber-read.postgres).
     const crm = Object.create(SubscribersService.prototype) as SubscribersService;
     Object.defineProperty(crm, 'dataSource', { value: single });
-    Object.defineProperty(crm, 'privacyMarksReadPort', { value: new PrivacyMarksAdapter(single) });
+    realMarksPort = new PrivacyMarksAdapter(single);
+    marksPort = realMarksPort;
+    Object.defineProperty(crm, 'privacyMarksReadPort', { get: () => marksPort });
     const crmPort = {
       resolveTicketParties: (...args: Parameters<SubscribersService['resolveTicketParties']>) => {
         if (crmShouldFail) {
@@ -286,14 +397,17 @@ describeWithDb('Assurance detalle del ticket — PostgreSQL real, adaptadores re
       executionOrders,
       { getEffectivePermissionsForUser: async () => permissions } as never,
     );
-  }, 240_000);
+  }, 480_000);
 
   afterAll(async () => {
     if (single?.isInitialized) await single.destroy();
     if (admin?.isInitialized) {
       try {
+        await admin.query(`DROP SCHEMA IF EXISTS ${qOther} CASCADE`);
         await admin.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
-        await admin.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
+        await admin.query('DELETE FROM public.tenants WHERE id = ANY($1::uuid[])', [
+          [tenantId, otherTenantId],
+        ]);
       } finally {
         await admin.destroy();
       }
@@ -303,6 +417,7 @@ describeWithDb('Assurance detalle del ticket — PostgreSQL real, adaptadores re
   beforeEach(() => {
     permissions = ALL_READ;
     crmShouldFail = false;
+    marksPort = realMarksPort;
   });
 
   describe('R4 — nombres del solicitante y del relacionado', () => {
@@ -609,7 +724,7 @@ describeWithDb('Assurance detalle del ticket — PostgreSQL real, adaptadores re
       await insertOrder({ number: 'OTE-20261115-004', annulled: true });
 
       const lookup = (number: string) =>
-        inTenant(() => service.lookupExecutionOrder(number, ticketId));
+        inTenant(() => service.lookupExecutionOrder(number, ticketId, actor()));
       expect(await lookup('OTE-20261115-001')).toMatchObject({ linkedTicket: 'NONE' });
       expect(await lookup('OTE-20261115-002')).toMatchObject({ linkedTicket: 'THIS' });
       expect(await lookup('OTE-20261115-003')).toMatchObject({ linkedTicket: 'OTHER' });
@@ -699,6 +814,301 @@ describeWithDb('Assurance detalle del ticket — PostgreSQL real, adaptadores re
         orderId,
       ])) as Array<{ ticket_id: string | null }>;
       expect(row!.ticket_id).toBeNull();
+    });
+  });
+
+  describe('S-1 visita y orden solo con el permiso de su módulo (CA-12)', () => {
+    it('AUDITOR sin wfm.schedule.read ni operations.execution_orders.read: visita, orden y total nulos', async () => {
+      const ticketId = await insertTicket({ requesterRefId: ids.plainSubscriber });
+      await sql(
+        `INSERT INTO visit_requests (tenant_id, status, origin_context, work_type, priority, title,
+           ticket_id, requested_by_user_id)
+         VALUES ($1, 'PENDING', 'ASSURANCE', 'SUPPORT', 'NORMAL', 'Visita sin permiso', $2, $3)`,
+        [tenantId, ticketId, actorId],
+      );
+      await insertOrder({ number: 'OTE-20261117-801', ticketId });
+
+      permissions = [AccessPermissionKey.ASSURANCE_TICKETS_READ];
+      const hidden = await detail(ticketId, actor(UserRole.AUDITOR));
+      expect(hidden.activeVisit).toBeNull();
+      expect(hidden.executionOrder).toBeNull();
+      expect(hidden.executionOrderCount).toBeNull();
+      expect(JSON.stringify(hidden)).not.toContain('OTE-20261117-801');
+      expect(
+        TicketDetailExtensionSchema.safeParse({
+          requester: hidden.requester,
+          relatedTo: hidden.relatedTo,
+          activeVisit: hidden.activeVisit,
+          executionOrder: hidden.executionOrder,
+          executionOrderCount: hidden.executionOrderCount,
+          allowedTransitions: hidden.allowedTransitions,
+        }).success,
+      ).toBe(true);
+
+      permissions = [
+        AccessPermissionKey.ASSURANCE_TICKETS_READ,
+        AccessPermissionKey.WFM_SCHEDULE_READ,
+      ];
+      const visitOnly = await detail(ticketId, actor(UserRole.AUDITOR));
+      expect(visitOnly.activeVisit).toMatchObject({ status: 'PENDING' });
+      expect(visitOnly.executionOrder).toBeNull();
+      expect(visitOnly.executionOrderCount).toBeNull();
+
+      permissions = [
+        AccessPermissionKey.ASSURANCE_TICKETS_READ,
+        AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
+      ];
+      const orderOnly = await detail(ticketId, actor(UserRole.AUDITOR));
+      expect(orderOnly.activeVisit).toBeNull();
+      expect(orderOnly.executionOrder?.number).toBe('OTE-20261117-801');
+      expect(orderOnly.executionOrderCount).toBe(1);
+    });
+  });
+
+  describe('S-4 supresión, permisos y fallo de marcas', () => {
+    it('expediente suprimido: PROTECTED y sin nombre', async () => {
+      const ticketId = await insertTicket({
+        requesterType: TicketRequesterType.INTERNAL_USER,
+        requesterRefId: actorId,
+        subjectType: TicketSubjectType.EXPEDIENTE,
+        subjectRefId: ids.anonymizedExpediente,
+      });
+      const result = await detail(ticketId);
+      expect(result.relatedTo).toEqual({
+        type: 'EXPEDIENTE',
+        refId: ids.anonymizedExpediente,
+        displayName: null,
+        nameState: 'PROTECTED',
+        profile: { kind: 'EXPEDIENTE', id: ids.anonymizedExpediente },
+      });
+      expect(JSON.stringify(result)).not.toContain('Expediente Suprimido');
+    });
+
+    it('expediente enlazado a un suscriptor suprimido: PROTECTED', async () => {
+      const ticketId = await insertTicket({
+        requesterType: TicketRequesterType.INTERNAL_USER,
+        requesterRefId: actorId,
+        subjectType: TicketSubjectType.EXPEDIENTE,
+        subjectRefId: ids.expedienteOfAnonymized,
+      });
+      const result = await detail(ticketId);
+      expect(result.relatedTo).toMatchObject({ displayName: null, nameState: 'PROTECTED' });
+      expect(JSON.stringify(result)).not.toMatch(/Expediente De Suprimido|Dora/u);
+    });
+
+    it('S-8 expediente cuyo suscriptor está borrado y con DATOS_BLOQUEADOS: PROTECTED', async () => {
+      const ticketId = await insertTicket({
+        requesterType: TicketRequesterType.INTERNAL_USER,
+        requesterRefId: actorId,
+        subjectType: TicketSubjectType.EXPEDIENTE,
+        subjectRefId: ids.expedienteOfDeleted,
+      });
+      const result = await detail(ticketId);
+      expect(result.relatedTo).toMatchObject({ displayName: null, nameState: 'PROTECTED' });
+      expect(JSON.stringify(result)).not.toMatch(/Expediente De Borrado|Elena/u);
+    });
+
+    it('contrato de un suscriptor suprimido: PROTECTED, con la ficha del suscriptor', async () => {
+      const ticketId = await insertTicket({
+        requesterRefId: ids.plainSubscriber,
+        subjectType: TicketSubjectType.CONTRACT,
+        subjectRefId: ids.anonymizedContract,
+      });
+      const result = await detail(ticketId);
+      expect(result.requester).toMatchObject({ nameState: 'AVAILABLE' });
+      expect(result.relatedTo).toEqual({
+        type: 'CONTRACT',
+        refId: ids.anonymizedContract,
+        displayName: null,
+        nameState: 'PROTECTED',
+        profile: { kind: 'SUBSCRIBER', id: ids.anonymizedSubscriber },
+      });
+      expect(JSON.stringify(result)).not.toContain('Carla');
+    });
+
+    it('sin crm.expedientes.read: expediente NOT_PERMITTED; el suscriptor sigue con nombre', async () => {
+      permissions = ALL_READ.filter((key) => key !== AccessPermissionKey.CRM_EXPEDIENTES_READ);
+      const ticketId = await insertTicket({
+        requesterRefId: ids.plainSubscriber,
+        subjectType: TicketSubjectType.EXPEDIENTE,
+        subjectRefId: ids.plainExpediente,
+      });
+      const result = await detail(ticketId);
+      expect(result.requester).toMatchObject({
+        nameState: 'AVAILABLE',
+        displayName: 'Ana Comercial',
+      });
+      expect(result.relatedTo).toEqual({
+        type: 'EXPEDIENTE',
+        refId: ids.plainExpediente,
+        displayName: null,
+        nameState: 'NOT_PERMITTED',
+        profile: null,
+      });
+      expect(JSON.stringify(result)).not.toContain('Expediente Visible');
+    });
+
+    it('puerto de marcas ausente: UNAVAILABLE, nombre nulo, el resto del detalle se sirve', async () => {
+      marksPort = undefined;
+      const ticketId = await insertTicket({
+        requesterRefId: ids.plainSubscriber,
+        subjectType: TicketSubjectType.EXPEDIENTE,
+        subjectRefId: ids.expedienteOfDeleted,
+      });
+      await insertOrder({ number: 'OTE-20261117-802', ticketId });
+      const result = await detail(ticketId);
+      expect(result.requester).toMatchObject({ nameState: 'UNAVAILABLE', displayName: null });
+      expect(result.relatedTo).toMatchObject({ nameState: 'UNAVAILABLE', displayName: null });
+      expect(JSON.stringify(result)).not.toContain('Ana Comercial');
+      expect(result.executionOrder?.number).toBe('OTE-20261117-802');
+    });
+
+    it('puerto de marcas con error SQL: UNAVAILABLE y la transacción del detalle sigue viva', async () => {
+      marksPort = {
+        activeMarks: async (
+          _partyIds: string[],
+          options?: { manager?: { query: (text: string) => Promise<unknown> } },
+        ) => {
+          await options?.manager?.query('SELECT * FROM marcas_que_no_existen');
+          return {};
+        },
+      } as unknown as PrivacyMarksAdapter;
+      // El expediente aporta una parte con marcas por verificar: el puerto se consulta.
+      const ticketId = await insertTicket({
+        requesterRefId: ids.plainSubscriber,
+        subjectType: TicketSubjectType.EXPEDIENTE,
+        subjectRefId: ids.expedienteOfDeleted,
+      });
+      await insertOrder({ number: 'OTE-20261117-803', ticketId });
+      const result = await detail(ticketId);
+      expect(result.requester).toMatchObject({ nameState: 'UNAVAILABLE', displayName: null });
+      expect(result.relatedTo).toMatchObject({ nameState: 'UNAVAILABLE', displayName: null });
+      expect(JSON.stringify(result)).not.toMatch(/Ana Comercial|Expediente De Borrado/u);
+      expect(result.executionOrder?.number).toBe('OTE-20261117-803');
+      expect(result.allowedTransitions.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('S-4 aislamiento entre tenants', () => {
+    it('ticket de otro tenant (otro schema): 404, sin nombres, visita ni orden', async () => {
+      const foreignTicket = randomUUID();
+      await admin.query(
+        `INSERT INTO ${qOther}.support_tickets (
+           id, tenant_id, ticket_number, type, status, priority, source, subject,
+           requester_type, requester_ref_id, sla_breach_status, field_decision, created_by_user_id
+         ) VALUES ($1,$2,'IT-OTRO-001',$3,$4,$5,$6,'Ticket ajeno',$7,$8,$9,$10,$11)`,
+        [
+          foreignTicket,
+          otherTenantId,
+          TicketType.CUSTOMER_INCIDENT,
+          TicketStatus.IN_PROGRESS,
+          TicketPriority.NORMAL,
+          TicketSource.MANUAL,
+          TicketRequesterType.SUBSCRIBER,
+          ids.plainSubscriber,
+          SlaBreachStatus.OK,
+          TicketFieldDecision.NOT_REQUIRED,
+          actorId,
+        ],
+      );
+      await expect(detail(foreignTicket)).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('ticket propio con suscriptor, visita y orden de otro tenant: nada resuelve', async () => {
+      const ticketId = await insertTicket({
+        requesterRefId: ids.foreignSubscriber,
+        subjectType: TicketSubjectType.SUBSCRIBER,
+        subjectRefId: ids.foreignSubscriber,
+      });
+      // Otro schema: visita y orden con el mismo ticket_id.
+      await admin.query(
+        `INSERT INTO ${qOther}.visit_requests (tenant_id, status, origin_context, work_type,
+           priority, title, ticket_id, requested_by_user_id)
+         VALUES ($1, 'PENDING', 'ASSURANCE', 'SUPPORT', 'NORMAL', 'Visita ajena', $2, $3)`,
+        [otherTenantId, ticketId, actorId],
+      );
+      await admin.query(
+        `INSERT INTO ${qOther}.execution_orders
+           (id, tenant_id, execution_order_number, origin_context, customer_display_label,
+            work_type, work_summary, ticket_id, status, is_annulled)
+         VALUES ($1, $2, 'OTE-20261117-901', 'ASSURANCE', 'Cliente ajeno', 'SUPPORT', 'Ajena', $3,
+                 'ASSIGNED', false)`,
+        [randomUUID(), otherTenantId, ticketId],
+      );
+      // Mismo schema, otro tenant_id: visita y orden con el mismo ticket_id.
+      await sql(
+        `INSERT INTO visit_requests (tenant_id, status, origin_context, work_type, priority, title,
+           ticket_id, requested_by_user_id)
+         VALUES ($1, 'PENDING', 'ASSURANCE', 'SUPPORT', 'NORMAL', 'Visita ajena', $2, $3)`,
+        [otherTenantId, ticketId, actorId],
+      );
+      await sql(
+        `INSERT INTO execution_orders
+           (id, tenant_id, execution_order_number, origin_context, customer_display_label,
+            work_type, work_summary, ticket_id, status, is_annulled)
+         VALUES ($1, $2, 'OTE-20261117-902', 'ASSURANCE', 'Cliente ajeno', 'SUPPORT', 'Ajena', $3,
+                 'ASSIGNED', false)`,
+        [randomUUID(), otherTenantId, ticketId],
+      );
+
+      const result = await detail(ticketId);
+      expect(result.requester).toMatchObject({ nameState: 'NOT_FOUND', displayName: null });
+      expect(result.relatedTo).toMatchObject({ nameState: 'NOT_FOUND', displayName: null });
+      expect(result.activeVisit).toBeNull();
+      expect(result.executionOrder).toBeNull();
+      expect(result.executionOrderCount).toBe(0);
+      expect(JSON.stringify(result)).not.toMatch(/Fabio|OTE-20261117-90/u);
+
+      const lookup = (number: string) =>
+        inTenant(() => service.lookupExecutionOrder(number, ticketId, actor()));
+      await expect(lookup('OTE-20261117-901')).rejects.toMatchObject({ status: 404 });
+      await expect(lookup('OTE-20261117-902')).rejects.toMatchObject({ status: 404 });
+    });
+  });
+
+  describe('S-2 búsqueda por número exige operations.execution_orders.read', () => {
+    it('403 sin el permiso de órdenes aunque tenga assurance.tickets.manage', async () => {
+      await insertOrder({ number: 'OTE-20261117-701' });
+      permissions = ALL_READ.filter(
+        (key) => key !== AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
+      );
+      await expect(
+        inTenant(() => service.lookupExecutionOrder('OTE-20261117-701', undefined, actor())),
+      ).rejects.toMatchObject({ status: 403 });
+      permissions = ALL_READ;
+      await expect(
+        inTenant(() => service.lookupExecutionOrder('OTE-20261117-701', undefined, actor())),
+      ).resolves.toMatchObject({ number: 'OTE-20261117-701', linkedTicket: 'NONE' });
+    });
+  });
+
+  describe('D-BT-7 cambio de estado con titular suprimido', () => {
+    it('con nota pasa de IN_PROGRESS a RESOLVED y después a CLOSED', async () => {
+      const ticketId = await insertTicket({ requesterRefId: ids.anonymizedSubscriber });
+
+      const resolved = await inTenant(() =>
+        service.transitionStatus(
+          ticketId,
+          { status: TicketStatus.RESOLVED, notes: 'Servicio restablecido' },
+          actor(),
+        ),
+      );
+      expect(resolved.status).toBe(TicketStatus.RESOLVED);
+
+      const closed = await inTenant(() =>
+        service.transitionStatus(ticketId, { status: TicketStatus.CLOSED }, actor()),
+      );
+      expect(closed.status).toBe(TicketStatus.CLOSED);
+
+      const [row] = (await sql('SELECT status FROM support_tickets WHERE id = $1', [
+        ticketId,
+      ])) as Array<{ status: string }>;
+      expect(row!.status).toBe(TicketStatus.CLOSED);
+      const [events] = (await sql(
+        'SELECT count(*)::int AS n FROM ticket_timeline_events WHERE ticket_id = $1',
+        [ticketId],
+      )) as Array<{ n: number }>;
+      expect(events!.n).toBe(2);
     });
   });
 });

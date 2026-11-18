@@ -11,8 +11,8 @@ interface AssuranceTicketDrawerProps extends Omit<AssuranceTicketDetailProps, 'c
   showOpenInPage?: boolean | undefined;
 }
 
-/** Ancho del panel en el paso 1 (spec MOD05 §8.6, D5): el de hoy. */
-const TICKET_PANEL_WIDTH_CLASS_NAME = 'max-w-3xl';
+/** Ancho del panel con riel, paso 2 (spec MOD05 §8.6, D5): 768 px bajo `lg`, 896 px desde `lg`. */
+const TICKET_PANEL_WIDTH_CLASS_NAME = 'max-w-3xl lg:max-w-4xl';
 
 /**
  * Panel lateral del ticket: contenedor (`PortalSidePeek`: diálogo, foco, Escape, velo, bloqueo

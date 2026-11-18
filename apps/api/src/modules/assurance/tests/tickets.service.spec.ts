@@ -1334,6 +1334,56 @@ describe('TicketsService', () => {
       expect(saveMock).not.toHaveBeenCalled();
     });
 
+    it('D-BT-7 transitionStatus con nota pasa a RESOLVED y luego a CLOSED con titular suprimido', async () => {
+      crmSubscriberReadPort.assertWritableReferences.mockRejectedValue(
+        new Error('no debe llamarse'),
+      );
+      const updateMock = jest.fn().mockResolvedValue(undefined);
+      const resolvedTicket = { ...storedTicket, status: TicketStatus.RESOLVED };
+      const closedTicket = { ...storedTicket, status: TicketStatus.CLOSED };
+      mockRunInTenantSchema
+        .mockImplementationOnce(async (_ds, _schema, fn) =>
+          fn({
+            manager: {
+              findOne: jest.fn().mockResolvedValue(storedTicket),
+              update: updateMock,
+              findOneByOrFail: jest.fn().mockResolvedValue(resolvedTicket),
+            },
+          } as never),
+        )
+        .mockImplementationOnce(async (_ds, _schema, fn) =>
+          fn({
+            manager: {
+              findOne: jest.fn().mockResolvedValue(resolvedTicket),
+              update: updateMock,
+              findOneByOrFail: jest.fn().mockResolvedValue(closedTicket),
+            },
+          } as never),
+        );
+
+      const resolved = await service.transitionStatus(
+        'ticket-b5r-001',
+        { status: TicketStatus.RESOLVED, notes: 'Servicio restablecido' } as never,
+        actor,
+      );
+      expect(resolved).toEqual(resolvedTicket);
+      expect(updateMock).toHaveBeenNthCalledWith(
+        1,
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ status: TicketStatus.RESOLVED }),
+      );
+
+      const closed = await service.transitionStatus(
+        'ticket-b5r-001',
+        { status: TicketStatus.CLOSED } as never,
+        actor,
+      );
+      expect(closed).toEqual(closedTicket);
+      expect(updateMock).toHaveBeenCalledTimes(2);
+      expect(crmSubscriberReadPort.assertWritableReferences).not.toHaveBeenCalled();
+    });
+
     it('transitionStatus sigue pudiendo cerrar el ticket de un titular suprimido', async () => {
       crmSubscriberReadPort.assertWritableReferences.mockRejectedValue(
         new Error('no debe llamarse'),

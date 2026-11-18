@@ -17,6 +17,10 @@ import type {
   TicketListAttachmentCountField,
   TicketListItemExtension,
   ListTicketsOrder,
+  TicketDetailExtension,
+  ExecutionOrderLookupResponse,
+  LinkExecutionOrderBody,
+  LinkExecutionOrderResponse,
 } from '@iwana/shared';
 
 import {
@@ -3462,6 +3466,11 @@ export interface AssuranceTicket {
   assignedUserDisplayName?: TicketListItemExtension['assignedUserDisplayName'];
   activeVisit?: TicketListItemExtension['activeVisit'];
   executionOrder?: TicketListItemExtension['executionOrder'];
+  /** Solo en el detalle (`GET /tickets/:id`), paso 2 (spec MOD10 §5, D4 = orden de ejecución). */
+  requester?: TicketDetailExtension['requester'];
+  relatedTo?: TicketDetailExtension['relatedTo'];
+  executionOrderCount?: TicketDetailExtension['executionOrderCount'];
+  allowedTransitions?: TicketDetailExtension['allowedTransitions'];
 }
 
 export interface AssuranceTicketComment extends TicketCommentAttachmentsField {
@@ -3811,6 +3820,25 @@ export const assuranceApi = {
     linkWorkOrder: (id: string, dto: LinkAssuranceWorkOrderDto, tenantSlug?: string) =>
       request<AssuranceTicket>(
         `/assurance/tickets/${id}/link-work-order`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    /** Busca la orden de ejecución por número exacto (spec MOD10 §3 L); 404 si no existe. */
+    lookupExecutionOrder: (number: string, ticketId?: string, tenantSlug?: string) => {
+      const params = new URLSearchParams({ number });
+      if (ticketId) params.set('ticketId', ticketId);
+      return request<ExecutionOrderLookupResponse>(
+        `/assurance/execution-orders/lookup?${params.toString()}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      );
+    },
+
+    /** Vincula una orden de ejecución al ticket (D4); idempotente si ya es de este ticket. */
+    linkExecutionOrder: (id: string, dto: LinkExecutionOrderBody, tenantSlug?: string) =>
+      request<LinkExecutionOrderResponse>(
+        `/assurance/tickets/${encodeURIComponent(id)}/link-execution-order`,
         { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
         tenantSlug,
       ),

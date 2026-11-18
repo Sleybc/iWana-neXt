@@ -1,5 +1,7 @@
 # PROMPT — MOD10 Mesa de ayuda · Detalle del ticket compacto · Lanzamiento v1.0
 
+**Plantilla:** [TEMPLATE-PROMPT-LANZAMIENTO.md](TEMPLATE-PROMPT-LANZAMIENTO.md)
+
 Rige `AGENTS.md`. Fuente: [plan](../plans/2026-11-16-mod10-detalle-ticket.md) y [spec](../specs/2026-11-16-mod10-detalle-ticket-ux.md) v1.0 (G0 2026-11-16). No repetir aquí lo que dicen.
 
 **Principio:** complementar sin retroceso. Ninguna propiedad, acción, guarda ni mensaje del panel desaparece ni queda más lejos.

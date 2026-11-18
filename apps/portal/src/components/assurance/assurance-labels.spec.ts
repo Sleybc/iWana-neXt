@@ -188,6 +188,26 @@ describe('assurance-labels — tabla §4 v1.1 completa', () => {
     expect(describeEvent(TicketTimelineEventType.WORK_ORDER_LINKED, {})).toBe(
       'Orden de trabajo No disponible vinculada al caso.',
     );
+    // MOD10 D4: el vínculo de la orden de ejecución escribe su número; el heredado sigue igual.
+    expect(
+      describeEvent(TicketTimelineEventType.WORK_ORDER_LINKED, {
+        executionOrderId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
+        executionOrderNumber: 'OTE-20261116-001',
+        notes: null,
+      }),
+    ).toBe('Orden de trabajo OTE-20261116-001 vinculada al caso.');
+    expect(
+      describeEvent(TicketTimelineEventType.WORK_ORDER_LINKED, {
+        workOrderId: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
+        notes: 'Vínculo heredado',
+      }),
+    ).toBe('Orden de trabajo A1B2C3D4 vinculada al caso.');
+    // Un número con otro formato no se pinta tal cual: cae a la forma heredada.
+    expect(
+      describeEvent(TicketTimelineEventType.WORK_ORDER_LINKED, {
+        executionOrderNumber: '<b>OTE</b>',
+      }),
+    ).toBe('Orden de trabajo No disponible vinculada al caso.');
     expect(describeEvent(TicketTimelineEventType.EXECUTION_ORDER_CLOSED, {})).toBe(
       'Orden de trabajo No disponible cerrada con resultado «Sin resultado».',
     );

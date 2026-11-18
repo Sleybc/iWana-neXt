@@ -53,11 +53,25 @@ export type TicketPartyRef = z.infer<typeof TicketPartyRefSchema>;
 export const TICKET_VISIT_WINDOW_KINDS = ['SCHEDULED', 'REQUESTED'] as const;
 export type TicketVisitWindowKind = (typeof TICKET_VISIT_WINDOW_KINDS)[number];
 
-/** Visita activa: estado fuera de CLOSED, CANCELLED, REJECTED y EXPIRED. Sin datos personales. */
+/**
+ * Estados de una visita activa: todos salvo los terminales (CLOSED, CANCELLED, REJECTED y
+ * EXPIRED). El adaptador de programación filtra con esta misma lista.
+ */
+export const TICKET_ACTIVE_VISIT_STATUSES = [
+  VisitRequestStatus.PENDING,
+  VisitRequestStatus.NEEDS_CONTEXT,
+  VisitRequestStatus.READY_TO_SCHEDULE,
+  VisitRequestStatus.SCHEDULED,
+  VisitRequestStatus.IN_EXECUTION,
+  VisitRequestStatus.REQUIRES_RESCHEDULE,
+] as const;
+export type TicketActiveVisitStatus = (typeof TICKET_ACTIVE_VISIT_STATUSES)[number];
+
+/** Visita activa: estado en `TICKET_ACTIVE_VISIT_STATUSES`, la más reciente. Sin datos personales. */
 export const TicketActiveVisitSchema = z
   .object({
     id: z.string().uuid(),
-    status: z.nativeEnum(VisitRequestStatus),
+    status: z.enum(TICKET_ACTIVE_VISIT_STATUSES),
     windowKind: z.enum(TICKET_VISIT_WINDOW_KINDS).nullable(),
     windowStartAt: z.string().datetime().nullable(),
     windowEndAt: z.string().datetime().nullable(),
@@ -99,10 +113,18 @@ export const TicketDetailExtensionSchema = z
     requester: TicketPartyRefSchema,
     /** Nulo si el ticket no tiene `subjectType`. */
     relatedTo: TicketPartyRefSchema.nullable(),
+    /** Visita activa del ticket; nula sin visita o sin `wfm.schedule.read` (CA-12). */
     activeVisit: TicketActiveVisitSchema.nullable(),
+    /**
+     * Orden de ejecución más reciente no anulada; nula sin orden o sin
+     * `operations.execution_orders.read` (CA-12).
+     */
     executionOrder: TicketExecutionOrderSchema.nullable(),
-    /** Órdenes de ejecución no anuladas del ticket. */
-    executionOrderCount: z.number().int().min(0),
+    /**
+     * Órdenes de ejecución no anuladas del ticket. Nulo sin `operations.execution_orders.read`
+     * (CA-12): cero solo significa «sin órdenes» para quien puede verlas.
+     */
+    executionOrderCount: z.number().int().min(0).nullable(),
     /** Nunca nulo; vacío en estado terminal o sin permiso de cambiar estado. */
     allowedTransitions: z.array(TicketAllowedTransitionSchema),
   })
@@ -131,6 +153,19 @@ export const ExecutionOrderLookupResponseSchema = TicketExecutionOrderSchema.ext
 export type ExecutionOrderLookupResponse = z.infer<typeof ExecutionOrderLookupResponseSchema>;
 
 export const TICKET_LINK_NOTES_MAX_LENGTH = 2000;
+
+/**
+ * Resultado del vínculo manual. LINKED: el módulo de órdenes escribió `ticket_id`.
+ * ALREADY_LINKED: la orden ya era de este ticket (idempotente, sin evento en el historial).
+ */
+export const LINK_EXECUTION_ORDER_OUTCOMES = ['LINKED', 'ALREADY_LINKED'] as const;
+export type LinkExecutionOrderOutcome = (typeof LINK_EXECUTION_ORDER_OUTCOMES)[number];
+
+/** `POST /assurance/tickets/:id/link-execution-order`: la orden vinculada y el resultado. */
+export const LinkExecutionOrderResponseSchema = TicketExecutionOrderSchema.extend({
+  outcome: z.enum(LINK_EXECUTION_ORDER_OUTCOMES),
+}).strict();
+export type LinkExecutionOrderResponse = z.infer<typeof LinkExecutionOrderResponseSchema>;
 
 export const LinkExecutionOrderBodySchema = z
   .object({

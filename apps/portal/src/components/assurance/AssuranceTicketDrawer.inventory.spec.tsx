@@ -385,6 +385,11 @@ interface GuardContext {
   canManage: boolean;
   /** El consumidor pasa `onCreateLinkedTask` (solo la bandeja, H6). */
   hasLinkedTask: boolean;
+  /**
+   * P2b §3 L: buscar la orden por número exige además `operations.execution_orders.read`
+   * (guarda nueva, más estricta; ayuda visible probada en `AssuranceTicketDetail.p2b.spec.tsx`).
+   */
+  canReadExecutionOrders: boolean;
   status: TicketStatus;
   slaBreachStatus: SlaBreachStatus;
 }
@@ -481,23 +486,25 @@ const ACTION_INVENTORY: Record<string, ActionSpec> = {
       ),
     expected: (c) => (c.canOperate && !allowsFieldService(c.status) ? 'present' : 'absent'),
   },
+  // P2b §3 L: el campo es el número de la orden (buscador) y exige también ver órdenes de trabajo.
   linkWorkOrderInput: {
     surface: 'actions',
     locate: (p) => within(p).queryByRole('textbox', { name: 'Orden de trabajo' }),
-    expected: (c) => (c.canManage ? 'present' : 'absent'),
+    expected: (c) => (c.canManage && c.canReadExecutionOrders ? 'present' : 'absent'),
   },
   linkWorkOrderNote: {
     surface: 'actions',
     locate: (p) => within(p).queryByRole('textbox', { name: 'Nota de vínculo' }),
-    expected: (c) => (c.canManage ? 'present' : 'absent'),
+    expected: (c) => (c.canManage && c.canReadExecutionOrders ? 'present' : 'absent'),
   },
   linkWorkOrder: {
     surface: 'actions',
     locate: (p) =>
       within(p).queryByRole('button', { name: 'Confirmar vínculo' }) ??
       within(p).queryByRole('button', { name: 'Vincular orden de trabajo' }),
-    // El fixture trae orden vinculada: el identificador llega precargado y solo decide el permiso.
-    expected: (c) => (c.canManage ? 'enabled' : 'disabled'),
+    // P2b §3 L: «Confirmar vínculo» aparece con una orden encontrada; antes de buscar se localiza
+    // el botón de la fila, que exige gestión y ver órdenes de trabajo.
+    expected: (c) => (c.canManage && c.canReadExecutionOrders ? 'enabled' : 'disabled'),
   },
   readOnlyNotice: {
     surface: 'actions',
@@ -690,6 +697,9 @@ function ctxFor(profile: ConsumerProfile, ticket: AssuranceTicket): GuardContext
     canOperate: profile.canOperate,
     canManage: profile.canManage,
     hasLinkedTask: profile.hasLinkedTask,
+    canReadExecutionOrders:
+      mockGrantedPermissions.current === null ||
+      mockGrantedPermissions.current.has(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ),
     status: ticket.status as TicketStatus,
     slaBreachStatus: ticket.slaBreachStatus as SlaBreachStatus,
   };

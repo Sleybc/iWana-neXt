@@ -31,7 +31,8 @@ interface ExpedienteNameRow {
   first_name: string | null;
   last_name: string | null;
   company_name: string | null;
-  party_id: string | null;
+  /** Partes de todos los suscriptores enlazados, borrados incluidos (S-8). */
+  party_ids: string[] | null;
   subscriber_anonymized: boolean;
 }
 
@@ -117,18 +118,19 @@ export async function resolveTicketParties(
   const subscriberById = new Map(subscribers.map((row) => [row.id, row]));
 
   // Un expediente convertido toma las marcas del suscriptor enlazado (regla de
-  // `ExpedienteService.getPrivacyMarksForExpediente`); si ese suscriptor está suprimido,
-  // el expediente también se protege.
+  // `ExpedienteService.getPrivacyMarksForExpediente`, que no descarta suscriptores borrados);
+  // si ese suscriptor está suprimido, el expediente también se protege. Se miran TODOS los
+  // enlazados, borrados incluidos (S-8): basta uno bloqueado o suprimido para ocultar el nombre.
   const expedientes = expedienteIds.length
     ? ((await qr.query(
         `SELECT e.id::text AS id, e.anonymized_at, e.full_name, e.first_name, e.last_name,
-                e.company_name, linked.party_id, COALESCE(linked.anonymized, false) AS subscriber_anonymized
+                e.company_name, linked.party_ids, COALESCE(linked.anonymized, false) AS subscriber_anonymized
            FROM expediente_records e
            LEFT JOIN LATERAL (
-             SELECT (array_agg(s.party_id::text) FILTER (WHERE s.party_id IS NOT NULL))[1] AS party_id,
+             SELECT array_agg(DISTINCT s.party_id::text) FILTER (WHERE s.party_id IS NOT NULL) AS party_ids,
                     bool_or(s.anonymized_at IS NOT NULL) AS anonymized
                FROM subscribers s
-              WHERE s.expediente_id = e.id AND s.tenant_id = e.tenant_id AND s.deleted_at IS NULL
+              WHERE s.expediente_id = e.id AND s.tenant_id = e.tenant_id
            ) linked ON true
           WHERE e.tenant_id = $1::uuid AND e.id = ANY($2::uuid[]) AND e.deleted_at IS NULL`,
         [tenantId, expedienteIds],
@@ -138,9 +140,10 @@ export async function resolveTicketParties(
 
   const partyIds = [
     ...new Set(
-      [...subscribers.map((row) => row.party_id), ...expedientes.map((row) => row.party_id)].filter(
-        (id): id is string => Boolean(id),
-      ),
+      [
+        ...subscribers.map((row) => row.party_id),
+        ...expedientes.flatMap((row) => row.party_ids ?? []),
+      ].filter((id): id is string => Boolean(id)),
     ),
   ];
   let blockedParties = new Set<string>();
@@ -198,7 +201,7 @@ export async function resolveTicketParties(
     const isProtected =
       expediente.anonymized_at != null ||
       expediente.subscriber_anonymized ||
-      (expediente.party_id != null && blockedParties.has(expediente.party_id));
+      (expediente.party_ids ?? []).some((partyId) => blockedParties.has(partyId));
     return isProtected
       ? { ...reference, state: 'PROTECTED', displayName: null, profile }
       : {

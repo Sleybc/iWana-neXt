@@ -139,6 +139,25 @@ function formatVisitLabel(visit: NonNullable<AssuranceTicket['activeVisit']>): s
   return `Visita ${formatShortDay(start)}, ${range}`;
 }
 
+/**
+ * Ventana de la visita del detalle (spec MOD10 §3 L): «18 nov, 8:00–12:00»; si es la ventana
+ * pedida y no la agendada, «(solicitada)». Sin fecha, `null`.
+ */
+export function formatTicketVisitWindow(
+  visit: NonNullable<AssuranceTicket['activeVisit']>,
+): string | null {
+  if (!visit.windowStartAt) return null;
+  const start = new Date(visit.windowStartAt);
+  if (Number.isNaN(start.getTime())) return null;
+  const end = visit.windowEndAt ? new Date(visit.windowEndAt) : null;
+  const range =
+    end && !Number.isNaN(end.getTime())
+      ? `${timeFormatter.format(start)}–${timeFormatter.format(end)}`
+      : timeFormatter.format(start);
+  const label = `${formatShortDay(start)}, ${range}`;
+  return visit.windowKind === 'REQUESTED' ? `${label} (solicitada)` : label;
+}
+
 export function getTicketFieldWork(
   ticket: Pick<AssuranceTicket, 'status' | 'fieldDecision' | 'workOrderId'> &
     Partial<Pick<AssuranceTicket, 'activeVisit' | 'executionOrder'>>,

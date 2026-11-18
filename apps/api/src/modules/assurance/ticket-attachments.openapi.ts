@@ -52,35 +52,6 @@ export const TICKET_COMMENT_LIST_WITH_ATTACHMENTS_OPENAPI: SchemaObject = {
   items: TICKET_COMMENT_WITH_ATTACHMENTS_OPENAPI,
 };
 
-/**
- * `GET /assurance/tickets`: solo se declara lo que añade la spec MOD09 adjuntos
- * (`attachmentCount`, adjuntos que el usuario puede ver); el resto del ticket y la
- * paginación siguen sin esquema declarado, como antes.
- */
-export const TICKET_LIST_WITH_ATTACHMENT_COUNT_OPENAPI: SchemaObject = {
-  type: 'object',
-  required: ['data', 'meta'],
-  properties: {
-    data: {
-      type: 'array',
-      items: {
-        type: 'object',
-        required: ['id', 'attachmentCount'],
-        properties: {
-          id: { type: 'string', format: 'uuid' },
-          attachmentCount: {
-            type: 'integer',
-            minimum: 0,
-            description:
-              'Adjuntos que el usuario puede ver (sin los de comentarios internos si no los ve).',
-          },
-        },
-      },
-    },
-    meta: { type: 'object' },
-  },
-};
-
 export const TICKET_ATTACHMENT_REJECTED_OPENAPI: SchemaObject = {
   type: 'object',
   required: ['code', 'message'],

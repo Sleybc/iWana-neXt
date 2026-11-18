@@ -1111,3 +1111,136 @@ describe('crmApi expediente conversion retry', () => {
     expect(new Headers(requestInit.headers).get('X-Requested-With')).toBe('XMLHttpRequest');
   });
 });
+
+describe('assuranceApi orden de ejecución del ticket (spec MOD10 §3 L, D4)', () => {
+  const TICKET_ID = '3d1f6c2a-0b7e-4c55-9a1d-2f0e8b6a7c11';
+  const ORDER_ID = '8e5d0f6b-4a7c-4b9d-9e2f-3d4e5f607182';
+  const ORDER = {
+    id: ORDER_ID,
+    number: 'OTE-20261116-001',
+    status: 'ASSIGNED',
+    result: null,
+    closedAt: null,
+  };
+
+  beforeEach(() => {
+    jest.resetModules();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  it('lookupExecutionOrder busca por número y ticket con GET y devuelve la respuesta tal cual', async () => {
+    const lookup = { ...ORDER, linkedTicket: 'THIS' };
+    const fetchMock = jest.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      createJsonResponse(200, lookup),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { assuranceApi } = await import('./api-client');
+    const response = await assuranceApi.tickets.lookupExecutionOrder(
+      'OTE-20261116-001',
+      TICKET_ID,
+      'isp-demo',
+    );
+
+    expect(response).toEqual(lookup);
+    expect(response.linkedTicket).toBe('THIS');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [input, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
+    const url = new URL(String(input), 'http://portal.local');
+    expect(url.pathname).toBe('/api/v1/assurance/execution-orders/lookup');
+    expect(url.searchParams.get('number')).toBe('OTE-20261116-001');
+    expect(url.searchParams.get('ticketId')).toBe(TICKET_ID);
+    expect(init?.method ?? 'GET').toBe('GET');
+    expect(init?.body).toBeUndefined();
+    expect(new Headers(init?.headers).get('X-Tenant-Slug')).toBe('isp-demo');
+  });
+
+  it('lookupExecutionOrder sin ticket omite ticketId de la consulta', async () => {
+    const fetchMock = jest.fn(async (_input: RequestInfo | URL) =>
+      createJsonResponse(200, { ...ORDER, linkedTicket: 'NONE' }),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { assuranceApi } = await import('./api-client');
+    const response = await assuranceApi.tickets.lookupExecutionOrder(
+      'OTE-20261116-001',
+      undefined,
+      'isp-demo',
+    );
+
+    expect(response.linkedTicket).toBe('NONE');
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]), 'http://portal.local');
+    expect(url.search).toBe('?number=OTE-20261116-001');
+    expect(url.searchParams.has('ticketId')).toBe(false);
+  });
+
+  it('lookupExecutionOrder propaga el 404 como ApiError', async () => {
+    const fetchMock = jest.fn(async () =>
+      createJsonResponse(404, { statusCode: 404, code: 'NOT_FOUND', message: 'No existe' }),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { ApiError, assuranceApi } = await import('./api-client');
+    const failure = await assuranceApi.tickets
+      .lookupExecutionOrder('OTE-20261116-999', TICKET_ID, 'isp-demo')
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as InstanceType<typeof ApiError>).status).toBe(404);
+  });
+
+  it.each(['LINKED', 'ALREADY_LINKED'] as const)(
+    'linkExecutionOrder envía POST con executionOrderId y notes y devuelve el resultado %s',
+    async (outcome) => {
+      const linked = { ...ORDER, outcome };
+      const fetchMock = jest.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        createJsonResponse(200, linked),
+      );
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      const { assuranceApi } = await import('./api-client');
+      const response = await assuranceApi.tickets.linkExecutionOrder(
+        TICKET_ID,
+        { executionOrderId: ORDER_ID, notes: 'Vínculo manual' },
+        'isp-demo',
+      );
+
+      expect(response).toEqual(linked);
+      expect(response.outcome).toBe(outcome);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [input, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
+      const url = new URL(String(input), 'http://portal.local');
+      expect(url.pathname).toBe(`/api/v1/assurance/tickets/${TICKET_ID}/link-execution-order`);
+      expect(url.search).toBe('');
+      expect(init?.method).toBe('POST');
+      expect(JSON.parse(String(init?.body))).toEqual({
+        executionOrderId: ORDER_ID,
+        notes: 'Vínculo manual',
+      });
+      expect(new Headers(init?.headers).get('X-Tenant-Slug')).toBe('isp-demo');
+    },
+  );
+
+  it('linkExecutionOrder codifica el id del ticket en la ruta', async () => {
+    const fetchMock = jest.fn(async (_input: RequestInfo | URL) =>
+      createJsonResponse(200, { ...ORDER, outcome: 'LINKED' }),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { assuranceApi } = await import('./api-client');
+    await assuranceApi.tickets.linkExecutionOrder(
+      'id/raro',
+      { executionOrderId: ORDER_ID },
+      'isp-demo',
+    );
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(
+      /\/assurance\/tickets\/id%2Fraro\/link-execution-order$/,
+    );
+  });
+});

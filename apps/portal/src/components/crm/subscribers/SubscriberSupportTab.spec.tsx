@@ -268,6 +268,56 @@ describe('SubscriberSupportTab', () => {
       expect(screen.queryByRole('link', { name: /Abrir en página/u })).not.toBeInTheDocument();
     });
 
+    it('tras otra acción relee el detalle: destinos de estado del servidor (MOD10 P2b §3 L)', async () => {
+      mockPermissions.current = new Set([
+        AccessPermissionKey.ASSURANCE_TICKETS_READ,
+        AccessPermissionKey.ASSURANCE_TICKETS_MANAGE,
+      ]);
+      const detail = {
+        ...ticket,
+        allowedTransitions: [
+          { status: 'PENDING_INTERNAL', requiresNote: false, blockedReason: null },
+        ],
+      };
+      const reloaded = {
+        ...ticket,
+        queueName: 'SUPPORT',
+        allowedTransitions: [{ status: 'RESOLVED', requiresNote: true, blockedReason: null }],
+      };
+      (assuranceApi.tickets.list as jest.Mock).mockResolvedValue({ data: [ticket] });
+      (assuranceApi.tickets.get as jest.Mock)
+        .mockResolvedValueOnce(detail)
+        .mockResolvedValueOnce(reloaded);
+      (assuranceApi.tickets.listComments as jest.Mock).mockResolvedValue([]);
+      (assuranceApi.tickets.listTimeline as jest.Mock).mockResolvedValue([]);
+      // La respuesta de la acción es la entidad, sin los datos del detalle.
+      (assuranceApi.tickets.assign as jest.Mock).mockResolvedValue({
+        ...ticket,
+        queueName: 'SUPPORT',
+      });
+      const user = userEvent.setup();
+      render(<SubscriberSupportTab subscriber={subscriber} />);
+      await user.click(await screen.findByRole('button', { name: /^Abrir ticket TK-1/u }));
+      const dialog = await screen.findByRole('dialog', { name: 'TK-1' });
+      await waitFor(() => expect(assuranceApi.tickets.get).toHaveBeenCalledTimes(1));
+
+      await user.click(await within(dialog).findByRole('combobox', { name: 'Área' }));
+      await user.click(
+        within(await screen.findByRole('listbox', { name: 'Área' })).getByRole('option', {
+          name: 'Soporte',
+        }),
+      );
+      await user.click(within(dialog).getByRole('button', { name: 'Guardar asignación' }));
+
+      expect(await screen.findByText('Cambios guardados.')).toBeInTheDocument();
+      expect(assuranceApi.tickets.get).toHaveBeenCalledTimes(2);
+      await user.click(within(dialog).getByRole('combobox', { name: 'Nuevo estado' }));
+      const options = within(await screen.findByRole('listbox', { name: 'Nuevo estado' }))
+        .getAllByRole('option')
+        .map((option) => option.textContent?.trim());
+      expect(options).toEqual(['Resuelto']);
+    });
+
     it('guarda el comentario y recarga el listado y el ticket abierto', async () => {
       (assuranceApi.tickets.submitComment as jest.Mock).mockResolvedValue(
         comment('c1', 'Se cambió la ONU'),

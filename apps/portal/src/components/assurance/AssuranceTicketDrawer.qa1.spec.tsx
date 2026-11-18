@@ -18,6 +18,7 @@ import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import {
   AccessPermissionKey,
+  ExecutionOrderStatus,
   SlaBreachStatus,
   TicketFieldDecision,
   TicketPriority,
@@ -99,6 +100,8 @@ jest.mock('@/lib/api-client', () => {
         assign: jest.fn(),
         requestFieldService: jest.fn(),
         linkWorkOrder: jest.fn(),
+        // P2b §3 L: búsqueda de la orden por número.
+        lookupExecutionOrder: jest.fn(),
         getAttachmentLink: jest.fn(),
       },
       dashboard: { getSummary: jest.fn() },
@@ -423,21 +426,33 @@ describe('QA1 CA-4 · guarda «Vincular orden de trabajo» (canManage e identifi
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
   }
 
-  it('con permiso: sin identificador no envía; con identificador envía orden y nota', async () => {
+  // P2b §3 L (D4): el identificador se sustituye por el número de la orden de ejecución. Sin una
+  // orden encontrada no hay «Confirmar vínculo» (antes: deshabilitado); con ella se envía su id.
+  it('con permiso: sin orden encontrada no envía; con la orden encontrada envía su id y la nota', async () => {
     const user = userEvent.setup();
+    jest.mocked(assuranceApi.tickets.lookupExecutionOrder).mockResolvedValue({
+      id: WORK_ORDER_ID,
+      number: 'OTE-20261101-001',
+      status: ExecutionOrderStatus.ASSIGNED,
+      result: null,
+      closedAt: null,
+      linkedTicket: 'NONE',
+    });
     const { dialog, props } = renderDrawer();
     await openWorkOrderForm(user, dialog);
-    const submit = within(dialog).getByRole('button', { name: 'Confirmar vínculo' });
-    expect(submit).toBeDisabled();
+    expect(within(dialog).queryByRole('button', { name: 'Confirmar vínculo' })).toBeNull();
     await user.type(
       within(dialog).getByRole('textbox', { name: 'Orden de trabajo' }),
-      WORK_ORDER_ID,
+      'OTE-20261101-001',
     );
+    expect(within(dialog).queryByRole('button', { name: 'Confirmar vínculo' })).toBeNull();
+    await user.click(within(dialog).getByRole('button', { name: 'Buscar orden' }));
+    const submit = await within(dialog).findByRole('button', { name: 'Confirmar vínculo' });
     await user.type(within(dialog).getByRole('textbox', { name: 'Nota de vínculo' }), 'Vínculo QA');
     expect(submit).toBeEnabled();
     await user.click(submit);
     expect(props.onLinkWorkOrder).toHaveBeenCalledWith({
-      workOrderId: WORK_ORDER_ID,
+      executionOrderId: WORK_ORDER_ID,
       notes: 'Vínculo QA',
     });
   });

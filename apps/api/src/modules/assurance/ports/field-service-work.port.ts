@@ -1,5 +1,5 @@
 import type { EntityManager } from 'typeorm';
-import type { VisitRequestStatus } from '@iwana/shared';
+import type { TicketActiveVisitStatus } from '@iwana/shared';
 
 /**
  * Puerto de cancelación de trabajo de campo hacia WFM (MOD09).
@@ -25,7 +25,8 @@ export interface CancelActiveForTicketResult {
  */
 export interface TicketActiveVisitSnapshot {
   id: string;
-  status: VisitRequestStatus;
+  /** Nunca terminal: el adaptador filtra con `TICKET_ACTIVE_VISIT_STATUSES`. */
+  status: TicketActiveVisitStatus;
   /** SCHEDULED: ventana del evento de agenda; REQUESTED: ventana pedida; null: sin ventana. */
   windowKind: 'SCHEDULED' | 'REQUESTED' | null;
   windowStartAt: string | null;
@@ -35,8 +36,8 @@ export interface TicketActiveVisitSnapshot {
 
 export abstract class FieldServiceWorkPort {
   /**
-   * Visita activa (estado fuera de CLOSED, CANCELLED, REJECTED, EXPIRED) del ticket, la
-   * más reciente. Corre con el manager de la transacción del llamante.
+   * Visita activa (estado en `TICKET_ACTIVE_VISIT_STATUSES`: fuera de CLOSED, CANCELLED,
+   * REJECTED y EXPIRED) del ticket, la más reciente. Corre con el manager de la transacción del llamante.
    */
   abstract findActiveForTicket(
     manager: EntityManager,

@@ -3,12 +3,16 @@ import {
   EXECUTION_ORDER_NUMBER_PATTERN,
   ExecutionOrderLookupQuerySchema,
   ExecutionOrderLookupResponseSchema,
+  LINK_EXECUTION_ORDER_OUTCOMES,
   LinkExecutionOrderBodySchema,
+  LinkExecutionOrderResponseSchema,
+  TICKET_ACTIVE_VISIT_STATUSES,
   TICKET_PARTY_NAME_STATES,
   TicketDetailExtensionSchema,
   TicketPartyRefSchema,
 } from './ticket-detail.contract';
 import * as shared from '../../index';
+import { VisitRequestStatus } from '../../enums/wfm';
 
 const party = (overrides: Record<string, unknown> = {}) => ({
   type: 'SUBSCRIBER',
@@ -127,5 +131,42 @@ describe('ticket-detail.contract — MOD10 detalle del ticket, paso 2', () => {
       LinkExecutionOrderBodySchema.safeParse({ executionOrderId, workOrderId: randomUUID() })
         .success,
     ).toBe(false);
+  });
+  it('visita activa: solo estados no terminales; la lista y los terminales cubren el enum', () => {
+    const terminal = [
+      VisitRequestStatus.CLOSED,
+      VisitRequestStatus.CANCELLED,
+      VisitRequestStatus.REJECTED,
+      VisitRequestStatus.EXPIRED,
+    ];
+    expect([...TICKET_ACTIVE_VISIT_STATUSES, ...terminal].sort()).toEqual(
+      Object.values(VisitRequestStatus).sort(),
+    );
+    for (const status of terminal) {
+      const visit = { ...(detail().activeVisit as Record<string, unknown>), status };
+      expect(TicketDetailExtensionSchema.safeParse(detail({ activeVisit: visit })).success).toBe(
+        false,
+      );
+    }
+  });
+
+  it('sin permiso de órdenes, orden y total llegan nulos (CA-12)', () => {
+    expect(
+      TicketDetailExtensionSchema.safeParse(
+        detail({ activeVisit: null, executionOrder: null, executionOrderCount: null }),
+      ).success,
+    ).toBe(true);
+  });
+
+  it('la respuesta del vínculo trae la orden y LINKED o ALREADY_LINKED', () => {
+    const base = detail().executionOrder as Record<string, unknown>;
+    expect([...LINK_EXECUTION_ORDER_OUTCOMES]).toEqual(['LINKED', 'ALREADY_LINKED']);
+    for (const outcome of LINK_EXECUTION_ORDER_OUTCOMES) {
+      expect(LinkExecutionOrderResponseSchema.safeParse({ ...base, outcome }).success).toBe(true);
+    }
+    expect(LinkExecutionOrderResponseSchema.safeParse({ ...base, outcome: 'X' }).success).toBe(
+      false,
+    );
+    expect(shared.LinkExecutionOrderResponseSchema).toBe(LinkExecutionOrderResponseSchema);
   });
 });

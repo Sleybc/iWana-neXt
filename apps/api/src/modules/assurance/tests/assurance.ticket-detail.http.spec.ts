@@ -167,7 +167,22 @@ describe('AssuranceController — detalle del ticket, búsqueda y vínculo de or
         .set('Authorization', 'Bearer support-token')
         .expect(200)
         .expect({ id: ORDER, linkedTicket: 'NONE' });
-      expect(tickets.lookupExecutionOrder).toHaveBeenCalledWith('OTE-20261116-001', TICKET);
+      expect(tickets.lookupExecutionOrder).toHaveBeenCalledWith(
+        'OTE-20261116-001',
+        TICKET,
+        expect.objectContaining({ sub: 'support-001', role: UserRole.SUPPORT }),
+      );
+    });
+
+    it('403 cuando el servicio exige operations.execution_orders.read (S-2)', async () => {
+      tickets.lookupExecutionOrder.mockRejectedValue(
+        new ForbiddenException({ code: 'EXECUTION_ORDERS_READ_REQUIRED' }),
+      );
+      const response = await request(app.getHttpServer())
+        .get('/api/v1/assurance/execution-orders/lookup?number=OTE-20261116-001')
+        .set('Authorization', 'Bearer support-token')
+        .expect(403);
+      expect(response.body).toMatchObject({ code: 'EXECUTION_ORDERS_READ_REQUIRED' });
     });
 
     it.each([

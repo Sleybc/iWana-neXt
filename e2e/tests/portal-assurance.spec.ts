@@ -4,7 +4,8 @@
  * Cubre el flujo observable de Fase 01 con mocks estables del contrato HTTP:
  * - SUPPORT crea un ticket desde el portal.
  * - SUPPORT comenta el ticket.
- * - SUPPORT lo mueve a IN_PROGRESS, solicita una visita técnica y luego lo resuelve.
+ * - SUPPORT lo mueve a IN_PROGRESS, solicita una visita técnica, vincula una orden de trabajo
+ *   buscándola por número (MOD10 D4) y luego lo resuelve.
  * - El timeline refleja los hitos funcionales visibles.
  */
 
@@ -26,7 +27,9 @@ async function assertTenantHeader(route: import('@playwright/test').Route) {
 const SUPPORT_USER_ID = '11111111-1111-4111-8111-111111111111';
 const ASSIGNEE_ID = '22222222-2222-4222-8222-222222222222';
 const SUBSCRIBER_ID = '44444444-4444-4444-8444-444444444444';
-const WORK_ORDER_ID = '33333333-3333-4333-8333-333333333333';
+// MOD10 D4: el vínculo manual es de la orden de ejecución (OTE), buscada por su número.
+const EXECUTION_ORDER_ID = '33333333-3333-4333-8333-333333333333';
+const EXECUTION_ORDER_NUMBER = 'OTE-20260509-001';
 
 function buildToken(): string {
   const payload = Buffer.from(
@@ -47,6 +50,17 @@ function buildToken(): string {
 
 function nowIso(offsetMinutes = 0): string {
   return new Date(Date.now() + offsetMinutes * 60_000).toISOString();
+}
+
+/** OTE sintética que devuelven la búsqueda por número y el vínculo (contrato `TicketExecutionOrder`). */
+function buildExecutionOrder(): MockExecutionOrder {
+  return {
+    id: EXECUTION_ORDER_ID,
+    number: EXECUTION_ORDER_NUMBER,
+    status: 'ASSIGNED',
+    result: null,
+    closedAt: null,
+  };
 }
 
 type MockTicket = {
@@ -77,6 +91,17 @@ type MockTicket = {
   createdByUserId: string;
   createdAt: string;
   updatedAt: string;
+  // MOD10 paso 2 (§5 datos): orden de ejecución vinculada, que el riel muestra con su número.
+  executionOrder?: MockExecutionOrder | null;
+  executionOrderCount?: number | null;
+};
+
+type MockExecutionOrder = {
+  id: string;
+  number: string;
+  status: string;
+  result: string | null;
+  closedAt: string | null;
 };
 
 type MockComment = {
@@ -108,6 +133,8 @@ async function seedPortalSession(page: import('@playwright/test').Page) {
       'assurance.tickets.read',
       'assurance.tickets.manage',
       'crm.subscribers.read',
+      // MOD10 §3 L: el buscador de la orden exige ver órdenes de trabajo.
+      'operations.execution_orders.read',
     ],
   });
 }
@@ -467,8 +494,36 @@ async function setupAssuranceMocks(page: import('@playwright/test').Page) {
       return;
     }
 
+    // MOD10 D4: búsqueda exacta de la orden de ejecución por número.
+    if (pathname.endsWith('/assurance/execution-orders/lookup') && method === 'GET') {
+      await assertTenantHeader(route);
+      const params = new URL(request.url()).searchParams;
+      if (params.get('number') !== EXECUTION_ORDER_NUMBER) {
+        await route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'Orden no encontrada' }),
+        });
+        return;
+      }
+      const linkedTicket = tickets.find((item) => item.executionOrder?.id === EXECUTION_ORDER_ID);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...buildExecutionOrder(),
+          linkedTicket: !linkedTicket
+            ? 'NONE'
+            : linkedTicket.id === params.get('ticketId')
+              ? 'THIS'
+              : 'OTHER',
+        }),
+      });
+      return;
+    }
+
     const ticketMatch = pathname.match(
-      /\/assurance\/tickets\/([^/]+)(?:\/(comments|timeline|status|request-field-service|link-work-order))?$/,
+      /\/assurance\/tickets\/([^/]+)(?:\/(comments|timeline|status|request-field-service|link-execution-order))?$/,
     );
     if (ticketMatch) {
       const [, ticketId, action] = ticketMatch;
@@ -577,20 +632,26 @@ async function setupAssuranceMocks(page: import('@playwright/test').Page) {
         return;
       }
 
-      if (action === 'link-work-order' && method === 'POST') {
+      // MOD10 D4: el vínculo envía el identificador de la OTE encontrada; `workOrderId` no cambia.
+      if (action === 'link-execution-order' && method === 'POST') {
+        await assertTenantHeader(route);
         const payload = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
-        ticket.workOrderId = String(payload.workOrderId);
-        ticket.fieldDecision = 'FIELD_SERVICE_REQUIRED';
+        expect(payload.executionOrderId).toBe(EXECUTION_ORDER_ID);
+        expect(payload).not.toHaveProperty('workOrderId');
+        const order = buildExecutionOrder();
+        ticket.executionOrder = order;
+        ticket.executionOrderCount = 1;
         ticket.updatedAt = nowIso(6);
         appendTimeline(ticketId, 'WORK_ORDER_LINKED', {
-          workOrderId: ticket.workOrderId,
+          executionOrderId: order.id,
+          executionOrderNumber: order.number,
           notes: typeof payload.notes === 'string' ? payload.notes : null,
         });
 
         await route.fulfill({
           status: 201,
           contentType: 'application/json',
-          body: JSON.stringify(ticket),
+          body: JSON.stringify({ ...order, outcome: 'LINKED' }),
         });
         return;
       }
@@ -646,19 +707,36 @@ test('support can create, comment, escalate to field service and resolve a ticke
   await page.getByRole('button', { name: 'Guardar estado' }).click();
   await expect(page.getByText('Estado actualizado.')).toBeVisible();
 
+  // MOD10 paso 2 (§3 J): las acciones de visita y orden viven en la tarjeta «Visita y orden de
+  // trabajo» del riel «Datos del caso»; Estado sigue en la cabecera, fuera del riel.
+  const caseData = page.getByRole('region', { name: 'Datos del caso' });
+  await expect(caseData.getByRole('combobox', { name: 'Nuevo estado' })).toHaveCount(0);
+  const fieldCard = caseData.getByRole('region', { name: 'Visita y orden de trabajo' });
+
   // §3 E: «Solicitar visita» despliega su formulario en línea; §4: nota para el equipo de campo.
-  await page.getByRole('button', { name: 'Solicitar visita' }).click();
-  await page
+  await fieldCard.getByRole('button', { name: 'Solicitar visita' }).click();
+  await fieldCard
     .getByRole('textbox', { name: 'Nota para el equipo de campo' })
     .fill('Validar potencia en sitio y estado de CPE.');
-  await page.getByRole('button', { name: 'Confirmar solicitud' }).click();
+  await fieldCard.getByRole('button', { name: 'Confirmar solicitud' }).click();
   await expect(page.getByText('Solicitud de visita técnica registrada.')).toBeVisible();
 
-  // §3 E + §4: «Vincular orden de trabajo» despliega su formulario; campo «Orden de trabajo».
-  await page.getByRole('button', { name: 'Vincular orden de trabajo' }).click();
-  await page.getByRole('textbox', { name: 'Orden de trabajo', exact: true }).fill(WORK_ORDER_ID);
-  await page.getByRole('button', { name: 'Confirmar vínculo' }).click();
+  // §3 L + D4: la orden se busca por número; «Confirmar vínculo» solo aparece con una OTE
+  // encontrada y libre, y envía su identificador (ya no se escribe un identificador a mano).
+  await fieldCard.getByRole('button', { name: 'Vincular orden de trabajo' }).click();
+  await expect(fieldCard.getByRole('button', { name: 'Confirmar vínculo' })).toHaveCount(0);
+  await fieldCard
+    .getByRole('textbox', { name: 'Orden de trabajo', exact: true })
+    .fill(EXECUTION_ORDER_NUMBER);
+  await fieldCard.getByRole('button', { name: 'Buscar orden' }).click();
+  const foundOrder = fieldCard.getByRole('status', { name: 'Orden encontrada' });
+  await expect(foundOrder).toContainText(EXECUTION_ORDER_NUMBER);
+  await expect(foundOrder).toContainText('Asignada');
+  await fieldCard.getByRole('textbox', { name: 'Nota de vínculo' }).fill('Orden de la visita.');
+  await fieldCard.getByRole('button', { name: 'Confirmar vínculo' }).click();
   await expect(page.getByText('Orden de trabajo vinculada al caso.')).toBeVisible();
+  // §3 L: tras recargar el detalle, el riel muestra la OTE con su número.
+  await expect(fieldCard).toContainText(EXECUTION_ORDER_NUMBER);
 
   await page.getByRole('combobox', { name: 'Nuevo estado' }).click();
   await page.getByRole('option', { name: 'Resuelto', exact: true }).click();
@@ -676,6 +754,12 @@ test('support can create, comment, escalate to field service and resolve a ticke
   await expect(timeline.getByText('Comentario agregado', { exact: true })).toBeVisible();
   await expect(timeline.getByText('Visita técnica solicitada', { exact: true })).toBeVisible();
   await expect(timeline.getByText('Orden de trabajo vinculada', { exact: true })).toBeVisible();
+  // D4: el evento del vínculo nombra la OTE por su número, no por un identificador.
+  await expect(
+    timeline.getByText(`Orden de trabajo ${EXECUTION_ORDER_NUMBER} vinculada al caso.`, {
+      exact: true,
+    }),
+  ).toBeVisible();
 
   await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
   const firstRow = page.locator('tbody tr').first();

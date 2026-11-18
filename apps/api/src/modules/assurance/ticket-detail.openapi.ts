@@ -1,8 +1,12 @@
 import type { SchemaObject } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
 import {
   EXECUTION_ORDER_LOOKUP_LINKED_TICKET,
+  EXECUTION_ORDER_NUMBER_PATTERN,
   ExecutionOrderResult,
   ExecutionOrderStatus,
+  LINK_EXECUTION_ORDER_OUTCOMES,
+  SlaBreachStatus,
+  TICKET_ACTIVE_VISIT_STATUSES,
   TICKET_LINK_NOTES_MAX_LENGTH,
   TICKET_PARTY_NAME_STATES,
   TICKET_PARTY_PROFILE_KINDS,
@@ -11,7 +15,7 @@ import {
   TicketRequesterType,
   TicketStatus,
   TicketSubjectType,
-  VisitRequestStatus,
+  TicketType,
 } from '@iwana/shared';
 
 /**
@@ -37,6 +41,7 @@ export const TICKET_PARTY_REF_OPENAPI: SchemaObject = {
     refId: { type: 'string', maxLength: 160, nullable: true },
     displayName: {
       type: 'string',
+      maxLength: 300,
       nullable: true,
       description:
         'Solo con nameState = AVAILABLE. Nulo si el titular está suprimido o con datos bloqueados ' +
@@ -62,10 +67,15 @@ export const TICKET_ACTIVE_VISIT_OPENAPI: SchemaObject = {
   type: 'object',
   nullable: true,
   additionalProperties: false,
+  description: 'Visita activa más reciente. Nula sin visita o sin wfm.schedule.read.',
   required: ['id', 'status', 'windowKind', 'windowStartAt', 'windowEndAt', 'scheduleEventId'],
   properties: {
     id: { type: 'string', format: 'uuid' },
-    status: { type: 'string', enum: Object.values(VisitRequestStatus) },
+    status: {
+      type: 'string',
+      enum: [...TICKET_ACTIVE_VISIT_STATUSES],
+      description: 'Nunca terminal (CLOSED, CANCELLED, REJECTED, EXPIRED).',
+    },
     windowKind: { type: 'string', enum: [...TICKET_VISIT_WINDOW_KINDS], nullable: true },
     windowStartAt: dateTimeOrNull,
     windowEndAt: dateTimeOrNull,
@@ -85,6 +95,8 @@ export const TICKET_EXECUTION_ORDER_OPENAPI: SchemaObject = {
   type: 'object',
   nullable: true,
   additionalProperties: false,
+  description:
+    'Orden de ejecución más reciente no anulada. Nula sin orden o sin operations.execution_orders.read.',
   required: ['id', 'number', 'status', 'result', 'closedAt'],
   properties: executionOrderProperties,
 };
@@ -125,8 +137,8 @@ export const TICKET_DETAIL_OPENAPI: SchemaObject = {
     id: { type: 'string', format: 'uuid' },
     ticketNumber: { type: 'string' },
     status: { type: 'string', enum: Object.values(TicketStatus) },
-    type: { type: 'string' },
-    slaBreachStatus: { type: 'string' },
+    type: { type: 'string', enum: Object.values(TicketType) },
+    slaBreachStatus: { type: 'string', enum: Object.values(SlaBreachStatus) },
     workOrderId: {
       type: 'string',
       format: 'uuid',
@@ -137,7 +149,12 @@ export const TICKET_DETAIL_OPENAPI: SchemaObject = {
     relatedTo: { ...TICKET_PARTY_REF_OPENAPI, nullable: true },
     activeVisit: TICKET_ACTIVE_VISIT_OPENAPI,
     executionOrder: TICKET_EXECUTION_ORDER_OPENAPI,
-    executionOrderCount: { type: 'integer', minimum: 0 },
+    executionOrderCount: {
+      type: 'integer',
+      minimum: 0,
+      nullable: true,
+      description: 'Órdenes no anuladas del ticket. Nulo sin operations.execution_orders.read.',
+    },
     allowedTransitions: {
       type: 'array',
       description:
@@ -177,6 +194,20 @@ export const LINK_EXECUTION_ORDER_RESPONSE_OPENAPI: SchemaObject = {
   required: ['id', 'number', 'status', 'result', 'closedAt', 'outcome'],
   properties: {
     ...executionOrderProperties,
-    outcome: { type: 'string', enum: ['LINKED', 'ALREADY_LINKED'] },
+    outcome: {
+      type: 'string',
+      enum: [...LINK_EXECUTION_ORDER_OUTCOMES],
+      description: 'ALREADY_LINKED: la orden ya era de este ticket; no se registra otro evento.',
+    },
   },
+};
+
+/**
+ * Parámetro `number` de `GET /assurance/execution-orders/lookup`. El servidor recorta espacios
+ * y pasa a mayúsculas antes de validar el patrón.
+ */
+export const EXECUTION_ORDER_NUMBER_QUERY_OPENAPI: SchemaObject = {
+  type: 'string',
+  pattern: EXECUTION_ORDER_NUMBER_PATTERN.source,
+  example: 'OTE-20261116-001',
 };

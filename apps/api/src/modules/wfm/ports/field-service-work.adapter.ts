@@ -1,23 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { VisitRequest } from '@iwana/db';
-import { VisitRequestStatus } from '@iwana/shared';
+import {
+  TICKET_ACTIVE_VISIT_STATUSES,
+  VisitRequestStatus,
+  type TicketActiveVisitStatus,
+} from '@iwana/shared';
 import {
   FieldServiceWorkPort,
   CancelActiveForTicketResult,
   type TicketActiveVisitSnapshot,
 } from '../../assurance/ports/field-service-work.port';
 
-const TERMINAL_VISIT_STATUSES: readonly VisitRequestStatus[] = [
-  VisitRequestStatus.CLOSED,
-  VisitRequestStatus.CANCELLED,
-  VisitRequestStatus.REJECTED,
-  VisitRequestStatus.EXPIRED,
-];
+/**
+ * Lista positiva del contrato compartido: un estado nuevo del enum no aparece como visita
+ * activa hasta que el contrato lo admita (spec MOD10 §5; misma regla en detalle y listado).
+ */
+const ACTIVE_VISIT_STATUSES: readonly string[] = TICKET_ACTIVE_VISIT_STATUSES;
 
 interface ActiveVisitRow {
   id: string;
-  status: VisitRequestStatus;
+  status: TicketActiveVisitStatus;
   requested_window_start_at: Date | string | null;
   requested_window_end_at: Date | string | null;
   schedule_event_id: string | null;
@@ -72,10 +75,10 @@ export class FieldServiceWorkAdapter extends FieldServiceWorkPort {
         WHERE vr.tenant_id = $1::uuid
           AND vr.ticket_id = $2
           AND vr.deleted_at IS NULL
-          AND vr.status::text <> ALL($3::text[])
+          AND vr.status::text = ANY($3::text[])
         ORDER BY vr.created_at DESC, vr.id DESC
         LIMIT 1`,
-      [tenantId, ticketId, TERMINAL_VISIT_STATUSES],
+      [tenantId, ticketId, ACTIVE_VISIT_STATUSES],
     )) as ActiveVisitRow[];
     const row = rows[0];
     return row ? toActiveVisitSnapshot(row) : null;
@@ -102,9 +105,9 @@ export class FieldServiceWorkAdapter extends FieldServiceWorkPort {
         WHERE vr.tenant_id = $1::uuid
           AND vr.ticket_id = ANY($2::varchar[])
           AND vr.deleted_at IS NULL
-          AND vr.status::text <> ALL($3::text[])
+          AND vr.status::text = ANY($3::text[])
         ORDER BY vr.ticket_id, vr.created_at DESC, vr.id DESC`,
-      [tenantId, ids, TERMINAL_VISIT_STATUSES],
+      [tenantId, ids, ACTIVE_VISIT_STATUSES],
     )) as Array<ActiveVisitRow & { ticket_id: string }>;
     for (const row of rows) visits.set(row.ticket_id, toActiveVisitSnapshot(row));
     return visits;

@@ -4,7 +4,7 @@ import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AccessPermissionKey, TicketFieldDecision } from '@iwana/shared';
-import type { ContractResponse } from '@iwana/shared';
+import type { ContractResponse, LinkExecutionOrderBody } from '@iwana/shared';
 import type {
   AssuranceCommentSubmission,
   AssuranceSlaPolicy,
@@ -13,7 +13,6 @@ import type {
   AssuranceTimelineEvent,
   AssignAssuranceTicketDto,
   InternalUser,
-  LinkAssuranceWorkOrderDto,
   RequestAssuranceFieldServiceDto,
   SubscriberRecord,
   TransitionAssuranceTicketDto,
@@ -284,9 +283,17 @@ export function SubscriberSupportTab({
       setDrawerFeedback(null);
       try {
         const result = await task();
-        if (result && typeof result === 'object' && 'ticketNumber' in result) {
-          setDrawerTicket(result as AssuranceTicket);
-        }
+        // La respuesta de las acciones es la entidad sin los datos del detalle (nombres, visita,
+        // orden y destinos de estado, spec MOD10 §3 L): se relee el detalle. El comentario ya lo
+        // relee en su tarea.
+        const reloaded =
+          action === 'comment' ? null : await reloadOpenTicket(drawerTicket.id).catch(() => null);
+        const next =
+          reloaded ??
+          (result && typeof result === 'object' && 'ticketNumber' in result
+            ? (result as AssuranceTicket)
+            : null);
+        if (next) setDrawerTicket(next);
         setDrawerFeedback('Cambios guardados.');
         refreshTickets();
         return true;
@@ -301,7 +308,7 @@ export function SubscriberSupportTab({
         setDrawerAction(null);
       }
     },
-    [canManageTickets, drawerTicket, refreshTickets],
+    [canManageTickets, drawerTicket, refreshTickets, reloadOpenTicket],
   );
 
   const subscriberPickerItem = useMemo(
@@ -450,9 +457,9 @@ export function SubscriberSupportTab({
             assuranceApi.tickets.requestFieldService(drawerTicket!.id, payload),
           )
         }
-        onLinkWorkOrder={(payload: LinkAssuranceWorkOrderDto) =>
+        onLinkWorkOrder={(payload: LinkExecutionOrderBody) =>
           runDrawerAction('link-work-order', () =>
-            assuranceApi.tickets.linkWorkOrder(drawerTicket!.id, payload),
+            assuranceApi.tickets.linkExecutionOrder(drawerTicket!.id, payload),
           )
         }
       />

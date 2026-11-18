@@ -1,5 +1,10 @@
 import type { EntityManager } from 'typeorm';
-import type { ExecutionOrderResult, ExecutionOrderStatus, WfmWorkType } from '@iwana/shared';
+import type {
+  ExecutionOrderResult,
+  ExecutionOrderStatus,
+  LinkExecutionOrderOutcome,
+  WfmWorkType,
+} from '@iwana/shared';
 
 /** Puerto tipado de lectura de MOD11 consumido por otros módulos. */
 export const EXECUTION_ORDER_READ_PORT = Symbol('EXECUTION_ORDER_READ_PORT');
@@ -68,7 +73,7 @@ export interface LinkExecutionOrderToTicketInput {
  */
 export interface LinkExecutionOrderToTicketResult {
   order: TicketExecutionOrderSummary;
-  outcome: 'LINKED' | 'ALREADY_LINKED';
+  outcome: LinkExecutionOrderOutcome;
 }
 
 export interface ExecutionOrderReadPort {

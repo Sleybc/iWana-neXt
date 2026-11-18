@@ -1,8 +1,8 @@
 # Spec UX — MOD10 Mesa de ayuda · Detalle del ticket compacto
 
-**Versión:** 1.1 (ver nota al final de §4)
+**Versión:** 1.2 (2026-11-17: §3 J, CA-12 y D5; ver notas al final de §4)
 **Estado:** Aprobado (G0) por el usuario en sesión el 2026-11-16 · D1–D3 resueltas con la recomendación · Plan: [2026-11-16-mod10-detalle-ticket](../plans/2026-11-16-mod10-detalle-ticket.md)
-**Fecha:** 2026-11-16
+**Fecha:** 2026-11-17 (v1.0 y v1.1: 2026-11-16)
 **Emisor:** Claude Code, con criterio de AI-PROD-UX y AI-DS-OWNER
 **Alcance de pantalla:** panel de detalle del ticket (`AssuranceTicketDrawer`), abierto desde `/dashboard/assurance` y desde la pestaña Soporte de la ficha del suscriptor
 **Relacionado:** [contrato de densidad de la ficha, §8](2026-11-10-mod05-ficha-suscriptor-estilo-uisp-ux.md) (se extiende) · [pestaña Soporte](2026-10-20-mod05-pestana-soporte-ux-spec.md) (se enmienda, D2) · [bandeja de OT, D8](2026-09-13-mod11-operaciones-subrutas-bandeja-ot-ux.md) (enlaces desde el ticket) · [adjuntos en tickets](2026-11-16-mod09-adjuntos-en-tickets.md) (se conserva)
@@ -54,7 +54,7 @@ El panel gasta el 81 % de la primera pantalla antes de la conversación (H3), re
 
 | Bloque | Qué cambia | Se conserva |
 |---|---|---|
-| **J · Dos columnas** | Izquierda: descripción, hilo y redactor. Derecha: riel de tarjetas densas Personas, Atención, Visita y orden de trabajo, Adjuntos, Registro; responsable y área se editan en el riel. Bajo `lg` el riel se apila antes del hilo, como en el paso 1 | Todo lo del paso 1; el control Estado sigue en cabecera |
+| **J · Dos columnas** | Izquierda: descripción, hilo y redactor. Derecha: riel de tarjetas densas Personas, Atención, Visita y orden de trabajo, Adjuntos, Registro; responsable y área se editan en el riel. Bajo `lg` el riel se apila antes del hilo, como en el paso 1. *2026-11-17, aprobado por el usuario:* Registro muestra Primera respuesta, Resuelto y Cerrado (este con su condición actual); el control Estado se sitúa en la fila de insignias de la cabecera, sin salir del bloque B (CA-10); vincular orden exige además `operations.execution_orders.read` (sin él, el botón queda deshabilitado con ayuda visible) | Todo lo del paso 1; el control Estado sigue en cabecera |
 | **K · Dirección propia** | La bandeja abre el panel con `?ticketId=` (mismo patrón que `?executionOrderId=`); ruta `/dashboard/assurance/tickets/[id]` con el mismo componente de contenido; «Abrir en página» en la cabecera | El panel sigue siendo la vista por defecto desde la bandeja y desde la ficha |
 | **L · Nombres y enlaces** | Solicitante y «Relacionado con» muestran nombre y enlazan a su ficha; Visita y Orden muestran estado y enlazan a su pantalla; la orden se busca por número; Estado solo ofrece destinos válidos | El tipo queda como texto de apoyo; sin dato del servidor se muestra lo de hoy |
 
@@ -86,6 +86,8 @@ Los rótulos se corrigen en la fuente; la tabla y el formulario de la bandeja he
 | Confirmación de los formularios en línea | «Confirmar solicitud» · «Confirmar vínculo» |
 
 **v1.1 (2026-11-16, punto de control del paso 1, aprobado por el usuario):** las ocho filas finales de esta tabla; Área vive solo como control en la cabecera; sin lista de responsables cargada, el responsable de un ticket asignado se muestra como «Responsable no disponible», nunca «Sin asignar»; la ayuda de «Crear tarea vinculada» sigue visible; un formulario en línea no se abre sin el permiso de su acción.
+
+**v1.2 (2026-11-17, aprobado por el usuario):** §3 J fija el contenido de Registro, el control Estado en la fila de insignias y el permiso de lectura de órdenes para vincular; CA-12 incluye esa guarda; D5 queda resuelta en la ficha §8.6; D4 se cumple con la orden de ejecución.
 
 ## 5. Contratos por congelar antes de construir
 
@@ -122,7 +124,7 @@ Los rótulos se corrigen en la fuente; la tabla y el formulario de la bandeja he
 | CA-9 | 1 | Cada expectativa cambiada en las pruebas existentes se explica por un renombre de §4 o un movimiento de §3 (`test-change-reviewer`). Archivos: specs del panel y de adjuntos, `e2e/tests/portal-assurance*.spec.ts` y las E2E que abren el panel |
 | CA-10 | 2 | A 1440×900 el hilo empieza en 200 px o menos |
 | CA-11 | 2 | Recargar con un ticket abierto lo reabre; Atrás lo cierra; la ruta propia muestra lo mismo que el panel |
-| CA-12 | 2 | El nombre no aparece si el titular está bloqueado o suprimido; cada enlace exige el permiso de lectura del módulo destino |
+| CA-12 | 2 | El nombre no aparece si el titular está bloqueado o suprimido; cada enlace exige el permiso de lectura del módulo destino; vincular orden exige además `operations.execution_orders.read` (sin él, botón deshabilitado con ayuda visible) |
 
 ## 7. Decisiones abiertas
 
@@ -132,7 +134,7 @@ Los rótulos se corrigen en la fuente; la tabla y el formulario de la bandeja he
 | D2 | **Resuelta 2026-11-16:** esta spec sustituye el «sin modificarlo» de la spec de Soporte (l. 43 y 130); anotado allá | — | Usuario |
 | D3 | **Resuelta 2026-11-16:** el informe sin reproducir sobre técnico (acciones que la API rechaza) y auditor (bloqueado en pantalla) se trata aparte; aquí las guardas no cambian (CA-4) | — | Usuario |
 | D4 | **Resuelta 2026-11-16 por el usuario:** la orden de ejecución (OTE), con su número; el vínculo manual escribe `ticket_id` en la orden por su módulo y `work_order_id` no cambia de significado. Con ella: «Visita técnica solicitada» no se ofrece como destino directo; sin `crm.subscribers.read` el nombre llega nulo; «Abrir en página» no se muestra en la pestaña Soporte; el nombre de usuarios internos como solicitante queda fuera (deuda) | — | Usuario |
-| D5 | Ancho del panel con riel; hoy mide 768 px | Lo fija `ds-owner` con el contrato v1.1 | `ds-owner` |
+| D5 | **Resuelta 2026-11-16** en la [ficha §8.6](2026-11-10-mod05-ficha-suscriptor-estilo-uisp-ux.md): `max-w-3xl lg:max-w-4xl` | — | `ds-owner` |
 
 D4 y D5 solo bloquean el paso 2.
 

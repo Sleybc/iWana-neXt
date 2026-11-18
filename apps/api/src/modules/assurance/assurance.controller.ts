@@ -40,6 +40,7 @@ import {
 import { TICKET_STATUS_CHANGE_ROLES } from './services/ticket-transitions';
 import {
   EXECUTION_ORDER_LOOKUP_OPENAPI,
+  EXECUTION_ORDER_NUMBER_QUERY_OPENAPI,
   LINK_EXECUTION_ORDER_BODY_OPENAPI,
   LINK_EXECUTION_ORDER_RESPONSE_OPENAPI,
   TICKET_DETAIL_OPENAPI,
@@ -491,21 +492,27 @@ export class AssuranceController {
     summary: 'Buscar una orden de trabajo por número para vincularla a un ticket',
     description:
       'Búsqueda exacta (sin prefijos) de la orden de ejecución por su número OTE-AAAAMMDD-NNN. ' +
-      'No devuelve datos del cliente. Mismo permiso que el vínculo manual.',
+      'No devuelve datos del cliente. Exige el permiso del vínculo manual y además ' +
+      'operations.execution_orders.read.',
   })
-  @ApiQuery({ name: 'number', required: true, type: String, example: 'OTE-20261116-001' })
+  @ApiQuery({ name: 'number', required: true, schema: EXECUTION_ORDER_NUMBER_QUERY_OPENAPI })
   @ApiQuery({ name: 'ticketId', required: false, type: String, format: 'uuid' })
   @ApiOkResponse({ schema: EXECUTION_ORDER_LOOKUP_OPENAPI })
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Número con formato inválido.' })
-  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Sin assurance.tickets.manage.' })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description:
+      'Sin assurance.tickets.manage, o EXECUTION_ORDERS_READ_REQUIRED sin operations.execution_orders.read.',
+  })
   @ApiResponse({
     status: HttpStatus.NOT_FOUND,
     description: 'EXECUTION_ORDER_NOT_FOUND: no existe o está anulada.',
   })
   lookupExecutionOrder(
     @Query(new ZodValidationPipe(ExecutionOrderLookupQuerySchema)) query: ExecutionOrderLookupQuery,
+    @CurrentUser() actor: JwtPayload,
   ) {
-    return this.ticketsService.lookupExecutionOrder(query.number, query.ticketId);
+    return this.ticketsService.lookupExecutionOrder(query.number, query.ticketId, actor);
   }
 
   @Post('tickets/:id/link-execution-order')

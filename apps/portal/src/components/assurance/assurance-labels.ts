@@ -13,7 +13,7 @@ import {
   TicketType,
   UserRole,
 } from '@iwana/shared';
-import type { ExecutionOrderResult } from '@iwana/shared';
+import { EXECUTION_ORDER_NUMBER_PATTERN, type ExecutionOrderResult } from '@iwana/shared';
 import type { AssuranceTimelineEvent, InternalUser } from '@/lib/api-client';
 import { EXECUTION_ORDER_RESULT_LABELS } from '@/components/operations/operations-labels';
 import { getSystemBaseRoleLabel } from '@/lib/system-vocabulary';
@@ -340,8 +340,19 @@ export function getAssuranceTimelineDescription(
       return `Prioridad: ${getAssuranceTicketPriorityLabel(String(payload.previousPriority ?? ''))} → ${getAssuranceTicketPriorityLabel(String(payload.priority ?? ''))}`;
     case TicketTimelineEventType.FIELD_SERVICE_REQUESTED:
       return 'Se solicitó una visita técnica.';
-    case TicketTimelineEventType.WORK_ORDER_LINKED:
+    case TicketTimelineEventType.WORK_ORDER_LINKED: {
+      // Dos formas (spec MOD10 D4): el vínculo de la orden de ejecución trae su número
+      // (`executionOrderNumber`); el heredado, el identificador de la orden de programación.
+      const executionOrderNumber =
+        typeof payload.executionOrderNumber === 'string' &&
+        EXECUTION_ORDER_NUMBER_PATTERN.test(payload.executionOrderNumber)
+          ? payload.executionOrderNumber
+          : null;
+      if (executionOrderNumber) {
+        return `Orden de trabajo ${executionOrderNumber} vinculada al caso.`;
+      }
       return `Orden de trabajo ${formatAssuranceReference(typeof payload.workOrderId === 'string' ? payload.workOrderId : null)} vinculada al caso.`;
+    }
     case TicketTimelineEventType.EXECUTION_ORDER_CLOSED:
       return `Orden de trabajo ${formatAssuranceReference(typeof payload.executionOrderId === 'string' ? payload.executionOrderId : null)} cerrada con resultado «${getAssuranceExecutionResultLabel(payload.result)}».`;
     case TicketTimelineEventType.COMMENT_ADDED:

@@ -9,6 +9,7 @@ import { useState, type ComponentProps } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  ExecutionOrderStatus,
   SlaBreachStatus,
   TicketFieldDecision,
   TicketPriority,
@@ -20,10 +21,18 @@ import {
   TicketType,
 } from '@iwana/shared';
 import type { AssuranceTicket } from '@/lib/api-client';
+import { assuranceApi } from '@/lib/api-client';
 import { AssuranceTicketDrawer } from './AssuranceTicketDrawer';
 
 jest.mock('@/components/shared/use-portal-modal-drawer-broadcast', () => ({
   usePortalModalDrawerBroadcast: () => undefined,
+}));
+
+// P2b §3 L: el buscador de la orden exige `operations.execution_orders.read`. Como en el portal
+// real (el layout monta `PermissionsProvider`), estas pruebas conceden los permisos de lectura;
+// las guardas por permiso se prueban en `AssuranceTicketDetail.p2b.spec.tsx`.
+jest.mock('@/components/access-control/permissions-context', () => ({
+  usePermissions: () => ({ hasPermission: () => true }),
 }));
 
 type DrawerProps = ComponentProps<typeof AssuranceTicketDrawer>;
@@ -187,7 +196,10 @@ describe('AssuranceTicketDrawer P1 — propiedades y vocabulario (§3 C, §4)', 
     expect(area.className).toContain('text-gray-500');
   });
 
-  it('las propiedades siguen el orden de §3 C a dos columnas', () => {
+  // P2b §3 J: las propiedades pasan de la lista a dos columnas a las tarjetas del riel (Personas,
+  // Atención, Visita y orden de trabajo, Registro); Registro añade la primera respuesta y la
+  // resolución. Ninguna propiedad de §3 C se pierde.
+  it('las propiedades siguen el orden de las tarjetas del riel (§3 J)', () => {
     render(<AssuranceTicketDrawer {...drawerProps()} />);
     const terms = within(screen.getByRole('dialog'))
       .getAllByRole('term')
@@ -195,11 +207,13 @@ describe('AssuranceTicketDrawer P1 — propiedades y vocabulario (§3 C, §4)', 
     expect(terms).toEqual([
       'Solicitante',
       'Relacionado con',
-      'Visita técnica',
-      'Abierto',
-      'Orden de trabajo',
-      'Actualizado',
       'Origen',
+      'Abierto',
+      'Actualizado',
+      'Visita técnica',
+      'Orden de trabajo',
+      'Primera respuesta',
+      'Resuelto',
     ]);
   });
 
@@ -289,7 +303,8 @@ describe('AssuranceTicketDrawer P1 — redactor y mensajes (§3 G, H)', () => {
         actionFeedback="Asignación actualizada."
       />,
     );
-    const assignment = screen.getByRole('group', { name: 'Asignación' });
+    // P2b §3 J: Área se edita en la tarjeta Atención del riel; el aviso queda en ella.
+    const assignment = screen.getByRole('region', { name: 'Atención' });
     expect(within(assignment).getByText('Asignación actualizada.')).toBeInTheDocument();
     expect(
       within(screen.getByRole('group', { name: 'Cambiar estado' })).queryByText(
@@ -459,7 +474,9 @@ describe('AssuranceTicketDrawer P1 — formularios en línea y permisos (§4 not
       { canOperate: true, ticket: ticket({ status: TicketStatus.IN_PROGRESS }) },
       'Confirmar solicitud',
     ],
-    ['Vincular orden de trabajo', { canManage: true }, 'Confirmar vínculo'],
+    // P2b §3 L: el formulario abre con el buscador por número; «Confirmar vínculo» aparece
+    // cuando se encuentra una orden libre (p2b.spec).
+    ['Vincular orden de trabajo', { canManage: true }, 'Buscar orden'],
   ] as const)('con permiso, «%s» abre su formulario', async (toggleName, perms, confirm) => {
     const user = userEvent.setup();
     render(<AssuranceTicketDrawer {...drawerProps(perms)} />);
@@ -586,13 +603,23 @@ describe('AssuranceTicketDrawer P1 — corrección H-A/H-B (mensajes cuyo contro
     const user = userEvent.setup();
     const props = drawerProps({ ticket: ticket({ status: TicketStatus.IN_PROGRESS }) });
     const { rerender } = render(<AssuranceTicketDrawer {...props} />);
+    // P2b §3 L: la orden se busca por número y se confirma la encontrada.
+    jest.spyOn(assuranceApi.tickets, 'lookupExecutionOrder').mockResolvedValue({
+      id: '8e5d0f6b-4a7c-4b9d-9e2f-3d4e5f607182',
+      number: 'OTE-20261116-001',
+      status: ExecutionOrderStatus.ASSIGNED,
+      result: null,
+      closedAt: null,
+      linkedTicket: 'NONE',
+    });
     await user.click(screen.getByRole('button', { name: 'Vincular orden de trabajo' }));
-    await user.type(screen.getByRole('textbox', { name: 'Orden de trabajo' }), 'OT-1');
-    await user.click(screen.getByRole('button', { name: 'Confirmar vínculo' }));
+    await user.type(screen.getByRole('textbox', { name: 'Orden de trabajo' }), 'OTE-20261116-001');
+    await user.click(screen.getByRole('button', { name: 'Buscar orden' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirmar vínculo' }));
     rerender(
       <AssuranceTicketDrawer
         {...props}
-        ticket={ticket({ status: TicketStatus.IN_PROGRESS, workOrderId: 'OT-1' })}
+        ticket={ticket({ status: TicketStatus.IN_PROGRESS })}
         actionFeedback="Orden de trabajo vinculada al caso."
       />,
     );
@@ -631,10 +658,12 @@ describe('AssuranceTicketDrawer P1 — corrección H-A/H-B (mensajes cuyo contro
     const props = drawerProps();
     const { rerender } = render(<AssuranceTicketDrawer {...props} />);
     await user.click(screen.getByRole('button', { name: 'Vincular orden de trabajo' }));
-    expect(screen.getByRole('button', { name: 'Confirmar vínculo' })).toBeInTheDocument();
+    // P2b §3 L: el formulario abre con el buscador por número.
+    expect(screen.getByRole('button', { name: 'Buscar orden' })).toBeInTheDocument();
     rerender(<AssuranceTicketDrawer {...props} canManage={false} />);
     rerender(<AssuranceTicketDrawer {...props} canManage />);
-    expect(screen.queryByRole('button', { name: 'Confirmar vínculo' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Buscar orden' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Orden de trabajo' })).toBeNull();
   });
 });
 

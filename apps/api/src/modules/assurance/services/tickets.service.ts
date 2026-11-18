@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   Optional,
   ServiceUnavailableException,
@@ -25,6 +26,7 @@ import {
   TicketSlaPolicy,
   TicketWorkOrderLink,
   runInTenantSchema,
+  summarizeErrorForLog,
 } from '@iwana/db';
 import { clampPage } from '../../../common/pagination/clamp-page';
 import { applySort } from '../../../common/pagination/apply-sort';
@@ -43,6 +45,7 @@ import {
   UserRole,
   AccessPermissionKey,
   type ExecutionOrderLookupResponse,
+  type LinkExecutionOrderResponse,
   type TicketDetailExtension,
   type TicketExecutionOrder,
   type TicketListItemExtension,
@@ -213,6 +216,8 @@ function isTicketNumberUniqueViolation(
 
 @Injectable()
 export class TicketsService {
+  private readonly logger = new Logger(TicketsService.name);
+
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly slaService: SlaService,
@@ -567,7 +572,8 @@ export class TicketsService {
   /**
    * Detalle del ticket con nombres, visita, orden de ejecución y destinos de estado (spec
    * MOD10 2026-11-16 §5, D4 = ejecución). Todas las lecturas ajenas van por puertos públicos y
-   * con el manager de esta transacción: una conexión por petición.
+   * con el manager de esta transacción: una conexión por petición. Visita y orden solo con el
+   * permiso de lectura de su módulo, como el listado (CA-12): sin él, ni se consultan.
    */
   async getDetail(id: string, actor: JwtPayload): Promise<TicketDetailView> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
@@ -582,13 +588,22 @@ export class TicketsService {
 
       const { requester, relatedTo } = await this.resolveTicketParties(ticket, qr, permissions);
 
-      const activeVisit = this.fieldServiceWorkPort
-        ? await this.fieldServiceWorkPort.findActiveForTicket(qr.manager, tenantId, id)
-        : null;
+      const canReadVisits = permissions.has(AccessPermissionKey.WFM_SCHEDULE_READ);
+      const canReadOrders = permissions.has(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ);
 
-      const orders = this.executionOrderReadPort
-        ? await this.executionOrderReadPort.findLatestForTicketWithManager(qr.manager, tenantId, id)
-        : null;
+      const activeVisit =
+        this.fieldServiceWorkPort && canReadVisits
+          ? await this.fieldServiceWorkPort.findActiveForTicket(qr.manager, tenantId, id)
+          : null;
+
+      const orders =
+        this.executionOrderReadPort && canReadOrders
+          ? await this.executionOrderReadPort.findLatestForTicketWithManager(
+              qr.manager,
+              tenantId,
+              id,
+            )
+          : null;
 
       const pqrRecordComplete = needsPqrCompletionCheck(ticket.type, ticket.status)
         ? await this.pqrService.isPqrRecordComplete(qr.manager, id, tenantId)
@@ -610,7 +625,7 @@ export class TicketsService {
             }
           : null,
         executionOrder: orders ? toExecutionOrderView(orders.latest) : null,
-        executionOrderCount: orders?.count ?? 0,
+        executionOrderCount: canReadOrders ? (orders?.count ?? 0) : null,
         allowedTransitions: allowedTicketTransitions(ticket, actor, permissions, pqrRecordComplete),
       };
     });
@@ -618,12 +633,22 @@ export class TicketsService {
 
   /**
    * Búsqueda exacta de una orden de ejecución por número (bloque L). 404 si no existe o
-   * está anulada. Sin datos del cliente.
+   * está anulada. Sin datos del cliente. Además de `assurance.tickets.manage` (controlador)
+   * exige `operations.execution_orders.read` con los permisos efectivos, para cubrir perfiles
+   * personalizados (S-2): sin él, 403 sin consultar.
    */
   async lookupExecutionOrder(
     executionOrderNumber: string,
     ticketId: string | undefined,
+    actor: JwtPayload,
   ): Promise<ExecutionOrderLookupResponse> {
+    const permissions = await this.loadPermissions(actor);
+    if (!permissions.has(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ)) {
+      throw new ForbiddenException({
+        code: 'EXECUTION_ORDERS_READ_REQUIRED',
+        message: 'No tienes permiso para consultar órdenes de trabajo.',
+      });
+    }
     const order = await this.requireExecutionOrderReadPort().findByNumber(executionOrderNumber);
     if (!order || order.isAnnulled) {
       throw new NotFoundException({
@@ -645,7 +670,7 @@ export class TicketsService {
     id: string,
     input: LinkExecutionOrderBody,
     actor: JwtPayload,
-  ): Promise<TicketExecutionOrder & { outcome: 'LINKED' | 'ALREADY_LINKED' }> {
+  ): Promise<LinkExecutionOrderResponse> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = LinkExecutionOrderBodySchema.parse(input);
     const port = this.requireExecutionOrderReadPort();
@@ -792,9 +817,13 @@ export class TicketsService {
       try {
         resolved = await this.crmSubscriberReadPort.resolveTicketParties(lookups, qr);
         await qr.query('RELEASE SAVEPOINT ticket_detail_parties');
-      } catch {
+      } catch (error) {
         await qr.query('ROLLBACK TO SAVEPOINT ticket_detail_parties');
         resolved = null;
+        // Solo clase, sqlstate y ticket: ni mensaje, ni nombre, ni referencia del titular (S-7).
+        this.logger.warn(
+          `Nombres del ticket ${ticket.id} no verificados (fail-closed): ${summarizeErrorForLog(error)}`,
+        );
       }
     }
 
@@ -947,6 +976,8 @@ export class TicketsService {
           `Transición inválida: ${ticket.status} -> ${validated.status}`,
         );
       }
+
+      // D-BT-7 (ampliada): el cambio de estado queda abierto con titular suprimido, con o sin nota.
 
       // Verificar completitud regulatoria PQR para transiciones a RESOLVED o CLOSED
       if (requiresPqrCompletion(ticket.type, validated.status)) {
