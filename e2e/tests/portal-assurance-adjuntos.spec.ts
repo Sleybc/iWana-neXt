@@ -329,6 +329,12 @@ async function setupMocks(page: Page, options: MockOptions) {
         (total, comment) => total + comment.attachments.length,
         0,
       );
+      // Bandeja §3 J (paso 2, QA2): «Míos» pide `workQueue=mine` y el API filtra por el sub del
+      // JWT (`ticket-list-sql.ts`); el mock lo respeta con el usuario de la sesión simulada.
+      const mine = url.searchParams.get('workQueue') === 'mine';
+      if (mine && options.userId !== ticket.assignedUserId) {
+        return json({ data: [], total: 0, page: 1, limit: 20 });
+      }
       return json({ data: [{ ...ticket, attachmentCount }], total: 1, page: 1, limit: 20 });
     }
     if (method === 'GET' && pathname.endsWith(`/assurance/tickets/${TICKET_ID}`)) {
@@ -467,9 +473,11 @@ async function setupMocks(page: Page, options: MockOptions) {
 }
 
 async function openTicketComments(page: Page) {
-  await page.goto('/dashboard/assurance', { waitUntil: 'domcontentloaded' });
+  // D2: soporte entra en «Míos» y este ticket no tiene responsable en su variante; la cola
+  // «Todos» (`?queue=all`, CA-3) lo lista para los dos roles de la suite.
+  await page.goto('/dashboard/assurance?queue=all', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'Mesa de ayuda' })).toBeVisible();
-  await page.getByRole('button', { name: 'TK-20261116-071' }).click();
+  await page.getByRole('button', { name: 'TK-20261116-071', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'TK-20261116-071' })).toBeVisible();
   await page.getByRole('tab', { name: 'Comentarios' }).click();
 }

@@ -212,3 +212,45 @@ export async function resolveTicketParties(
         };
   });
 }
+
+/** Tope de suscriptores que puede aportar una búsqueda por nombre (MOD10 bandeja §3 K). */
+export const TICKET_REQUESTER_SEARCH_LIMIT = 500;
+
+/**
+ * Ids de suscriptores cuyo nombre visible contiene `term`, para la búsqueda de tickets por cliente.
+ * Corre con el `qr` del llamante. Excluye borrados y suprimidos en SQL y, después, todo lo que
+ * `resolveTicketParties` no deja en AVAILABLE (DATOS_BLOQUEADOS): un titular protegido nunca es
+ * encontrable por nombre. Sin el puerto de marcas con coincidencias, lanza (fail-closed).
+ */
+export async function findTicketRequesterIdsByName(
+  term: string,
+  qr: QueryRunner,
+  privacyMarksReadPort: IPrivacyMarksReadPort | undefined,
+): Promise<string[]> {
+  const trimmed = term.trim();
+  if (trimmed.length === 0) return [];
+  const { tenantId } = TenantContext.getOrThrow();
+  const pattern = `%${trimmed.replace(/[\\%_]/gu, (match) => `\\${match}`)}%`;
+  const rows = (await qr.query(
+    String.raw`SELECT id::text AS id
+       FROM subscribers
+      WHERE tenant_id = $1::uuid
+        AND deleted_at IS NULL
+        AND anonymized_at IS NULL
+        AND (
+          concat_ws(' ', first_name, last_name) ILIKE $2 ESCAPE '\'
+          OR business_name ILIKE $2 ESCAPE '\'
+          OR commercial_name ILIKE $2 ESCAPE '\'
+        )
+      ORDER BY id
+      LIMIT $3`,
+    [tenantId, pattern, TICKET_REQUESTER_SEARCH_LIMIT],
+  )) as Array<{ id: string }>;
+  if (rows.length === 0) return [];
+  const snapshots = await resolveTicketParties(
+    rows.map((row) => ({ type: 'SUBSCRIBER' as const, id: row.id })),
+    qr,
+    privacyMarksReadPort,
+  );
+  return snapshots.filter((item) => item.state === 'AVAILABLE').map((item) => item.id);
+}

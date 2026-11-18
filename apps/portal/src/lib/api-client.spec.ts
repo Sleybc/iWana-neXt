@@ -514,6 +514,39 @@ describe('subscriberId query serialization across support lists', () => {
     expect(url.searchParams.has('sortBy')).toBe(false);
     expect(url.searchParams.has('sortDir')).toBe(false);
   });
+
+  describe('bandeja paso 2: workQueue y search (contrato ticket-inbox)', () => {
+    async function requestedUrl(params: Record<string, unknown>): Promise<URL> {
+      const fetchMock = jest.fn(async (_input: RequestInfo | URL) =>
+        createJsonResponse(200, {
+          data: [],
+          meta: { total: 0, page: 1, limit: 20, totalPages: 0 },
+        }),
+      );
+      global.fetch = fetchMock as unknown as typeof fetch;
+      const { assuranceApi } = await import('./api-client');
+      await assuranceApi.tickets.list(params as never, 'isp-demo');
+      return new URL(String(fetchMock.mock.calls[0]?.[0]), 'http://portal.local');
+    }
+
+    it('envía workQueue en la query', async () => {
+      const url = await requestedUrl({ workQueue: 'unassigned' });
+      expect(url.searchParams.get('workQueue')).toBe('unassigned');
+    });
+
+    it('envía una búsqueda válida ya recortada', async () => {
+      const url = await requestedUrl({ search: '  fibra  ' });
+      expect(url.searchParams.get('search')).toBe('fibra');
+    });
+
+    it.each([['a'], ['  a  '], [''], ['   ']])(
+      'omite la búsqueda %p (el API respondería 400)',
+      async (search) => {
+        const url = await requestedUrl({ search });
+        expect(url.searchParams.has('search')).toBe(false);
+      },
+    );
+  });
 });
 
 describe('tasksApi execution order payloads', () => {

@@ -1,6 +1,7 @@
 // apps/portal/src/lib/api-client.ts
 
 import {
+  TicketListSearchSchema,
   UpdateOperatorContractProfileSchema,
   type ContractDocumentGeneration,
   type ExecutionOrderContract,
@@ -17,6 +18,8 @@ import type {
   TicketListAttachmentCountField,
   TicketListItemExtension,
   ListTicketsOrder,
+  AssuranceWorkQueue,
+  AssuranceWorkQueueCounts,
   TicketDetailExtension,
   ExecutionOrderLookupResponse,
   LinkExecutionOrderBody,
@@ -3467,6 +3470,8 @@ export interface AssuranceTicket {
   assignedUserDisplayName?: TicketListItemExtension['assignedUserDisplayName'];
   activeVisit?: TicketListItemExtension['activeVisit'];
   executionOrder?: TicketListItemExtension['executionOrder'];
+  /** Solo en el listado (bandeja paso 2 §3 L): nulo sin permiso CRM o con titular bloqueado o suprimido. */
+  requesterDisplayName?: TicketListItemExtension['requesterDisplayName'];
   /** Solo en el detalle (`GET /tickets/:id`), paso 2 (spec MOD10 §5, D4 = orden de ejecución). */
   requester?: TicketDetailExtension['requester'];
   relatedTo?: TicketDetailExtension['relatedTo'];
@@ -3537,6 +3542,10 @@ export interface AssuranceDashboardSummary {
   fieldServicePendingCount: number;
   byPriority: Record<string, number>;
   byType: Record<string, number>;
+  /** Casos activos por área; el API ya lo calcula (spec MOD10 bandeja H8). */
+  byQueue: Record<string, number>;
+  /** Conteo por cola de trabajo, relativo a quien consulta (spec MOD10 bandeja §3 J, CA-10). */
+  byWorkQueue: AssuranceWorkQueueCounts;
 }
 
 export interface CreateAssuranceTicketDto {
@@ -3610,6 +3619,10 @@ export interface ListAssuranceTicketsParams {
   requesterRefId?: string | undefined;
   subscriberId?: string | undefined;
   assignedUserId?: string | undefined;
+  /** Cola de trabajo del servidor (bandeja §3 J). */
+  workQueue?: AssuranceWorkQueue | undefined;
+  /** Búsqueda por número, asunto o cliente (§3 K); 2–100 caracteres tras recortar o se omite. */
+  search?: string | undefined;
   page?: number | undefined;
   limit?: number | undefined;
   sortBy?: string | undefined;
@@ -3690,6 +3703,10 @@ export const assuranceApi = {
       if (params?.requesterRefId) searchParams.set('requesterRefId', params.requesterRefId);
       if (params?.subscriberId) searchParams.set('subscriberId', params.subscriberId);
       if (params?.assignedUserId) searchParams.set('assignedUserId', params.assignedUserId);
+      if (params?.workQueue) searchParams.set('workQueue', params.workQueue);
+      const search =
+        params?.search !== undefined ? TicketListSearchSchema.safeParse(params.search) : null;
+      if (search?.success) searchParams.set('search', search.data);
       if (params?.page) searchParams.set('page', String(params.page));
       if (params?.limit) searchParams.set('limit', String(params.limit));
       if (params?.order) {

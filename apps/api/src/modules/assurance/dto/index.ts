@@ -2,9 +2,14 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { Allow, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { z } from 'zod';
-import type { ListMeta, ListTicketsOrder } from '@iwana/shared';
+import type { AssuranceWorkQueue, ListMeta, ListTicketsOrder } from '@iwana/shared';
 import {
+  ASSURANCE_WORK_QUEUES,
+  AssuranceWorkQueueSchema,
   ListTicketsOrderSchema,
+  TICKET_LIST_SEARCH_MAX_LENGTH,
+  TICKET_LIST_SEARCH_MIN_LENGTH,
+  TicketListSearchSchema,
   TICKET_LIST_ORDERS,
   TicketFieldDecision,
   SlaBreachStatus,
@@ -139,6 +144,10 @@ export const ListTicketsQuerySchema = z
     sortDir: z.enum(['asc', 'desc']).optional(),
     /** Spec MOD05 pestaña Soporte §16 B-3: `urgency` ordena en servidor como la pestaña. */
     order: ListTicketsOrderSchema,
+    /** Spec MOD10 bandeja §3 J: cola de trabajo; se combina con los filtros anteriores. */
+    workQueue: AssuranceWorkQueueSchema.optional(),
+    /** Spec MOD10 bandeja §3 K: número, asunto o cliente (este último con crm.subscribers.read). */
+    search: TicketListSearchSchema.optional(),
   })
   .superRefine((value, ctx) => {
     // applySort reemplazaría el ORDER BY de urgencia: la combinación es ambigua y se rechaza.
@@ -438,6 +447,30 @@ export class ListTicketsQueryDto {
   })
   @Allow()
   order?: ListTicketsOrder;
+
+  @ApiPropertyOptional({
+    enum: ASSURANCE_WORK_QUEUES,
+    description:
+      'Cola de trabajo; se combina con los demás filtros. Activo = estado distinto de RESOLVED, ' +
+      'CLOSED y CANCELLED. mine: activos asignados a quien consulta. dueSoon: plazo AT_RISK. ' +
+      'waitingCustomer: PENDING_CUSTOMER. fieldService: FIELD_SERVICE_REQUESTED. unassigned: ' +
+      'activos sin responsable. breached: plazo FIRST_RESPONSE_BREACHED o RESOLUTION_BREACHED ' +
+      '(igual que breachedCount del resumen). all: todos los activos.',
+  })
+  @Allow()
+  workQueue?: AssuranceWorkQueue;
+
+  @ApiPropertyOptional({
+    minLength: TICKET_LIST_SEARCH_MIN_LENGTH,
+    maxLength: TICKET_LIST_SEARCH_MAX_LENGTH,
+    example: 'TCK-0042',
+    description:
+      'Texto (se recorta) que busca en el número y el asunto del ticket y, con ' +
+      'crm.subscribers.read, en el nombre del suscriptor solicitante. Nunca encuentra por nombre ' +
+      'a un titular suprimido o con datos bloqueados.',
+  })
+  @Allow()
+  search?: string;
 }
 
 export interface ListTicketsResponseDto {

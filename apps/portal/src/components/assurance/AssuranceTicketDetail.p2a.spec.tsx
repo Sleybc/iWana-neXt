@@ -175,7 +175,8 @@ describe('P2a · bandeja con ?ticketId= (CA-11)', () => {
     primeApi();
     render(<AssuranceClient />);
 
-    await user.click(await screen.findByRole('button', { name: 'Ver detalle' }));
+    // Bandeja §3 D: desaparece «Ver detalle»; el número (y la fila entera) abre el ticket.
+    await user.click(await screen.findByRole('button', { name: 'TK-2026-0777' }));
 
     expect(await screen.findByRole('dialog', { name: 'TK-2026-0777' })).toBeInTheDocument();
     expect(mockRouter.push).toHaveBeenCalledWith(

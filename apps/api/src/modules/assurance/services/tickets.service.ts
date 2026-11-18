@@ -76,6 +76,12 @@ import { AssuranceFieldServicePort } from '../ports/assurance-field-service.port
 import { FieldServiceWorkPort } from '../ports/field-service-work.port';
 import { AssuranceAssigneeNamesPort } from '../ports/assurance-assignee-names.port';
 import { PqrService } from './pqr.service';
+import {
+  escapeLikePattern,
+  LIKE_ESCAPE_CLAUSE,
+  SLA_BREACH_CASE_SQL,
+  WORK_QUEUE_PREDICATE_SQL,
+} from './ticket-list-sql';
 import { AT_RISK_THRESHOLD_RATIO, SlaService } from './sla.service';
 import { TimelineService } from './timeline.service';
 import {
@@ -394,47 +400,8 @@ export class TicketsService {
         )
       : [];
 
-    // CASE espejo de SlaService.deriveBreachStatus (DEF-2 D-1 / ADR-065 DEF-4).
-    // Emite solo literales SlaBreachStatus sobre columnas reales — nunca sla_due_at.
-    const terminalStatusesSql = [TicketStatus.CANCELLED, TicketStatus.CLOSED, TicketStatus.RESOLVED]
-      .map((status) => `'${status}'`)
-      .join(', ');
-    const slaCaseExpr = `
-      CASE
-        WHEN st.status IN (${terminalStatusesSql}) THEN
-          CASE
-            WHEN st.resolved_at IS NOT NULL
-              AND st.sla_resolve_by_at IS NOT NULL
-              AND st.resolved_at > st.sla_resolve_by_at
-              THEN '${SlaBreachStatus.RESOLUTION_BREACHED}'
-            WHEN st.first_responded_at IS NOT NULL
-              AND st.sla_first_response_at IS NOT NULL
-              AND st.first_responded_at > st.sla_first_response_at
-              THEN '${SlaBreachStatus.FIRST_RESPONSE_BREACHED}'
-            ELSE '${SlaBreachStatus.OK}'
-          END
-        WHEN st.first_responded_at IS NULL AND st.sla_first_response_at IS NOT NULL THEN
-          CASE
-            WHEN st.sla_first_response_at <= NOW()
-              THEN '${SlaBreachStatus.FIRST_RESPONSE_BREACHED}'
-            WHEN EXTRACT(EPOCH FROM (st.sla_first_response_at - st.created_at)) > 0
-              AND EXTRACT(EPOCH FROM (st.sla_first_response_at - NOW()))
-                <= EXTRACT(EPOCH FROM (st.sla_first_response_at - st.created_at)) * ${AT_RISK_THRESHOLD_RATIO}
-              THEN '${SlaBreachStatus.AT_RISK}'
-            ELSE '${SlaBreachStatus.OK}'
-          END
-        WHEN st.resolved_at IS NULL AND st.sla_resolve_by_at IS NOT NULL THEN
-          CASE
-            WHEN st.sla_resolve_by_at <= NOW()
-              THEN '${SlaBreachStatus.RESOLUTION_BREACHED}'
-            WHEN EXTRACT(EPOCH FROM (st.sla_resolve_by_at - st.created_at)) > 0
-              AND EXTRACT(EPOCH FROM (st.sla_resolve_by_at - NOW()))
-                <= EXTRACT(EPOCH FROM (st.sla_resolve_by_at - st.created_at)) * ${AT_RISK_THRESHOLD_RATIO}
-              THEN '${SlaBreachStatus.AT_RISK}'
-            ELSE '${SlaBreachStatus.OK}'
-          END
-        ELSE '${SlaBreachStatus.OK}'
-      END`;
+    const slaCaseExpr = SLA_BREACH_CASE_SQL;
+    const canReadSubscribers = permissions.has(AccessPermissionKey.CRM_SUBSCRIBERS_READ);
 
     const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
@@ -511,6 +478,38 @@ export class TicketsService {
         });
       }
 
+      // Cola de trabajo (spec MOD10 bandeja §3 J): se combina con los filtros sueltos.
+      if (validated.workQueue) {
+        qb.andWhere(WORK_QUEUE_PREDICATE_SQL[validated.workQueue], {
+          workQueueActorId: actor.sub,
+        });
+      }
+
+      // Búsqueda (§3 K): número o asunto; cliente solo con crm.subscribers.read y sin titulares
+      // protegidos (los filtra el puerto CRM con la regla del detalle).
+      if (validated.search) {
+        const requesterIds = canReadSubscribers
+          ? await this.crmSubscriberReadPort.findTicketRequesterIdsByName(validated.search, qr)
+          : [];
+        qb.andWhere(
+          new Brackets((searchQuery) => {
+            searchQuery
+              .where(`st.ticket_number ILIKE :searchPattern ${LIKE_ESCAPE_CLAUSE}`)
+              .orWhere(`st.subject ILIKE :searchPattern ${LIKE_ESCAPE_CLAUSE}`);
+            if (requesterIds.length > 0) {
+              searchQuery.orWhere(
+                '(st.requester_type = :searchRequesterType AND st.requester_ref_id IN (:...searchRequesterIds))',
+                {
+                  searchRequesterType: TicketRequesterType.SUBSCRIBER,
+                  searchRequesterIds: requesterIds,
+                },
+              );
+            }
+          }),
+          { searchPattern: `%${escapeLikePattern(validated.search)}%` },
+        );
+      }
+
       const totalCount = await qb.getCount();
 
       // Default primero: TypeORM orderBy() reemplaza el ORDER BY acumulado (O-7(b)).
@@ -527,7 +526,7 @@ export class TicketsService {
         .getRawAndEntities();
 
       // Merge: el campo derivado sla_breach_status viaja en raw
-      const extensions = await this.loadListExtensions(qr.manager, tenantId, entities, permissions);
+      const extensions = await this.loadListExtensions(qr, tenantId, entities, permissions);
       const data = entities.map((ticket, idx) => ({
         ...ticket,
         slaBreachStatus: (raw[idx] as Record<string, unknown>)?.sla_breach_status,
@@ -586,7 +585,9 @@ export class TicketsService {
       }
       this._ensureOwnership(ticket, actor);
 
-      const { requester, relatedTo } = await this.resolveTicketParties(ticket, qr, permissions);
+      const { requester, relatedTo } = (
+        await this.resolvePartiesForTickets([ticket], qr, permissions, true)
+      ).get(ticket.id)!;
 
       const canReadVisits = permissions.has(AccessPermissionKey.WFM_SCHEDULE_READ);
       const canReadOrders = permissions.has(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ);
@@ -726,7 +727,7 @@ export class TicketsService {
    * manager de esta transacción. Visita y orden solo con el permiso de lectura de su módulo.
    */
   private async loadListExtensions(
-    manager: EntityManager,
+    qr: QueryRunner,
     tenantId: string,
     tickets: readonly SupportTicket[],
     permissions: ReadonlySet<string>,
@@ -738,6 +739,7 @@ export class TicketsService {
     const canReadVisits = permissions.has(AccessPermissionKey.WFM_SCHEDULE_READ);
     const canReadOrders = permissions.has(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ);
     const empty = new Map<string, never>();
+    const manager = qr.manager;
 
     const names =
       this.assigneeNamesPort && assigneeIds.length > 0
@@ -755,6 +757,10 @@ export class TicketsService {
             ticketIds,
           )
         : empty;
+    const parties =
+      tickets.length > 0
+        ? await this.resolvePartiesForTickets(tickets, qr, permissions, false)
+        : new Map<string, { requester: TicketPartyRef }>();
 
     return (ticket) => {
       const visit = visits.get(ticket.id);
@@ -774,6 +780,7 @@ export class TicketsService {
             }
           : null,
         executionOrder: order ? toExecutionOrderView(order) : null,
+        requesterDisplayName: parties.get(ticket.id)?.requester.displayName ?? null,
       };
     };
   }
@@ -787,27 +794,41 @@ export class TicketsService {
   }
 
   /**
-   * Nombres del solicitante y del relacionado (R4). El nombre sale nulo sin permiso de lectura
-   * CRM del tipo, con titular protegido, con referencia no resoluble o si CRM falla. La
-   * lectura CRM corre en un SAVEPOINT: un error no aborta la transacción del detalle.
+   * Nombres del solicitante y del relacionado (R4), del detalle y del listado (spec MOD10 bandeja
+   * §3 L), en lote: una lectura CRM por llamada. El nombre sale nulo sin permiso de lectura CRM
+   * del tipo, con titular protegido, con referencia no resoluble o si CRM falla. La lectura CRM
+   * corre en un SAVEPOINT: un error no aborta la transacción del llamante.
    */
-  private async resolveTicketParties(
-    ticket: SupportTicket,
+  private async resolvePartiesForTickets(
+    tickets: readonly SupportTicket[],
     qr: QueryRunner,
     permissions: ReadonlySet<string>,
-  ): Promise<{ requester: TicketPartyRef; relatedTo: TicketPartyRef | null }> {
-    const slots = [
+    includeRelated: boolean,
+  ): Promise<Map<string, { requester: TicketPartyRef; relatedTo: TicketPartyRef | null }>> {
+    type Slot = { type: string; refId: string | null };
+    const slotsOf = (ticket: SupportTicket): [Slot, Slot | null] => [
       { type: ticket.requesterType as string, refId: ticket.requesterRefId ?? null },
-      ...(ticket.subjectType
-        ? [{ type: ticket.subjectType as string, refId: ticket.subjectRefId ?? null }]
-        : []),
+      includeRelated && ticket.subjectType
+        ? { type: ticket.subjectType as string, refId: ticket.subjectRefId ?? null }
+        : null,
     ];
 
     const lookups: CrmTicketPartyLookup[] = [];
-    for (const slot of slots) {
-      const crmType = crmPartyType(slot.type);
-      if (crmType && slot.refId && permissions.has(CRM_PARTY_READ_PERMISSION[crmType])) {
-        lookups.push({ type: crmType, id: slot.refId });
+    const seen = new Set<string>();
+    for (const ticket of tickets) {
+      for (const slot of slotsOf(ticket)) {
+        if (!slot) continue;
+        const crmType = crmPartyType(slot.type);
+        const key = `${crmType}:${slot.refId}`;
+        if (
+          crmType &&
+          slot.refId &&
+          permissions.has(CRM_PARTY_READ_PERMISSION[crmType]) &&
+          !seen.has(key)
+        ) {
+          seen.add(key);
+          lookups.push({ type: crmType, id: slot.refId });
+        }
       }
     }
 
@@ -820,14 +841,14 @@ export class TicketsService {
       } catch (error) {
         await qr.query('ROLLBACK TO SAVEPOINT ticket_detail_parties');
         resolved = null;
-        // Solo clase, sqlstate y ticket: ni mensaje, ni nombre, ni referencia del titular (S-7).
+        // Solo clase y sqlstate: ni mensaje, ni nombre, ni referencia del titular (S-7).
         this.logger.warn(
-          `Nombres del ticket ${ticket.id} no verificados (fail-closed): ${summarizeErrorForLog(error)}`,
+          `Nombres ${tickets.length === 1 ? `del ticket ${tickets[0]!.id}` : `de ${tickets.length} tickets`} no verificados (fail-closed): ${summarizeErrorForLog(error)}`,
         );
       }
     }
 
-    const toRef = (slot: { type: string; refId: string | null }): TicketPartyRef => {
+    const toRef = (slot: Slot): TicketPartyRef => {
       const base = { type: slot.type as TicketPartyRef['type'], refId: slot.refId };
       const crmType = crmPartyType(slot.type);
       if (!crmType) {
@@ -854,11 +875,15 @@ export class TicketsService {
       };
     };
 
-    const [requesterSlot, relatedSlot] = slots;
-    return {
-      requester: toRef(requesterSlot!),
-      relatedTo: ticket.subjectType && relatedSlot ? toRef(relatedSlot) : null,
-    };
+    return new Map(
+      tickets.map((ticket) => {
+        const [requesterSlot, relatedSlot] = slotsOf(ticket);
+        return [
+          ticket.id,
+          { requester: toRef(requesterSlot), relatedTo: relatedSlot ? toRef(relatedSlot) : null },
+        ];
+      }),
+    );
   }
 
   async update(id: string, input: UpdateTicketInput, actor: JwtPayload): Promise<SupportTicket> {

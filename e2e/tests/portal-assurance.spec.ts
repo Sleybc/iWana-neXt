@@ -420,12 +420,28 @@ async function setupAssuranceMocks(page: import('@playwright/test').Page) {
     }
 
     if (pathname.endsWith('/assurance/tickets') && method === 'GET') {
+      // Bandeja 2026-11-18 §3 J (paso 2, QA2): la cola va al servidor como `workQueue`; el mock
+      // la respeta como el API (`ticket-list-sql.ts`): «Míos» = activos asignados a quien consulta
+      // (sub del JWT), «Todos» = solo activos (D1). Así la cola por defecto no se aprueba sola.
+      const params = new URL(request.url()).searchParams;
+      const workQueue = params.get('workQueue');
+      const assignedUserId = params.get('assignedUserId');
+      const status = params.get('status');
+      const isActive = (entry: MockTicket) =>
+        !['RESOLVED', 'CLOSED', 'CANCELLED'].includes(entry.status);
+      const listed = tickets.filter(
+        (entry) =>
+          (!assignedUserId || entry.assignedUserId === assignedUserId) &&
+          (!status || entry.status === status) &&
+          (workQueue !== 'mine' || (isActive(entry) && entry.assignedUserId === SUPPORT_USER_ID)) &&
+          (workQueue !== 'all' || isActive(entry)),
+      );
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: tickets,
-          total: tickets.length,
+          data: listed,
+          total: listed.length,
           page: 1,
           limit: 20,
         }),
@@ -672,9 +688,24 @@ test('support can create, comment, escalate to field service and resolve a ticke
   await setupAssuranceMocks(page);
   await seedPortalSession(page);
 
+  // Bandeja §3 B/D2 + H: soporte entra en «Míos», con su id y orden de urgencia en el listado.
+  const firstList = page.waitForRequest(
+    (request) =>
+      request.method() === 'GET' && new URL(request.url()).pathname.endsWith('/assurance/tickets'),
+  );
   await page.goto('/dashboard/assurance', { waitUntil: 'domcontentloaded' });
+  const firstListParams = new URL((await firstList).url()).searchParams;
+  // P2 (§3 J): «Míos» ya no manda `assignedUserId`; pide la cola y el API usa el sub del JWT.
+  expect(firstListParams.get('workQueue')).toBe('mine');
+  expect(firstListParams.get('assignedUserId')).toBeNull();
+  expect(firstListParams.get('order')).toBe('urgency');
 
   await expect(page.getByRole('heading', { name: 'Mesa de ayuda' })).toBeVisible();
+  const queues = page.getByRole('group', { name: 'Colas de trabajo' });
+  await expect(queues.getByRole('button', { name: /^Míos/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await page.getByRole('button', { name: 'Nuevo ticket' }).first().click();
 
   await expect(page.getByRole('heading', { name: 'Crear ticket' })).toBeVisible();
@@ -688,9 +719,18 @@ test('support can create, comment, escalate to field service and resolve a ticke
   await page.getByRole('button', { name: 'Crear ticket' }).click();
 
   await expect(page.getByText('El ticket TK-20260509-001 fue creado.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'TK-20260509-001' })).toBeVisible();
+  // D2: el ticket nuevo no queda asignado a quien lo crea, así que no está en «Míos»;
+  // se pasa a «Todos» (`?queue=all`), que es donde el API real lo devuelve.
+  await queues.getByRole('button', { name: /^Todos/ }).click();
+  await expect(page).toHaveURL(/[?&]queue=all/);
+  await expect(page.getByRole('button', { name: 'TK-20260509-001', exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'TK-20260509-001' }).click();
+  // §3 D: la fila entera abre el ticket (clic en el asunto, no en el número).
+  await page
+    .getByRole('row')
+    .filter({ hasText: 'TK-20260509-001' })
+    .getByText('Intermitencia de acceso en sede principal', { exact: true })
+    .click();
   await expect(page.getByRole('heading', { name: 'TK-20260509-001' })).toBeVisible();
 
   await page.getByRole('tab', { name: 'Comentarios' }).click();
@@ -762,7 +802,13 @@ test('support can create, comment, escalate to field service and resolve a ticke
   ).toBeVisible();
 
   await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
-  const firstRow = page.locator('tbody tr').first();
-  await expect(firstRow.getByText('TK-20260509-001', { exact: true })).toBeVisible();
-  await expect(firstRow.getByText('Resuelto', { exact: true })).toBeVisible();
+  // §3 H: con `order=urgency` la primera fila no es necesariamente la del ticket; se busca la
+  // fila por su número. Cerrar conserva `?queue=all`. P2 (§3 J, D1): «Todos» es solo activos, así
+  // que el resuelto sale de esa cola; sin cola (`?status=RESOLVED`, CA-4) se lista como Resuelto.
+  await expect(page).toHaveURL(/[?&]queue=all/);
+  await expect(page.getByRole('row').filter({ hasText: 'TK-20260509-001' })).toHaveCount(0);
+  await page.goto('/dashboard/assurance?status=RESOLVED', { waitUntil: 'domcontentloaded' });
+  const ticketRow = page.getByRole('row').filter({ hasText: 'TK-20260509-001' });
+  await expect(ticketRow.getByText('TK-20260509-001', { exact: true })).toBeVisible();
+  await expect(ticketRow.getByText('Resuelto', { exact: true })).toBeVisible();
 });

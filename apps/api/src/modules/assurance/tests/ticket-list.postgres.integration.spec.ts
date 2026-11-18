@@ -376,6 +376,8 @@ describeWithDb('Assurance listado de tickets paso 2 — PostgreSQL real', () => 
           assignedUserDisplayName: value['assignedUserDisplayName'],
           activeVisit: value['activeVisit'],
           executionOrder: value['executionOrder'],
+          // Spec MOD10 bandeja §3 L: campo nuevo y obligatorio del contrato del listado.
+          requesterDisplayName: value['requesterDisplayName'],
         };
         expect(TicketListItemExtensionSchema.safeParse(ext).success).toBe(true);
       }

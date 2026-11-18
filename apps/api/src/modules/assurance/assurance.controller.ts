@@ -96,7 +96,11 @@ import {
   TICKET_COMMENT_LIST_WITH_ATTACHMENTS_OPENAPI,
   TICKET_COMMENT_WITH_ATTACHMENTS_OPENAPI,
 } from './ticket-attachments.openapi';
-import { TICKET_LIST_OPENAPI, TICKET_LIST_ORDER_QUERY_OPENAPI } from './ticket-list.openapi';
+import {
+  ASSURANCE_WORK_QUEUE_COUNTS_OPENAPI,
+  TICKET_LIST_OPENAPI,
+  TICKET_LIST_ORDER_QUERY_OPENAPI,
+} from './ticket-list.openapi';
 
 const dashboardSummarySchema = {
   type: 'object',
@@ -118,8 +122,10 @@ const dashboardSummarySchema = {
     },
     byQueue: {
       type: 'object',
+      description: 'Casos activos por área.',
       additionalProperties: { type: 'number' },
     },
+    byWorkQueue: ASSURANCE_WORK_QUEUE_COUNTS_OPENAPI,
   },
   required: [
     'openCount',
@@ -132,6 +138,7 @@ const dashboardSummarySchema = {
     'byPriority',
     'byType',
     'byQueue',
+    'byWorkQueue',
   ],
 };
 
@@ -188,7 +195,8 @@ export class AssuranceController {
   @ApiOkResponse({
     description:
       'Tickets del tenant. Cada ticket trae `attachmentCount`, el nombre del responsable, la ' +
-      'visita activa y la orden de ejecución (nulas sin permiso de lectura de su módulo).',
+      'visita activa y la orden de ejecución (nulas sin permiso de lectura de su módulo) y el ' +
+      'nombre del solicitante (nulo sin crm.subscribers.read o con titular protegido).',
     schema: TICKET_LIST_OPENAPI,
   })
   async listTickets(
@@ -600,8 +608,8 @@ export class AssuranceController {
   @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_READ)
   @ApiOperation({ summary: 'Resumen operativo de assurance' })
   @ApiOkResponse({ description: 'Resumen operativo de assurance', schema: dashboardSummarySchema })
-  getDashboard() {
-    return this.dashboardService.getSummary();
+  getDashboard(@CurrentUser() actor: JwtPayload) {
+    return this.dashboardService.getSummary(actor.sub);
   }
 
   @Get('dashboard/summary')
@@ -612,7 +620,7 @@ export class AssuranceController {
     description: 'Resumen operativo de assurance para dashboard',
     schema: dashboardSummarySchema,
   })
-  getDashboardSummary() {
-    return this.dashboardService.getSummary();
+  getDashboardSummary(@CurrentUser() actor: JwtPayload) {
+    return this.dashboardService.getSummary(actor.sub);
   }
 }

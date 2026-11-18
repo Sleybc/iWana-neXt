@@ -1,5 +1,5 @@
 import type { SchemaObject } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
-import { TICKET_LIST_ORDERS } from '@iwana/shared';
+import { ASSURANCE_WORK_QUEUES, TICKET_LIST_ORDERS } from '@iwana/shared';
 import {
   TICKET_ACTIVE_VISIT_OPENAPI,
   TICKET_EXECUTION_ORDER_OPENAPI,
@@ -23,6 +23,7 @@ export const TICKET_LIST_OPENAPI: SchemaObject = {
           'assignedUserDisplayName',
           'activeVisit',
           'executionOrder',
+          'requesterDisplayName',
         ],
         properties: {
           id: { type: 'string', format: 'uuid' },
@@ -51,6 +52,16 @@ export const TICKET_LIST_OPENAPI: SchemaObject = {
               'Orden de ejecución no anulada más reciente; nula sin orden o sin ' +
               'operations.execution_orders.read.',
           },
+          requesterDisplayName: {
+            type: 'string',
+            maxLength: 300,
+            nullable: true,
+            example: 'Cliente Sintético',
+            description:
+              'Nombre visible del solicitante, con la regla del detalle: nulo si no es un ' +
+              'suscriptor, sin crm.subscribers.read, con titular suprimido o con datos bloqueados, ' +
+              'con referencia no resoluble o si CRM no responde.',
+          },
         },
       },
     },
@@ -72,4 +83,17 @@ export const TICKET_LIST_ORDER_QUERY_OPENAPI: SchemaObject = {
   type: 'string',
   enum: [...TICKET_LIST_ORDERS],
   default: 'recent',
+};
+
+/** Conteo por cola de trabajo del resumen (spec MOD10 bandeja §3 J), espejo de `AssuranceWorkQueueCountsSchema`. */
+export const ASSURANCE_WORK_QUEUE_COUNTS_OPENAPI: SchemaObject = {
+  type: 'object',
+  description:
+    'Casos por cola de trabajo, relativos a quien consulta; cada valor coincide con meta.total ' +
+    'de GET /assurance/tickets?workQueue=<cola>.',
+  required: [...ASSURANCE_WORK_QUEUES],
+  additionalProperties: false,
+  properties: Object.fromEntries(
+    ASSURANCE_WORK_QUEUES.map((queue) => [queue, { type: 'integer', minimum: 0 }]),
+  ),
 };

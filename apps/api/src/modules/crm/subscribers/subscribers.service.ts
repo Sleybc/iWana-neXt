@@ -102,7 +102,7 @@ import {
   type CrmTicketPartyLookup,
   type CrmTicketPartySnapshot,
 } from '../ports/crm-subscriber-read.port';
-import { resolveTicketParties } from './ticket-party-resolution';
+import { findTicketRequesterIdsByName, resolveTicketParties } from './ticket-party-resolution';
 import { CrmQuoteReadPort } from '../ports/crm-quote-read.port';
 import { ContractAutoCreationPort } from '../ports/contract-auto-creation.port';
 import { ANONYMIZED } from '../privacy-adapters/titular-erasure/titular-erasure-sql';
@@ -1542,6 +1542,10 @@ export class SubscribersService implements CrmSubscriberReadPort {
     qr: QueryRunner,
   ): Promise<CrmTicketPartySnapshot[]> {
     return resolveTicketParties(references, qr, this.privacyMarksReadPort);
+  }
+
+  findTicketRequesterIdsByName(term: string, qr: QueryRunner): Promise<string[]> {
+    return findTicketRequesterIdsByName(term, qr, this.privacyMarksReadPort);
   }
 
   async findSummaryByExpedienteId(

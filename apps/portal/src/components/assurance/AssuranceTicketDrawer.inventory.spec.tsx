@@ -957,7 +957,8 @@ describe('Consumidor bandeja (AssuranceClient) — inventario CA-1', () => {
       const user = userEvent.setup();
 
       render(<AssuranceClient />);
-      await user.click(await screen.findByRole('button', { name: 'Ver detalle' }));
+      // Bandeja §3 D: desaparece «Ver detalle»; el número (y la fila entera) abre el ticket.
+      await user.click(await screen.findByRole('button', { name: ticket.ticketNumber }));
       const panel = await waitForLoadedPanel(ticket);
 
       // La bandeja carga los responsables para cualquier rol (`loadOperationalUsers` sin guarda).

@@ -13,6 +13,24 @@ describe('ticket-list.openapi (spec MOD05 pestaña Soporte §16 B-1 a B-3)', () 
     expect(item.required).toEqual(expect.arrayContaining(['id', 'attachmentCount']));
   });
 
+  // QA2 (bandeja §3 L, CA-13): el nombre del solicitante está declarado con el tope del contrato
+  // y documenta la regla de nulo.
+  it('requesterDisplayName: texto anulable de hasta 300, con la regla de nulo', () => {
+    const field = item.properties['requesterDisplayName'] as {
+      type: string;
+      maxLength: number;
+      nullable: boolean;
+      description: string;
+    };
+    expect(field).toMatchObject({ type: 'string', maxLength: 300, nullable: true });
+    const contract = TicketListItemExtensionSchema.shape.requesterDisplayName;
+    expect(contract.safeParse('x'.repeat(300)).success).toBe(true);
+    expect(contract.safeParse('x'.repeat(301)).success).toBe(false);
+    expect(contract.safeParse(null).success).toBe(true);
+    expect(field.description).toMatch(/crm.subscribers.read/u);
+    expect(field.description).toMatch(/bloqueados/u);
+  });
+
   it('no declara correo ni otros datos del responsable', () => {
     expect(JSON.stringify(TICKET_LIST_OPENAPI)).not.toMatch(/assignedUserEmail|email/u);
   });

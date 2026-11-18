@@ -16,6 +16,12 @@ export const TicketListItemExtensionSchema = z
     activeVisit: TicketActiveVisitSchema.nullable(),
     /** Orden de ejecución más reciente no anulada; nula sin orden o sin `operations.execution_orders.read`. */
     executionOrder: TicketExecutionOrderSchema.nullable(),
+    /**
+     * Nombre visible del solicitante (spec MOD10 bandeja §3 L), con la regla del detalle: nulo si
+     * el solicitante no es un suscriptor, sin `crm.subscribers.read`, con titular suprimido o con
+     * DATOS_BLOQUEADOS, con referencia no resoluble o si CRM falla.
+     */
+    requesterDisplayName: z.string().max(300).nullable(),
   })
   .strict();
 export type TicketListItemExtension = z.infer<typeof TicketListItemExtensionSchema>;

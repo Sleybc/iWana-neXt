@@ -11,6 +11,7 @@ import {
   getAssuranceTicketTypeLabel,
 } from './assurance-labels';
 import { getTicketDeadlineState, type TicketFieldWork } from './assurance-ticket-model';
+import { formatElapsed } from '@/lib/format-relative-time';
 import { formatTicketAttachmentCount } from './ticket-attachments';
 import { TicketPriorityBadge, TicketStatusBadge } from './ticket-badges';
 
@@ -38,14 +39,6 @@ export interface TicketListItemProps {
   /** Reloj inyectable para pruebas. */
   now?: number | undefined;
   onOpen: (opener: HTMLButtonElement) => void;
-}
-
-function formatElapsed(ms: number): string {
-  const minutes = Math.max(1, Math.round(ms / 60_000));
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours} h`;
-  return `${Math.round(hours / 24)} días`;
 }
 
 /**

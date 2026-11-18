@@ -8,6 +8,7 @@ import * as shared from '../../index';
 
 const item = (overrides: Record<string, unknown> = {}) => ({
   assignedUserDisplayName: 'Ana Pérez',
+  requesterDisplayName: 'Cliente Sintético',
   activeVisit: {
     id: randomUUID(),
     status: 'SCHEDULED',
@@ -34,6 +35,7 @@ describe('ticket-list.contract (spec MOD05 pestaña Soporte §16 B-1 a B-3)', ()
         assignedUserDisplayName: null,
         activeVisit: null,
         executionOrder: null,
+        requesterDisplayName: null,
       }).success,
     ).toBe(true);
   });
@@ -63,6 +65,15 @@ describe('ticket-list.contract (spec MOD05 pestaña Soporte §16 B-1 a B-3)', ()
   it('exige los tres campos aunque sean nulos', () => {
     const { executionOrder: _omit, ...rest } = item();
     expect(TicketListItemExtensionSchema.safeParse(rest).success).toBe(false);
+  });
+
+  it('exige el nombre del solicitante (nulo permitido) y lo acota a 300', () => {
+    const { requesterDisplayName: _omit, ...rest } = item();
+    expect(TicketListItemExtensionSchema.safeParse(rest).success).toBe(false);
+    expect(
+      TicketListItemExtensionSchema.safeParse(item({ requesterDisplayName: 'x'.repeat(301) }))
+        .success,
+    ).toBe(false);
   });
 
   it('el orden admite recent y urgency, recent por defecto', () => {

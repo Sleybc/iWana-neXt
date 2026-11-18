@@ -45,6 +45,14 @@ export abstract class CrmSubscriberReadPort {
     qr: QueryRunner,
   ): Promise<CrmTicketPartySnapshot[]>;
 
+  /**
+   * Suscriptores cuyo nombre visible contiene `term` (sin distinguir mayúsculas), para buscar
+   * tickets por cliente (MOD10 bandeja §3 K). Corre con el `qr` del llamante. Nunca devuelve
+   * borrados, suprimidos ni titulares con DATOS_BLOQUEADOS (misma regla que
+   * `resolveTicketParties`). Como mucho `TICKET_REQUESTER_SEARCH_LIMIT` ids.
+   */
+  abstract findTicketRequesterIdsByName(term: string, qr: QueryRunner): Promise<string[]>;
+
   abstract findSummaryByExpedienteId(
     expedienteId: string,
   ): Promise<CrmSubscriberSummarySnapshot | null>;

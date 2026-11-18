@@ -801,7 +801,8 @@ describe('QA1 CA-5 · consumidor bandeja (AssuranceClient)', () => {
       primeTicketApi(ticket);
       const user = userEvent.setup();
       render(<AssuranceClient />);
-      const trigger = await screen.findByRole('button', { name: 'Ver detalle' });
+      // Bandeja §3 D: desaparece «Ver detalle»; el número (y la fila entera) abre el ticket.
+      const trigger = await screen.findByRole('button', { name: ticket.ticketNumber });
       await expectAccessibleDialogLifecycle(user, trigger, ticket);
     },
   );

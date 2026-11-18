@@ -1,4 +1,5 @@
 import {
+  ASSURANCE_WORK_QUEUES,
   ExecutionOrderResult,
   SlaBreachStatus,
   TicketFieldDecision,
@@ -10,10 +11,14 @@ import {
   TicketSubjectType,
   TicketTimelineEventType,
   TicketType,
+  UserRole,
 } from '@iwana/shared';
 import type { AssuranceTimelineEvent, InternalUser } from '@/lib/api-client';
 import {
   ASSURANCE_EMPTY_QUEUE_LABEL,
+  ASSURANCE_INBOX_QUEUES,
+  ASSURANCE_SLA_STATUS_OPTIONS,
+  getAssuranceDefaultInboxQueue,
   ASSURANCE_FIELD_DECISION_OPTIONS,
   ASSURANCE_QUEUE_LABELS,
   ASSURANCE_QUEUE_OPTIONS,
@@ -321,5 +326,43 @@ describe('assurance-labels — tabla §4 v1.1 completa', () => {
     expect(getAssuranceAuthorDisplayName(AGENT_USER)).toBe('Agente Sintético');
     expect(getAssuranceAssigneeLabel(AGENT_USER.id, AGENT_USER)).toBe('Agente Sintético');
     expect(getAssuranceAssigneeLabel(undefined, AGENT_USER)).toBe('Sin asignar');
+  });
+});
+
+describe('Bandeja colas de trabajo (spec 2026-11-18 §3 B, J, D2)', () => {
+  // Paso 2 (§3 J) levanta D3: Sin asignar y Vencidos existen en el servidor con su conteo.
+  it('ofrece las siete colas del contrato, con Sin asignar y Vencidos', () => {
+    expect(ASSURANCE_INBOX_QUEUES.map((queue) => queue.label)).toEqual([
+      'Míos',
+      'Por vencer',
+      'Vencidos',
+      'Sin asignar',
+      'Espera del cliente',
+      'Visita técnica',
+      'Todos',
+    ]);
+    expect(ASSURANCE_INBOX_QUEUES.map((queue) => queue.value).sort()).toEqual(
+      [...ASSURANCE_WORK_QUEUES].sort(),
+    );
+  });
+
+  it('enlace entrante equivalente de cada cola que lo tiene (CA-4)', () => {
+    const byValue = Object.fromEntries(ASSURANCE_INBOX_QUEUES.map((q) => [q.value, q.filters]));
+    expect(byValue.dueSoon).toEqual({ slaBreachStatus: SlaBreachStatus.AT_RISK });
+    expect(byValue.waitingCustomer).toEqual({ status: TicketStatus.PENDING_CUSTOMER });
+    expect(byValue.fieldService).toEqual({ status: TicketStatus.FIELD_SERVICE_REQUESTED });
+  });
+
+  it('D2: «Todos» para quien administra; «Míos» para soporte y técnico', () => {
+    expect(getAssuranceDefaultInboxQueue(UserRole.ADMIN)).toBe('all');
+    expect(getAssuranceDefaultInboxQueue(UserRole.SUPPORT)).toBe('mine');
+    expect(getAssuranceDefaultInboxQueue(UserRole.TECHNICIAN)).toBe('mine');
+  });
+
+  it('el filtro de plazo tiene opciones con nombre de producto', () => {
+    expect(ASSURANCE_SLA_STATUS_OPTIONS).toContainEqual({
+      value: SlaBreachStatus.AT_RISK,
+      label: 'En riesgo',
+    });
   });
 });

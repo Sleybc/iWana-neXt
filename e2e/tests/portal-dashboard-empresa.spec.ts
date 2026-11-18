@@ -1201,8 +1201,14 @@ test.describe('Dashboard empresarial — CA-V2-05 hidratación destino', () => {
     await expect(page.getByRole('heading', { name: /mesa de ayuda/i }).first()).toBeVisible({
       timeout: 15_000,
     });
+    // Bandeja 2026-11-18 §3 B / CA-4: el enlace del inicio abre la cola equivalente «Por vencer».
+    const dueSoonQueue = page
+      .getByRole('group', { name: 'Colas de trabajo' })
+      .getByRole('button', { name: /^Por vencer/ });
+    await expect(dueSoonQueue).toHaveAttribute('aria-pressed', 'true');
     await page.reload();
     await expect(page).toHaveURL(/slaBreachStatus=AT_RISK/);
+    await expect(dueSoonQueue).toHaveAttribute('aria-pressed', 'true');
     await page.locator('#sidebar').getByRole('link', { name: 'Inicio' }).click();
     await expectLoadedDashboard(page);
 

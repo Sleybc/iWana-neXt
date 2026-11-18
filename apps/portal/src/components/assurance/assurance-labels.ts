@@ -14,6 +14,7 @@ import {
   UserRole,
 } from '@iwana/shared';
 import { EXECUTION_ORDER_NUMBER_PATTERN, type ExecutionOrderResult } from '@iwana/shared';
+import type { AssuranceWorkQueue } from '@iwana/shared';
 import type { AssuranceTimelineEvent, InternalUser } from '@/lib/api-client';
 import { EXECUTION_ORDER_RESULT_LABELS } from '@/components/operations/operations-labels';
 import { getSystemBaseRoleLabel } from '@/lib/system-vocabulary';
@@ -196,6 +197,49 @@ export const ASSURANCE_SOURCE_OPTIONS = Object.entries(ASSURANCE_SOURCE_LABELS).
 export const ASSURANCE_FIELD_DECISION_OPTIONS = Object.entries(ASSURANCE_FIELD_DECISION_LABELS).map(
   ([value, label]) => ({ value, label }),
 );
+
+export const ASSURANCE_SLA_STATUS_OPTIONS = Object.entries(ASSURANCE_SLA_STATUS_LABELS).map(
+  ([value, label]) => ({ value, label }),
+);
+
+/**
+ * Colas de trabajo de la bandeja (spec 2026-11-18 §3 B y J). Paso 2: cada cola es `workQueue` del
+ * servidor (contrato `ASSURANCE_WORK_QUEUES`) y su conteo sale de `byWorkQueue` del resumen.
+ */
+export type AssuranceInboxQueue = AssuranceWorkQueue;
+
+export interface AssuranceInboxQueueDefinition {
+  value: AssuranceInboxQueue;
+  label: string;
+  /**
+   * Filtros sueltos equivalentes, solo para reconocer la cola en un enlace entrante sin `queue`
+   * (H10, CA-4). La cola ya no los escribe en la URL: escribe `queue`.
+   */
+  filters: { status?: TicketStatus; slaBreachStatus?: SlaBreachStatus };
+}
+
+export const ASSURANCE_INBOX_QUEUES: readonly AssuranceInboxQueueDefinition[] = [
+  { value: 'mine', label: 'Míos', filters: {} },
+  { value: 'dueSoon', label: 'Por vencer', filters: { slaBreachStatus: SlaBreachStatus.AT_RISK } },
+  { value: 'breached', label: 'Vencidos', filters: {} },
+  { value: 'unassigned', label: ASSURANCE_UNASSIGNED_LABEL, filters: {} },
+  {
+    value: 'waitingCustomer',
+    label: 'Espera del cliente',
+    filters: { status: TicketStatus.PENDING_CUSTOMER },
+  },
+  {
+    value: 'fieldService',
+    label: 'Visita técnica',
+    filters: { status: TicketStatus.FIELD_SERVICE_REQUESTED },
+  },
+  { value: 'all', label: 'Todos', filters: {} },
+];
+
+/** Cola al entrar sin filtros (D2): «Todos» para quien administra; «Míos» para el resto. */
+export function getAssuranceDefaultInboxQueue(role: string | null | undefined): 'mine' | 'all' {
+  return role === UserRole.ADMIN ? 'all' : 'mine';
+}
 
 export function formatAssuranceDateTime(value: string | Date | null | undefined): string {
   if (!value) {
