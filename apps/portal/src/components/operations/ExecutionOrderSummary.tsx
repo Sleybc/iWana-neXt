@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Badge, Button, ProgressMeter, SkeletonBlock } from '@iwana/ui';
 import { ExecutionOrderStatus } from '@iwana/shared';
 import type { ExecutionOrderDetailResponse, ExecutionOrderRecord } from '@/lib/api-client';
@@ -8,7 +9,16 @@ import {
   EXECUTION_ORDER_STATUS_VARIANTS,
   EXECUTION_ORDER_WORK_TYPE_LABELS,
 } from './operations-labels';
-import { PortalAlert, PortalEmptyState } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalEmptyState,
+  portalPanelDenseActionClassName,
+} from '@/components/shared/portal-ui';
+import {
+  executionOrderSourceTicketHref,
+  executionOrderSubscriberHref,
+  executionOrderVisitHref,
+} from './execution-order-links';
 import { getExecutionOrderCompletionDisplay } from './execution-order-view';
 import { getExecutionOrderWindowAbsence } from './execution-order-window-copy';
 
@@ -21,7 +31,8 @@ import {
   type ExecutionOrderSyncState,
 } from './execution-order-sync-copy';
 
-export type ExecutionOrderSummaryVariant = 'full' | 'agenda-compact';
+/** `console`: cabecera compacta de la consola; el número ya va en el título del panel. */
+export type ExecutionOrderSummaryVariant = 'full' | 'agenda-compact' | 'console';
 
 export interface ExecutionOrderSummaryProps {
   order: SummaryOrder | null;
@@ -201,13 +212,38 @@ export function ExecutionOrderSummary({
   const resolvedSyncState = syncState ?? detailSyncState(order);
 
   const isAgendaCompact = variant === 'agenda-compact';
+  const isConsole = variant === 'console';
+  // P2 (spec §3 G–H): cliente y enlaces solo en la consola y solo si el campo
+  // llega; nunca se sustituye el cliente por el sitio ni por otra etiqueta.
+  const subscriber = isConsole && isDetail(order) ? (order.subscriber ?? null) : null;
+  const subscriberName = subscriber?.displayName?.trim() || null;
+  const subscriberHref = executionOrderSubscriberHref(subscriber);
+  const serviceAddress = subscriber
+    ? [subscriber.serviceAddress?.trim(), subscriber.municipality?.trim()]
+        .filter((part): part is string => Boolean(part))
+        .join(', ') || null
+    : null;
+  const ticket = isConsole && isDetail(order) ? (order.sourceTicket ?? null) : null;
+  const ticketHref = executionOrderSourceTicketHref(ticket);
+  const visitHref =
+    isConsole && isDetail(order)
+      ? executionOrderVisitHref(order.visit ?? null, order.schedule.window?.startAt)
+      : null;
+  const windowText = window
+    ? `${dateFormatter.format(new Date(window.startAt))} – ${dateFormatter.format(new Date(window.endAt))}`
+    : windowAbsence.label;
 
   return (
-    <section aria-label="Resumen de la orden de trabajo" className="space-y-4">
+    <section
+      aria-label="Resumen de la orden de trabajo"
+      className={isConsole ? 'space-y-2' : 'space-y-4'}
+    >
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="neutral">
-          <span className="font-mono">{number}</span>
-        </Badge>
+        {isConsole ? null : (
+          <Badge variant="neutral">
+            <span className="font-mono">{number}</span>
+          </Badge>
+        )}
         <Badge variant="primary">{workType}</Badge>
         <Badge variant={EXECUTION_ORDER_STATUS_VARIANTS[status]}>
           {EXECUTION_ORDER_STATUS_LABELS[status]}
@@ -217,8 +253,73 @@ export function ExecutionOrderSummary({
             {EXECUTION_ORDER_RESULT_LABELS[result]}
           </Badge>
         ) : null}
+        {ticketHref || visitHref ? (
+          <span className="ml-auto flex flex-wrap items-center gap-x-4">
+            {ticketHref && ticket ? (
+              <Link href={ticketHref} className={portalPanelDenseActionClassName}>
+                Ticket {ticket.number}
+              </Link>
+            ) : null}
+            {visitHref ? (
+              <Link href={visitHref} className={portalPanelDenseActionClassName}>
+                Ver visita en la agenda
+              </Link>
+            ) : null}
+          </span>
+        ) : null}
       </div>
-      {isAgendaCompact ? (
+      {isConsole ? (
+        <dl className="grid grid-cols-1 gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
+          {subscriber ? (
+            <>
+              <div className="flex min-w-0 gap-2">
+                <dt className="shrink-0 text-gray-500 dark:text-gray-400">Cliente</dt>
+                <dd className="min-w-0 truncate text-gray-900 dark:text-white">
+                  {subscriberHref ? (
+                    <Link href={subscriberHref} className={portalPanelDenseActionClassName}>
+                      {subscriberName ?? 'Ver ficha del suscriptor'}
+                    </Link>
+                  ) : (
+                    (subscriberName ?? 'Sin nombre disponible')
+                  )}
+                </dd>
+              </div>
+              {serviceAddress ? (
+                <div className="flex min-w-0 gap-2">
+                  <dt className="shrink-0 text-gray-500 dark:text-gray-400">Dirección</dt>
+                  <dd
+                    className="min-w-0 truncate text-gray-900 dark:text-white"
+                    title={serviceAddress}
+                  >
+                    {serviceAddress}
+                  </dd>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+          {[
+            { term: 'Sitio', value: site ?? 'Sitio autorizado' },
+            {
+              term: 'Ventana planificada',
+              value: windowText,
+              help: !window ? windowAbsence.help : undefined,
+            },
+            { term: 'Responsable', value: assignee ?? 'Sin responsable asignado' },
+            { term: 'Plantilla', value: template },
+          ].map((entry) => (
+            <div key={entry.term} className="flex min-w-0 gap-2">
+              <dt className="shrink-0 text-gray-500 dark:text-gray-400">{entry.term}</dt>
+              <dd
+                className="min-w-0 truncate text-gray-900 dark:text-white"
+                title={entry.help ?? entry.value}
+              >
+                {entry.value}
+                {entry.help ? <span className="sr-only">. {entry.help}</span> : null}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : isAgendaCompact ? (
         <div className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 text-sm dark:border-dark-border dark:bg-dark-surface-3">
           <p className="portal-eyebrow-muted">Plantilla</p>
           <p className="mt-1 text-gray-700 dark:text-gray-200">{template}</p>

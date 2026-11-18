@@ -249,7 +249,11 @@ describe('C4 — checklist con estado real (CA-05)', () => {
 
     const checklist = screen.getByRole('region', { name: 'Requisitos' });
     expect(within(checklist).getByText('Estado de requisitos no disponible')).toBeInTheDocument();
-    expect(within(checklist).getByText('Actividad de instalación')).toBeInTheDocument();
+    expect(
+      within(
+        within(checklist).getByRole('navigation', { name: 'Requisitos de la orden' }),
+      ).getByText('Actividad de instalación'),
+    ).toBeInTheDocument();
     expect(within(checklist).getByText('Evidencia fotográfica')).toBeInTheDocument();
     expect(within(checklist).getByText('Firma del cliente')).toBeInTheDocument();
     expect(within(checklist).queryByText('Cumplido')).toBeNull();

@@ -284,7 +284,7 @@ function expectMutationHeaders(
     // contrato v1.3 + versión de la orden—, no el contador de concurrencia.
     // Subir el contrato invalida toda caché aunque ninguna OT cambie de versión.
     // `If-Match` sigue siendo el número de versión (concurrencia intacta).
-    expect(response.headers()['etag']).toBe(`"1.3-${expectedVersion}"`);
+    expect(response.headers()['etag']).toBe(`"1.8-${expectedVersion}"`);
   }
 }
 

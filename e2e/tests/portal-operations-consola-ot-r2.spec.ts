@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { seedSession, setupMocks } from './helpers/consola-ot-fixtures';
+import { seedSession, selectRequirementLine, setupMocks } from './helpers/consola-ot-fixtures';
 
 // R2 (Ola 2b) — evidencia y firma de la consola de OT en el navegador.
 //
@@ -79,6 +79,9 @@ async function shot(page: Page, name: string) {
 
 async function sign(page: Page) {
   const surface = page.getByRole('img', { name: 'Área de firma' });
+  // Con el índice activo el acto queda más abajo en el panel: el trazo se
+  // dibuja con coordenadas absolutas y necesita el lienzo en pantalla.
+  await surface.scrollIntoViewIfNeeded();
   const box = (await surface.boundingBox())!;
   await page.mouse.move(box.x + box.width * 0.15, box.y + box.height * 0.6);
   await page.mouse.down();
@@ -98,6 +101,7 @@ test.describe('R2 evidencia y firma (backend simulado, navegador real)', () => {
     const backend = await mockEvidenceBackend(page, { pendingPolls: 2, pollDelayMs: 600 });
     await page.goto('/dashboard/operations/execution-orders?executionOrderId=eo-audit');
     const drawer = page.getByRole('dialog');
+    await selectRequirementLine(drawer, 'Firma del cliente');
     const trigger = drawer.getByRole('button', { name: SIGNATURE_TRIGGER });
 
     await trigger.click();
@@ -159,6 +163,7 @@ test.describe('R2 evidencia y firma (backend simulado, navegador real)', () => {
     const backend = await mockEvidenceBackend(page, { pendingPolls: 0 });
     await page.goto('/dashboard/operations/execution-orders?executionOrderId=eo-audit');
     const drawer = page.getByRole('dialog');
+    await selectRequirementLine(drawer, 'Firma del cliente');
     const trigger = drawer.getByRole('button', { name: SIGNATURE_TRIGGER });
     await trigger.click();
     await sign(page);
@@ -195,6 +200,7 @@ test.describe('R2 evidencia y firma (backend simulado, navegador real)', () => {
     const backend = await mockEvidenceBackend(page, { pendingPolls: 6 });
     await page.goto('/dashboard/operations/execution-orders?executionOrderId=eo-audit');
     const drawer = page.getByRole('dialog');
+    await selectRequirementLine(drawer, 'Firma del cliente');
     await drawer.getByRole('button', { name: SIGNATURE_TRIGGER }).click();
     await sign(page);
 
@@ -257,6 +263,7 @@ test.describe('R2 firma en móvil y tema oscuro (backend simulado, navegador rea
     await mockEvidenceBackend(page, { pendingPolls: 0 });
     await page.goto('/dashboard/operations/execution-orders?executionOrderId=eo-audit');
     const drawer = page.getByRole('dialog');
+    await selectRequirementLine(drawer, 'Firma del cliente');
     await drawer.getByRole('button', { name: SIGNATURE_TRIGGER }).click();
     const surface = drawer.getByRole('img', { name: 'Área de firma' });
     await surface.scrollIntoViewIfNeeded();

@@ -325,7 +325,7 @@ export function ExecutionOrderEvidenceHistory({
           <PortalAlert
             variant="warning"
             title="Evidencias no disponibles"
-            description="No pudimos consultar las evidencias en este momento. La OT sigue disponible y podrás intentarlo cuando el servicio esté disponible."
+            description="No pudimos consultar las evidencias en este momento. La orden sigue disponible y podrás intentarlo cuando el servicio esté disponible."
             action={
               onRefreshDetail ? (
                 <Button type="button" onClick={() => void onRefreshDetail()}>

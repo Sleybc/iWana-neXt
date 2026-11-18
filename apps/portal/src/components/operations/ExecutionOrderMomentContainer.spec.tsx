@@ -5,6 +5,7 @@
 // requisito); borrador del cierre que sobrevive al refresco.
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { axe } from 'jest-axe';
 import {
   ExecutionOrderStatus,
   InventoryDisposition,
@@ -19,6 +20,12 @@ import type {
 } from '@iwana/shared';
 import type { ExecutionOrderDetailResponse } from '@/lib/api-client';
 import { ExecutionOrderDrawer } from './ExecutionOrderDrawer';
+import {
+  activeRequirementBody,
+  expectNoCaptureInAnyLine,
+  expectOnlyIndexNavigation,
+  selectRequirementLine,
+} from './execution-order-index.test-helper';
 
 const REQUIREMENT_KEYS = [
   'installed-equipment',
@@ -222,13 +229,19 @@ const LENSES = [
   { name: 'supervisión', assignee: true, allowed: ['ASSIGN', 'REASSIGN', 'CREATE_FOLLOW_UP'] },
 ] as const;
 
-const TRIGGER_NAMES = [
-  /^Registrar equipos instalados en el sitio del cliente para /,
-  /^Añadir foto de la prueba de servicio para /,
-  /^Añadir fotos del trabajo para /,
-  /^Capturar firma del cliente para /,
-  /^Registrar actividad para /,
+// Línea del índice → disparador de captura de su cuerpo (spec 2026-11-18 bloque D).
+const TRIGGER_NAMES: readonly (readonly [string, RegExp])[] = [
+  [
+    'Equipos instalados en el sitio del cliente',
+    /^Registrar equipos instalados en el sitio del cliente para /,
+  ],
+  ['Prueba de servicio en el sitio', /^Añadir foto de la prueba de servicio para /],
+  ['Fotos del trabajo realizado', /^Añadir fotos del trabajo para /],
+  ['Acta de conformidad firmada por el cliente', /^Capturar firma del cliente para /],
+  ['Registro de la actividad en bitácora (NO requerido)', /^Registrar actividad para /],
 ];
+// La instalación suma la línea «Aprovisionamiento certificado» al mismo índice (bloque C).
+const INDEX_LINES = REQUIREMENT_KEYS.length + 1;
 
 function orderFor(
   status: ExecutionOrderStatus,
@@ -250,20 +263,24 @@ describe('CA-10 — matriz de 4 momentos x 3 lentes (UX §4)', () => {
           it(`${lens.name} / ${status}: índice de ${REQUIREMENT_KEYS.length} requisitos y la superficie que el momento admite`, () => {
             renderDrawer({ order: orderFor(status, lens) });
             const checklist = screen.getByRole('region', { name: 'Requisitos' });
-            expect(within(checklist).getAllByRole('listitem')).toHaveLength(
-              REQUIREMENT_KEYS.length,
-            );
+            expect(within(checklist).getAllByRole('listitem')).toHaveLength(INDEX_LINES);
             const triggers = Array.from(checklist.querySelectorAll('[id^="requirement-trigger-"]'));
 
             if (moment.capture && lens.allowed.includes('REGISTER_ACTIVITY' as never)) {
-              // En progreso la acción nace de cada requisito, porque allowedActions la ofrece.
-              expect(triggers).toHaveLength(REQUIREMENT_KEYS.length);
-              for (const name of TRIGGER_NAMES) {
+              // En progreso la acción nace de cada requisito, porque allowedActions la ofrece;
+              // solo el cuerpo del requisito activo está montado, así que hay un disparador.
+              expect(triggers).toHaveLength(1);
+              for (const [line, name] of TRIGGER_NAMES) {
+                selectRequirementLine(line);
                 expect(within(checklist).getByRole('button', { name })).toBeInTheDocument();
+                expect(checklist.querySelectorAll('[id^="requirement-trigger-"]')).toHaveLength(1);
               }
             } else {
               // Pre-inicio, bloqueada, terminal y lentes sin registro: nada de captura.
               expect(triggers).toHaveLength(0);
+              expectOnlyIndexNavigation(checklist);
+              // Se elige cada línea y su cuerpo tampoco ofrece captura (revisión H1).
+              expect(expectNoCaptureInAnyLine(checklist)).toBe(INDEX_LINES);
             }
             // Nada de captura montada hasta que se abre un acto, en ningún momento.
             expect(document.querySelector('input[type="file"]')).toBeNull();
@@ -329,9 +346,10 @@ describe('CA-10 — matriz de 4 momentos x 3 lentes (UX §4)', () => {
     expect(screen.queryByRole('button', { name: 'Cerrar OT' })).toBeNull();
     expect(screen.queryByLabelText('Resumen de cierre')).toBeNull();
     expect(document.querySelector('form')).toBeNull();
-    expect(
-      within(screen.getByRole('region', { name: 'Requisitos' })).queryByRole('button'),
-    ).toBeNull();
+    // Las líneas del índice se pueden elegir para leer; ningún botón de captura.
+    const requirements = screen.getByRole('region', { name: 'Requisitos' });
+    expectOnlyIndexNavigation(requirements);
+    expect(expectNoCaptureInAnyLine(requirements)).toBe(INDEX_LINES);
   });
 });
 
@@ -369,10 +387,14 @@ describe('Checklist como índice con cuatro estados (UX §3.2)', () => {
     expect(stateOf('Acta de conformidad firmada por el cliente')).toHaveTextContent(
       'Estado no disponible',
     );
-    // Sin evaluación, la ausencia no se convierte en pendiente ni abre una acción.
+    // Sin evaluación, la ausencia no se convierte en pendiente ni abre una acción:
+    // su línea es solo navegación y su cuerpo no trae disparador de captura.
+    selectRequirementLine('Acta de conformidad firmada por el cliente');
     expect(
-      within(stateOf('Acta de conformidad firmada por el cliente')).queryByRole('button'),
-    ).toBeNull();
+      activeRequirementBody('Acta de conformidad firmada por el cliente').querySelectorAll(
+        '[id^="requirement-trigger-"]',
+      ),
+    ).toHaveLength(0);
   });
 
   it('un requisito opcional cumplido se lee «Cumplido», no «Sin registrar»', () => {
@@ -432,6 +454,7 @@ describe('Checklist como índice con cuatro estados (UX §3.2)', () => {
     const closeButton = screen.getByRole('button', { name: 'Cerrar OT' });
     expect(closeButton).toBeDisabled();
 
+    selectRequirementLine('Material opcional');
     await user.click(
       screen.getByRole('button', { name: /^Registrar material opcional para Material opcional/ }),
     );
@@ -452,10 +475,12 @@ describe('Checklist como índice con cuatro estados (UX §3.2)', () => {
     const items = within(screen.getByRole('region', { name: 'Requisitos' })).getAllByRole(
       'listitem',
     );
-    expect(items).toHaveLength(REQUIREMENT_KEYS.length);
+    expect(items).toHaveLength(INDEX_LINES);
     for (const item of items) {
       expect(item).toHaveTextContent('Estado no disponible');
-      expect(within(item).queryByRole('button')).toBeNull();
+      // La línea es navegación; elegirla no ofrece ninguna captura.
+      fireEvent.click(within(item).getByRole('button'));
+      expectOnlyIndexNavigation(screen.getByRole('region', { name: 'Requisitos' }));
     }
     expect(
       screen.getByText(
@@ -467,15 +492,21 @@ describe('Checklist como índice con cuatro estados (UX §3.2)', () => {
   it('la acción de cada requisito solo existe si allowedActions la autoriza', () => {
     renderDrawer({ order: detail({ allowedActions: ['REGISTER_EVIDENCE'] }) });
     const checklist = screen.getByRole('region', { name: 'Requisitos' });
-    expect(within(checklist).getAllByRole('button')).toHaveLength(3);
-    expect(
-      within(checklist).queryByRole('button', { name: /^Registrar actividad para / }),
-    ).toBeNull();
-    expect(
-      within(checklist).queryByRole('button', {
-        name: /^Registrar equipos instalados en el sitio del cliente para /,
-      }),
-    ).toBeNull();
+    // Se recorre el índice: solo los tres requisitos de evidencia ofrecen captura.
+    let captures = 0;
+    for (const [line] of TRIGGER_NAMES) {
+      selectRequirementLine(line);
+      captures += checklist.querySelectorAll('[id^="requirement-trigger-"]').length;
+      expect(
+        within(checklist).queryByRole('button', { name: /^Registrar actividad para / }),
+      ).toBeNull();
+      expect(
+        within(checklist).queryByRole('button', {
+          name: /^Registrar equipos instalados en el sitio del cliente para /,
+        }),
+      ).toBeNull();
+    }
+    expect(captures).toBe(3);
   });
 
   it('deja la firma para el final y conserva el orden y las etiquetas del resto del snapshot', () => {
@@ -497,10 +528,14 @@ describe('Checklist como índice con cuatro estados (UX §3.2)', () => {
             requirement.kind === 'EVIDENCE' && requirement.evidenceType === 'SIGNATURE',
         )
         .map((requirement) => requirement.label),
+      // La instalación agrega su línea de aprovisionamiento al mismo índice (bloque C).
+      'Aprovisionamiento certificado',
     ];
     expect(labels).toEqual(expectedLabels);
   });
 });
+
+const ACTIVITY_LINE = 'Registro de la actividad en bitácora (NO requerido)';
 
 describe('Acción ACTIVITY completa (UX §3 fila installation-activity)', () => {
   const activities = (): ExecutionOrderActivity[] => [
@@ -528,6 +563,7 @@ describe('Acción ACTIVITY completa (UX §3 fila installation-activity)', () => 
       order: detail({ allowedActions: ['REGISTER_ACTIVITY'] }),
       ...props,
     });
+    selectRequirementLine(ACTIVITY_LINE);
     await user.click(screen.getByRole('button', { name: /^Registrar actividad para / }));
     return { user, ...rendered };
   }
@@ -585,7 +621,8 @@ describe('Acción ACTIVITY completa (UX §3 fila installation-activity)', () => 
       order: detail({ allowedActions: ['REGISTER_ACTIVITY'] }),
       activities: activities(),
     });
-    const item = screen.getByRole('listitem', { name: /^Registro de la actividad en bitácora/ });
+    selectRequirementLine(ACTIVITY_LINE);
+    const item = activeRequirementBody(ACTIVITY_LINE);
     expect(within(item).getByText('ONU instalada en sala')).toBeInTheDocument();
     expect(screen.queryByText('Nota de otro tipo')).toBeNull();
     expect(within(item).getByRole('region', { name: 'Trabajo realizado' })).toBeInTheDocument();
@@ -593,6 +630,7 @@ describe('Acción ACTIVITY completa (UX §3 fila installation-activity)', () => 
 
   it('historial vacío: copy de UX §5 y captura separada hasta abrir el acto', () => {
     renderDrawer({ order: detail({ allowedActions: ['REGISTER_ACTIVITY'] }) });
+    selectRequirementLine(ACTIVITY_LINE);
     expect(screen.getByText('Todavía no hay actividades registradas')).toBeInTheDocument();
     expect(screen.queryByLabelText('Descripción de la actividad')).toBeNull();
   });
@@ -606,6 +644,7 @@ describe('Acción ACTIVITY completa (UX §3 fila installation-activity)', () => 
       onUpdateActivity,
       onDeleteActivity,
     });
+    selectRequirementLine(ACTIVITY_LINE);
     expect(screen.getByRole('button', { name: 'Modificar' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Eliminar' })).toBeInTheDocument();
     unmount();
@@ -616,6 +655,8 @@ describe('Acción ACTIVITY completa (UX §3 fila installation-activity)', () => 
       onUpdateActivity,
       onDeleteActivity,
     });
+    selectRequirementLine(ACTIVITY_LINE);
+    expect(screen.getByText('ONU instalada en sala')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Modificar' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Eliminar' })).toBeNull();
   });
@@ -628,6 +669,7 @@ describe('Acción ACTIVITY completa (UX §3 fila installation-activity)', () => 
       activities: activities(),
       onUpdateActivity,
     });
+    selectRequirementLine(ACTIVITY_LINE);
     await user.click(screen.getByRole('button', { name: 'Modificar' }));
     const description = screen.getByLabelText('Descripción');
     await user.clear(description);
@@ -652,6 +694,7 @@ describe('La acción nace del requisito que la originó', () => {
       order: detail({ allowedActions: ['REGISTER_EVIDENCE', 'REGISTER_ACTIVITY'] }),
       onOpenRequirementAction,
     });
+    selectRequirementLine('Acta de conformidad firmada por el cliente');
     await user.click(screen.getByRole('button', { name: /^Capturar firma del cliente para / }));
     expect(onOpenRequirementAction).toHaveBeenLastCalledWith({
       kind: 'evidence',
@@ -659,6 +702,7 @@ describe('La acción nace del requisito que la originó', () => {
       evidenceType: 'SIGNATURE',
       action: 'REGISTER_EVIDENCE',
     });
+    selectRequirementLine(ACTIVITY_LINE);
     await user.click(screen.getByRole('button', { name: /^Registrar actividad para / }));
     expect(screen.getAllByRole('heading', { level: 4 })).toHaveLength(1);
     expect(screen.getByRole('heading', { level: 4 })).toHaveTextContent('Registrar actividad');
@@ -670,6 +714,7 @@ describe('La acción nace del requisito que la originó', () => {
       order: detail({ id: 'eo-a', allowedActions: ['REGISTER_ACTIVITY'] }),
       onOpenRequirementAction,
     });
+    selectRequirementLine(ACTIVITY_LINE);
     await userEvent
       .setup()
       .click(screen.getByRole('button', { name: /^Registrar actividad para / }));
@@ -714,7 +759,7 @@ describe('Cierre: el borrador sobrevive al refresco y no se arrastra a otra orde
       target: { value: 'Instalación completa' },
     });
     rerenderDrawer({ order: closable(), isLoading: true });
-    expect(screen.getByLabelText('Cargando orden de trabajo')).toBeInTheDocument();
+    expect(screen.getByLabelText('Cargando orden')).toBeInTheDocument();
     rerenderDrawer({ order: closable(), isLoading: false });
     expect(screen.getByLabelText(/Resumen de cierre/)).toHaveValue('Instalación completa');
   });
@@ -726,5 +771,114 @@ describe('Cierre: el borrador sobrevive al refresco y no se arrastra a otra orde
     });
     rerenderDrawer({ order: closable('eo-b') });
     expect(screen.getByLabelText(/Resumen de cierre/)).toHaveValue('');
+  });
+});
+
+describe('QA1 — aprovisionamiento ya presente en el snapshot de la plantilla', () => {
+  function withProvisioningInSnapshot(): Partial<DrawerProps> {
+    const base = templateV2();
+    const requirements = [
+      ...base.requirements,
+      {
+        key: 'PROVISIONING',
+        label: 'Aprovisionamiento certificado',
+        required: true,
+        kind: 'PROVISIONING',
+      } as ExecutionOrderTemplateVersion['requirements'][number],
+    ];
+    const template: ExecutionOrderTemplateVersion = { ...base, requirements };
+    const evaluations: ExecutionOrderRequirementStatus[] = requirements.map((requirement) => ({
+      requirementId: requirement.key,
+      label: requirement.label,
+      kind: requirement.kind,
+      satisfied: false,
+      reason:
+        requirement.kind === 'PROVISIONING'
+          ? 'No hay un aprovisionamiento certificado para cerrar la instalación.'
+          : `Falta ${requirement.key}`,
+    }));
+    return {
+      template,
+      order: detail({
+        allowedActions: [...REGISTER, 'CLOSE'],
+        template: {
+          id: 'tpl-v2',
+          key: 'INSTALACION_ESTANDAR',
+          version: 2,
+          label: 'Instalación estándar',
+          requirements,
+        },
+        completion: { progress: 0, completed: 0, total: 5, requirements: evaluations },
+      }),
+    };
+  }
+
+  it('una sola línea, con el estado que publica el gate, y su cuerpo es el panel', () => {
+    renderDrawer(withProvisioningInSnapshot());
+    const nav = screen.getByRole('navigation', { name: 'Requisitos de la orden' });
+    expect(within(nav).getAllByText('Aprovisionamiento certificado')).toHaveLength(1);
+    expect(within(nav).getAllByRole('listitem')).toHaveLength(REQUIREMENT_KEYS.length + 1);
+    expect(
+      screen.getByRole('listitem', { name: /^Aprovisionamiento certificado: Pendiente/ }),
+    ).toBeInTheDocument();
+    selectRequirementLine('Aprovisionamiento certificado');
+    expect(
+      screen.getByRole('heading', { name: 'Aprovisionamiento certificado', level: 3 }),
+    ).toHaveAttribute('id', 'execution-order-provisioning-heading');
+  });
+
+  it('la barra de cierre cuenta el aprovisionamiento una sola vez', () => {
+    renderDrawer(withProvisioningInSnapshot());
+    // 4 obligatorios de la plantilla más el aprovisionamiento del snapshot.
+    expect(screen.getByText('0 de 5 obligatorios cumplidos')).toBeInTheDocument();
+  });
+});
+
+describe('CA-7 — axe sobre el panel (claro y oscuro)', () => {
+  // jsdom no calcula estilos: `color-contrast` no se evalúa aquí (queda en QA de navegador).
+  const AXE_WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
+  afterEach(() => document.documentElement.classList.remove('dark'));
+
+  for (const dark of [false, true]) {
+    const theme = dark ? 'oscuro' : 'claro';
+    it(`en progreso, con el índice y un cuerpo activo: sin violaciones (${theme})`, async () => {
+      if (dark) document.documentElement.classList.add('dark');
+      renderDrawer({ order: detail({ allowedActions: [...REGISTER, 'CLOSE'] }) });
+      const dialog = screen.getByRole('dialog');
+      expect(
+        await axe(dialog, { runOnly: { type: 'tag', values: AXE_WCAG_TAGS } }),
+      ).toHaveNoViolations();
+      selectRequirementLine('Acta de conformidad firmada por el cliente');
+      expect(
+        await axe(dialog, { runOnly: { type: 'tag', values: AXE_WCAG_TAGS } }),
+      ).toHaveNoViolations();
+    });
+
+    it(`terminal, en lectura con una línea elegida: sin violaciones (${theme})`, async () => {
+      if (dark) document.documentElement.classList.add('dark');
+      renderDrawer({
+        order: detail({ status: ExecutionOrderStatus.COMPLETED, allowedActions: [] }),
+      });
+      const dialog = screen.getByRole('dialog');
+      expect(
+        await axe(dialog, { runOnly: { type: 'tag', values: AXE_WCAG_TAGS } }),
+      ).toHaveNoViolations();
+      selectRequirementLine('Fotos del trabajo realizado');
+      expect(
+        await axe(dialog, { runOnly: { type: 'tag', values: AXE_WCAG_TAGS } }),
+      ).toHaveNoViolations();
+    });
+  }
+});
+
+describe('Foco del índice: volver a pulsar la línea activa no roba el foco de la hoja', () => {
+  it('clic en la línea ya activa → abrir la acción → el foco queda en la hoja', async () => {
+    const user = userEvent.setup();
+    renderDrawer({ order: detail({ allowedActions: ['REGISTER_ACTIVITY'] }) });
+    selectRequirementLine(ACTIVITY_LINE);
+    // Segunda pulsación sobre la línea que ya es la activa: no cambia nada.
+    selectRequirementLine(ACTIVITY_LINE);
+    await user.click(screen.getByRole('button', { name: /^Registrar actividad para / }));
+    expect(screen.getByRole('heading', { name: 'Registrar actividad' })).toHaveFocus();
   });
 });

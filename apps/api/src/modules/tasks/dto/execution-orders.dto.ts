@@ -553,8 +553,9 @@ export class ExecutionOrderSiteResponseDto {
   @ApiProperty()
   id!: string;
 
-  @ApiProperty()
-  label!: string;
+  /** v1.8: municipio de la OT o null (sin caer al nombre del cliente). */
+  @ApiProperty({ type: String, nullable: true })
+  label!: string | null;
 
   @ApiPropertyOptional()
   address?: string;
@@ -600,6 +601,36 @@ export class ExecutionOrderCompletionResponseDto {
 
   @ApiPropertyOptional({ format: 'date-time' })
   closedAt?: string;
+}
+
+/** Cliente de la OT (contrato v1.8). Sin teléfono ni documento. */
+export class ExecutionOrderSubscriberLinkResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ type: String, nullable: true })
+  displayName!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  serviceAddress!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  municipality!: string | null;
+}
+
+/** Ticket de origen de la OT (contrato v1.8). */
+export class ExecutionOrderSourceTicketLinkResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty()
+  number!: string;
+}
+
+/** Visita de la OT en Programación (contrato v1.8). */
+export class ExecutionOrderVisitLinkResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  scheduleEventId!: string;
 }
 
 /** Respuesta tipada del detalle de una OT; una OT puede no tener plantilla. */
@@ -660,6 +691,31 @@ export class ExecutionOrderDetailResponseDto {
 
   @ApiProperty({ format: 'date-time' })
   updatedAt!: string;
+
+  /** v1.8: `null` sin `crm.subscribers.read`, con titular bloqueado o suprimido, o sin suscriptor. */
+  @ApiPropertyOptional({
+    type: ExecutionOrderSubscriberLinkResponseDto,
+    nullable: true,
+    description:
+      'Nulo sin crm.subscribers.read, con titular bloqueado o suprimido, o si la OT no tiene suscriptor.',
+  })
+  subscriber?: ExecutionOrderSubscriberLinkResponseDto | null;
+
+  /** v1.8: `null` sin `assurance.tickets.read` o sin ticket de origen. */
+  @ApiPropertyOptional({
+    type: ExecutionOrderSourceTicketLinkResponseDto,
+    nullable: true,
+    description: 'Nulo sin assurance.tickets.read o si la OT no nace de un ticket.',
+  })
+  sourceTicket?: ExecutionOrderSourceTicketLinkResponseDto | null;
+
+  /** v1.8: `null` sin `wfm.schedule.read` o sin evento de agenda. */
+  @ApiPropertyOptional({
+    type: ExecutionOrderVisitLinkResponseDto,
+    nullable: true,
+    description: 'Nulo sin wfm.schedule.read o si la OT no tiene evento de agenda.',
+  })
+  visit?: ExecutionOrderVisitLinkResponseDto | null;
 }
 
 export class EvidenceAssetUploadIntentDto {

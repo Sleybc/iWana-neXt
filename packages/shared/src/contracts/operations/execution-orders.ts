@@ -16,7 +16,7 @@ import { z } from 'zod';
  * - ADR-068: Sincronización de OT de ejecución y proyecciones operativas.
  * - Spec API: docs/specs/2026-07-27-mod09-mod11-ot-instalacion-contrato-api.md
  *
- * Este archivo es la fuente de verdad del contrato v1.7. Los DTOs del controlador
+ * Este archivo es la fuente de verdad del contrato v1.8. Los DTOs del controlador
  * y el OpenAPI máquina-legible se derivan de aquí. No modificar sin versionar.
  *
  * Historial:
@@ -49,6 +49,14 @@ import { z } from 'zod';
  * - v1.7 (2026-10-10, MOD11 ↔ MOD12 reverso de consumo): nacen el comando,
  *   los eventos tipados de reverso y su validación Zod; la proyección de línea
  *   expone el estado del reverso sin sacar el motivo de MOD11.
+ * - v1.8 (2026-11-18, MOD11 consola densidad y enlaces, spec 2026-11-18 §4):
+ *   `ExecutionOrderDetail` gana `subscriber`, `sourceTicket` y `visit`, opcionales
+ *   y nulables. El backend los emite siempre; son `null` sin el permiso del módulo
+ *   destino, con titular bloqueado o suprimido (suscriptor) o sin origen. Sin
+ *   teléfono ni documento. `visit` es solo enlace de presentación condicionado
+ *   al permiso de Programación: `schedule.eventId` sigue viajando como hasta
+ *   ahora, sin esa condición (M-3). `site.label` pasa a `string | null`: es el
+ *   municipio y ya no cae al nombre del cliente (H-1, decisión del usuario).
  */
 
 /** Acciones que el servidor puede ofrecer a la UI según política; no reemplazan la autorización. */
@@ -194,7 +202,12 @@ export interface ExecutionOrderTemplateVersion {
 
 export interface ExecutionOrderSiteView {
   id: string;
-  label: string;
+  /**
+   * v1.8: municipio de la OT o `null`. Antes caía al nombre del cliente
+   * guardado en la OT, que podía ser de un titular bloqueado (H-1). Ampliación
+   * nulable: los lectores deben tolerar `null` (el portal ya usa `label || …`).
+   */
+  label: string | null;
   address?: string;
 }
 
@@ -213,6 +226,32 @@ export interface ExecutionOrderCompletionView {
   requirements?: ExecutionOrderRequirementStatus[];
   startedAt?: string;
   closedAt?: string;
+}
+
+/**
+ * Cliente de la OT (v1.8). Solo con `crm.subscribers.read` y titular no bloqueado
+ * ni suprimido; si no, el campo del detalle es `null`. El nombre lo resuelve CRM;
+ * dirección del servicio y municipio son los de la propia OT.
+ */
+export interface ExecutionOrderSubscriberLink {
+  id: string;
+  displayName: string | null;
+  serviceAddress: string | null;
+  municipality: string | null;
+}
+
+/** Ticket de origen (v1.8). Solo con `assurance.tickets.read`. */
+export interface ExecutionOrderSourceTicketLink {
+  id: string;
+  number: string;
+}
+
+/**
+ * Visita en Programación (v1.8): enlace de presentación. Solo si la OT tiene
+ * evento y con `wfm.schedule.read`. No sustituye ni condiciona `schedule.eventId`.
+ */
+export interface ExecutionOrderVisitLink {
+  scheduleEventId: string;
 }
 
 export interface ExecutionOrderDetail {
@@ -239,6 +278,12 @@ export interface ExecutionOrderDetail {
   allowedActions: ExecutionOrderAllowedAction[] | null;
   createdAt: string;
   updatedAt: string;
+  /** v1.8: enlace y cabecera del cliente; `null` según la regla de nulo. */
+  subscriber?: ExecutionOrderSubscriberLink | null;
+  /** v1.8: ticket de origen; `null` sin permiso o sin ticket. */
+  sourceTicket?: ExecutionOrderSourceTicketLink | null;
+  /** v1.8: visita en Programación; `null` sin permiso o sin evento. */
+  visit?: ExecutionOrderVisitLink | null;
 }
 
 export interface AssignExecutionOrderCommand {

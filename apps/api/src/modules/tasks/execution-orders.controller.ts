@@ -91,6 +91,7 @@ import {
 } from './services/execution-orders.service';
 import { ExecutionOrderInventoryReconciliationService } from './services/execution-order-inventory-reconciliation.service';
 import { ExecutionOrderProjectionConvergenceService } from './services/execution-order-projection-convergence.service';
+import { ExecutionOrderConsoleLinksService } from './services/execution-order-console-links.service';
 import { ExecutionOrderAccessGuard } from './guards/execution-order-access.guard';
 import { ExecutionOrderTenantScoped } from './guards/execution-order-tenant-scoped.decorator';
 import { UsersService } from '../users/users.service';
@@ -144,6 +145,11 @@ export class ExecutionOrdersController {
     // sin el módulo de usuarios; sin él, el assignee se emite con su id.
     @Optional()
     private readonly usersService?: UsersService,
+    // Contrato v1.8 (spec 2026-11-18 §4): enlaces y cliente de la consola.
+    // Opcional para los specs que construyen el controlador sin él: sin el
+    // servicio los tres campos salen `null` (fail-closed).
+    @Optional()
+    private readonly consoleLinksService?: ExecutionOrderConsoleLinksService,
   ) {}
 
   /**
@@ -305,7 +311,9 @@ export class ExecutionOrdersController {
           windowStartAt && windowEndAt ? { startAt: windowStartAt, endAt: windowEndAt } : null,
       },
       ...(await this.buildAssigneeView(order)),
-      site: { id: order.id, label: order.municipality ?? order.customerDisplayLabel },
+      // H-1 (contrato v1.8): solo el municipio; sin caer al nombre del cliente
+      // guardado en la OT, que puede ser de un titular bloqueado o suprimido.
+      site: { id: order.id, label: order.municipality ?? null },
       completion: {
         progress: completion.progress,
         completed: completion.completed ?? 0,
@@ -325,6 +333,9 @@ export class ExecutionOrdersController {
       ),
       createdAt: this.dateOrString(order.createdAt) ?? '',
       updatedAt: this.dateOrString(order.updatedAt) ?? '',
+      ...(this.consoleLinksService
+        ? await this.consoleLinksService.resolve(order, actor)
+        : { subscriber: null, sourceTicket: null, visit: null }),
     };
   }
 

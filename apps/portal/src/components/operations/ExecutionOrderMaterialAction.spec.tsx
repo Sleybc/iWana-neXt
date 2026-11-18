@@ -29,6 +29,7 @@ import type {
   StockBalanceRecord,
 } from '@/lib/api-client';
 import { ExecutionOrderDrawer } from './ExecutionOrderDrawer';
+import { activeRequirementBody, selectRequirementLine } from './execution-order-index.test-helper';
 
 function template(finalDisposition?: string): ExecutionOrderTemplateVersion {
   return {
@@ -264,6 +265,8 @@ describe('ExecutionOrderMaterialAction — acto de consumo', () => {
         executorCustodyAssets: [custodyAsset],
       });
 
+      // En lectura ningún requisito está activo: se elige la línea para leer su historial.
+      selectRequirementLine('Equipos instalados en el sitio del cliente');
       expect(screen.getByText('ONT-2026-001')).toBeInTheDocument();
       expect(
         screen.queryByRole('button', {
@@ -969,19 +972,23 @@ describe('ExecutionOrderMaterialAction — acto de consumo', () => {
         itemUsageMeta: meta({ hasMore: true, total: 5 }),
       });
 
-      const installedRow = screen.getByRole('listitem', {
-        name: /Equipos instalados en el sitio del cliente/,
-      });
-      const routerRow = screen.getByRole('listitem', { name: /Router instalado/ });
+      // Un historial montado a la vez: el del requisito activo, en su cuerpo.
+      selectRequirementLine('Equipos instalados en el sitio del cliente');
+      const installedRow = activeRequirementBody('Equipos instalados en el sitio del cliente');
       expect(within(installedRow).getByText('ONT-2026-001')).toBeInTheDocument();
       expect(within(installedRow).queryByText('ROUTER-2026-002')).toBeNull();
+      expect(
+        within(installedRow).queryByRole('region', { name: 'Consumos sin requisito asociado' }),
+      ).toBeNull();
+      selectRequirementLine('Router instalado');
+      const routerRow = activeRequirementBody('Router instalado');
       expect(within(routerRow).getByText('ROUTER-2026-002')).toBeInTheDocument();
       expect(within(routerRow).queryByText('ONT-2026-001')).toBeNull();
 
       const unattributed = screen.getByRole('region', { name: 'Consumos sin requisito asociado' });
-      const requirementList = screen.getByRole('list', { name: 'Requisitos de la orden' });
+      // El historial sin clave no se repite dentro del cuerpo de un requisito (revisión H3).
       expect(
-        within(requirementList).queryByRole('region', {
+        within(activeRequirementBody('Router instalado')).queryByRole('region', {
           name: 'Consumos sin requisito asociado',
         }),
       ).toBeNull();
@@ -1240,6 +1247,7 @@ describe('ExecutionOrderMaterialAction — reverso de consumo', () => {
         itemUsage={[{ ...usage, reversal: confirmedReversal }]}
       />,
     );
+    selectRequirementLine('Equipos instalados en el sitio del cliente');
     expect(screen.getByText('Reverso aplicado.').closest('[role="status"]')).toHaveTextContent(
       'El movimiento contrario quedó registrado en el inventario.',
     );

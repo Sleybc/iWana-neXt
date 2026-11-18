@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { seedSession, setupMocks } from './helpers/consola-ot-fixtures';
+import { seedSession, selectRequirementLine, setupMocks } from './helpers/consola-ot-fixtures';
 
 test.describe('B0 expediente por momento (HTTP simulado)', () => {
   test('preinicio: requisitos de lectura, sin captura ni custodia montadas', async ({ page }) => {
@@ -19,6 +19,7 @@ test.describe('B0 expediente por momento (HTTP simulado)', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/dashboard/operations/execution-orders?executionOrderId=eo-audit');
     const drawer = page.getByRole('dialog');
+    await selectRequirementLine(drawer, 'Actividad de instalación');
     const trigger = drawer.getByRole('button', { name: /^Registrar actividad para / });
     await expect(trigger).toBeVisible();
     await expect(drawer.getByText('No puedes iniciar esta orden')).toHaveCount(0);

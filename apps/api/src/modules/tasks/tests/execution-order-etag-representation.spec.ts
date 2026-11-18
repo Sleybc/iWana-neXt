@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 /**
  * MOD11 · El ETag de la OT debe identificar la representación (2026-09-14).
  *
@@ -115,8 +117,24 @@ describe('ETag de la OT identifica la representación (paso 5)', () => {
     // MOD11 E2: el contrato shared pasa a v1.3 (schedule nulable). La constante
     // sigue la regla de su propio comentario: versionar el contrato invalida
     // toda caché HTTP existente.
-    expect(EXECUTION_ORDER_CONTRACT_VERSION).toBe('1.3');
+    expect(EXECUTION_ORDER_CONTRACT_VERSION).toBe('1.8');
     expect(buildExecutionOrderETag(7)).toBe(`"${EXECUTION_ORDER_CONTRACT_VERSION}-7"`);
+  });
+
+  it('la constante coincide con la versión declarada del contrato compartido', () => {
+    // No hay constante exportada en @iwana/shared: la versión vive en la cabecera
+    // «fuente de verdad del contrato vX.Y». Si se versiona el contrato sin subir
+    // la constante, el navegador sirve el detalle viejo desde su caché (QA2 v1.8).
+    const contract = readFileSync(
+      join(
+        __dirname,
+        '../../../../../../packages/shared/src/contracts/operations/execution-orders.ts',
+      ),
+      'utf8',
+    );
+    const declared = /fuente de verdad del contrato v(\d+\.\d+)/u.exec(contract)?.[1];
+    expect(declared).toBeDefined();
+    expect(EXECUTION_ORDER_CONTRACT_VERSION).toBe(declared);
   });
 
   it('el interceptor emite el ETag ligado a la representación en el detalle', async () => {
@@ -126,7 +144,7 @@ describe('ETag de la OT identifica la representación (paso 5)', () => {
       version: 4,
       status: ExecutionOrderStatus.ASSIGNED,
     });
-    expect(setHeader).toHaveBeenCalledWith('ETag', '"1.3-4"');
+    expect(setHeader).toHaveBeenCalledWith('ETag', '"1.8-4"');
   });
 
   it('el interceptor emite el ETag ligado a la representación en la entidad de un comando', async () => {
@@ -136,7 +154,7 @@ describe('ETag de la OT identifica la representación (paso 5)', () => {
       version: 5,
       status: ExecutionOrderStatus.IN_PROGRESS,
     });
-    expect(setHeader).toHaveBeenCalledWith('ETag', '"1.3-5"');
+    expect(setHeader).toHaveBeenCalledWith('ETag', '"1.8-5"');
   });
 
   it('las vistas de plantillas conservan el ETag heredado (otro dominio de representación)', async () => {
@@ -256,7 +274,7 @@ describe('If-Match mal formado da error de formato, no conflicto (paso 7)', () =
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
   }
 
-  it.each([['"1.3-7"'], ['W/"1.3-7"'], ['1.3-7']])(
+  it.each([['"1.8-7"'], ['W/"1.8-7"'], ['1.8-7']])(
     'el ETag completo %s como If-Match ⇒ 400 VALIDATION_ERROR',
     async (ifMatch) => {
       const service = new ExecutionOrdersService({} as DataSource);

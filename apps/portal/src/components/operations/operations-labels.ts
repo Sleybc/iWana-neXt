@@ -143,7 +143,7 @@ export const TASK_TIMELINE_EVENT_LABELS: Record<TaskTimelineEventType, string> =
   [TaskTimelineEventType.REASSIGNED]: 'Reasignada',
   [TaskTimelineEventType.STATUS_CHANGED]: 'Cambio de estado',
   [TaskTimelineEventType.SCHEDULE_LINKED]: 'Agenda vinculada',
-  [TaskTimelineEventType.WORK_ORDER_LINKED]: 'OT vinculada',
+  [TaskTimelineEventType.WORK_ORDER_LINKED]: 'Orden vinculada',
   [TaskTimelineEventType.BLOCKED]: 'Bloqueada',
   [TaskTimelineEventType.RESOLVED]: 'Resuelta',
   [TaskTimelineEventType.CANCELLED]: 'Cancelada',

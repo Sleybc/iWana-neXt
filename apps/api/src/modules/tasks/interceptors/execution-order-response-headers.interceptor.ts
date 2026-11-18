@@ -16,7 +16,12 @@ import { Observable, tap } from 'rxjs';
  * cambiado de versión (MOD11 hallazgo de campo 2026-09-14). La concurrencia
  * optimista sigue usando `If-Match` con el número de versión, sin cambios.
  */
-export const EXECUTION_ORDER_CONTRACT_VERSION = '1.3';
+// v1.8 (2026-11-18): enlaces de la consola y `site.label` nulable. Sin subir
+// esta constante el navegador reusa el detalle v1.3 cacheado sin los campos
+// nuevos (QA2). Regla: debe coincidir con «fuente de verdad del contrato vX.Y»
+// de packages/shared/src/contracts/operations/execution-orders.ts; lo vigila
+// execution-order-etag-representation.spec.ts.
+export const EXECUTION_ORDER_CONTRACT_VERSION = '1.8';
 
 /**
  * Compone el ETag de una representación de OT: `"<contrato>-<versión>"`.

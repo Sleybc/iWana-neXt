@@ -225,9 +225,11 @@ describe('OLA1 regresión portal — caso 9: degradación visible sin requiremen
 
     const checklist = screen.getByRole('region', { name: 'Requisitos' });
     expect(within(checklist).getByText('Estado de requisitos no disponible')).toBeInTheDocument();
-    expect(within(checklist).getByText('Actividad de instalación')).toBeInTheDocument();
-    expect(within(checklist).getByText('Evidencia fotográfica')).toBeInTheDocument();
-    expect(within(checklist).getByText('Firma del cliente')).toBeInTheDocument();
+    // Las etiquetas se leen en las líneas del índice (el activo repite la suya como título).
+    const lines = within(checklist).getByRole('navigation', { name: 'Requisitos de la orden' });
+    expect(within(lines).getByText('Actividad de instalación')).toBeInTheDocument();
+    expect(within(lines).getByText('Evidencia fotográfica')).toBeInTheDocument();
+    expect(within(lines).getByText('Firma del cliente')).toBeInTheDocument();
     expect(within(checklist).queryByText('Cumplido')).toBeNull();
   });
 });

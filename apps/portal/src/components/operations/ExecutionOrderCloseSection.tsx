@@ -65,9 +65,13 @@ export function ExecutionOrderCloseSection({
   return (
     <section
       aria-labelledby="eo-close-heading"
-      className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2"
+      className="rounded-2xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface-2"
     >
-      <h3 id="eo-close-heading" className="text-sm font-semibold text-gray-900 dark:text-white">
+      <h3
+        id="eo-close-heading"
+        tabIndex={-1}
+        className="text-sm font-semibold text-gray-900 dark:text-white"
+      >
         Cierre
       </h3>
 

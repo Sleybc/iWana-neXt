@@ -17,6 +17,7 @@ import type {
 } from '@iwana/shared';
 import type { ExecutionOrderDetailResponse } from '@/lib/api-client';
 import { ExecutionOrderDrawer } from './ExecutionOrderDrawer';
+import { requirementLine, selectRequirementLine } from './execution-order-index.test-helper';
 import {
   drawStroke,
   installCanvasMocks,
@@ -192,9 +193,16 @@ describe('W0 consola de OT — pasos por momento', () => {
     renderConsole();
 
     const checklist = screen.getByRole('region', { name: 'Requisitos' });
-    const activity = within(checklist).getByRole('button', { name: STEP.activity });
-    const photo = within(checklist).getByRole('button', { name: STEP.photo });
-    const signature = within(checklist).getByRole('button', { name: STEP.signature });
+    // Índice activo: cada paso se ofrece en el cuerpo de su línea; el orden es el del índice.
+    selectRequirementLine('Actividad de instalación');
+    expect(within(checklist).getByRole('button', { name: STEP.activity })).toBeInTheDocument();
+    selectRequirementLine('Evidencia fotográfica');
+    expect(within(checklist).getByRole('button', { name: STEP.photo })).toBeInTheDocument();
+    selectRequirementLine('Firma del cliente');
+    expect(within(checklist).getByRole('button', { name: STEP.signature })).toBeInTheDocument();
+    const activity = requirementLine('Actividad de instalación');
+    const photo = requirementLine('Evidencia fotográfica');
+    const signature = requirementLine('Firma del cliente');
     // La firma cierra la secuencia de captura aunque la plantilla la declare primero.
     expect(
       activity.compareDocumentPosition(signature) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -238,6 +246,7 @@ describe('W0 consola de OT — acta de conformidad firmada', () => {
     const user = userEvent.setup();
     renderConsole({ onUploadEvidence });
 
+    selectRequirementLine('Firma del cliente');
     await user.click(screen.getByRole('button', { name: STEP.signature }));
     const capture = screen.getByRole('group', { name: 'Captura de firma del cliente' });
     expect(within(capture).getByText(/acta de conformidad/)).toBeInTheDocument();

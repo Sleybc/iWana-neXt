@@ -5,12 +5,9 @@ import { AccessPermissionKey, ExecutionOrderStatus, WfmWorkType } from '@iwana/s
 import type {
   ControlMethod,
   ControlParams,
-  ExecutionOrderContract,
   Ipv4NetworkDto,
-  ProvisioningOrderContextDto,
   RouterDto,
   ServiceProvisioningDto,
-  TechnicianProvisioningViewDto,
 } from '@iwana/shared';
 import {
   Badge,
@@ -26,7 +23,7 @@ import { Clipboard, RotateCw } from 'lucide-react';
 import { usePermissions } from '@/components/access-control/permissions-context';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { collectListPages } from '@/lib/list-meta';
-import { ApiError, contractSigningApi, networkApi } from '@/lib/api-client';
+import { ApiError, networkApi } from '@/lib/api-client';
 import {
   formatNetworkDate,
   getControlMethodProductLabel,
@@ -35,31 +32,22 @@ import {
   NETWORK_PROVISIONING_COPY,
 } from '@/components/network/network-provisioning-labels';
 import { EXECUTION_ORDER_STATUS_LABELS } from './operations-labels';
+import type { ExecutionOrderContractContext } from './execution-order-contract-signing';
 import {
-  resolveExecutionOrderContract,
-  type ExecutionOrderContractContext,
-} from './execution-order-contract-signing';
-
-interface RequirementSnapshot {
-  enabled: boolean | null;
-  certified: boolean | null;
-}
+  useExecutionOrderProvisioning,
+  type ExecutionOrderProvisioningState,
+  type ProvisioningRequirementSnapshot,
+} from './use-execution-order-provisioning';
 
 interface ExecutionOrderProvisioningPanelProps {
   executionOrderId: string;
-  onRequirementSnapshotChange?: (snapshot: RequirementSnapshot) => void;
+  onRequirementSnapshotChange?: (snapshot: ProvisioningRequirementSnapshot) => void;
   /** Contrato pendiente de firma de la OT para el paso «Contrato» (cierre de venta, bloque C). */
   onContractContextChange?: (contract: ExecutionOrderContractContext | null) => void;
 }
 
 const PAGE_SIZE = 100;
 const EMPTY_CONTROL_METHODS: readonly ControlMethod[] = [];
-
-function isTechnicianView(
-  value: ProvisioningOrderContextDto | TechnicianProvisioningViewDto,
-): value is TechnicianProvisioningViewDto {
-  return 'executionOrderId' in value;
-}
 
 function getProvisioningBadgeVariant(
   status: ServiceProvisioningDto['status'] | null,
@@ -70,27 +58,58 @@ function getProvisioningBadgeVariant(
   return 'neutral';
 }
 
+/**
+ * Panel autónomo: lee el aprovisionamiento y lo pinta. Fuera de la consola de la
+ * orden (bandeja de red); la consola usa `useExecutionOrderProvisioning` en su
+ * contenedor y monta solo `ExecutionOrderProvisioningBody`.
+ */
 export function ExecutionOrderProvisioningPanel({
   executionOrderId,
   onRequirementSnapshotChange,
   onContractContextChange,
 }: ExecutionOrderProvisioningPanelProps) {
+  const state = useExecutionOrderProvisioning({ executionOrderId, active: true });
+  const { snapshot, contractContext } = state;
+  useEffect(() => {
+    onRequirementSnapshotChange?.(snapshot);
+  }, [snapshot, onRequirementSnapshotChange]);
+  useEffect(() => {
+    onContractContextChange?.(contractContext);
+  }, [contractContext, onContractContextChange]);
+  return <ExecutionOrderProvisioningBody executionOrderId={executionOrderId} state={state} />;
+}
+
+export interface ExecutionOrderProvisioningBodyProps {
+  executionOrderId: string;
+  state: ExecutionOrderProvisioningState;
+  /** En la consola la cabecera ya muestra número, estado y responsable. */
+  showOrderFacts?: boolean;
+  /** Título visible del cuerpo; la consola usa la etiqueta del requisito. */
+  heading?: string;
+}
+
+export function ExecutionOrderProvisioningBody({
+  executionOrderId,
+  state,
+  showOrderFacts = true,
+  heading = 'Aprovisionamiento',
+}: ExecutionOrderProvisioningBodyProps) {
   const { hasPermission } = usePermissions();
-  const canRead = hasPermission(AccessPermissionKey.NETWORK_PROVISIONING_READ);
-  const canReadExecutionOrders = hasPermission(
-    AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
-  );
   const canExecute = hasPermission(AccessPermissionKey.NETWORK_PROVISIONING_EXECUTE);
   const canCertify = hasPermission(AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY);
-  const [context, setContext] = useState<ProvisioningOrderContextDto | null>(null);
-  const [technicianView, setTechnicianView] = useState<TechnicianProvisioningViewDto | null>(null);
-  // Contrato de la OT publicado por CRM para la vista del técnico (sin contexto completo).
-  const [technicianContract, setTechnicianContract] = useState<ExecutionOrderContract | null>(null);
+  const {
+    context,
+    technicianView,
+    loading,
+    loadError,
+    reservationsPaused,
+    loadVersion,
+    applyService,
+    markReservationsPaused,
+  } = state;
   const [routers, setRouters] = useState<RouterDto[]>([]);
   const [networks, setNetworks] = useState<Ipv4NetworkDto[]>([]);
-  const [loading, setLoading] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -106,8 +125,6 @@ export function ExecutionOrderProvisioningPanel({
   const [releaseOpen, setReleaseOpen] = useState(false);
   const [releaseReason, setReleaseReason] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
-  const [settingsEnabled, setSettingsEnabled] = useState<boolean | null>(null);
-  const [reservationsPaused, setReservationsPaused] = useState<boolean | null>(null);
 
   const loadCatalogs = useCallback(async () => {
     setCatalogLoading(true);
@@ -149,101 +166,16 @@ export function ExecutionOrderProvisioningPanel({
     }
   }, []);
 
+  // Los catálogos se leen con cada lectura completa del contexto, solo si se puede ejecutar.
+  const hasContext = context !== null;
   useEffect(() => {
-    onContractContextChange?.(
-      resolveExecutionOrderContract(
-        context,
-        technicianView ? { view: technicianView, contract: technicianContract } : null,
-      ),
-    );
-  }, [context, technicianView, technicianContract, onContractContextChange]);
+    if (canExecute && hasContext && loadVersion > 0) void loadCatalogs();
+  }, [canExecute, hasContext, loadVersion, loadCatalogs]);
 
   const loadContext = useCallback(async () => {
-    if (!canRead && !canReadExecutionOrders) {
-      setContext(null);
-      setTechnicianView(null);
-      setLoadError(NETWORK_PROVISIONING_COPY.readDenied);
-      onRequirementSnapshotChange?.({ enabled: null, certified: null });
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setLoadError(null);
     setActionError(null);
-    setReservationsPaused(null);
-    try {
-      const result = await networkApi.getProvisioningContext(executionOrderId);
-      if (isTechnicianView(result)) {
-        let orderContract: ExecutionOrderContract | null = null;
-        try {
-          orderContract = await contractSigningApi.getExecutionOrderContract(executionOrderId);
-        } catch {
-          // Sin contrato legible el paso «Contrato» no se muestra; el resto del panel sigue.
-          orderContract = null;
-        }
-        setTechnicianContract(orderContract);
-        setTechnicianView(result);
-        setContext(null);
-        onRequirementSnapshotChange?.({ enabled: null, certified: result.certified });
-      } else if (!canRead) {
-        // Una cuenta de Operaciones sin lectura de red solo puede recibir la proyección del técnico.
-        setContext(null);
-        setTechnicianView(null);
-        setLoadError(NETWORK_PROVISIONING_COPY.readDenied);
-        onRequirementSnapshotChange?.({ enabled: null, certified: null });
-      } else {
-        setContext(result);
-        setTechnicianView(null);
-        const certified =
-          result.provisioning?.status === 'CERTIFIED' || result.provisioning?.status === 'ACTIVE';
-        let enabled: boolean | null;
-        try {
-          const settings = await networkApi.getSettings();
-          enabled = settings.enforceProvisioningOnInstallClose;
-          setSettingsEnabled(enabled);
-        } catch {
-          // No se infiere el estado de la guarda si el endpoint no está disponible.
-          enabled = null;
-          setSettingsEnabled(null);
-        }
-        onRequirementSnapshotChange?.({ enabled, certified });
-        if (canRead) {
-          try {
-            const metadata = await networkApi.getProvisioningMeta();
-            setReservationsPaused(metadata.reservationsPaused);
-          } catch {
-            setReservationsPaused(null);
-          }
-        }
-        if (canExecute) {
-          await loadCatalogs();
-        }
-      }
-    } catch (error) {
-      setContext(null);
-      setTechnicianView(null);
-      setReservationsPaused(null);
-      if (error instanceof ApiError && error.status === 403) {
-        setLoadError(NETWORK_PROVISIONING_COPY.readDenied);
-      } else {
-        setLoadError(NETWORK_PROVISIONING_COPY.loadError);
-      }
-      onRequirementSnapshotChange?.({ enabled: null, certified: null });
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    canExecute,
-    canRead,
-    canReadExecutionOrders,
-    executionOrderId,
-    loadCatalogs,
-    onRequirementSnapshotChange,
-  ]);
-
-  useEffect(() => {
-    void loadContext();
-  }, [loadContext]);
+    await state.reload();
+  }, [state]);
 
   const selectedRouter = routers.find((router) => router.id === routerId) ?? null;
   const selectedNetwork = networks.find((network) => network.id === networkId) ?? null;
@@ -307,14 +239,7 @@ export function ExecutionOrderProvisioningPanel({
     });
   }, [context, method]);
 
-  const updateProvisioning = (service: ServiceProvisioningDto) => {
-    setContext((current) => (current ? { ...current, provisioning: service } : current));
-    const certified = service.status === 'CERTIFIED' || service.status === 'ACTIVE';
-    onRequirementSnapshotChange?.({
-      enabled: settingsEnabled,
-      certified,
-    });
-  };
+  const updateProvisioning = applyService;
 
   const reserve = async () => {
     if (!context || !selectedRouter || !selectedNetwork || !parameterValue.trim()) return;
@@ -340,7 +265,7 @@ export function ExecutionOrderProvisioningPanel({
       );
     } catch (error) {
       if (error instanceof ApiError && error.code === 'RESERVATIONS_PAUSED') {
-        setReservationsPaused(true);
+        markReservationsPaused();
         setActionError(null);
       } else {
         setActionError(getProvisioningErrorMessage(error));
@@ -423,7 +348,7 @@ export function ExecutionOrderProvisioningPanel({
             tabIndex={-1}
             className="text-base font-semibold text-gray-900 dark:text-white"
           >
-            Aprovisionamiento
+            {heading}
           </h3>
         </div>
         {!loading && !loadError ? (
@@ -527,24 +452,28 @@ export function ExecutionOrderProvisioningPanel({
             />
           ) : null}
           <dl className="grid gap-3 rounded-xl bg-iwana-surface-soft p-4 text-sm dark:bg-dark-surface-3 sm:grid-cols-2">
-            <div>
-              <dt className="text-xs text-gray-500 dark:text-gray-400">Orden de trabajo</dt>
-              <dd className="mt-1 font-mono font-medium text-gray-900 dark:text-white">
-                {context.executionOrder.executionOrderNumber}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-gray-500 dark:text-gray-400">Estado</dt>
-              <dd className="mt-1 text-gray-900 dark:text-white">
-                {EXECUTION_ORDER_STATUS_LABELS[context.executionOrder.status]}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-gray-500 dark:text-gray-400">Técnico asignado</dt>
-              <dd className="mt-1 text-gray-900 dark:text-white">
-                {context.executionOrder.assignedTechnician?.name ?? 'Sin técnico asignado'}
-              </dd>
-            </div>
+            {showOrderFacts ? (
+              <>
+                <div>
+                  <dt className="text-xs text-gray-500 dark:text-gray-400">Orden de trabajo</dt>
+                  <dd className="mt-1 font-mono font-medium text-gray-900 dark:text-white">
+                    {context.executionOrder.executionOrderNumber}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-gray-500 dark:text-gray-400">Estado</dt>
+                  <dd className="mt-1 text-gray-900 dark:text-white">
+                    {EXECUTION_ORDER_STATUS_LABELS[context.executionOrder.status]}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-gray-500 dark:text-gray-400">Técnico asignado</dt>
+                  <dd className="mt-1 text-gray-900 dark:text-white">
+                    {context.executionOrder.assignedTechnician?.name ?? 'Sin técnico asignado'}
+                  </dd>
+                </div>
+              </>
+            ) : null}
             <div>
               <dt className="text-xs text-gray-500 dark:text-gray-400">Suscriptor</dt>
               <dd className="mt-1 text-gray-900 dark:text-white">

@@ -22,6 +22,8 @@ import { AssuranceExecutionOrderNotifierAdapter } from './ports/assurance-execut
 import { AssuranceFieldServiceAdapter } from './ports/assurance-field-service.adapter';
 import { AssuranceFieldServicePort } from './ports/assurance-field-service.port';
 import { AssuranceSubscriberTicketLinksReadAdapter } from './ports/assurance-subscriber-ticket-links-read.adapter';
+import { AssuranceTicketReferenceReadPort } from './ports/assurance-ticket-reference-read.port';
+import { AssuranceTicketReferenceReadAdapter } from './ports/assurance-ticket-reference-read.adapter';
 import { AssuranceSubscriberTicketLinksReadPort } from './ports/assurance-subscriber-ticket-links-read.port';
 import { ASSURANCE_EXECUTION_ORDER_NOTIFIER_PORT } from '../tasks/ports/assurance-execution-order-notifier.port';
 import { AssuranceDashboardService } from './services/assurance-dashboard.service';
@@ -73,6 +75,11 @@ import { AssuranceDashboardSeriesModule } from './dashboard/assurance-dashboard-
       useClass: AssuranceSubscriberTicketLinksReadAdapter,
     },
     {
+      // Enlace al ticket de origen desde la consola de la OT (MOD11, spec 2026-11-18 §4).
+      provide: AssuranceTicketReferenceReadPort,
+      useClass: AssuranceTicketReferenceReadAdapter,
+    },
+    {
       provide: AssuranceFieldServicePort,
       useClass: AssuranceFieldServiceAdapter,
     },
@@ -81,6 +88,10 @@ import { AssuranceDashboardSeriesModule } from './dashboard/assurance-dashboard-
       useClass: AssuranceExecutionOrderNotifierAdapter,
     },
   ],
-  exports: [ASSURANCE_EXECUTION_ORDER_NOTIFIER_PORT, AssuranceSubscriberTicketLinksReadPort],
+  exports: [
+    ASSURANCE_EXECUTION_ORDER_NOTIFIER_PORT,
+    AssuranceSubscriberTicketLinksReadPort,
+    AssuranceTicketReferenceReadPort,
+  ],
 })
 export class AssuranceModule {}

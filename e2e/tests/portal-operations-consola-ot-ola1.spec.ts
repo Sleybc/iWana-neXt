@@ -16,7 +16,7 @@
 
 import { expect, test } from '@playwright/test';
 
-import { setupMocks, seedSession } from './helpers/consola-ot-fixtures';
+import { requirementLine, setupMocks, seedSession } from './helpers/consola-ot-fixtures';
 import { evidencePath } from './helpers/evidence';
 
 test.describe('Consola OT OLA1 — evidencia en navegador OTE-20260828-001', () => {
@@ -36,8 +36,8 @@ test.describe('Consola OT OLA1 — evidencia en navegador OTE-20260828-001', () 
     const checklist = page.getByRole('region', { name: 'Requisitos' });
     await expect(checklist).toBeVisible();
     await expect(checklist.getByText('Cumplido', { exact: true })).toBeVisible();
-    await expect(checklist.getByText('Evidencia fotográfica', { exact: true })).toBeVisible();
-    await expect(checklist.getByText('Firma del cliente', { exact: true })).toBeVisible();
+    await expect(requirementLine(checklist, 'Evidencia fotográfica')).toBeVisible();
+    await expect(requirementLine(checklist, 'Firma del cliente')).toBeVisible();
     await expect(
       checklist.getByText('Adjunta la evidencia fotográfica antes de cerrar la orden.'),
     ).toBeVisible();
@@ -69,7 +69,7 @@ test.describe('Consola OT OLA1 — evidencia en navegador OTE-20260828-001', () 
     const checklist = page.getByRole('region', { name: 'Requisitos' });
     await expect(checklist).toBeVisible();
     await expect(checklist.getByText('Estado de requisitos no disponible')).toBeVisible();
-    await expect(checklist.getByText('Actividad de instalación')).toBeVisible();
+    await expect(requirementLine(checklist, 'Actividad de instalación')).toBeVisible();
     await expect(page.getByText('No puedes iniciar esta orden')).toHaveCount(0);
   });
 });

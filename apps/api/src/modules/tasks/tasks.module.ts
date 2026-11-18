@@ -22,6 +22,7 @@ import {
 import { AccessControlModule } from '../access-control/access-control.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { AssuranceModule } from '../assurance/assurance.module';
+import { SubscribersModule } from '../crm/subscribers/subscribers.module';
 import { UsersModule } from '../users/users.module';
 import { MediaModule } from '../media/media.module';
 import { OrganizationModule } from '../organization/organization.module';
@@ -32,6 +33,7 @@ import { TasksController } from './tasks.controller';
 import { ExecutionOrderInventoryService } from './services/execution-order-inventory.service';
 import { ExecutionOrderInventoryReconciliationService } from './services/execution-order-inventory-reconciliation.service';
 import { ExecutionOrdersService } from './services/execution-orders.service';
+import { ExecutionOrderConsoleLinksService } from './services/execution-order-console-links.service';
 import { ExecutionOrderTemplatesService } from './services/execution-order-templates.service';
 import { ClosureGateEvaluatorService } from './services/closure-gate-evaluator.service';
 import { ExecutionOrderReliabilityService } from './services/execution-order-reliability.service';
@@ -52,6 +54,8 @@ import { NetworkProvisioningReadModule } from '../network/network-provisioning-r
     InventoryModule,
     NetworkProvisioningReadModule,
     AssuranceModule,
+    // Solo por CrmSubscriberReadPort: cliente y enlace de la consola de la OT (v1.8).
+    SubscribersModule,
     UsersModule,
     AccessControlModule,
     MediaModule,
@@ -98,6 +102,7 @@ import { NetworkProvisioningReadModule } from '../network/network-provisioning-r
     ExecutionOrderInventoryService,
     ExecutionOrderInventoryReconciliationService,
     ExecutionOrdersService,
+    ExecutionOrderConsoleLinksService,
     ExecutionOrderTemplatesService,
     ClosureGateEvaluatorService,
     ExecutionOrderReliabilityService,

@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { seedPortalSession } from './portal-session';
 
 // ────────────────────────────────────────────────────────────────
@@ -359,3 +359,24 @@ export async function setupMocks(page: Page) {
 // ────────────────────────────────────────────────────────────────
 // Tests
 // ────────────────────────────────────────────────────────────────
+
+// ────────────────────────────────────────────────────────────────
+// Índice activo de requisitos (spec 2026-11-18): solo el requisito
+// elegido en el índice monta su acción y su captura.
+// ────────────────────────────────────────────────────────────────
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Línea del índice «Requisitos de la orden» cuyo nombre empieza por `label`. */
+export function requirementLine(root: Locator, label: string): Locator {
+  return root
+    .getByRole('navigation', { name: 'Requisitos de la orden' })
+    .getByRole('button', { name: new RegExp(`^${escapeRegExp(label)}\\s*,`) });
+}
+
+/** Elige la línea del índice para montar el cuerpo del requisito. */
+export async function selectRequirementLine(root: Locator, label: string): Promise<void> {
+  await requirementLine(root, label).click();
+}

@@ -6,7 +6,7 @@
 // de `useSearchParams` usa la instancia estable `searchParamsMock` (patrón
 // AssuranceClient.spec), que el router mockeado reescribe en cada navegación.
 import type { ReactNode } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { UserRole, WfmWorkType } from '@iwana/shared';
 import { ExecutionOrdersClient } from './ExecutionOrdersClient';
@@ -277,7 +277,11 @@ describe('ExecutionOrdersClient', () => {
 
       expect((await screen.findAllByText('OT-SNAPSHOT-001')).length).toBeGreaterThanOrEqual(1);
       // El checklist se pinta desde el snapshot del detalle…
-      expect(await screen.findByText('Firma del cliente')).toBeInTheDocument();
+      expect(
+        within(await screen.findByRole('navigation', { name: 'Requisitos de la orden' })).getByText(
+          'Firma del cliente',
+        ),
+      ).toBeInTheDocument();
       // …el cierre queda habilitado…
       expect(screen.getByRole('button', { name: 'Cerrar OT' })).toBeInTheDocument();
       // …y no se consulta el catálogo vivo de versiones de plantilla.

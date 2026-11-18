@@ -14,6 +14,7 @@ import type {
 } from '@iwana/shared';
 import type { ExecutionOrderDetailResponse } from '@/lib/api-client';
 import { ExecutionOrderDrawer } from './ExecutionOrderDrawer';
+import { selectRequirementLine } from './execution-order-index.test-helper';
 import {
   ExecutionOrderEvidenceAction,
   ExecutionOrderEvidenceHistory,
@@ -164,8 +165,17 @@ const TRIGGERS = {
   signature: /^Capturar firma del cliente para /,
 };
 
+// Índice activo: cada disparador vive en el cuerpo de su línea.
+const TRIGGER_LINES = new Map<RegExp, string>([
+  [TRIGGERS.serviceTest, 'Prueba de servicio en el sitio'],
+  [TRIGGERS.workPhoto, 'Fotos del trabajo realizado'],
+  [TRIGGERS.plan, 'Plano de la instalación'],
+  [TRIGGERS.signature, 'Acta de conformidad firmada por el cliente'],
+]);
+
 async function openSheet(trigger: RegExp) {
   const user = userEvent.setup();
+  selectRequirementLine(TRIGGER_LINES.get(trigger)!);
   await user.click(screen.getByRole('button', { name: trigger }));
   return user;
 }
@@ -238,6 +248,8 @@ describe('Slot de evidencia — foto y documento', () => {
       expect.objectContaining({ evidenceType: 'PHOTO' }),
     );
 
+    selectRequirementLine(TRIGGER_LINES.get(TRIGGERS.workPhoto)!);
+
     await user.click(screen.getByRole('button', { name: TRIGGERS.workPhoto }));
     expect(screen.getAllByLabelText('Archivo de evidencia')).toHaveLength(1);
     await user.upload(fileInput(), photo);
@@ -246,6 +258,8 @@ describe('Slot de evidencia — foto y documento', () => {
       'work-photo',
       expect.objectContaining({ evidenceType: 'PHOTO' }),
     );
+
+    selectRequirementLine(TRIGGER_LINES.get(TRIGGERS.plan)!);
 
     await user.click(screen.getByRole('button', { name: TRIGGERS.plan }));
     const document = new File(['x'], 'plano.pdf', { type: 'application/pdf' });
@@ -277,6 +291,8 @@ describe('Slot de evidencia — foto y documento', () => {
     const user = await openSheet(TRIGGERS.serviceTest);
     await user.upload(fileInput(), new File(['x'], 'a.jpg', { type: 'image/jpeg' }));
     const first = onUploadEvidence.mock.calls[0]![2] as ExecutionOrderEvidenceUploadOptions;
+
+    selectRequirementLine(TRIGGER_LINES.get(TRIGGERS.workPhoto)!);
 
     await user.click(screen.getByRole('button', { name: TRIGGERS.workPhoto }));
     await user.upload(fileInput(), new File(['x'], 'b.jpg', { type: 'image/jpeg' }));
@@ -537,6 +553,7 @@ describe('Slot de evidencia — firma', () => {
     await waitFor(() => expect(onUploadEvidence).toHaveBeenCalled());
     const options = onUploadEvidence.mock.calls[0]![2] as ExecutionOrderEvidenceUploadOptions;
 
+    selectRequirementLine(TRIGGER_LINES.get(TRIGGERS.workPhoto)!);
     await user.click(screen.getByRole('button', { name: TRIGGERS.workPhoto }));
     expect(options.signal?.aborted).toBe(true);
 
@@ -561,6 +578,7 @@ describe('Historial de evidencia por requisito', () => {
   }
 
   function sectionOf(requirementKey: string) {
+    selectRequirementLine(REQUIREMENTS.find((entry) => entry.key === requirementKey)!.label);
     return document
       .getElementById(`eo-evidence-heading-${requirementKey}-history`)!
       .closest('section') as HTMLElement;
@@ -616,6 +634,7 @@ describe('Historial de evidencia por requisito', () => {
       evidence: [evidenceEntry({ status: 'PENDING_ANALYSIS' })],
     });
 
+    selectRequirementLine('Prueba de servicio en el sitio');
     expect(screen.getByText('Pendiente de análisis')).toBeInTheDocument();
     expect(document.querySelector('input[type="file"]')).toBeNull();
     expect(document.querySelector('canvas')).toBeNull();

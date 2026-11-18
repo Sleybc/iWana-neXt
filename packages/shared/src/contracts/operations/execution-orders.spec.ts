@@ -22,6 +22,37 @@ describe('execution order shared contracts', () => {
     expect(template).toBeNull();
   });
 
+  it('v1.8: links are optional and nullable, and site.label admits null', () => {
+    const withLinks: Pick<ExecutionOrderDetail, 'subscriber' | 'sourceTicket' | 'visit' | 'site'> =
+      {
+        subscriber: {
+          id: '00000000-0000-4000-8000-000000000001',
+          displayName: null,
+          serviceAddress: null,
+          municipality: 'Pasto',
+        },
+        sourceTicket: { id: '00000000-0000-4000-8000-000000000002', number: 'TCK-1' },
+        visit: { scheduleEventId: '00000000-0000-4000-8000-000000000003' },
+        site: { id: '00000000-0000-4000-8000-000000000004', label: null },
+      };
+    const legacy: Pick<ExecutionOrderDetail, 'subscriber' | 'sourceTicket' | 'visit'> = {};
+    const hidden: Pick<ExecutionOrderDetail, 'subscriber' | 'sourceTicket' | 'visit'> = {
+      subscriber: null,
+      sourceTicket: null,
+      visit: null,
+    };
+
+    expect(Object.keys(withLinks.subscriber!)).toEqual([
+      'id',
+      'displayName',
+      'serviceAddress',
+      'municipality',
+    ]);
+    expect(withLinks.site.label).toBeNull();
+    expect(legacy.subscriber).toBeUndefined();
+    expect(hidden).toEqual({ subscriber: null, sourceTicket: null, visit: null });
+  });
+
   it('models closure missing requirements as product labels', () => {
     const error: ExecutionOrderError = {
       code: 'CLOSURE_GATE_INCOMPLETE',

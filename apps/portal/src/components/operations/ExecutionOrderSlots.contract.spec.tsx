@@ -9,6 +9,7 @@ import { ExecutionOrderStatus, WfmWorkType } from '@iwana/shared';
 import type { ExecutionOrderTemplateVersion } from '@iwana/shared';
 import type { ExecutionOrderDetailResponse } from '@/lib/api-client';
 import { ExecutionOrderDrawer } from './ExecutionOrderDrawer';
+import { selectRequirementLine } from './execution-order-index.test-helper';
 
 const mockEvidenceAction = jest.fn();
 const mockEvidenceHistory = jest.fn();
@@ -161,8 +162,12 @@ describe('contrato de slots del expediente (B0)', () => {
 
   it('monta el historial de cada requisito con el sobre {order, requirement, context}', () => {
     renderDrawer();
+    // Un historial montado a la vez: el del requisito activo del índice.
+    selectRequirementLine('Foto');
     expect(screen.getByText('Doble del historial de evidencia')).toBeInTheDocument();
+    selectRequirementLine('Material');
     expect(screen.getByText('Doble del historial de consumo')).toBeInTheDocument();
+    selectRequirementLine('Actividad');
     expect(screen.getByText('Doble del historial de actividad')).toBeInTheDocument();
     const props = mockEvidenceHistory.mock.calls[0]![0];
     expect(Object.keys(props).sort()).toEqual(['context', 'order', 'requirement']);
@@ -179,6 +184,7 @@ describe('contrato de slots del expediente (B0)', () => {
 
   it('el slot de evidencia recibe descriptor, bindSubmit y onClose; ninguna prop transporta usuario ni rol', async () => {
     renderDrawer();
+    selectRequirementLine('Foto');
     await userEvent
       .setup()
       .click(screen.getByRole('button', { name: 'Adjuntar evidencia para Foto' }));
@@ -206,6 +212,7 @@ describe('contrato de slots del expediente (B0)', () => {
   it('onClose del slot cierra la hoja y devuelve el foco al disparador', async () => {
     renderDrawer();
     const user = userEvent.setup();
+    selectRequirementLine('Foto');
     const trigger = screen.getByRole('button', { name: 'Adjuntar evidencia para Foto' });
     await user.click(trigger);
     act(() => mockEvidenceAction.mock.calls[0]![0].onClose());

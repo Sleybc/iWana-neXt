@@ -14,6 +14,7 @@ import { usePermissions } from '@/components/access-control/permissions-context'
 import { contractSigningApi, networkApi } from '@/lib/api-client';
 import type { ExecutionOrderDetailResponse } from '@/lib/api-client';
 import { ExecutionOrderDrawer } from './ExecutionOrderDrawer';
+import { selectRequirementLine } from './execution-order-index.test-helper';
 import { CONTRACT_STEP_COPY } from './execution-order-contract-signing';
 
 jest.mock('@/components/access-control/permissions-context', () => ({
@@ -214,6 +215,8 @@ describe('consola de OT — paso «Contrato»', () => {
     jest.spyOn(networkApi, 'getProvisioningContext').mockResolvedValue(context('ACTIVE', 'ACTIVE'));
     renderConsole();
 
+    // Los datos de aprovisionamiento se leen tras elegir su línea del índice.
+    selectRequirementLine('Aprovisionamiento certificado');
     await screen.findAllByText('Titular Ficticio');
     expect(screen.queryByRole('region', { name: 'Contrato' })).toBeNull();
   });

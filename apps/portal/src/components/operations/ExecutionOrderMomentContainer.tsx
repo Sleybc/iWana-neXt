@@ -1,26 +1,29 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ExecutionOrderResult, WfmWorkType } from '@iwana/shared';
 import { Button, OperationalSidePeek, SkeletonBlock } from '@iwana/ui';
 import { NETWORK_PROVISIONING_COPY } from '@/components/network/network-provisioning-labels';
 import { PortalAlert, PortalEmptyState } from '@/components/shared/portal-ui';
-import { ExecutionOrderProvisioningPanel } from './ExecutionOrderProvisioningPanel';
+import { ExecutionOrderProvisioningBody } from './ExecutionOrderProvisioningPanel';
 import { ExecutionOrderCloseSection } from './ExecutionOrderCloseSection';
 import { ExecutionOrderCommitmentSection } from './ExecutionOrderCommitmentSection';
 import { ExecutionOrderContractStep } from './ExecutionOrderContractStep';
-import { ExecutionOrderRequirementIndex } from './ExecutionOrderRequirementIndex';
+import {
+  ExecutionOrderRequirementIndex,
+  PROVISIONING_BODY_HEADING_ID,
+  provisioningLineKey,
+} from './ExecutionOrderRequirementIndex';
+import { ExecutionOrderClosureBar } from './ExecutionOrderClosureBar';
 import { ExecutionOrderSummary } from './ExecutionOrderSummary';
 import type { RequirementActionDescriptor } from './execution-order-actions';
 import type { ExecutionOrderDrawerProps } from './execution-order-console-types';
-import {
-  contractStepDisabledReason,
-  type ExecutionOrderContractContext,
-} from './execution-order-contract-signing';
+import { contractStepDisabledReason } from './execution-order-contract-signing';
 import { getExecutionOrderMoment, isTerminalStatus } from './execution-order-moment';
 import { requirementKindLabel } from './execution-order-requirements';
 import { syncCopy, toSummarySyncState } from './execution-order-sync-copy';
 import { useExecutionOrderCloseForm } from './use-execution-order-close-form';
+import { useExecutionOrderProvisioning } from './use-execution-order-provisioning';
 
 /**
  * Contenedor por momento del expediente de OT (B0, Ola 2b).
@@ -59,14 +62,12 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
     onCloseOrder,
   } = props;
   const [selectedAction, setSelectedAction] = useState<RequirementActionDescriptor | null>(null);
-  const [provisioningSnapshot, setProvisioningSnapshot] = useState<{
-    enabled: boolean | null;
-    certified: boolean | null;
-  }>({ enabled: null, certified: null });
-  const [contractContext, setContractContext] = useState<ExecutionOrderContractContext | null>(
-    null,
-  );
   const [signedContractId, setSignedContractId] = useState<string | null>(null);
+  // Requisito activo del índice (D3). `undefined` = el de por defecto; se fija al
+  // elegir una línea o abrir una acción, así no salta solo tras una mutación.
+  const [activeRequirementKey, setActiveRequirementKey] = useState<string | null | undefined>(
+    undefined,
+  );
   const selectedActionRef = useRef<RequirementActionDescriptor | null>(null);
   const previousOrderState = useRef({ id: order?.id, status: order?.status });
   useEffect(() => {
@@ -80,9 +81,8 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
     setSelectedAction(null);
   }, [order?.id, order?.status, onOpenRequirementAction]);
   useEffect(() => {
-    setProvisioningSnapshot({ enabled: null, certified: null });
-    setContractContext(null);
     setSignedContractId(null);
+    setActiveRequirementKey(undefined);
   }, [order?.id]);
   const closeForm = useExecutionOrderCloseForm({
     orderId: order?.id,
@@ -92,18 +92,54 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
     nonRealizationCauses,
     onCloseOrder,
   });
-  const updateProvisioningSnapshot = useCallback(
-    (snapshot: { enabled: boolean | null; certified: boolean | null }) => {
-      setProvisioningSnapshot(snapshot);
-    },
-    [],
-  );
-
   const forbidden = order !== null && order.allowedActions === null;
+  // D1: la lectura de aprovisionamiento vive aquí; el gate de cierre y el paso
+  // «Contrato» no dependen de que su cuerpo esté montado. `active` reproduce el
+  // ciclo de montaje del panel anterior (se relee al volver de la carga).
+  const isInstallation = order?.workType === WfmWorkType.INSTALLATION;
+  const provisioning = useExecutionOrderProvisioning({
+    executionOrderId: order?.id ?? null,
+    active: open && !isLoading && order !== null && !forbidden && isInstallation,
+  });
+  const provisioningSnapshot = provisioning.snapshot;
+  const contractContext = provisioning.contractContext;
   const selectAction = (action: RequirementActionDescriptor | null) => {
+    if (action) setActiveRequirementKey(action.requirementKey);
     selectedActionRef.current = action;
     setSelectedAction(action);
     onOpenRequirementAction?.(action);
+  };
+  const activateRequirement = (key: string) => {
+    setActiveRequirementKey(key);
+    // Un acto abierto sobre otro requisito se cierra: su cuerpo deja de estar montado.
+    if (selectedActionRef.current && selectedActionRef.current.requirementKey !== key) {
+      selectAction(null);
+    }
+  };
+  const focusCloseSection = () => {
+    const heading = document.getElementById('eo-close-heading');
+    heading?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    heading?.focus();
+  };
+  const provisioningRequired =
+    isInstallation &&
+    provisioningSnapshot.enabled === true &&
+    closeForm.closeResult !== ExecutionOrderResult.NOT_EXECUTED;
+  const moment = order ? getExecutionOrderMoment(order.status) : null;
+  // Solo en progreso: en pre-inicio y bloqueada se omite; en terminal no existe (R0 §3).
+  const showClosureBar = !!order && !isLoading && !forbidden && moment === 'in-progress';
+  const provisioningKey = provisioningLineKey(
+    template?.requirements ?? order?.template?.requirements,
+  );
+  const focusRequirementBody = (key: string) => {
+    activateRequirement(key);
+    window.setTimeout(() => {
+      const heading = document.getElementById(
+        key === provisioningKey ? PROVISIONING_BODY_HEADING_ID : `requirement-body-heading-${key}`,
+      );
+      heading?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      heading?.focus();
+    }, 0);
   };
   const refreshAction = onRefreshDetail ? (
     <Button type="button" onClick={() => void onRefreshDetail()}>
@@ -115,13 +151,31 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
     <OperationalSidePeek
       open={open}
       onOpenChange={(next) => !next && onClose()}
-      title={forbidden ? 'Orden de trabajo' : (order?.number ?? 'OT')}
-      description="Consulta los requisitos y registra el trabajo realizado en la OT"
+      title={forbidden ? 'Orden de trabajo' : (order?.number ?? 'Orden')}
+      description="Consulta los requisitos y registra el trabajo realizado en la orden"
       size="wide"
       busy={isSubmitting}
+      footer={
+        showClosureBar && order ? (
+          <ExecutionOrderClosureBar
+            order={order}
+            template={template}
+            provisioning={
+              provisioningRequired
+                ? {
+                    known: provisioningSnapshot.enabled !== null,
+                    certified: provisioningSnapshot.certified === true,
+                  }
+                : null
+            }
+            onActivateRequirement={focusRequirementBody}
+            onGoToClose={focusCloseSection}
+          />
+        ) : undefined
+      }
     >
       {isLoading ? (
-        <div className="space-y-4" aria-busy="true" aria-label="Cargando orden de trabajo">
+        <div className="space-y-4" aria-busy="true" aria-label="Cargando orden">
           <SkeletonBlock className="h-28" />
           <SkeletonBlock className="h-16" />
           <SkeletonBlock className="h-48" />
@@ -130,7 +184,7 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
         error ? (
           <PortalAlert
             variant="error"
-            title="No fue posible cargar la OT"
+            title="No pudimos cargar esta orden"
             description={error}
             action={
               onRefreshDetail ? (
@@ -142,7 +196,7 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
           />
         ) : (
           <PortalEmptyState
-            title="Sin OT seleccionada"
+            title="Sin orden seleccionada"
             description="Abre una orden de trabajo desde Agenda u Operaciones."
           />
         )
@@ -153,7 +207,7 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
           description="No tienes acceso a esta orden."
         />
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-3">
           {error && !selectedAction && error !== NETWORK_PROVISIONING_COPY.closureGateIncomplete ? (
             <PortalAlert
               variant="error"
@@ -193,16 +247,8 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
             readonly={isTerminalStatus(order.status) || offline || order.syncState !== 'IN_SYNC'}
             canOpen={false}
             hideProgress
+            variant="console"
           />
-
-          {order.workType === WfmWorkType.INSTALLATION ? (
-            <ExecutionOrderProvisioningPanel
-              key={order.id}
-              executionOrderId={order.id}
-              onRequirementSnapshotChange={updateProvisioningSnapshot}
-              onContractContextChange={setContractContext}
-            />
-          ) : null}
 
           <ExecutionOrderCommitmentSection
             order={order}
@@ -217,14 +263,25 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
             context={props}
             selectedAction={selectedAction}
             onSelectAction={selectAction}
-            {...(order.workType === WfmWorkType.INSTALLATION
+            {...(activeRequirementKey !== undefined ? { activeRequirementKey } : {})}
+            onActivateRequirement={activateRequirement}
+            {...(isInstallation
               ? {
                   provisioningRequirement: {
                     enabled: provisioningSnapshot.enabled,
                     certified: provisioningSnapshot.certified,
-                    required:
-                      provisioningSnapshot.enabled === true &&
-                      closeForm.closeResult !== ExecutionOrderResult.NOT_EXECUTED,
+                    required: provisioningRequired,
+                    // C: Aprovisionamiento es el cuerpo de su línea del índice; su
+                    // lectura vive en el contenedor (D1), así que puede no estar montado.
+                    body: (
+                      <ExecutionOrderProvisioningBody
+                        key={order.id}
+                        executionOrderId={order.id}
+                        state={provisioning}
+                        showOrderFacts={false}
+                        heading="Aprovisionamiento certificado"
+                      />
+                    ),
                   },
                 }
               : {})}
@@ -288,19 +345,11 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
             offline={offline}
             nonRealizationCauses={nonRealizationCauses}
             onUploadNonRealizationEvidence={onUploadNonRealizationEvidence}
-            provisioningRequired={
-              order.workType === WfmWorkType.INSTALLATION &&
-              provisioningSnapshot.enabled === true &&
-              closeForm.closeResult !== ExecutionOrderResult.NOT_EXECUTED
-            }
+            provisioningRequired={provisioningRequired}
             provisioningCertified={provisioningSnapshot.certified === true}
             provisioningStatusKnown={provisioningSnapshot.enabled !== null}
             closureGateError={error === NETWORK_PROVISIONING_COPY.closureGateIncomplete}
-            onReviewProvisioning={() => {
-              const panel = document.getElementById('execution-order-provisioning');
-              panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              panel?.querySelector<HTMLElement>('h3')?.focus();
-            }}
+            onReviewProvisioning={() => focusRequirementBody(provisioningKey)}
           />
         </div>
       )}

@@ -26,6 +26,11 @@ import type {
 } from '@/lib/api-client';
 import { ExecutionOrderDrawer } from './ExecutionOrderDrawer';
 import {
+  expectNoCaptureInAnyLine,
+  expectOnlyIndexNavigation,
+  selectRequirementLine,
+} from './execution-order-index.test-helper';
+import {
   EXECUTION_ORDER_RESULT_VARIANTS,
   EXECUTION_ORDER_STATUS_VARIANTS,
 } from './operations-labels';
@@ -341,6 +346,12 @@ describe('ExecutionOrderDrawer', () => {
     expect(executedBadges.some((badge) => badge.className.includes('bg-success-50'))).toBe(true);
   });
 
+  const REQUIREMENT_LINES = {
+    activity: 'Conectar ONU',
+    consumption: 'Serial ONT',
+    evidence: 'Foto de instalación',
+  } as const;
+
   function renderDrawer(
     props: Partial<Parameters<typeof ExecutionOrderDrawer>[0]> = {},
     action?: 'activity' | 'consumption' | 'evidence',
@@ -391,6 +402,8 @@ describe('ExecutionOrderDrawer', () => {
         consumption: 'Registrar serial ONT',
         evidence: 'Adjuntar evidencia',
       };
+      // Índice activo: se elige la línea del requisito antes de abrir su acción.
+      selectRequirementLine(REQUIREMENT_LINES[action]);
       fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${names[action]} para `) }));
     }
     return result;
@@ -409,13 +422,13 @@ describe('ExecutionOrderDrawer', () => {
 
     it('shows empty state when no order and no error', () => {
       renderDrawer({ order: null, error: null });
-      expect(screen.getByText('Sin OT seleccionada')).toBeInTheDocument();
+      expect(screen.getByText('Sin orden seleccionada')).toBeInTheDocument();
     });
 
     it('shows error alert when loading fails', () => {
       const onRefreshDetail = jest.fn().mockResolvedValue(undefined);
       renderDrawer({ order: null, error: 'Error de red al cargar la OT', onRefreshDetail });
-      expect(screen.getByText('No fue posible cargar la OT')).toBeInTheDocument();
+      expect(screen.getByText('No pudimos cargar esta orden')).toBeInTheDocument();
       screen.getByRole('button', { name: 'Reintentar' }).click();
       expect(onRefreshDetail).toHaveBeenCalledTimes(1);
     });
@@ -426,9 +439,8 @@ describe('ExecutionOrderDrawer', () => {
         error: 'Error al registrar actividad',
       });
       expect(screen.getByText('No fue posible completar la operación')).toBeInTheDocument();
-      // OT number appears in both title and summary; verify at least 2 occurrences
-      const matches = screen.getAllByText('OTE-20260727-001');
-      expect(matches.length).toBeGreaterThanOrEqual(2);
+      // CA-6: el número de la orden aparece una vez (título del panel).
+      expect(screen.getAllByText('OTE-20260727-001')).toHaveLength(1);
     });
 
     it('shows a non-blocking success banner with the loaded order', () => {
@@ -461,10 +473,9 @@ describe('ExecutionOrderDrawer', () => {
   describe.each(allStatuses)('status %s', (status) => {
     const isTerminal = terminalStatuses.includes(status);
 
-    it('renders the OT number (appears in title and summary)', () => {
+    it('renders the OT number once (CA-6: title only)', () => {
       renderDrawer({ order: detailFactory({ status }) });
-      const matches = screen.getAllByText('OTE-20260727-001');
-      expect(matches.length).toBeGreaterThanOrEqual(2);
+      expect(screen.getAllByText('OTE-20260727-001')).toHaveLength(1);
     });
 
     it('monta compromiso e índice por momento', () => {
@@ -472,7 +483,8 @@ describe('ExecutionOrderDrawer', () => {
       expect(screen.getByText('Compromiso')).toBeInTheDocument();
       expect(screen.getByText('Requisitos')).toBeInTheDocument();
       const checklist = screen.getByRole('region', { name: 'Requisitos' });
-      expect(within(checklist).getAllByRole('listitem')).toHaveLength(5);
+      // Cinco requisitos de la plantilla más la línea de aprovisionamiento (bloque C).
+      expect(within(checklist).getAllByRole('listitem')).toHaveLength(6);
       expect(document.querySelector('input[type="file"]')).toBeNull();
       expect(screen.getByText('Cierre')).toBeInTheDocument();
     });
@@ -508,8 +520,18 @@ describe('ExecutionOrderDrawer', () => {
         renderDrawer({ order: detailFactory({ status, allowedActions: actions }) });
 
         if (status === ExecutionOrderStatus.BLOCKED) {
-          expect(screen.queryByRole('button', { name: 'Registrar actividad' })).toBeNull();
-          expect(screen.queryByRole('button', { name: 'Registrar material' })).toBeNull();
+          // Se elige cada línea; ningún cuerpo ofrece captura (revisión H2, nombre corregido).
+          const requirements = screen.getByRole('region', { name: 'Requisitos' });
+          for (const line of within(
+            within(requirements).getByRole('navigation', { name: 'Requisitos de la orden' }),
+          ).getAllByRole('button')) {
+            fireEvent.click(line);
+            expect(screen.queryByRole('button', { name: /^Registrar actividad para / })).toBeNull();
+            expect(
+              screen.queryByRole('button', { name: /^Registrar serial ONT para / }),
+            ).toBeNull();
+            expect(requirements.querySelectorAll('[id^="requirement-trigger-"]')).toHaveLength(0);
+          }
           return;
         }
 
@@ -521,9 +543,11 @@ describe('ExecutionOrderDrawer', () => {
           expect(screen.queryByLabelText('Cantidad')).toBeNull();
           expect(document.querySelector('input[type="file"]')).toBeNull();
         } else {
+          selectRequirementLine('Conectar ONU');
           expect(
             screen.getByRole('button', { name: /^Registrar actividad para / }),
           ).toBeInTheDocument();
+          selectRequirementLine('Serial ONT');
           expect(
             screen.getByRole('button', { name: /^Registrar serial ONT para / }),
           ).toBeInTheDocument();
@@ -548,10 +572,9 @@ describe('ExecutionOrderDrawer', () => {
       expect(within(section).queryByText('Torre Norte')).not.toBeInTheDocument();
     });
 
-    it('shows the OT number (title is also the OT number)', () => {
+    it('shows the OT number once (CA-6: the title is the OT number)', () => {
       renderDrawer();
-      const matches = screen.getAllByText('OTE-20260727-001');
-      expect(matches.length).toBeGreaterThanOrEqual(2);
+      expect(screen.getAllByText('OTE-20260727-001')).toHaveLength(1);
     });
   });
 
@@ -622,6 +645,7 @@ describe('ExecutionOrderDrawer', () => {
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         activities: activitiesFactory(),
       });
+      selectRequirementLine('Conectar ONU');
       expect(screen.getByText('Se instaló ONU en sala principal')).toBeInTheDocument();
       expect(screen.getByText('Cableado externo en buen estado')).toBeInTheDocument();
     });
@@ -631,6 +655,7 @@ describe('ExecutionOrderDrawer', () => {
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         activities: [],
       });
+      selectRequirementLine('Conectar ONU');
       expect(screen.getByText(/Todavía no hay actividades registradas/)).toBeInTheDocument();
     });
 
@@ -659,10 +684,11 @@ describe('ExecutionOrderDrawer', () => {
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         activities: activitiesFactory(),
       });
-      expect(screen.getByRole('button', { name: /^Registrar actividad para / })).toHaveAttribute(
-        'aria-expanded',
-        'false',
-      );
+      selectRequirementLine('Conectar ONU');
+      // Sin aria-expanded (dictamen R0): la captura cerrada no controla ninguna hoja.
+      expect(
+        screen.getByRole('button', { name: /^Registrar actividad para / }),
+      ).not.toHaveAttribute('aria-controls');
       expect(screen.queryByLabelText('Descripción de la actividad')).toBeNull();
     });
     it('abre y cancela la captura inline desde el requisito', async () => {
@@ -671,9 +697,12 @@ describe('ExecutionOrderDrawer', () => {
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         activities: activitiesFactory(),
       });
+      selectRequirementLine('Conectar ONU');
       const trigger = screen.getByRole('button', { name: /^Registrar actividad para / });
       await user.click(trigger);
-      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      expect(trigger).toHaveAttribute('aria-controls', 'requirement-action-req-connect-cpe');
+      // El destino de aria-controls existe en el DOM (revisión H6).
+      expect(document.getElementById('requirement-action-req-connect-cpe')).not.toBeNull();
       expect(screen.getByLabelText('Descripción de la actividad')).toBeInTheDocument();
       await user.click(screen.getByRole('button', { name: 'Cancelar' }));
       expect(screen.queryByLabelText('Descripción de la actividad')).toBeNull();
@@ -702,10 +731,9 @@ describe('ExecutionOrderDrawer', () => {
         }),
       );
       expect(screen.queryByLabelText('Descripción de la actividad')).toBeNull();
-      expect(screen.getByRole('button', { name: /^Registrar actividad para / })).toHaveAttribute(
-        'aria-expanded',
-        'false',
-      );
+      expect(
+        screen.getByRole('button', { name: /^Registrar actividad para / }),
+      ).not.toHaveAttribute('aria-controls');
     });
     it('separa historial vacío y captura con tipo preseleccionado', () => {
       renderDrawer(
@@ -856,6 +884,7 @@ describe('ExecutionOrderDrawer', () => {
         onLoadMoreEvidence,
       });
 
+      selectRequirementLine('Foto de instalación');
       await user.click(screen.getByRole('button', { name: 'Cargar más' }));
 
       expect(onLoadMoreEvidence).toHaveBeenCalledTimes(1);
@@ -1064,6 +1093,7 @@ describe('ExecutionOrderDrawer', () => {
         itemUsage: [],
         itemUsageMeta: custodyMetaFactory({ total: 0 }),
       });
+      selectRequirementLine('Serial ONT');
       expect(
         screen.getByText(/Todavía no hay consumos registrados para este requisito/),
       ).toBeInTheDocument();
@@ -1285,6 +1315,7 @@ describe('ExecutionOrderDrawer', () => {
         evidence: null,
       });
 
+      selectRequirementLine('Foto de instalación');
       expect(screen.getByText('Todavía no hay evidencias para este requisito')).toBeInTheDocument();
     });
 
@@ -1297,6 +1328,7 @@ describe('ExecutionOrderDrawer', () => {
         onRefreshDetail,
       });
 
+      selectRequirementLine('Foto de instalación');
       expect(screen.getByText('Evidencias no disponibles')).toBeInTheDocument();
       expect(screen.getByText(/No pudimos consultar las evidencias/)).toBeInTheDocument();
       expect(
@@ -1311,6 +1343,7 @@ describe('ExecutionOrderDrawer', () => {
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         evidence: evidenceFactory(),
       });
+      selectRequirementLine('Foto de instalación');
       expect(screen.getAllByText(/Foto de instalación/).length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText('Disponible')).toBeInTheDocument();
     });
@@ -1320,6 +1353,7 @@ describe('ExecutionOrderDrawer', () => {
 
     it('shows geo-reference display', () => {
       renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
+      selectRequirementLine('Foto de instalación');
       expect(screen.getAllByText(/Calle 1 # 2 - 3/).length).toBeGreaterThan(0);
     });
 
@@ -1437,7 +1471,12 @@ describe('ExecutionOrderDrawer', () => {
         ],
       });
 
-      expect(screen.getByText('Información requerida')).toBeInTheDocument();
+      // La etiqueta segura se lee en la línea del índice (y como título si es el activo).
+      expect(
+        within(screen.getByRole('navigation', { name: 'Requisitos de la orden' })).getByText(
+          'Información requerida',
+        ),
+      ).toBeInTheDocument();
       expect(screen.getByText('Medición requerida')).toBeInTheDocument();
       expect(
         screen.getByText('Completa el requisito pendiente antes de cerrar la orden.'),
@@ -1571,7 +1610,9 @@ describe('ExecutionOrderDrawer', () => {
       const matches = screen.getAllByText(/Sin conexión/);
       expect(matches.length).toBeGreaterThanOrEqual(2);
       expect(screen.queryByRole('button', { name: 'Iniciar ejecución' })).toBeNull();
+      selectRequirementLine('Conectar ONU');
       expect(screen.getByRole('button', { name: /^Registrar actividad para / })).toBeDisabled();
+      selectRequirementLine('Serial ONT');
       expect(screen.getByRole('button', { name: /^Registrar serial ONT para / })).toBeDisabled();
       expect(screen.queryByRole('button', { name: 'Cerrar OT' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Crear seguimiento' })).toBeNull();
@@ -1628,7 +1669,10 @@ describe('ExecutionOrderDrawer', () => {
       // contenido atenuado y marcado como deshabilitado
       const disabledContainer = checklistSection.querySelector('[aria-disabled="true"]');
       expect(disabledContainer).toBeNull();
-      expect(within(checklistSection).queryByRole('button')).toBeNull();
+      // Las líneas del índice son navegación; ningún botón de captura antes de iniciar.
+      expectOnlyIndexNavigation(checklistSection);
+      // Se elige cada línea: ninguna monta captura antes de iniciar (revisión H2).
+      expect(expectNoCaptureInAnyLine(checklistSection)).toBe(6);
       expect(document.querySelector('form')).toBeNull();
       // requisitos pendientes suprimidos antes de iniciar
       expect(
@@ -1693,11 +1737,17 @@ describe('ExecutionOrderDrawer', () => {
       (status) => {
         renderDrawer({ order: detailFactory({ status }) });
         expect(screen.getAllByRole('listitem')).toHaveLength(6);
-        expect(screen.queryByText('Todavía no hay actividades registradas')).toBeNull();
-        expect(
-          screen.queryByText('Todavía no hay consumos registrados para este requisito'),
-        ).toBeNull();
-        expect(screen.queryByText('Todavía no hay evidencias para este requisito')).toBeNull();
+        // Con cada línea elegida, ningún cuerpo inventa un historial vacío (revisión H2).
+        for (const line of within(
+          screen.getByRole('navigation', { name: 'Requisitos de la orden' }),
+        ).getAllByRole('button')) {
+          fireEvent.click(line);
+          expect(screen.queryByText('Todavía no hay actividades registradas')).toBeNull();
+          expect(
+            screen.queryByText('Todavía no hay consumos registrados para este requisito'),
+          ).toBeNull();
+          expect(screen.queryByText('Todavía no hay evidencias para este requisito')).toBeNull();
+        }
       },
     );
     it.each(preStartStatuses)('muestra los tres hints sin sumar CTA (%s)', (status) => {
@@ -1711,11 +1761,14 @@ describe('ExecutionOrderDrawer', () => {
       ).toBeInTheDocument();
       expect(screen.getByText('Inicia la ejecución para registrar evidencia')).toBeInTheDocument();
       expect(screen.getAllByRole('button', { name: 'Iniciar ejecución' })).toHaveLength(1);
+      // Se elige cada línea antes de afirmar la ausencia de captura (revisión H2).
+      expect(expectNoCaptureInAnyLine(screen.getByRole('region', { name: 'Requisitos' }))).toBe(6);
       expect(screen.queryByRole('button', { name: /^Registrar actividad/ })).toBeNull();
       expect(screen.queryByRole('button', { name: /^Registrar serial ONT/ })).toBeNull();
     });
     it('habilita el índice de acciones solo después del inicio', () => {
       renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
+      selectRequirementLine('Conectar ONU');
       expect(
         screen.getByRole('button', { name: /^Registrar actividad para / }),
       ).toBeInTheDocument();
@@ -1787,6 +1840,7 @@ describe('ExecutionOrderDrawer', () => {
 
       // El detalle se muestra completo (contenido sensible en memoria).
       expect(screen.getByText('ONT-2026-001')).toBeInTheDocument();
+      selectRequirementLine('Conectar ONU');
       expect(screen.getByText('Se instaló ONU en sala principal')).toBeInTheDocument();
       expect(screen.getByText('Requisitos')).toBeInTheDocument();
       expect(screen.queryByText(/Firma · Evidencia asociada/u)).toBeNull();

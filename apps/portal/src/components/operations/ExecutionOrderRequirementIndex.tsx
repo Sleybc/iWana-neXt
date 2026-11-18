@@ -2,7 +2,6 @@
 
 import { useCallback, useRef, type ReactNode } from 'react';
 import type { ExecutionOrderTemplateRequirement } from '@iwana/shared';
-import { Badge } from '@iwana/ui';
 import type { ExecutionOrderDetailResponse } from '@/lib/api-client';
 import {
   ExecutionOrderActivityAction,
@@ -19,7 +18,7 @@ import {
   ExecutionOrderMaterialUnattributedHistory,
 } from './ExecutionOrderMaterialAction';
 import { RequirementActionSheet } from './RequirementActionSheet';
-import { RequirementChecklist } from './RequirementChecklist';
+import { RequirementChecklist, type RequirementChecklistItem } from './RequirementChecklist';
 import type { RequirementActionDescriptor } from './execution-order-actions';
 import { getExecutionOrderMoment, resolveRequirementAction } from './execution-order-moment';
 import { getRequirementChecklistItems } from './execution-order-requirement-status';
@@ -50,7 +49,100 @@ export interface ExecutionOrderRequirementIndexProps {
     enabled: boolean | null;
     certified: boolean | null;
     required: boolean;
+    /** Cuerpo de la línea: el panel de aprovisionamiento con sus datos y acciones. */
+    body?: ReactNode;
   };
+  /** Requisito activo del índice (vive en el shell); `null` = ninguno. */
+  activeRequirementKey?: string | null;
+  onActivateRequirement?: (requirementKey: string) => void;
+}
+
+/** Clave de la línea de aprovisionamiento; no colisiona con claves del snapshot. */
+export const PROVISIONING_REQUIREMENT_KEY = '__provisioning__';
+export const PROVISIONING_BODY_HEADING_ID = 'execution-order-provisioning-heading';
+
+/**
+ * Línea del índice que representa el aprovisionamiento: la del snapshot de la
+ * plantilla si la trae (la evalúa el gate de la API), o la línea propia de la
+ * consola si no. Nunca las dos (QA1, duplicado).
+ */
+export function provisioningLineKey(
+  requirements: readonly { key: string; kind: string }[] | null | undefined,
+): string {
+  return (
+    requirements?.find((requirement) => requirement.kind === 'PROVISIONING')?.key ??
+    PROVISIONING_REQUIREMENT_KEY
+  );
+}
+
+type ProvisioningRequirement = NonNullable<
+  ExecutionOrderRequirementIndexProps['provisioningRequirement']
+>;
+
+function provisioningItem(provisioning: ProvisioningRequirement): RequirementChecklistItem {
+  const known = provisioning.enabled !== null;
+  const pending = provisioning.required && !provisioning.certified;
+  const stateLabel =
+    provisioning.certified === null
+      ? 'Estado no disponible'
+      : provisioning.certified
+        ? 'Certificado'
+        : provisioning.required
+          ? 'Pendiente'
+          : 'Sin registrar';
+  return {
+    key: PROVISIONING_REQUIREMENT_KEY,
+    label: 'Aprovisionamiento certificado',
+    kind: 'PROVISIONING',
+    required: provisioning.required,
+    state: !known ? 'unknown' : provisioning.certified ? 'satisfied' : 'pending',
+    requiredLabel: !known
+      ? 'Estado no disponible'
+      : provisioning.required
+        ? 'Obligatorio'
+        : 'No requerido',
+    stateLabel,
+    ariaLabel: `Aprovisionamiento certificado: ${
+      !known
+        ? 'estado no disponible'
+        : provisioning.required
+          ? provisioning.certified
+            ? 'cumplido'
+            : 'pendiente'
+          : 'no requerido'
+    }`,
+    ...(pending
+      ? { detail: 'Completa y certifica el servicio técnico antes de cerrar esta instalación.' }
+      : !provisioning.required && known
+        ? { detail: 'Las órdenes no ejecutadas no requieren certificación.' }
+        : {}),
+    bodyHeadingId: PROVISIONING_BODY_HEADING_ID,
+    body: provisioning.body ?? null,
+  };
+}
+
+/** Homónimos: dos requisitos con la misma etiqueta se distinguen por su orden (R0 §3). */
+function withHomonymDetail<T extends { label: string }>(items: T[]): (T & { detail?: string })[] {
+  return items.map((item) => {
+    const same = items.filter((entry) => entry.label === item.label);
+    if (same.length < 2) return item;
+    return { ...item, detail: `(${same.indexOf(item) + 1} de ${same.length})` };
+  });
+}
+
+/**
+ * D3: el primer obligatorio pendiente en el orden del índice; si no hay, el
+ * primero. Un estado no disponible no cuenta como pendiente.
+ */
+export function defaultActiveRequirementKey(
+  items: readonly Pick<RequirementChecklistItem, 'key' | 'required' | 'state'>[],
+): string | null {
+  return (
+    items.find((item) => item.required && item.state === 'pending')?.key ??
+    items.find((item) => item.state !== 'unknown')?.key ??
+    items[0]?.key ??
+    null
+  );
 }
 
 function isSignatureRequirement(requirement: ExecutionOrderTemplateRequirement): boolean {
@@ -63,6 +155,8 @@ export function ExecutionOrderRequirementIndex({
   selectedAction,
   onSelectAction,
   provisioningRequirement,
+  activeRequirementKey,
+  onActivateRequirement,
 }: ExecutionOrderRequirementIndexProps) {
   const { template = null, isSubmitting, offline, error, successMessage = null } = context;
   const templateRequirements = template?.requirements ?? [];
@@ -72,10 +166,12 @@ export function ExecutionOrderRequirementIndex({
     ...templateRequirements.filter(isSignatureRequirement),
   ];
   const moment = getExecutionOrderMoment(order.status);
-  const items = getRequirementChecklistItems(
-    requirements,
-    order.completion.requirements,
-    templateRequirementLabel,
+  const items = withHomonymDetail(
+    getRequirementChecklistItems(
+      requirements,
+      order.completion.requirements,
+      templateRequirementLabel,
+    ),
   );
   const unattributedHistory =
     moment !== 'pre-start' && context.itemUsage.some((usage) => usage.requirementKey == null) ? (
@@ -134,110 +230,81 @@ export function ExecutionOrderRequirementIndex({
           ? 'success'
           : 'idle';
 
+  const templateItems: RequirementChecklistItem[] = items.map((item) => {
+    const requirement = requirements.find((entry) => entry.key === item.key);
+    const action =
+      requirement && item.state !== 'unknown'
+        ? resolveRequirementAction(order, requirement)
+        : undefined;
+    // La hoja solo se abre sobre el requisito seleccionado y mientras su acción siga autorizada.
+    const sheetAction =
+      action !== undefined && action.requirementKey === selectedAction?.requirementKey
+        ? selectedAction
+        : null;
+    return {
+      ...item,
+      action,
+      history: moment !== 'pre-start' && requirement ? renderHistory(requirement) : null,
+      actionBody:
+        sheetAction && requirement ? (
+          <RequirementActionSheet
+            key={sheetAction.requirementKey}
+            open
+            action={sheetAction}
+            status={sheetStatus}
+            errorMessage={error ?? undefined}
+            onCancel={closeAction}
+            onSubmit={() => void submitHandler.current?.()}
+            body={renderCapture(sheetAction, requirement)}
+          />
+        ) : null,
+    };
+  });
+  // Si el snapshot ya trae el requisito de aprovisionamiento, esa línea (con el
+  // estado que publica el gate) recibe el cuerpo del panel; no se añade otra.
+  const snapshotProvisioningKey = requirements.find(
+    (requirement) => requirement.kind === 'PROVISIONING',
+  )?.key;
+  const checklistItems = !provisioningRequirement
+    ? templateItems
+    : snapshotProvisioningKey
+      ? templateItems.map((item) =>
+          item.key === snapshotProvisioningKey
+            ? {
+                ...item,
+                bodyHeadingId: PROVISIONING_BODY_HEADING_ID,
+                body: provisioningRequirement.body ?? null,
+              }
+            : item,
+        )
+      : [...templateItems, provisioningItem(provisioningRequirement)];
+
   return (
-    <>
-      <RequirementChecklist
-        items={items.map((item) => {
-          const requirement = requirements.find((entry) => entry.key === item.key);
-          const action =
-            requirement && item.state !== 'unknown'
-              ? resolveRequirementAction(order, requirement)
-              : undefined;
-          // La hoja solo se abre sobre el requisito seleccionado y mientras su acción siga autorizada.
-          const sheetAction =
-            action !== undefined && action.requirementKey === selectedAction?.requirementKey
-              ? selectedAction
-              : null;
-          return {
-            ...item,
-            action,
-            history: moment !== 'pre-start' && requirement ? renderHistory(requirement) : null,
-            actionBody:
-              sheetAction && requirement ? (
-                <RequirementActionSheet
-                  key={sheetAction.requirementKey}
-                  open
-                  action={sheetAction}
-                  status={sheetStatus}
-                  errorMessage={error ?? undefined}
-                  onCancel={closeAction}
-                  onSubmit={() => void submitHandler.current?.()}
-                  body={renderCapture(sheetAction, requirement)}
-                />
-              ) : null,
-          };
-        })}
-        progress={order.completion.progress}
-        unattributedConsumptionHistory={unattributedHistory}
-        historyFooter={historyFooter}
-        mode={moment === 'in-progress' ? 'action' : 'readonly'}
-        showPreStartHints={moment === 'pre-start'}
-        offline={offline}
-        selectedRequirementKey={selectedAction?.requirementKey}
-        onSelectRequirement={(key) => {
-          const requirement = requirements.find((entry) => entry.key === key);
-          const action = requirement ? resolveRequirementAction(order, requirement) : undefined;
-          if (action) onSelectAction(action);
-        }}
-      />
-      {provisioningRequirement ? (
-        <ul
-          aria-label="Requisito de aprovisionamiento"
-          className="divide-y divide-gray-200 dark:divide-dark-border"
-        >
-          <li
-            className="space-y-2 py-3"
-            aria-label={`Aprovisionamiento certificado: ${
-              provisioningRequirement.enabled === null
-                ? 'estado no disponible'
-                : provisioningRequirement.required
-                  ? provisioningRequirement.certified
-                    ? 'cumplido'
-                    : 'pendiente'
-                  : 'no requerido'
-            }`}
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-iwana-primary dark:text-white">
-                Aprovisionamiento certificado
-              </span>
-              <Badge variant={provisioningRequirement.enabled === null ? 'info' : 'neutral'}>
-                {provisioningRequirement.enabled === null
-                  ? 'Estado no disponible'
-                  : provisioningRequirement.required
-                    ? 'Obligatorio'
-                    : 'No requerido'}
-              </Badge>
-              <Badge
-                variant={
-                  provisioningRequirement.certified
-                    ? 'lime'
-                    : provisioningRequirement.enabled === null
-                      ? 'info'
-                      : 'neutral'
-                }
-              >
-                {provisioningRequirement.certified === null
-                  ? 'Estado no disponible'
-                  : provisioningRequirement.certified
-                    ? 'Certificado'
-                    : provisioningRequirement.required
-                      ? 'Pendiente'
-                      : 'Sin registrar'}
-              </Badge>
-            </div>
-            {provisioningRequirement.required && !provisioningRequirement.certified ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Completa y certifica el servicio técnico antes de cerrar esta instalación.
-              </p>
-            ) : !provisioningRequirement.required && provisioningRequirement.enabled !== null ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Las órdenes no ejecutadas no requieren certificación.
-              </p>
-            ) : null}
-          </li>
-        </ul>
-      ) : null}
-    </>
+    <RequirementChecklist
+      items={checklistItems}
+      progress={order.completion.progress}
+      unattributedConsumptionHistory={unattributedHistory}
+      historyFooter={historyFooter}
+      mode={moment === 'in-progress' ? 'action' : 'readonly'}
+      showPreStartHints={moment === 'pre-start'}
+      offline={offline}
+      selectedRequirementKey={selectedAction?.requirementKey}
+      onSelectRequirement={(key) => {
+        const requirement = requirements.find((entry) => entry.key === key);
+        const action = requirement ? resolveRequirementAction(order, requirement) : undefined;
+        if (action) onSelectAction(action);
+      }}
+      {...(onActivateRequirement
+        ? {
+            onActivateRequirement,
+            activeRequirementKey:
+              activeRequirementKey === undefined
+                ? moment === 'in-progress'
+                  ? defaultActiveRequirementKey(checklistItems)
+                  : null
+                : activeRequirementKey,
+          }
+        : {})}
+    />
   );
 }

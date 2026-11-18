@@ -95,7 +95,7 @@ export const CONTRACT_STEP_COPY = {
   signedBadge: 'Firmado',
   closedBadge: 'Sin firma pendiente',
   closedDescription:
-    'El documento ya no se puede abrir desde la consola. Continúa con el acta de conformidad y el cierre de la OT.',
+    'El documento ya no se puede abrir desde la consola. Continúa con el acta de conformidad y el cierre de la orden.',
   unavailableBadge: 'No disponible',
   generate: 'Generar contrato',
   generating: 'Generando contrato…',
@@ -119,13 +119,13 @@ export const CONTRACT_STEP_COPY = {
   signing: 'Firmando contrato…',
   signed: 'Contrato firmado',
   signedDescription:
-    'El contrato quedó firmado y activo. Continúa con el acta de conformidad y el cierre de la OT.',
+    'El contrato quedó firmado y activo. Continúa con el acta de conformidad y el cierre de la orden.',
   locationNotice:
     'Si el dispositivo lo permite, se guarda la ubicación aproximada como evidencia de la firma.',
-  disabledNotInProgress: 'Se habilita cuando la OT esté en ejecución.',
-  disabledNoPermission: 'No tienes permiso para registrar el contrato en esta OT.',
+  disabledNotInProgress: 'Se habilita cuando la orden esté en ejecución.',
+  disabledNoPermission: 'No tienes permiso para registrar el contrato en esta orden.',
   disabledOffline: 'Sin conexión; vuelve a intentar cuando recuperes la red.',
-  disabledSync: 'La OT se está sincronizando; actualiza el detalle antes de continuar.',
+  disabledSync: 'La orden se está sincronizando; actualiza el detalle antes de continuar.',
   disabledProvisioning:
     'Se habilita cuando el servicio esté aprovisionado y certificado con la evidencia de servicio funcionando.',
   operatorDataHint:

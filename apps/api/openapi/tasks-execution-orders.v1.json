@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "iWana Operations Execution Orders API",
-    "description": "Contrato v1.5.0 aditivo para MOD11 — OT de ejecución. Fuentes: ADR-068 y docs/specs/2026-07-27-mod09-mod11-ot-instalacion-contrato-api.md. v1.5.0 (2026-10-06): RegisterItemUsageCommand acepta requirementKey opcional para consumos nuevos; ExecutionOrderItemUsage responde requirementKey como string nullable explícito. Los consumos históricos permanecen null y no se atribuye procedencia retrospectiva.",
-    "version": "1.5.0"
+    "description": "Contrato v1.6.0 aditivo para MOD11 — OT de ejecución. Fuentes: ADR-068 y docs/specs/2026-07-27-mod09-mod11-ot-instalacion-contrato-api.md. v1.5.0 (2026-10-06): RegisterItemUsageCommand acepta requirementKey opcional para consumos nuevos; ExecutionOrderItemUsage responde requirementKey como string nullable explícito. Los consumos históricos permanecen null y no se atribuye procedencia retrospectiva. v1.6.0 (2026-11-18, spec 2026-11-18 MOD11 consola §4): ExecutionOrderDetail gana subscriber, sourceTicket y visit, opcionales y nulables; null sin el permiso del módulo destino (crm.subscribers.read, assurance.tickets.read, wfm.schedule.read), con titular bloqueado o suprimido, o sin origen. Sin teléfono ni documento.",
+    "version": "1.6.0"
   },
   "servers": [{ "url": "/api/v1" }],
   "tags": [{ "name": "tasks-execution-orders" }],
@@ -231,9 +231,10 @@
         "additionalProperties": false,
         "required": ["eventId", "window"],
         "properties": {
-          "eventId": { "type": "string", "format": "uuid" },
+          "eventId": { "type": "string", "format": "uuid", "nullable": true },
           "window": {
             "type": "object",
+            "nullable": true,
             "additionalProperties": false,
             "required": ["startAt", "endAt"],
             "properties": {
@@ -268,7 +269,11 @@
         "required": ["id", "label"],
         "properties": {
           "id": { "type": "string" },
-          "label": { "type": "string" },
+          "label": {
+            "type": "string",
+            "nullable": true,
+            "description": "v1.6.0: municipio de la OT; null si no lo tiene. Ya no cae al nombre del cliente (H-1)."
+          },
           "address": { "type": "string" }
         }
       },
@@ -292,6 +297,7 @@
           "number",
           "version",
           "status",
+          "annulled",
           "workType",
           "template",
           "schedule",
@@ -321,6 +327,10 @@
               "CANCELLED"
             ]
           },
+          "annulled": {
+            "type": "boolean",
+            "description": "v1.4: anulación por error sobre status CANCELLED (ADR-090 §D3)."
+          },
           "result": {
             "type": "string",
             "enum": [
@@ -336,7 +346,7 @@
             "enum": ["INSTALLATION", "SUPPORT", "TECHNICAL_VISIT", "RETIREMENT", "MAINTENANCE"]
           },
           "template": {
-            "$ref": "#/components/schemas/ExecutionOrderTemplateReference",
+            "allOf": [{ "$ref": "#/components/schemas/ExecutionOrderTemplateReference" }],
             "nullable": true
           },
           "schedule": { "$ref": "#/components/schemas/ExecutionOrderScheduleView" },
@@ -349,12 +359,54 @@
             "enum": ["NOT_REQUIRED", "PENDING", "CONFIRMED", "REJECTED", "DIVERGED"]
           },
           "allowedActions": {
-            "type": ["array", "null"],
+            "type": "array",
+            "nullable": true,
             "items": { "$ref": "#/components/schemas/ExecutionOrderAllowedAction" }
           },
           "createdAt": { "type": "string", "format": "date-time" },
-          "updatedAt": { "type": "string", "format": "date-time" }
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "subscriber": {
+            "allOf": [{ "$ref": "#/components/schemas/ExecutionOrderSubscriberLink" }],
+            "nullable": true,
+            "description": "v1.6.0. Nulo sin crm.subscribers.read, con titular bloqueado o suprimido, o sin suscriptor."
+          },
+          "sourceTicket": {
+            "allOf": [{ "$ref": "#/components/schemas/ExecutionOrderSourceTicketLink" }],
+            "nullable": true,
+            "description": "v1.6.0. Nulo sin assurance.tickets.read o sin ticket de origen."
+          },
+          "visit": {
+            "allOf": [{ "$ref": "#/components/schemas/ExecutionOrderVisitLink" }],
+            "nullable": true,
+            "description": "v1.6.0. Nulo sin wfm.schedule.read o sin evento de agenda."
+          }
         }
+      },
+      "ExecutionOrderSubscriberLink": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "displayName", "serviceAddress", "municipality"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "displayName": { "type": "string", "nullable": true },
+          "serviceAddress": { "type": "string", "nullable": true },
+          "municipality": { "type": "string", "nullable": true }
+        }
+      },
+      "ExecutionOrderSourceTicketLink": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "number"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "number": { "type": "string" }
+        }
+      },
+      "ExecutionOrderVisitLink": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scheduleEventId"],
+        "properties": { "scheduleEventId": { "type": "string", "format": "uuid" } }
       },
       "AssignExecutionOrderCommand": {
         "type": "object",

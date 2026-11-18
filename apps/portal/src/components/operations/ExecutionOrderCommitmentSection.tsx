@@ -63,19 +63,16 @@ export function ExecutionOrderCommitmentSection({
     <>
       <section
         aria-labelledby="eo-commitment-heading"
-        className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2"
+        className="rounded-2xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface-2"
       >
-        <h3
-          id="eo-commitment-heading"
-          className="text-sm font-semibold text-gray-900 dark:text-white"
-        >
-          Compromiso
-        </h3>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Sitio, ventana, responsable y plantilla se resumen arriba. Aquí solo el estado operativo y
-          la acción.
-        </p>
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
+        {/* Cabecera compacta (bloque A): título y estado operativo en una sola fila. */}
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-2">
+          <h3
+            id="eo-commitment-heading"
+            className="mr-auto text-sm font-semibold text-gray-900 dark:text-white"
+          >
+            Compromiso
+          </h3>
           <div>
             <p className="portal-eyebrow-muted">Tipo de trabajo</p>
             <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">
@@ -152,7 +149,7 @@ export function ExecutionOrderCommitmentSection({
       </section>
 
       {inProgressHelp ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">{inProgressHelp}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">{inProgressHelp}</p>
       ) : null}
       {moment === 'pre-start' && canStart && (
         <PortalAlert

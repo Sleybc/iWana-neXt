@@ -140,7 +140,61 @@ describe('TasksController Swagger', () => {
       };
     };
     expect(published.openapi).toBe('3.0.3');
-    expect(published.info.version).toBe('1.5.0');
+    expect(published.info.version).toBe('1.6.0');
+    // v1.6.0 (contrato shared v1.8): enlaces de la consola, opcionales y nulables.
+    const detail = published.components?.schemas?.['ExecutionOrderDetail'];
+    for (const field of ['subscriber', 'sourceTicket', 'visit']) {
+      expect(detail?.required).not.toContain(field);
+      expect(detail?.properties?.[field]?.nullable).toBe(true);
+    }
+    expect(
+      Object.keys(
+        published.components?.schemas?.['ExecutionOrderSubscriberLink']?.properties ?? {},
+      ),
+    ).toEqual(['id', 'displayName', 'serviceAddress', 'municipality']);
+
+    // Esquema efectivo (resolviendo $ref y allOf) frente al DTO vivo: en 3.0.3 un
+    // `nullable` hermano de `$ref` se ignora, por eso se exige allOf + nullable.
+    type Schema = {
+      $ref?: string;
+      allOf?: Schema[];
+      nullable?: boolean;
+      type?: string | string[];
+      required?: string[];
+      properties?: Record<string, Schema>;
+    };
+    const resolve = (
+      root: { components?: { schemas?: Record<string, unknown> } },
+      node: Schema,
+    ) => {
+      const deref = (n: Schema): Schema =>
+        n.$ref ? deref(root.components?.schemas?.[n.$ref.split('/').pop()!] as Schema) : n;
+      const parts = (node.allOf ?? []).map(deref);
+      const base = deref(node);
+      return {
+        nullable: node.nullable === true || base.nullable === true,
+        hasRefSibling: Boolean(node.$ref) && node.nullable !== undefined,
+        type: base.type ?? parts[0]?.type ?? (parts.length || node.$ref ? 'object' : undefined),
+      };
+    };
+    const live = document.components?.schemas?.['ExecutionOrderDetailResponseDto'] as Schema;
+    const pub = detail as Schema;
+    expect(pub.required).toContain('annulled');
+    expect(live.required).toContain('annulled');
+    expect(resolve(published as never, pub.properties!['annulled']!).type).toBe('boolean');
+    for (const field of ['template', 'allowedActions', 'subscriber', 'sourceTicket', 'visit']) {
+      const effective = resolve(published as never, pub.properties![field]!);
+      expect({ field, ...effective, hasRefSibling: effective.hasRefSibling }).toMatchObject({
+        field,
+        nullable: true,
+        hasRefSibling: false,
+      });
+      expect(resolve(document as never, live.properties![field]!).nullable).toBe(true);
+    }
+    expect(resolve(published as never, pub.properties!['allowedActions']!).type).toBe('array');
+    const schedule = published.components?.schemas?.['ExecutionOrderScheduleView'] as Schema;
+    expect(schedule.properties!['eventId']!.nullable).toBe(true);
+    expect(schedule.properties!['window']!.nullable).toBe(true);
     const itemUsageCommand = published.components?.schemas?.['RegisterItemUsageCommand'];
     const itemUsageResponse = published.components?.schemas?.['ExecutionOrderItemUsage'];
     expect(itemUsageCommand?.required).not.toContain('requirementKey');
