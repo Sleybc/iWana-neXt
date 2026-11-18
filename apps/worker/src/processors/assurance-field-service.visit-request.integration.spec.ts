@@ -13,6 +13,7 @@ import { resolve } from 'path';
 import { DataSource } from 'typeorm';
 import type { Job } from 'bullmq';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
+import { resolveMigrationDbCredentials } from '@iwana/db';
 import type { FieldServiceRequest } from '@iwana/shared';
 import { WORKER_ENTITIES } from '../worker-entities';
 import { AssuranceFieldServiceProcessor } from './assurance-field-service.processor';
@@ -46,12 +47,15 @@ runIt('AssuranceFieldServiceProcessor con PostgreSQL real', () => {
   const ticketId = `TK-IT-${randomUUID()}`;
 
   beforeAll(async () => {
+    // Rol migrador, como el resto de la integración del worker: en CI `iwana_app` no
+    // tiene USAGE sobre el schema tenant hasta el paso de mínimo privilegio, posterior.
+    const migrator = resolveMigrationDbCredentials();
     dataSource = new DataSource({
       type: 'postgres',
       host: process.env.DB_HOST ?? 'localhost',
       port: Number.parseInt(process.env.DB_PORT ?? '5432', 10),
-      username: process.env.DB_USER ?? 'iwana',
-      password: process.env.DB_PASSWORD ?? '',
+      username: migrator.username,
+      password: migrator.password,
       database: process.env.DB_NAME ?? 'test',
       entities: WORKER_ENTITIES,
       synchronize: false,
