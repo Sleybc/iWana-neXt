@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { SlaBreachStatus, TicketStatus, TicketPriority } from '@iwana/shared';
 import type { AssuranceTicket, SubscriberRecord } from '@/lib/api-client';
@@ -277,6 +278,35 @@ describe('SubscriberTicketsSection', () => {
     expect(await screen.findByText('No fue posible cargar los tickets')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
     expect(await screen.findByText('Este suscriptor no tiene tickets')).toBeInTheDocument();
+    await waitFor(() => expect(assuranceApi.tickets.list).toHaveBeenCalledTimes(2));
+  });
+  it('consulta una sola vez por clave aunque StrictMode repita el efecto (CA-SO-04)', async () => {
+    (assuranceApi.tickets.list as jest.Mock).mockResolvedValue({ data: [] });
+
+    const { rerender } = render(
+      <StrictMode>
+        <SubscriberTicketsSection
+          subscriber={subscriber}
+          canRead
+          refreshKey={0}
+          onOpenTicket={onOpenTicket}
+        />
+      </StrictMode>,
+    );
+
+    expect(await screen.findByText('Este suscriptor no tiene tickets')).toBeInTheDocument();
+    expect(assuranceApi.tickets.list).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <StrictMode>
+        <SubscriberTicketsSection
+          subscriber={subscriber}
+          canRead
+          refreshKey={1}
+          onOpenTicket={onOpenTicket}
+        />
+      </StrictMode>,
+    );
     await waitFor(() => expect(assuranceApi.tickets.list).toHaveBeenCalledTimes(2));
   });
 });

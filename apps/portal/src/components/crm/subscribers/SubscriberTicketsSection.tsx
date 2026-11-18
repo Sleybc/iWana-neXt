@@ -277,10 +277,15 @@ export function SubscriberTicketsSection({
     }
   }, [canRead, subscriber.id, subscriber.privacyRestricted]);
 
-  // Una consulta al montar y una por cada `refreshKey` (H15: en desarrollo StrictMode la duplica).
+  // Una consulta al montar y una por cada `refreshKey`. La clave evita la segunda consulta
+  // idéntica que StrictMode provoca al repetir el efecto en desarrollo (CA-SO-04).
+  const requestedKeyRef = useRef<string | null>(null);
   useEffect(() => {
+    const key = `${subscriber.id}:${refreshKey}:${canRead}:${subscriber.privacyRestricted}`;
+    if (requestedKeyRef.current === key) return;
+    requestedKeyRef.current = key;
     void loadTickets();
-  }, [loadTickets, refreshKey]);
+  }, [canRead, loadTickets, refreshKey, subscriber.id, subscriber.privacyRestricted]);
 
   const initialLoading = canRead && !error && (!loaded || usersPending);
 

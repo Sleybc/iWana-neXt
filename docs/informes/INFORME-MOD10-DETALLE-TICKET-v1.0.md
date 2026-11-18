@@ -11,7 +11,7 @@
 | Gate | Decisión |
 |---|---|
 | G6 paso 1 | GO |
-| G6 paso 2 | GO condicionado: E2E 11/12 en `next dev` (§5); `sec-eng` GO tras aplicar sus condiciones S-1, S-2, S-4 (S-3 revertido por D-BT-7) |
+| G6 paso 2 | GO: E2E 12/12 (§5); `sec-eng` GO tras aplicar sus condiciones S-1, S-2, S-4 (S-3 revertido por D-BT-7) |
 | G6.5 | Pendiente: push autorizado y CI de `main` en verde |
 
 ## 1. Qué se entregó
@@ -70,7 +70,7 @@ El paso 1, P2a y la primera versión de la API se publicaron dentro de `7a5955ab
 
 ## 5. Pendiente
 
-- E2E ejecutadas el 2026-11-17 contra el `pnpm dev` del usuario (`playwright.portal.local.config.ts`, 1 worker): 11 de 12 pasan en `portal-assurance.spec.ts`, `portal-assurance-adjuntos.spec.ts`, `portal-mod05-pestana-soporte.spec.ts` y `portal-importacion-uisp-live.spec.ts`. Falla solo `portal-mod05-pestana-soporte.spec.ts:388`, el caso que el plan (R2) ya registraba como roto en `next dev`: la lista de tickets se pide dos veces. Falta confirmarlo en el servidor standalone de CI.
+- E2E ejecutadas el 2026-11-17 contra el `pnpm dev` del usuario (`playwright.portal.local.config.ts`, 1 worker): 12 de 12 pasan en `portal-assurance.spec.ts`, `portal-assurance-adjuntos.spec.ts`, `portal-mod05-pestana-soporte.spec.ts` y `portal-importacion-uisp-live.spec.ts`. El caso `portal-mod05-pestana-soporte.spec.ts:388` (R2) fallaba porque StrictMode repetía el efecto de carga y pedía dos veces tickets y visitas; `SubscriberTicketsSection` y `SubscriberVisitsSection` piden ahora una vez por clave, con prueba en StrictMode.
 - Riesgos del plan §6: R1 cerrado (dos columnas admitidas); R2 y R3 cubiertos en Jest, pendientes de E2E; R4 cubierto por integración y `sec-eng`; R5 materializado: el trabajo se publicó dentro de `7a5955ab` de otra sesión; R6 cerrado con prueba.
 - Commit de P2b y de las correcciones de la API; G6.5 tras push autorizado y CI de `main` en verde (hoy rojo en `07034257`).
 

@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import {
   ScheduleEventStatus,
@@ -201,5 +202,20 @@ describe('SubscriberVisitsSection', () => {
     ).toBeInTheDocument();
     await waitFor(() => expect(wfmApi.visitRequests.list).toHaveBeenCalledTimes(2));
     expect(wfmApi.events.list).toHaveBeenCalledTimes(2);
+  });
+  it('consulta una sola vez aunque StrictMode repita el efecto (CA-SO-04)', async () => {
+    (wfmApi.visitRequests.list as jest.Mock).mockResolvedValue({ items: [] });
+    (wfmApi.events.list as jest.Mock).mockResolvedValue({ data: [] });
+
+    render(
+      <StrictMode>
+        <SubscriberVisitsSection subscriber={subscriber} canRead />
+      </StrictMode>,
+    );
+
+    await waitFor(() => expect(wfmApi.events.list).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(wfmApi.visitRequests.list).toHaveBeenCalledTimes(1);
+    expect(wfmApi.events.list).toHaveBeenCalledTimes(1);
   });
 });

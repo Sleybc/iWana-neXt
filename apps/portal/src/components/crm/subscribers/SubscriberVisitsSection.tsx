@@ -308,9 +308,14 @@ export function SubscriberVisitsSection({
     }
   }, [canRead, subscriber.id, subscriber.privacyRestricted]);
 
+  // Una consulta por clave: StrictMode repite el efecto en desarrollo (CA-SO-04).
+  const requestedKeyRef = useRef<string | null>(null);
   useEffect(() => {
+    const key = `${subscriber.id}:${canRead}:${subscriber.privacyRestricted}`;
+    if (requestedKeyRef.current === key) return;
+    requestedKeyRef.current = key;
     void loadVisits();
-  }, [loadVisits]);
+  }, [canRead, loadVisits, subscriber.id, subscriber.privacyRestricted]);
 
   useEffect(() => {
     if (!loading) {
