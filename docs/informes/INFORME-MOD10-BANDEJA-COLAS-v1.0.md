@@ -1,7 +1,7 @@
 # Informe de cierre — MOD10 Mesa de ayuda · Bandeja con colas de trabajo v1.0
 
 **Fecha:** 2026-11-18 · **Spec:** [2026-11-18-mod10-bandeja-colas-de-trabajo-ux](../specs/2026-11-18-mod10-bandeja-colas-de-trabajo-ux.md) v1.0 (+D5) · **Plan:** [2026-11-18-mod10-bandeja-colas-de-trabajo](../plans/2026-11-18-mod10-bandeja-colas-de-trabajo.md)
-**Estado:** G6 de ambos pasos · sin commit ni push · G6.5 pendiente
+**Estado:** G6 de ambos pasos · publicado en `2ba172cc` y `ea2853ff` · G6.5 ✅ 2026-11-18 (CI run 44356011807, intento 2)
 
 ## 1. Resultado
 
@@ -49,5 +49,6 @@ tsc y lint limpios en los tres paquetes; `audit-ui.mjs` P0–P2 en 0 (P3 preexis
 6. «Resueltos hoy» cuenta desde la medianoche del servidor, no la del tenant (preexistente).
 7. Contraste y Tab real en oscuro, sin verificar en navegador.
 8. El seed E2E `portal-network-provisioning-live.spec.ts:465-466` crea titulares con apellido técnico («Titular mvli5…»).
+9. **`BillingPolicySettingsClient.spec.tsx`:** falló en el intento 1 del CI y pasó al relanzar sin cambios; intermitente, ajena a la bandeja y sin endurecer. Dueño: fe-platform.
 
 Frente siguiente: consola de la orden de ejecución, con su propia spec.
