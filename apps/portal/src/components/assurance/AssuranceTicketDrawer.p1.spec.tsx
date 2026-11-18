@@ -32,7 +32,11 @@ jest.mock('@/components/shared/use-portal-modal-drawer-broadcast', () => ({
 // real (el layout monta `PermissionsProvider`), estas pruebas conceden los permisos de lectura;
 // las guardas por permiso se prueban en `AssuranceTicketDetail.p2b.spec.tsx`.
 jest.mock('@/components/access-control/permissions-context', () => ({
-  usePermissions: () => ({ hasPermission: () => true }),
+  // Identidad estable entre renders (guarda jest-context-mocks-stable.structure.spec).
+  usePermissions: (() => {
+    let stable: { hasPermission: () => boolean } | undefined;
+    return () => (stable ??= { hasPermission: () => true });
+  })(),
 }));
 
 type DrawerProps = ComponentProps<typeof AssuranceTicketDrawer>;
