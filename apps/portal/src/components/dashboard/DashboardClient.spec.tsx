@@ -890,6 +890,18 @@ describe('DashboardClient', () => {
     });
   }
 
+  it('un resumen de soporte sin desglose por prioridad no tumba el inicio', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    assuranceGetSummary.mockResolvedValue({ openCount: 5 });
+
+    render(<DashboardClient />);
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Demo ISP' })).toBeInTheDocument();
+    await waitFor(() => expect(assuranceGetSummary).toHaveBeenCalled());
+    expect(await screen.findByRole('region', { name: 'Indicadores núcleo' })).toBeInTheDocument();
+    consoleError.mockRestore();
+  });
+
   it('B0–B3 ADMIN: identidad, pulso en una superficie, cola de atención y áreas', async () => {
     render(<DashboardClient />);
 

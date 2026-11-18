@@ -485,7 +485,7 @@ function metricVisual(metricId: DashboardMetricId, sources: DashboardSourcesStat
   if (metricId === 'I-3' && sources.assurance.data) {
     return (
       <DashboardStackBar
-        segments={casePrioritySegments(sources.assurance.data.byPriority)}
+        segments={casePrioritySegments(sources.assurance.data.byPriority ?? {})}
         ariaLabel="Casos abiertos por prioridad"
       />
     );
