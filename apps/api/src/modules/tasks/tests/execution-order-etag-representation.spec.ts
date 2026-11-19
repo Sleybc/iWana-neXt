@@ -144,7 +144,38 @@ describe('ETag de la OT identifica la representación (paso 5)', () => {
       version: 4,
       status: ExecutionOrderStatus.ASSIGNED,
     });
-    expect(setHeader).toHaveBeenCalledWith('ETag', '"1.8-4"');
+    // Detalle: contrato + versión + huella del cuerpo (completion y demás
+    // partes derivadas cambian sin subir `version`, 2026-11-19).
+    expect(setHeader).toHaveBeenCalledWith(
+      'ETag',
+      expect.stringMatching(/^"1\.8-4-[0-9a-f]{16}"$/u),
+    );
+    expect(setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-cache');
+  });
+
+  it('detalle con misma version y distinto completion ⇒ ETags distintos', async () => {
+    const detail = (satisfied: boolean) => ({
+      id: 'eo-001',
+      number: 'OTE-20260828-001',
+      version: 4,
+      status: ExecutionOrderStatus.IN_PROGRESS,
+      completion: {
+        progress: satisfied ? 100 : 0,
+        completed: satisfied ? 1 : 0,
+        total: 1,
+        requirements: [
+          { requirementId: 'prov', label: 'Aprovisionamiento', kind: 'PROVISIONING', satisfied },
+        ],
+      },
+    });
+    const etagOf = (setHeader: jest.Mock) =>
+      setHeader.mock.calls.find(([name]) => name === 'ETag')?.[1] as string | undefined;
+    const pending = etagOf(await emitThroughInterceptor(detail(false)));
+    const done = etagOf(await emitThroughInterceptor(detail(true)));
+    const again = etagOf(await emitThroughInterceptor(detail(true)));
+    expect(pending).toBeDefined();
+    expect(pending).not.toBe(done);
+    expect(done).toBe(again);
   });
 
   it('el interceptor emite el ETag ligado a la representación en la entidad de un comando', async () => {

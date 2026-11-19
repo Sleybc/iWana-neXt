@@ -1,5 +1,5 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Observable, tap } from 'rxjs';
 
 /**
@@ -33,6 +33,19 @@ export function buildExecutionOrderETag(
   contractVersion: string = EXECUTION_ORDER_CONTRACT_VERSION,
 ): string {
   return `"${contractVersion}-${version}"`;
+}
+
+/**
+ * ETag del DETALLE: `"<contrato>-<versión>-<huella>"`. El detalle incluye
+ * partes derivadas que cambian sin subir `version` (completion: MOD13,
+ * evidencias, consumos, reversos; syncState, inventoryReconciliation, enlaces,
+ * allowedActions). La huella (sha256 del cuerpo serializado, 16 hex) evita que
+ * un 304 sirva un completion viejo (2026-11-19). `If-Match` sigue siendo el
+ * número de versión de la orden; este ETag nunca se usa para concurrencia.
+ */
+export function buildExecutionOrderDetailETag(body: { version: number }): string {
+  const fingerprint = createHash('sha256').update(JSON.stringify(body)).digest('hex').slice(0, 16);
+  return `"${EXECUTION_ORDER_CONTRACT_VERSION}-${body.version}-${fingerprint}"`;
 }
 
 type VersionedBody = { version?: unknown; number?: unknown; executionOrderNumber?: unknown };
@@ -70,7 +83,15 @@ export class ExecutionOrderResponseHeadersInterceptor implements NestInterceptor
     response.setHeader('X-Correlation-Id', correlationId);
     return next.handle().pipe(
       tap((body: unknown) => {
-        if (isExecutionOrderRepresentation(body))
+        if (
+          isExecutionOrderRepresentation(body) &&
+          typeof (body as VersionedBody).number === 'string'
+        ) {
+          // Detalle: siempre revalidar; el servidor recalcula la huella y
+          // Express responde 304 solo si coincide con If-None-Match.
+          response.setHeader('ETag', buildExecutionOrderDetailETag(body));
+          response.setHeader('Cache-Control', 'private, no-cache');
+        } else if (isExecutionOrderRepresentation(body))
           response.setHeader('ETag', buildExecutionOrderETag(body.version));
         else if (
           body &&
