@@ -130,3 +130,7 @@ La prueba de inventario `ExecutionOrdersInbox.inventory.spec.tsx` (11 tests) man
 - **Medida a 375 px:** sin desplazamiento lateral.
 - **E2E del portal:** 27/27 en verde con axe (bandeja-ot, origen-ot-e4 con 6 encabezados, pager-a11y).
 - **Contrato de tabla:** la §7.2 lleva nota de enmienda. La spec pasa a v1.2.
+- **G6.5 de `ff22870d`: ✅ 2026-11-19.**
+  - CI 44615822029: success en el intento 2.
+  - Intento 1: lo puso en rojo el p95 de `billing-dashboard.postgres.integration.spec.ts`, que midió 334 ms contra un tope de 300 ms. Es intermitente y ajeno a este cambio.
+  - E2E Web Admin Smoke 44615822043: success.
