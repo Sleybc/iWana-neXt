@@ -1,18 +1,16 @@
 'use client';
 
-import { ExecutionOrderStatus } from '@iwana/shared';
 import type { ExecutionOrderAllowedAction } from '@iwana/shared';
 import { Badge, Button } from '@iwana/ui';
 import { PortalAlert } from '@/components/shared/portal-ui';
 import type { ExecutionOrderDetailResponse } from '@/lib/api-client';
 import {
   START_ALERT_TITLE,
+  commitmentContextOf,
   getBlockedCopy,
-  getInProgressHelp,
   getPreStartHelp,
   getStartAlertDescription,
   shouldRenderStartAlert,
-  type CommitmentContext,
 } from './execution-order-commitment-copy';
 import { canInteract, getExecutionOrderMoment } from './execution-order-moment';
 import {
@@ -48,16 +46,10 @@ export function ExecutionOrderCommitmentSection({
   const allowed = (action: ExecutionOrderAllowedAction) =>
     order.allowedActions?.includes(action) === true;
   const canStart = allowed('START');
-  const context: CommitmentContext = {
-    status: order.status,
-    allowedActions: order.allowedActions,
-    assigneePresent: order.assignee != null,
-  };
+  const context = commitmentContextOf(order);
   const showStartAlert = interactive && shouldRenderStartAlert(context);
   const preStartHelp = moment === 'pre-start' ? getPreStartHelp(context) : null;
   const blockedCopy = moment === 'blocked' ? getBlockedCopy(context) : null;
-  const inProgressHelp =
-    order.status === ExecutionOrderStatus.IN_PROGRESS ? getInProgressHelp(context) : null;
 
   return (
     <>
@@ -66,29 +58,29 @@ export function ExecutionOrderCommitmentSection({
         className="rounded-2xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface-2"
       >
         {/* Cabecera compacta (bloque A): título y estado operativo en una sola fila. */}
-        <div className="flex flex-wrap items-start gap-x-6 gap-y-2">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
           <h3
             id="eo-commitment-heading"
             className="mr-auto text-sm font-semibold text-gray-900 dark:text-white"
           >
             Compromiso
           </h3>
-          <div>
+          <div className="flex items-center gap-2">
             <p className="portal-eyebrow-muted">Tipo de trabajo</p>
-            <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">
+            <p className="text-sm text-gray-700 dark:text-gray-200">
               {EXECUTION_ORDER_WORK_TYPE_LABELS[order.workType] ?? 'Trabajo operativo'}
             </p>
           </div>
-          <div>
+          <div className="flex items-center gap-2">
             <p className="portal-eyebrow-muted">Estado</p>
-            <Badge className="mt-1" variant={EXECUTION_ORDER_STATUS_VARIANTS[order.status]}>
+            <Badge variant={EXECUTION_ORDER_STATUS_VARIANTS[order.status]}>
               {EXECUTION_ORDER_STATUS_LABELS[order.status] ?? 'Estado operativo'}
             </Badge>
           </div>
           {order.result && (
-            <div>
+            <div className="flex items-center gap-2">
               <p className="portal-eyebrow-muted">Resultado</p>
-              <Badge className="mt-1" variant={EXECUTION_ORDER_RESULT_VARIANTS[order.result]}>
+              <Badge variant={EXECUTION_ORDER_RESULT_VARIANTS[order.result]}>
                 {EXECUTION_ORDER_RESULT_LABELS[order.result] ?? 'Resultado registrado'}
               </Badge>
             </div>
@@ -148,9 +140,6 @@ export function ExecutionOrderCommitmentSection({
         )}
       </section>
 
-      {inProgressHelp ? (
-        <p className="text-xs text-gray-500 dark:text-gray-400">{inProgressHelp}</p>
-      ) : null}
       {moment === 'pre-start' && canStart && (
         <PortalAlert
           variant="info"

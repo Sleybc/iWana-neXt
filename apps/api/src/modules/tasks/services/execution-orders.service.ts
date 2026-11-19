@@ -746,7 +746,28 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
           .getMany(),
       ]);
 
+      // Misma lectura que `close()` (puerto MOD13 `getGateStatus`), solo si la
+      // plantilla exige PROVISIONING. Fallo cerrado: sin puerto o con error se
+      // omite la clave y el evaluador lo publica como no satisfecho, igual que
+      // antes de esta corrección.
+      let provisioningStatus: ServiceProvisioningStatus | null | undefined;
+      if (
+        this.serviceProvisioningReadPort &&
+        snapshot.some((requirement) => requirement.kind === 'PROVISIONING')
+      ) {
+        try {
+          provisioningStatus = (
+            await this.serviceProvisioningReadPort.getGateStatus(executionOrderId)
+          ).status;
+        } catch {
+          provisioningStatus = undefined;
+        }
+      }
+
       const evaluation = this.closureGateEvaluator.evaluate(snapshot, {
+        ...(provisioningStatus !== undefined
+          ? { provisioning: { status: provisioningStatus } }
+          : {}),
         activities: activities.map((activity) => ({ activityType: activity.activityType })),
         evidences: evidences.map((evidence) => ({
           evidenceType: evidence.evidenceType,

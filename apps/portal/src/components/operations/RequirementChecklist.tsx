@@ -34,6 +34,8 @@ export interface RequirementChecklistProps {
   /** Muestra la ayuda de solo lectura correspondiente al pre-inicio. */
   showPreStartHints?: boolean;
   progress?: number;
+  /** Ayuda del momento, en la fila del título (no repite el texto en otro bloque). */
+  description?: ReactNode;
   mode: 'readonly' | 'action';
   loading?: boolean;
   refreshing?: boolean;
@@ -79,6 +81,7 @@ export function RequirementChecklist({
   unattributedConsumptionHistory,
   historyFooter,
   progress,
+  description,
   mode,
   showPreStartHints = false,
   loading,
@@ -209,7 +212,7 @@ export function RequirementChecklist({
                 : 'border-transparent hover:bg-iwana-surface-soft dark:hover:bg-dark-surface-3'
             }`}
           >
-            <span className="flex min-h-7 flex-wrap items-center gap-2">{head}</span>
+            <span className="flex flex-wrap items-center gap-2">{head}</span>
             {notes.map((note) => (
               <span
                 key={note.id}
@@ -239,18 +242,42 @@ export function RequirementChecklist({
 
   return (
     <section aria-label="Requisitos" aria-busy={loading || refreshing} className="space-y-2">
-      <SectionHeader icon={ListChecks} title="Requisitos" headingLevel={3} size="sm" />
+      {/* Defecto 1 (opción C): ayuda y avance comparten la fila del título; el avance
+          conserva rótulo, porcentaje y barra con su nombre accesible. */}
+      <div data-requirements-header>
+        <SectionHeader
+          icon={ListChecks}
+          title="Requisitos"
+          headingLevel={3}
+          size="sm"
+          className="flex-wrap gap-y-2"
+          {...(description ? { description } : {})}
+          actions={
+            !loading && progress !== undefined ? (
+              <div className="w-full space-y-1 sm:w-56">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-sm font-semibold text-iwana-primary dark:text-white/90">
+                    Avance de requisitos
+                  </span>
+                  <span className="text-lg leading-none font-bold text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                    {Math.max(0, Math.min(100, progress))}%
+                  </span>
+                </div>
+                <ProgressMeter
+                  compact
+                  value={progress}
+                  label="Avance de requisitos"
+                  ariaLabel="Avance de requisitos de la orden"
+                />
+              </div>
+            ) : undefined
+          }
+        />
+      </div>
       {loading ? (
         <SkeletonBlock className="h-48" />
       ) : (
         <>
-          {progress !== undefined && (
-            <ProgressMeter
-              value={progress}
-              label="Avance de requisitos"
-              ariaLabel="Avance de requisitos de la orden"
-            />
-          )}
           {error && (
             <PortalAlert
               variant="error"

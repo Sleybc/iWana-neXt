@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { useId } from 'react';
 import { Badge, Button, ProgressMeter, SkeletonBlock } from '@iwana/ui';
 import { ExecutionOrderStatus } from '@iwana/shared';
 import type { ExecutionOrderDetailResponse, ExecutionOrderRecord } from '@/lib/api-client';
@@ -75,6 +76,7 @@ export function ExecutionOrderSummary({
   successMessage = null,
   onRetry,
 }: ExecutionOrderSummaryProps) {
+  const windowHelpId = useId();
   if (loading) {
     return (
       <section
@@ -268,6 +270,12 @@ export function ExecutionOrderSummary({
           </span>
         ) : null}
       </div>
+      {isConsole && !window && windowAbsence.help ? (
+        // Defecto 4: la ayuda es la descripción accesible del valor (sin texto pegado).
+        <span id={windowHelpId} hidden>
+          {windowAbsence.help}
+        </span>
+      ) : null}
       {isConsole ? (
         <dl className="grid grid-cols-1 gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
           {subscriber ? (
@@ -312,9 +320,9 @@ export function ExecutionOrderSummary({
               <dd
                 className="min-w-0 truncate text-gray-900 dark:text-white"
                 title={entry.help ?? entry.value}
+                aria-describedby={entry.help ? windowHelpId : undefined}
               >
                 {entry.value}
-                {entry.help ? <span className="sr-only">. {entry.help}</span> : null}
               </dd>
             </div>
           ))}

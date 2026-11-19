@@ -20,6 +20,7 @@ import {
 import { RequirementActionSheet } from './RequirementActionSheet';
 import { RequirementChecklist, type RequirementChecklistItem } from './RequirementChecklist';
 import type { RequirementActionDescriptor } from './execution-order-actions';
+import { getInProgressHelpForOrder } from './execution-order-commitment-copy';
 import { getExecutionOrderMoment, resolveRequirementAction } from './execution-order-moment';
 import { getRequirementChecklistItems } from './execution-order-requirement-status';
 import { templateRequirementLabel } from './execution-order-requirements';
@@ -283,6 +284,7 @@ export function ExecutionOrderRequirementIndex({
     <RequirementChecklist
       items={checklistItems}
       progress={order.completion.progress}
+      description={getInProgressHelpForOrder(order)}
       unattributedConsumptionHistory={unattributedHistory}
       historyFooter={historyFooter}
       mode={moment === 'in-progress' ? 'action' : 'readonly'}

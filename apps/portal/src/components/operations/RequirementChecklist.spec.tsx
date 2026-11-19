@@ -175,3 +175,29 @@ describe('RequirementChecklist', () => {
     expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(4);
   });
 });
+
+describe('RequirementChecklist — cabecera compacta (defecto 1, opción C)', () => {
+  it('la ayuda y el avance viven en la fila del título sin perder rótulo, porcentaje ni barra', () => {
+    render(
+      <RequirementChecklist
+        items={items()}
+        mode="readonly"
+        progress={40}
+        description="La ejecución está en curso. Puedes registrar avances desde la lista de requisitos."
+      />,
+    );
+    const heading = screen.getByRole('heading', { name: 'Requisitos' });
+    const header = heading.closest('[data-requirements-header]') as HTMLElement;
+    expect(header).not.toBeNull();
+    expect(
+      within(header).getByText(
+        'La ejecución está en curso. Puedes registrar avances desde la lista de requisitos.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(header).getByText('Avance de requisitos')).toBeInTheDocument();
+    expect(within(header).getByText('40%')).toBeInTheDocument();
+    expect(
+      within(header).getByRole('progressbar', { name: 'Avance de requisitos de la orden' }),
+    ).toHaveValue(40);
+  });
+});

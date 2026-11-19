@@ -145,3 +145,20 @@ describe('Cabecera de la consola — cliente y enlaces (P2)', () => {
     expect(screen.queryAllByRole('link')).toHaveLength(0);
   });
 });
+
+describe('Cabecera de la consola — ventana sin programar (defecto 4)', () => {
+  it('el valor queda limpio y la ayuda llega como descripción accesible, sin punto suelto', () => {
+    const header = renderConsole(
+      order({
+        status: ExecutionOrderStatus.ASSIGNED,
+        schedule: { eventId: null, window: null },
+      } as Partial<ExecutionOrderDetailResponse>),
+    );
+    const value = within(header).getByText('Por programar');
+    expect(value.textContent).toBe('Por programar');
+    expect(header).not.toHaveTextContent('Por programar.');
+    expect(value).toHaveAccessibleDescription(
+      'Esta orden no tiene una ventana planificada. Coordina su programación con el equipo de programación.',
+    );
+  });
+});

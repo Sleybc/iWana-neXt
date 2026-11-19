@@ -134,6 +134,28 @@ export function getPreStartHelp(context: CommitmentContext): string | null {
   return null;
 }
 
+/** Contexto de copy derivado de la orden (único sitio que lo arma). */
+export function commitmentContextOf(order: {
+  status: ExecutionOrderStatus;
+  allowedActions?: readonly ExecutionOrderAllowedAction[] | null;
+  assignee?: unknown;
+}): CommitmentContext {
+  return {
+    status: order.status,
+    allowedActions: order.allowedActions,
+    assigneePresent: order.assignee != null,
+  };
+}
+
+/** Ayuda en curso; se muestra en la fila del título de Requisitos (defecto 1, opción C). */
+export function getInProgressHelpForOrder(
+  order: Parameters<typeof commitmentContextOf>[0],
+): string | null {
+  return order.status === ExecutionOrderStatus.IN_PROGRESS
+    ? getInProgressHelp(commitmentContextOf(order))
+    : null;
+}
+
 /** Ayuda en curso bajo el checklist activo. Null = observador puro sin registro (solo "sin alerta"). */
 export function getInProgressHelp(context: CommitmentContext): string | null {
   const lens = getCommitmentLens(context.allowedActions);
