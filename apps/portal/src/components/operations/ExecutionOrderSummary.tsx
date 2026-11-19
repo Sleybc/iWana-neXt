@@ -270,12 +270,6 @@ export function ExecutionOrderSummary({
           </span>
         ) : null}
       </div>
-      {isConsole && !window && windowAbsence.help ? (
-        // Defecto 4: la ayuda es la descripción accesible del valor (sin texto pegado).
-        <span id={windowHelpId} hidden>
-          {windowAbsence.help}
-        </span>
-      ) : null}
       {isConsole ? (
         <dl className="grid grid-cols-1 gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
           {subscriber ? (
@@ -315,7 +309,7 @@ export function ExecutionOrderSummary({
             { term: 'Responsable', value: assignee ?? 'Sin responsable asignado' },
             { term: 'Plantilla', value: template },
           ].map((entry) => (
-            <div key={entry.term} className="flex min-w-0 gap-2">
+            <div key={entry.term} className="flex min-w-0 flex-wrap gap-x-2">
               <dt className="shrink-0 text-gray-500 dark:text-gray-400">{entry.term}</dt>
               <dd
                 className="min-w-0 truncate text-gray-900 dark:text-white"
@@ -324,6 +318,14 @@ export function ExecutionOrderSummary({
               >
                 {entry.value}
               </dd>
+              {entry.help ? (
+                <p
+                  id={windowHelpId}
+                  className="basis-full text-xs text-gray-500 dark:text-gray-400"
+                >
+                  {entry.help}
+                </p>
+              ) : null}
             </div>
           ))}
         </dl>
