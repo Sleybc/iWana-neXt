@@ -59,7 +59,7 @@ Dictámenes: R0 (`prod-ux`) GO con condiciones para D2; `ds-owner` aprueba la ba
 1. `app.config.production-urls.spec.ts` falla en la suite completa de la API (pasa sola 29/29). Causa probable: fuga de `MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS` desde el `.env.development` local entre suites; el diff no toca ese spec ni la carga de entorno. Se cierra con el CI de `main` tras el push.
 2. Cerrado: re-revisión de `test-change-reviewer` GO (H1–H6 cerrados, 249/249 aisladas). Residual: falta una prueba de que activar otra línea lleva el foco a su título (D11).
 3. E2E que exigen el aprovisionador, no ejecutadas para no levantar procesos sobre el entorno del usuario: `e2e/tests/api/execution-orders-operational.spec.ts` (literal ETag en `:287`) y `portal-network-provisioning-live.spec.ts:712`, `:1110`.
-4. G6.5: requiere push autorizado y CI verde.
+4. G6.5 ✅ 2026-11-19: `f3ef53e2` publicado en `main`; CI run 44409018667 `success` y E2E Web Admin Smoke run 44409018742 `success`. El gate 1 queda cerrado en CI (sin `.env.development`). El gate 3 sigue sin evidencia: el CI de `main` no corre esas E2E.
 
 ## 6. Deudas
 
