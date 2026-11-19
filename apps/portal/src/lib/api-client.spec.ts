@@ -2,6 +2,7 @@ import {
   AccessPermissionCatalogVersion,
   ExecutionOrderItemAction,
   ExecutionOrderResult,
+  ExecutionOrderStatus,
   InventoryDisposition,
 } from '@iwana/shared';
 import { persistTenantSlug } from './tenant-resolution';
@@ -1275,5 +1276,55 @@ describe('assuranceApi orden de ejecución del ticket (spec MOD10 §3 L, D4)', (
     expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(
       /\/assurance\/tickets\/id%2Fraro\/link-execution-order$/,
     );
+  });
+});
+
+describe('tasksApi.executionOrders.list — colas y búsqueda (v1.1)', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('serializa queue y number junto a los filtros sueltos', async () => {
+    const fetchMock = jest.fn(async (_input: RequestInfo | URL) =>
+      createJsonResponse(200, { data: [], meta: { total: 0 } }),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { tasksApi } = await import('./api-client');
+    await tasksApi.executionOrders.list(
+      {
+        queue: 'TO_SCHEDULE',
+        number: 'OTE-2026',
+        status: ExecutionOrderStatus.ASSIGNED,
+        page: 1,
+        limit: 20,
+      },
+      'isp-demo',
+    );
+
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]), 'http://portal.local');
+    expect(url.pathname).toBe('/api/v1/tasks/execution-orders');
+    expect(url.searchParams.get('queue')).toBe('TO_SCHEDULE');
+    expect(url.searchParams.get('number')).toBe('OTE-2026');
+    expect(url.searchParams.get('status')).toBe('ASSIGNED');
+  });
+
+  it('sin cola ni búsqueda no envía esos parámetros (CA-12)', async () => {
+    const fetchMock = jest.fn(async (_input: RequestInfo | URL) =>
+      createJsonResponse(200, { data: [], meta: { total: 0 } }),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { tasksApi } = await import('./api-client');
+    await tasksApi.executionOrders.list({ page: 1, limit: 20 }, 'isp-demo');
+
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]), 'http://portal.local');
+    expect(url.searchParams.has('queue')).toBe(false);
+    expect(url.searchParams.has('number')).toBe(false);
   });
 });

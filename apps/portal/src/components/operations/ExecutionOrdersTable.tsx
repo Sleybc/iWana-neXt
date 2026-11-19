@@ -42,14 +42,28 @@ import {
   EXECUTION_ORDER_STATUS_LABELS,
   EXECUTION_ORDER_STATUS_VARIANTS,
   EXECUTION_ORDER_WORK_TYPE_LABELS,
-  formatTaskDateTime,
 } from './operations-labels';
 import { getExecutionOrderWindowAbsence } from './execution-order-window-copy';
+import { formatExecutionOrderWindow } from './execution-order-window-relative';
 
 const ORDERS_RESOURCE = { singular: 'orden de ejecución', plural: 'órdenes de ejecución' } as const;
 const ORDERS_COLUMN_COUNT = 8;
 /** Tope de filas skeleton de la carga inicial (contrato §6.5). */
 const SKELETON_ROW_LIMIT = 8;
+/** F · Móvil (spec 2026-11-19 §3 F): bajo 768 px la misma tabla se lee como
+ * lista de tarjetas (patrón de la bandeja de tickets), sin desplazamiento lateral. */
+const cellClassName = `${portalDataTableCellClassName} max-md:block max-md:border-0 max-md:px-4 max-md:py-1 md:px-3 md:py-2`;
+/** CA-2 (≥7 filas a 1440×900): desde md las columnas cortas van en una línea;
+ * Cliente queda libre (sin nowrap ni truncado) y absorbe el ancho restante. */
+const nowrapCellClassName = `${cellClassName} md:whitespace-nowrap`;
+/** Encabezado compacto en una línea desde md (en móvil el thead es sr-only). */
+const headClassName = 'md:whitespace-nowrap md:px-3 md:py-2';
+
+/** P-3: rótulo del dato en la tarjeta móvil; en escritorio lo da el encabezado
+ * de columna y aquí queda solo para lectores de pantalla. */
+function MobileCaption({ children }: { children: string }) {
+  return <span className="md:sr-only">{children} </span>;
+}
 
 export interface ExecutionOrdersTableProps {
   orders: ExecutionOrderListItem[];
@@ -85,31 +99,33 @@ export function ExecutionOrdersTable({
     <div className={portalDataTableShellClassName}>
       <div
         className={
-          refreshing ? `overflow-x-auto ${portalDataBusyRegionClassName}` : 'overflow-x-auto'
+          refreshing ? `md:overflow-x-auto ${portalDataBusyRegionClassName}` : 'md:overflow-x-auto'
         }
         aria-busy={refreshing || undefined}
       >
         <table
-          className="w-full min-w-[1024px] text-sm"
+          className="w-full text-sm max-md:block md:min-w-[1024px]"
           aria-label="Bandeja de órdenes de ejecución"
         >
-          <thead className={portalDataTableHeadRowClassName}>
+          <thead className={`${portalDataTableHeadRowClassName} max-md:sr-only`}>
             <tr>
-              <PortalDataTableHead>Número</PortalDataTableHead>
-              <PortalDataTableHead>Estado</PortalDataTableHead>
-              <PortalDataTableHead>Resultado</PortalDataTableHead>
-              <PortalDataTableHead>Tipo de trabajo</PortalDataTableHead>
-              <PortalDataTableHead>Ventana planificada</PortalDataTableHead>
-              <PortalDataTableHead>Asignado a</PortalDataTableHead>
-              <PortalDataTableHead>Cliente</PortalDataTableHead>
-              <PortalDataTableHead>Municipio</PortalDataTableHead>
+              <PortalDataTableHead className={headClassName}>Número</PortalDataTableHead>
+              <PortalDataTableHead className={headClassName}>Estado</PortalDataTableHead>
+              <PortalDataTableHead className={headClassName}>Resultado</PortalDataTableHead>
+              <PortalDataTableHead className={headClassName}>Tipo de trabajo</PortalDataTableHead>
+              <PortalDataTableHead className={headClassName}>
+                Ventana planificada
+              </PortalDataTableHead>
+              <PortalDataTableHead className={headClassName}>Asignado a</PortalDataTableHead>
+              <PortalDataTableHead className={headClassName}>Cliente</PortalDataTableHead>
+              <PortalDataTableHead className={headClassName}>Municipio</PortalDataTableHead>
             </tr>
           </thead>
-          <tbody className={portalDataTableBodyClassName}>
+          <tbody className={`${portalDataTableBodyClassName} max-md:block`}>
             {isLoading && orders.length === 0
               ? Array.from({ length: SKELETON_ROW_LIMIT }, (_, index) => (
-                  <tr key={`skeleton-${index}`}>
-                    <td colSpan={ORDERS_COLUMN_COUNT} className={portalDataTableCellClassName}>
+                  <tr key={`skeleton-${index}`} className="max-md:block">
+                    <td colSpan={ORDERS_COLUMN_COUNT} className={cellClassName}>
                       <PortalSkeletonBlock className="h-10 rounded-xl" />
                     </td>
                   </tr>
@@ -118,46 +134,61 @@ export function ExecutionOrdersTable({
 
             {!isLoading &&
               orders.map((order) => (
+                // D · La fila entera abre la consola; el número sigue siendo el
+                // control de teclado (un solo destino, sin doble apertura).
                 <tr
                   key={order.id}
-                  className={`${portalTableRowHoverClassName} ${
+                  onClick={() => onOpenRow(order)}
+                  className={`${portalTableRowHoverClassName} cursor-pointer max-md:block max-md:py-3 ${
                     activeRowId === order.id
                       ? 'bg-iwana-primary-50/60 dark:bg-iwana-primary-950/30'
                       : ''
                   }`}
                 >
-                  <td className={`${portalDataTableCellClassName} font-mono text-xs`}>
+                  <td className={`${nowrapCellClassName} font-mono text-xs`}>
                     <button
                       type="button"
-                      className={`text-left font-medium underline-offset-4 hover:underline ${interactiveFocusClassName}`}
-                      onClick={() => onOpenRow(order)}
+                      className={`text-left font-medium underline-offset-4 hover:underline max-md:min-h-11 ${interactiveFocusClassName}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onOpenRow(order);
+                      }}
                     >
                       {order.number}
                     </button>
                   </td>
-                  <td className={portalDataTableCellClassName}>
+                  <td className={nowrapCellClassName}>
                     <Badge variant={EXECUTION_ORDER_STATUS_VARIANTS[order.status]}>
                       {EXECUTION_ORDER_STATUS_LABELS[order.status]}
                     </Badge>
                   </td>
-                  <td className={portalDataTableCellClassName}>
+                  <td className={nowrapCellClassName}>
+                    <MobileCaption>Resultado:</MobileCaption>
                     {order.result ? (
                       <Badge variant={EXECUTION_ORDER_RESULT_VARIANTS[order.result]}>
                         {EXECUTION_ORDER_RESULT_LABELS[order.result]}
                       </Badge>
                     ) : (
-                      '—'
+                      <span>—</span>
                     )}
                   </td>
-                  <td className={portalDataTableCellClassName}>
-                    {EXECUTION_ORDER_WORK_TYPE_LABELS[order.workType]}
+                  <td className={nowrapCellClassName}>
+                    <MobileCaption>Tipo de trabajo:</MobileCaption>
+                    <span>{EXECUTION_ORDER_WORK_TYPE_LABELS[order.workType]}</span>
                   </td>
                   <WindowCell order={order} />
-                  <td className={portalDataTableCellClassName}>
-                    {order.assignee?.displayLabel ?? 'Sin asignar'}
+                  <td className={cellClassName}>
+                    <MobileCaption>Asignado a:</MobileCaption>
+                    <span>{order.assignee?.displayLabel ?? 'Sin asignar'}</span>
                   </td>
-                  <td className={portalDataTableCellClassName}>{order.customerDisplayLabel}</td>
-                  <td className={portalDataTableCellClassName}>{order.municipality ?? '—'}</td>
+                  <td className={cellClassName}>
+                    <MobileCaption>Cliente:</MobileCaption>
+                    <span>{order.customerDisplayLabel}</span>
+                  </td>
+                  <td className={cellClassName}>
+                    <MobileCaption>Municipio:</MobileCaption>
+                    <span>{order.municipality ?? '—'}</span>
+                  </td>
                 </tr>
               ))}
           </tbody>
@@ -200,31 +231,39 @@ export function ExecutionOrdersTable({
 }
 
 /**
- * Ventana planificada (contrato v1.2 §7.2 col. 5). Con ventana: inicio y, si
- * difiere, «– fin», en mono técnico. Sin ventana: texto del estado publicado
- * (fuente única `execution-order-window-copy.ts`), sin mono: no es una fecha.
+ * Ventana planificada (contrato v1.2 §7.2 col. 5; spec 2026-11-19 §3 E). Con
+ * ventana: día y hora relativos («Hoy 14:00», «Mañana 9:00», fecha si está más
+ * lejos), en mono técnico, con el intervalo exacto en `title`. Sin ventana:
+ * texto del estado publicado (fuente única `execution-order-window-copy.ts`),
+ * sin mono: no es una fecha.
  */
 function WindowCell({ order }: { order: ExecutionOrderListItem }) {
   const window = order.schedule.window;
 
   if (!window) {
     return (
-      <td className={portalDataTableCellClassName}>
+      // E4 protege el texto exacto de la celda: el rótulo móvil va en un
+      // pseudo-elemento (visible bajo 768 px, fuera del contenido de la celda).
+      <td
+        className={`${nowrapCellClassName} max-md:before:mr-1 max-md:before:content-['Ventana:']`}
+      >
         {getExecutionOrderWindowAbsence(order.status).label}
       </td>
     );
   }
 
-  const start = formatTaskDateTime(window.startAt);
-  const endAt = window.endAt;
-  const interval =
-    endAt && endAt !== window.startAt ? `${start} – ${formatTaskDateTime(endAt)}` : start;
+  const { label, title, endLabel } = formatExecutionOrderWindow(window);
 
+  // P-1: en escritorio el fin viaja en `title`; en la tarjeta móvil (sin
+  // puntero que lo revele) se pinta junto al inicio.
   return (
     <td
-      className={`${portalDataTableCellClassName} font-mono text-xs text-gray-600 dark:text-gray-400`}
+      className={`${nowrapCellClassName} font-mono text-xs text-gray-600 dark:text-gray-400`}
+      title={title}
     >
-      {interval}
+      <MobileCaption>Ventana:</MobileCaption>
+      <span>{label}</span>
+      {endLabel ? <span className="md:hidden"> {endLabel}</span> : null}
     </td>
   );
 }

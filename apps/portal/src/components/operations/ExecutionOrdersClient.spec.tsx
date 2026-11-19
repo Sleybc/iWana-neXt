@@ -6,7 +6,7 @@
 // de `useSearchParams` usa la instancia estable `searchParamsMock` (patrón
 // AssuranceClient.spec), que el router mockeado reescribe en cada navegación.
 import type { ReactNode } from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { UserRole, WfmWorkType } from '@iwana/shared';
 import { ExecutionOrdersClient } from './ExecutionOrdersClient';
@@ -147,13 +147,232 @@ describe('ExecutionOrdersClient', () => {
     } as never);
   });
 
-  it('explica que las órdenes sin ventana aparecen antes que las planificadas', () => {
-    render(<ExecutionOrdersClient />);
-    expect(
-      screen.getByText(
-        'Las órdenes por programar aparecen primero; luego, la ventana planificada más reciente.',
-      ),
-    ).toBeInTheDocument();
+  describe('encabezado y colas (spec 2026-11-19 §3 A y B)', () => {
+    it('A: un solo bloque con título y total, sin segundo título ni descripciones', async () => {
+      render(<ExecutionOrdersClient />);
+
+      expect(
+        screen.getByRole('heading', { name: 'Bandeja de órdenes de ejecución' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Órdenes de ejecución' })).toBeNull();
+      expect(
+        screen.queryByText(
+          'Las órdenes por programar aparecen primero; luego, la ventana planificada más reciente.',
+        ),
+      ).toBeNull();
+      expect(await screen.findByText('0 en total')).toBeInTheDocument();
+    });
+
+    function queueButton(name: string | RegExp) {
+      return within(screen.getByRole('group', { name: 'Colas de trabajo' })).getByRole('button', {
+        name,
+      });
+    }
+
+    const COUNTS = { ALL: 12, ACTIVE: 7, TO_SCHEDULE: 2, UNASSIGNED: 3, TODAY: 4, MINE: 1 };
+
+    function mockListWithCounts(queueCounts: unknown) {
+      const base = jest.mocked(tasksApi.executionOrders.list).getMockImplementation();
+      jest.mocked(tasksApi.executionOrders.list).mockImplementation(async (...args) => {
+        const response = (await base?.(...args)) as unknown as Record<string, unknown>;
+        return { ...response, queueCounts } as never;
+      });
+    }
+
+    function lastListParams() {
+      return jest.mocked(tasksApi.executionOrders.list).mock.calls.at(-1)?.[0];
+    }
+
+    it('I: sin parámetros abre en Activas, pide queue=ACTIVE y no muestra «Mías» a quien administra', async () => {
+      mockListWithCounts(COUNTS);
+      render(<ExecutionOrdersClient />);
+
+      expect(lastListParams()).toEqual(expect.objectContaining({ queue: 'ACTIVE' }));
+      expect(await screen.findByRole('button', { name: /^Activas\s*7$/ })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(queueButton(/^Por programar\s*2$/)).toHaveAttribute('aria-pressed', 'false');
+      expect(queueButton(/^Sin asignar\s*3$/)).toHaveAttribute('aria-pressed', 'false');
+      expect(queueButton(/^Hoy\s*4$/)).toHaveAttribute('aria-pressed', 'false');
+      expect(queueButton(/^Todas\s*12$/)).toHaveAttribute('aria-pressed', 'false');
+      expect(
+        within(screen.getByRole('group', { name: 'Colas de trabajo' })).queryByRole('button', {
+          name: /Mías/,
+        }),
+      ).toBeNull();
+    });
+
+    it('H: sin queueCounts (o malformado) las colas se muestran sin conteo', async () => {
+      mockListWithCounts({ ALL: 'muchas' });
+      render(<ExecutionOrdersClient />);
+
+      expect(await screen.findByText('0 en total')).toBeInTheDocument();
+      expect(queueButton('Activas')).toHaveAttribute('aria-pressed', 'true');
+      expect(queueButton('Todas')).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('CA-10: un enlace con estado terminal no se reinterpreta como Activas', async () => {
+      searchParamsMock = new URLSearchParams('status=COMPLETED');
+      render(<ExecutionOrdersClient />);
+
+      await waitFor(() =>
+        expect(lastListParams()).toEqual(
+          expect.objectContaining({ queue: 'ALL', status: 'COMPLETED' }),
+        ),
+      );
+      expect(queueButton('Todas')).toHaveAttribute('aria-pressed', 'true');
+      expect(queueButton('Activas')).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('CA-10: ?executionOrderId= solo abre la consola y lista en «Todas»', async () => {
+      jest.mocked(tasksApi.executionOrders.get).mockRejectedValueOnce(new Error('sin detalle'));
+      searchParamsMock = new URLSearchParams('executionOrderId=eo-001');
+      render(<ExecutionOrdersClient />);
+
+      await waitFor(() =>
+        expect(jest.mocked(tasksApi.executionOrders.get).mock.calls[0]?.[0]).toBe('eo-001'),
+      );
+      expect(lastListParams()).toEqual(expect.objectContaining({ queue: 'ALL' }));
+    });
+
+    it('H: la cola se combina con el Estado y reinicia la página (CA-3)', async () => {
+      const user = userEvent.setup();
+      searchParamsMock = new URLSearchParams('status=ASSIGNED&page=2');
+      render(<ExecutionOrdersClient />);
+
+      await user.click(queueButton('Por programar'));
+
+      expect(mockReplace).toHaveBeenLastCalledWith(
+        `${CANONICAL_PATH}?status=ASSIGNED&queue=TO_SCHEDULE`,
+        { scroll: false },
+      );
+      cleanup();
+      render(<ExecutionOrdersClient />);
+      expect(queueButton('Por programar')).toHaveAttribute('aria-pressed', 'true');
+      expect(lastListParams()).toEqual(
+        expect.objectContaining({ queue: 'TO_SCHEDULE', status: 'ASSIGNED' }),
+      );
+    });
+
+    it('H: un filtro nuevo desde la entrada por defecto conserva Activas en la URL', async () => {
+      const user = userEvent.setup();
+      render(<ExecutionOrdersClient />);
+
+      await user.click(queueButton('Hoy'));
+      expect(mockReplace).toHaveBeenLastCalledWith(`${CANONICAL_PATH}?queue=TODAY`, {
+        scroll: false,
+      });
+      await user.click(queueButton('Todas'));
+      expect(mockReplace).toHaveBeenLastCalledWith(`${CANONICAL_PATH}?queue=ALL`, {
+        scroll: false,
+      });
+    });
+
+    it('H: «Mías» solo para quien ejecuta y la resuelve el servidor', async () => {
+      const user = userEvent.setup();
+      mockCurrentUser = { id: 'tech-001', role: UserRole.TECHNICIAN };
+      render(<ExecutionOrdersClient />);
+
+      await user.click(queueButton('Mías'));
+
+      expect(mockReplace).toHaveBeenLastCalledWith(`${CANONICAL_PATH}?queue=MINE`, {
+        scroll: false,
+      });
+      cleanup();
+      render(<ExecutionOrdersClient />);
+      expect(queueButton('Mías')).toHaveAttribute('aria-pressed', 'true');
+      expect(lastListParams()).toEqual(expect.objectContaining({ queue: 'MINE' }));
+      expect(lastListParams()).not.toHaveProperty('assigneeId');
+    });
+
+    it('I: una cola vacía con órdenes en otras ofrece «Ver todas»', async () => {
+      const user = userEvent.setup();
+      mockListWithCounts({ ...COUNTS, ACTIVE: 0 });
+      render(<ExecutionOrdersClient />);
+
+      expect(await screen.findByText('No hay órdenes en esta cola')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Ver todas' }));
+      expect(mockReplace).toHaveBeenLastCalledWith(`${CANONICAL_PATH}?queue=ALL`, {
+        scroll: false,
+      });
+    });
+
+    it('R2: «Limpiar filtros» conserva la cola elegida', async () => {
+      const user = userEvent.setup();
+      searchParamsMock = new URLSearchParams('queue=TODAY&status=ASSIGNED');
+      render(<ExecutionOrdersClient />);
+
+      await user.click(await screen.findByRole('button', { name: 'Limpiar filtros' }));
+
+      expect(mockReplace).toHaveBeenLastCalledWith(`${CANONICAL_PATH}?queue=TODAY`, {
+        scroll: false,
+      });
+    });
+
+    it('R3: una cola elegida vacía sin queueCounts no dice que no hay órdenes', async () => {
+      const user = userEvent.setup();
+      searchParamsMock = new URLSearchParams('queue=TODAY');
+      render(<ExecutionOrdersClient />);
+
+      expect(await screen.findByText('No hay órdenes en esta cola')).toBeInTheDocument();
+      expect(screen.queryByText('Todavía no hay órdenes de ejecución')).toBeNull();
+      await user.click(screen.getByRole('button', { name: 'Ver todas' }));
+      expect(mockReplace).toHaveBeenLastCalledWith(`${CANONICAL_PATH}?queue=ALL`, {
+        scroll: false,
+      });
+    });
+
+    it('R3: en «Todas» sin órdenes se mantiene el vacío inicial', async () => {
+      searchParamsMock = new URLSearchParams('queue=ALL');
+      render(<ExecutionOrdersClient />);
+
+      expect(await screen.findByText('Todavía no hay órdenes de ejecución')).toBeInTheDocument();
+    });
+
+    it('R3: ?queue=MINE de quien administra pide MINE al servidor sin chip activo y su vacío ofrece «Ver todas»', async () => {
+      // Comportamiento definido: el enlace se respeta (el servidor resuelve
+      // «Mías» por la sesión); no hay chip «Mías» para este rol, así que
+      // ninguno queda marcado y la salida es «Todas».
+      searchParamsMock = new URLSearchParams('queue=MINE');
+      render(<ExecutionOrdersClient />);
+
+      expect(await screen.findByText('No hay órdenes en esta cola')).toBeInTheDocument();
+      expect(lastListParams()).toEqual(expect.objectContaining({ queue: 'MINE' }));
+      const group = screen.getByRole('group', { name: 'Colas de trabajo' });
+      expect(within(group).queryByRole('button', { name: /Mías/ })).toBeNull();
+      for (const button of within(group).getAllByRole('button')) {
+        expect(button).toHaveAttribute('aria-pressed', 'false');
+      }
+    });
+
+    it('J: la búsqueda por número llega a la URL con espera y solo si es válida', async () => {
+      const user = userEvent.setup();
+      render(<ExecutionOrdersClient />);
+      const field = screen.getByLabelText('Número de orden');
+
+      await user.type(field, 'Pérez');
+      expect(
+        await screen.findByText('Usa solo letras, números y . _ / - (hasta 40 caracteres).'),
+      ).toBeInTheDocument();
+      expect(mockReplace).not.toHaveBeenCalledWith(expect.stringContaining('number='), {
+        scroll: false,
+      });
+
+      await user.clear(field);
+      await user.type(field, 'OTE-1');
+      await waitFor(() =>
+        expect(mockReplace).toHaveBeenLastCalledWith(
+          `${CANONICAL_PATH}?queue=ACTIVE&number=OTE-1`,
+          { scroll: false },
+        ),
+      );
+      cleanup();
+      render(<ExecutionOrdersClient />);
+      expect(lastListParams()).toEqual(
+        expect.objectContaining({ queue: 'ACTIVE', number: 'OTE-1' }),
+      );
+    });
   });
 
   it('mantiene la OT visible cuando el endpoint de evidencias todavía no está disponible', async () => {
@@ -575,6 +794,65 @@ describe('ExecutionOrdersClient', () => {
       } finally {
         searchParamsMock = new URLSearchParams();
       }
+    });
+
+    it('R1: abrir una fila desde la entrada por defecto fija la cola activa y no relista en Todas', async () => {
+      const user = userEvent.setup();
+      const listMock = jest.mocked(tasksApi.executionOrders.list);
+      listMock.mockClear();
+      listMock.mockResolvedValue({
+        data: [buildListOrder(1)],
+        total: 1,
+        page: 1,
+        limit: 20,
+        meta: buildListMeta(1),
+      } as never);
+      jest.mocked(tasksApi.executionOrders.get).mockRejectedValue(new Error('sin detalle'));
+      const { rerender } = render(<ExecutionOrdersClient />);
+
+      await user.click(await screen.findByRole('button', { name: 'OT-OLA41-1' }));
+
+      expect(mockPush).toHaveBeenLastCalledWith(
+        `${CANONICAL_PATH}?queue=ACTIVE&executionOrderId=eo-ola41-1`,
+        { scroll: false },
+      );
+      rerender(<ExecutionOrdersClient />);
+      await waitFor(() =>
+        expect(jest.mocked(tasksApi.executionOrders.get).mock.calls.at(-1)?.[0]).toBe('eo-ola41-1'),
+      );
+      const queues = listMock.mock.calls.map((call) => call[0]?.queue);
+      expect(queues).not.toContain('ALL');
+      expect(queues.every((queue) => queue === 'ACTIVE')).toBe(true);
+    });
+
+    it('R1: al cerrar la consola la cola se mantiene en la URL', async () => {
+      const user = userEvent.setup();
+      jest.mocked(tasksApi.executionOrders.get).mockResolvedValue({
+        id: 'eo-queue-001',
+        number: 'OT-QUEUE-001',
+        version: 1,
+        status: 'ASSIGNED',
+        workType: WfmWorkType.INSTALLATION,
+        template: null,
+        schedule: {
+          eventId: 'event-queue-001',
+          window: { startAt: '2026-09-13T14:00:00.000Z', endAt: '2026-09-13T16:00:00.000Z' },
+        },
+        site: { id: 'site-001', label: 'Sede operativa' },
+        completion: { progress: 0, completed: 0, total: 0 },
+        syncState: 'IN_SYNC',
+        inventoryReconciliation: 'NOT_REQUIRED',
+        allowedActions: [],
+        createdAt: '2026-09-13T10:00:00.000Z',
+        updatedAt: '2026-09-13T10:00:00.000Z',
+      } as never);
+      searchParamsMock = new URLSearchParams('queue=ACTIVE&executionOrderId=eo-queue-001');
+      render(<ExecutionOrdersClient />);
+      await screen.findAllByText('OT-QUEUE-001');
+
+      await user.click(screen.getByRole('button', { name: 'Cerrar' }));
+
+      expect(mockReplace).toHaveBeenLastCalledWith(`${CANONICAL_PATH}?queue=ACTIVE`);
     });
 
     it('PROD-UX #7: al cerrar por deep link el foco aterriza en el encabezado de resultados', async () => {

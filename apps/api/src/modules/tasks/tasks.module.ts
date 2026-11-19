@@ -27,6 +27,7 @@ import { UsersModule } from '../users/users.module';
 import { MediaModule } from '../media/media.module';
 import { OrganizationModule } from '../organization/organization.module';
 import { RedisModule } from '../redis/redis.module';
+import { TenantModule } from '../tenant/tenant.module';
 import { ExecutionOrdersController } from './execution-orders.controller';
 import { ExecutionOrderTemplatesController } from './execution-order-templates.controller';
 import { TasksController } from './tasks.controller';
@@ -61,6 +62,9 @@ import { NetworkProvisioningReadModule } from '../network/network-provisioning-r
     MediaModule,
     OrganizationModule,
     RedisModule,
+    // Colas de la bandeja v1.1: zona horaria del tenant para «Hoy»
+    // (SettingsPriorityTenantReadPort, mismo puerto que Assurance y CRM).
+    TenantModule,
     TasksPrivacyModule,
     TypeOrmModule.forFeature([
       OperationalTask,

@@ -2,7 +2,11 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Allow } from 'class-validator';
 import { z } from 'zod';
 import {
+  EXECUTION_ORDER_NUMBER_SEARCH_MAX_LENGTH,
+  EXECUTION_ORDER_QUEUES,
   ExecutionOrderItemAction,
+  ExecutionOrderNumberSearchSchema,
+  ExecutionOrderQueueSchema,
   ExecutionOrderResult,
   ExecutionOrderStatus,
   InventoryDisposition,
@@ -10,6 +14,7 @@ import {
   WorkOrderSourceContext,
 } from '@iwana/shared';
 import type {
+  ExecutionOrderQueue,
   ExecutionOrderAllowedAction,
   ExecutionOrderTemplateRequirement,
   InventoryReversalRejectionReasonCode,
@@ -791,6 +796,9 @@ export const ListExecutionOrdersQuerySchema = z
     visitRequestId: z.string().trim().max(160).optional(),
     windowFrom: z.string().datetime().optional(),
     windowTo: z.string().datetime().optional(),
+    // v1.1 (spec 2026-11-19 colas §3 H/J): aditivos; sin ellos el listado no cambia.
+    queue: ExecutionOrderQueueSchema.optional(),
+    number: ExecutionOrderNumberSearchSchema.optional(),
     page: z.coerce.number().int().min(1).optional().default(1),
     limit: z.coerce.number().int().min(1).max(MAX_LIMIT).optional().default(20),
     sortBy: z.string().optional(),
@@ -846,6 +854,22 @@ export class ListExecutionOrdersQueryDto {
   })
   @Allow()
   windowTo?: string;
+
+  @ApiPropertyOptional({
+    enum: EXECUTION_ORDER_QUEUES,
+    description:
+      'Cola de la bandeja, combinable con los demás filtros. Con cola la respuesta incluye `queueCounts`.',
+  })
+  @Allow()
+  queue?: ExecutionOrderQueue;
+
+  @ApiPropertyOptional({
+    maxLength: EXECUTION_ORDER_NUMBER_SEARCH_MAX_LENGTH,
+    pattern: '^[A-Za-z0-9._/-]+$',
+    description: 'Búsqueda parcial por número de OT, sin distinguir mayúsculas. Solo el número.',
+  })
+  @Allow()
+  number?: string;
 
   @ApiPropertyOptional({ minimum: 1, default: 1, description: 'Número de página (1-based).' })
   @Allow()
@@ -959,12 +983,28 @@ export class ExecutionOrderListItemDto {
   updatedAt!: string;
 }
 
+export class ExecutionOrderQueueCountsDto implements Record<ExecutionOrderQueue, number> {
+  @ApiProperty({ minimum: 0 }) ALL!: number;
+  @ApiProperty({ minimum: 0 }) ACTIVE!: number;
+  @ApiProperty({ minimum: 0 }) TO_SCHEDULE!: number;
+  @ApiProperty({ minimum: 0 }) UNASSIGNED!: number;
+  @ApiProperty({ minimum: 0 }) TODAY!: number;
+  @ApiProperty({ minimum: 0 }) MINE!: number;
+}
+
 export class ExecutionOrderListPageDto {
   @ApiProperty({ type: [ExecutionOrderListItemDto] })
   data!: ExecutionOrderListItemDto[];
 
   @ApiProperty({ type: ListMetaDto })
   meta!: ListMetaDto;
+
+  @ApiPropertyOptional({
+    type: ExecutionOrderQueueCountsDto,
+    description:
+      'Solo cuando la petición trae `queue`: total por cola con los mismos filtros y alcance.',
+  })
+  queueCounts?: ExecutionOrderQueueCountsDto;
 }
 
 // ─── E2 — Puerta de despacho (ADR-091 §D1, spec §3.1/§3.6.1/§3.8) ────────────

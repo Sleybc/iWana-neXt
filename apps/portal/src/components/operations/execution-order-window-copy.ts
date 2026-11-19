@@ -21,8 +21,14 @@ export interface ExecutionOrderWindowAbsence {
   help: string | null;
 }
 
+/**
+ * Rótulo de una orden abierta sin ventana. La cola «Por programar» de la
+ * bandeja (spec 2026-11-19 §3 H: activas sin ventana) reutiliza el mismo texto.
+ */
+export const EXECUTION_ORDER_TO_SCHEDULE_LABEL = 'Por programar';
+
 const OPEN_WINDOW_ABSENCE: ExecutionOrderWindowAbsence = {
-  label: 'Por programar',
+  label: EXECUTION_ORDER_TO_SCHEDULE_LABEL,
   help: 'Esta orden no tiene una ventana planificada. Coordina su programación con el equipo de programación.',
 };
 

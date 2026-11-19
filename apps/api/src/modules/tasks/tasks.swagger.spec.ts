@@ -335,6 +335,8 @@ describe('ExecutionOrders list Swagger (MOD11 F1)', () => {
       'windowTo',
       'page',
       'limit',
+      'queue',
+      'number',
     ]) {
       expect(paramNames).toContain(expected);
     }

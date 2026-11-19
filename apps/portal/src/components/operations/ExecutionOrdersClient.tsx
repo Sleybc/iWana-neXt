@@ -16,12 +16,14 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@iwana/ui';
 import { UserRole } from '@iwana/shared';
+import type { ExecutionOrderQueue, ExecutionOrderQueueCounts } from '@iwana/shared';
 import type { ExecutionOrderListItem, ListExecutionOrdersQuery } from '@/lib/api-client';
 import { tasksApi } from '@/lib/api-client';
 import type { ListMeta } from '@iwana/shared';
 import {
   PortalAlert,
   PortalEmptyState,
+  PortalFilterChip,
   PortalPanel,
   PortalSectionHeader,
 } from '@/components/shared/portal-ui';
@@ -34,13 +36,31 @@ import { ExecutionOrdersTable } from './ExecutionOrdersTable';
 import { ExecutionOrdersToolbar } from './ExecutionOrdersToolbar';
 import { useExecutionOrderConsole } from './use-execution-order-console';
 import { mapOperationsError } from './execution-order-requirements';
+import { EXECUTION_ORDER_TO_SCHEDULE_LABEL } from './execution-order-window-copy';
 import {
   parseExecutionOrdersQuery,
+  readExecutionOrderQueueCounts,
+  resolveExecutionOrderQueue,
   serializeExecutionOrdersQuery,
   type ExecutionOrdersQueryPatch,
 } from './execution-orders-query';
 
 const EXECUTION_ORDERS_PATH = '/dashboard/operations/execution-orders';
+
+/**
+ * H · Colas exactas del paso 2 (spec 2026-11-19 §3 H): las resuelve el
+ * servidor con el parámetro `queue` y devuelve su conteo en `queueCounts`. Se
+ * combinan con los filtros sueltos (Estado incluido). «Mías» solo para quien
+ * ejecuta (D2); el servidor la resuelve con el usuario de la sesión.
+ */
+const QUEUE_CHIPS: ReadonlyArray<{ value: ExecutionOrderQueue; label: string }> = [
+  { value: 'ACTIVE', label: 'Activas' },
+  { value: 'TO_SCHEDULE', label: EXECUTION_ORDER_TO_SCHEDULE_LABEL },
+  { value: 'UNASSIGNED', label: 'Sin asignar' },
+  { value: 'TODAY', label: 'Hoy' },
+  { value: 'MINE', label: 'Mías' },
+  { value: 'ALL', label: 'Todas' },
+];
 
 /** El backend exige ISO 8601 datetime (`z.string().datetime()`); la URL guarda
  * fecha-only (YYYY-MM-DD) y la conversión es local y determinista. */
@@ -55,10 +75,12 @@ function windowDateToIso(value: string, boundary: 'start' | 'end'): string {
 
 function buildExecutionOrdersListParams(
   query: ListExecutionOrdersQuery,
+  queue: ExecutionOrderQueue,
   page: number,
   limit: number,
 ): ListExecutionOrdersQuery {
   return {
+    queue,
     ...(query.status ? { status: query.status } : {}),
     ...(query.result ? { result: query.result } : {}),
     ...(query.workType ? { workType: query.workType } : {}),
@@ -69,6 +91,7 @@ function buildExecutionOrdersListParams(
     ...(query.visitRequestId ? { visitRequestId: query.visitRequestId } : {}),
     ...(query.windowFrom ? { windowFrom: windowDateToIso(query.windowFrom, 'start') } : {}),
     ...(query.windowTo ? { windowTo: windowDateToIso(query.windowTo, 'end') } : {}),
+    ...(query.number ? { number: query.number } : {}),
     page,
     limit,
   };
@@ -89,6 +112,9 @@ export function ExecutionOrdersClient() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Sin `queueCounts` válido (servidor previo a v1.1 o respuesta malformada)
+  // las colas se muestran sin conteo.
+  const [queueCounts, setQueueCounts] = useState<ExecutionOrderQueueCounts | null>(null);
   const listRequestRef = useRef(0);
   const hasLoadedRef = useRef(false);
   const metaRef = useRef<ListMeta>(EMPTY_LIST_META);
@@ -104,6 +130,11 @@ export function ExecutionOrdersClient() {
   const searchString = searchParams.toString();
   const query = useMemo(
     () => parseExecutionOrdersQuery(new URLSearchParams(searchString)),
+    [searchString],
+  );
+  // §3 I y CA-10: Activas solo cuando el enlace no trae filtros explícitos.
+  const activeQueue = useMemo(
+    () => resolveExecutionOrderQueue(new URLSearchParams(searchString)),
     [searchString],
   );
 
@@ -123,7 +154,7 @@ export function ExecutionOrdersClient() {
       setError(null);
       try {
         const response = await tasksApi.executionOrders.list(
-          buildExecutionOrdersListParams(query, nextPage, limit),
+          buildExecutionOrdersListParams(query, activeQueue, nextPage, limit),
         );
         if (requestId !== listRequestRef.current) {
           return;
@@ -135,6 +166,9 @@ export function ExecutionOrdersClient() {
         metaRef.current = meta;
         setOrdersMeta(meta);
         setOrders((prev) => (append ? [...prev, ...response.data] : response.data));
+        if (!append) {
+          setQueueCounts(readExecutionOrderQueueCounts(response.queueCounts));
+        }
         hasLoadedRef.current = true;
       } catch (loadError) {
         if (requestId !== listRequestRef.current) {
@@ -157,7 +191,7 @@ export function ExecutionOrdersClient() {
         }
       }
     },
-    [query],
+    [activeQueue, query],
   );
 
   // Carga (y recarga) al cambiar el estado de la URL. El append del modo
@@ -169,7 +203,9 @@ export function ExecutionOrdersClient() {
   /** Escribe la bandeja en la URL preservando el deep link del detalle. */
   const updateQuery = useCallback(
     (patch: ExecutionOrdersQueryPatch, history: 'push' | 'replace') => {
-      const serialized = serializeExecutionOrdersQuery({ ...query, ...patch });
+      // La cola efectiva se escribe siempre: así un cambio de filtro no la
+      // reinterpreta (CA-10) y la entrada por defecto queda explícita.
+      const serialized = serializeExecutionOrdersQuery({ ...query, queue: activeQueue, ...patch });
       const nextSearch = executionOrderId
         ? mergeUrlSearchParams(serialized, { executionOrderId })
         : serialized;
@@ -180,7 +216,7 @@ export function ExecutionOrdersClient() {
         router.replace(href, { scroll: false });
       }
     },
-    [executionOrderId, query, router],
+    [activeQueue, executionOrderId, query, router],
   );
 
   // ADR-065 §9: página → push (Atrás vuelve); filtro/tamaño → replace + página 1.
@@ -212,6 +248,7 @@ export function ExecutionOrdersClient() {
         organizationSiteId: undefined,
         windowFrom: undefined,
         windowTo: undefined,
+        number: undefined,
         page: undefined,
       },
       'replace',
@@ -233,11 +270,16 @@ export function ExecutionOrdersClient() {
     (order: ExecutionOrderListItem) => {
       openedFromRowRef.current = true;
       // El detalle se abre por URL (spec §4.6): la fila solo escribe el
-      // parámetro; el efecto del deep link resuelve la consola.
-      const nextSearch = mergeUrlSearchParams(searchParams, { executionOrderId: order.id });
+      // parámetro; el efecto del deep link resuelve la consola. La cola activa
+      // se fija en la URL: sin ella, `executionOrderId` haría que la entrada por
+      // defecto se reinterpretara como «Todas» (CA-10) y la lista cambiaría.
+      const nextSearch = mergeUrlSearchParams(searchParams, {
+        queue: activeQueue,
+        executionOrderId: order.id,
+      });
       router.push(withSearchParams(EXECUTION_ORDERS_PATH, nextSearch), { scroll: false });
     },
-    [router, searchParams],
+    [activeQueue, router, searchParams],
   );
 
   const hasActiveFilters = Boolean(
@@ -247,7 +289,8 @@ export function ExecutionOrdersClient() {
     query.assigneeId ||
     query.organizationSiteId ||
     query.windowFrom ||
-    query.windowTo,
+    query.windowTo ||
+    query.number,
   );
 
   // E6 (UX spec §6.3): el enlace llegó con un identificador que no se pudo
@@ -260,6 +303,20 @@ export function ExecutionOrdersClient() {
     Boolean(orderConsole.executionOrderError);
 
   const isFieldRole = user?.role === UserRole.TECHNICIAN || user?.role === UserRole.CONTRACTOR;
+  // D2: «Mías» solo para quien puede ser responsable de una orden.
+  const visibleQueues = QUEUE_CHIPS.filter((queue) => queue.value !== 'MINE' || isFieldRole);
+  const selectQueue = (queue: ExecutionOrderQueue) => {
+    handleFilterChange({ queue });
+  };
+  // Vacío de una cola con órdenes en otras: la salida es «Todas» (§3 I). Sin
+  // `queueCounts` no se sabe si hay órdenes en otras colas: una cola ELEGIDA
+  // (presente en la URL) vacía no afirma «Todavía no hay órdenes» y ofrece
+  // «Todas»; la entrada por defecto sin `queue` conserva el vacío inicial.
+  // `?queue=MINE` de un rol sin chip «Mías» se respeta (lo resuelve el
+  // servidor por la sesión): ningún chip queda marcado y aplica este vacío.
+  const queueEmptyWithOthers =
+    activeQueue !== 'ALL' &&
+    (queueCounts === null ? query.queue !== undefined : queueCounts.ALL > 0);
   const assigneeLabel =
     orders.find((order) => order.assignee?.id === query.assigneeId)?.assignee?.displayLabel ?? null;
 
@@ -315,14 +372,11 @@ export function ExecutionOrdersClient() {
         />
       )}
 
-      <PortalPanel
-        eyebrow="Seguimiento"
-        title="Bandeja de órdenes de ejecución"
-        description="Filtra el trabajo de campo por estado, responsable, sede o ventana planificada y abre la consola de cada orden."
-      >
-        <div className="space-y-4">
-          {/* Encabezado de la región de resultados: destino de foco al cerrar
-              el detalle llegado por deep link (PROD-UX #7, UX spec §8.2.2). */}
+      <PortalPanel density="dense">
+        <div className="space-y-3">
+          {/* A · Un solo bloque: título y total (spec 2026-11-19 §3 A). Es
+              también el destino de foco al cerrar el detalle llegado por deep
+              link (PROD-UX #7, UX spec §8.2.2). */}
           <div
             id="execution-orders-results"
             ref={resultsHeaderRef}
@@ -330,9 +384,36 @@ export function ExecutionOrdersClient() {
             className="rounded-2xl focus:outline-none"
           >
             <PortalSectionHeader
-              title="Órdenes de ejecución"
-              description="Las órdenes por programar aparecen primero; luego, la ventana planificada más reciente."
+              title="Bandeja de órdenes de ejecución"
+              actions={
+                isLoading ? null : (
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    {ordersMeta.total} en total
+                  </span>
+                )
+              }
             />
+          </div>
+
+          {/* B · Colas: escriben su filtro en la URL (CA-3). */}
+          <div className="overflow-x-auto overscroll-x-contain md:overflow-x-visible">
+            <div
+              role="group"
+              aria-label="Colas de trabajo"
+              className="flex w-max flex-nowrap gap-2 md:w-auto md:flex-wrap"
+            >
+              {visibleQueues.map((queue) => (
+                <PortalFilterChip
+                  key={queue.value}
+                  active={activeQueue === queue.value}
+                  onClick={() => selectQueue(queue.value)}
+                  count={queueCounts?.[queue.value]}
+                  className="shrink-0"
+                >
+                  {queue.label}
+                </PortalFilterChip>
+              ))}
+            </div>
           </div>
 
           <ExecutionOrdersToolbar
@@ -356,6 +437,21 @@ export function ExecutionOrdersClient() {
                 action={
                   <Button type="button" variant="outline" size="sm" onClick={handleClearFilters}>
                     Limpiar filtros
+                  </Button>
+                }
+              />
+            ) : queueEmptyWithOthers ? (
+              <PortalEmptyState
+                title="No hay órdenes en esta cola"
+                description="Las demás órdenes, incluidas las terminadas, están en «Todas»."
+                action={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => selectQueue('ALL')}
+                  >
+                    Ver todas
                   </Button>
                 }
               />

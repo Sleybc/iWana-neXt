@@ -155,7 +155,7 @@ describe('ExecutionOrdersTable', () => {
       expect(terminal.className).not.toMatch(/font-mono/);
     });
 
-    it('con ventana conserva el intervalo y el mono técnico, sin texto de estado', () => {
+    it('con ventana conserva el intervalo exacto (en `title`) y el mono técnico, sin texto de estado', () => {
       renderTable({
         orders: [buildOrder({ status: ExecutionOrderStatus.CREATED })],
       });
@@ -163,9 +163,13 @@ describe('ExecutionOrdersTable', () => {
       const row = screen.getByRole('row', { name: /OT-0001/ });
       const cell = within(row).getAllByRole('cell')[4] as HTMLElement;
       const fmt = new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
-      expect(cell).toHaveTextContent(
+      // Spec 2026-11-19 §3 E: la celda muestra el inicio relativo y el intervalo
+      // exacto pasa al `title` (antes se pintaba completo en la celda).
+      expect(cell).toHaveAttribute(
+        'title',
         `${fmt.format(new Date('2026-09-13T14:00:00.000Z'))} – ${fmt.format(new Date('2026-09-13T16:00:00.000Z'))}`,
       );
+      expect(cell).toHaveTextContent(fmt.format(new Date('2026-09-13T14:00:00.000Z')));
       expect(cell.className).toMatch(/font-mono/);
       expect(cell).not.toHaveTextContent('Por programar');
       expect(cell).not.toHaveTextContent('Sin ventana planificada');
@@ -239,6 +243,121 @@ describe('ExecutionOrdersTable', () => {
         new RegExp(escapeRegExp(expected.format(new Date('2026-09-14T14:00:00.000Z')))),
       ).length,
     ).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ventana de hoy o mañana: día relativo y hora (spec 2026-11-19 §3 E)', () => {
+    const today = new Date();
+    today.setHours(14, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+    renderTable({
+      orders: [
+        buildOrder({
+          id: 'eo-hoy',
+          number: 'OT-HOY',
+          schedule: {
+            eventId: 'e1',
+            window: { startAt: today.toISOString(), endAt: today.toISOString() },
+          },
+        }),
+        buildOrder({
+          id: 'eo-manana',
+          number: 'OT-MANANA',
+          schedule: {
+            eventId: 'e2',
+            window: { startAt: tomorrow.toISOString(), endAt: tomorrow.toISOString() },
+          },
+        }),
+      ],
+    });
+
+    expect(screen.getByText('Hoy 14:00')).toBeInTheDocument();
+    expect(screen.getByText('Mañana 9:00')).toBeInTheDocument();
+  });
+
+  it('la fila entera abre la consola una sola vez (spec 2026-11-19 §3 D)', async () => {
+    const user = userEvent.setup();
+    const onOpenRow = jest.fn();
+    renderTable({ onOpenRow });
+
+    await user.click(screen.getByText('Carlos López'));
+    expect(onOpenRow).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: 'OT-0001' }));
+    expect(onOpenRow).toHaveBeenCalledTimes(2);
+  });
+
+  it('bajo 768 px la tabla se lee como tarjetas, sin ancho mínimo (spec 2026-11-19 §3 F, CA-6)', () => {
+    renderTable();
+
+    const table = screen.getByRole('table', { name: 'Bandeja de órdenes de ejecución' });
+    expect(table.className).toMatch(/max-md:block/);
+    expect(table.className).not.toMatch(/(^|\s)min-w-/);
+    expect(table.parentElement?.className).not.toMatch(/(^|\s)overflow-x-auto/);
+    expect(table.querySelector('thead')?.className).toMatch(/max-md:sr-only/);
+  });
+
+  it('CA-2: desde md las filas van en una línea salvo Cliente, que no se recorta', () => {
+    renderTable();
+
+    for (const header of screen.getAllByRole('columnheader')) {
+      expect(header.className).toMatch(/md:whitespace-nowrap/);
+      expect(header.className).toMatch(/md:py-2/);
+    }
+    const row = screen.getByText('Cliente Ejemplo').closest('tr') as HTMLElement;
+    const cells = within(row).getAllByRole('cell');
+    expect(cells).toHaveLength(8);
+    // Número, Estado, Resultado, Tipo de trabajo y Ventana: una sola línea.
+    for (const index of [0, 1, 2, 3, 4]) {
+      expect(cells[index]?.className).toMatch(/md:whitespace-nowrap/);
+    }
+    for (const cell of cells) {
+      expect(cell.className).toMatch(/md:py-2/);
+    }
+    // Cliente: ni nowrap ni truncado; su contenido no cambia.
+    const clientCell = cells[6] as HTMLElement;
+    expect(clientCell.className).not.toMatch(/whitespace-nowrap|truncate|line-clamp/);
+    expect(clientCell).toHaveTextContent('Cliente Ejemplo');
+  });
+
+  it('P-1: en móvil el fin de la ventana queda visible en la tarjeta (no solo en `title`)', () => {
+    renderTable();
+
+    const row = screen.getByRole('row', { name: /OT-0001/ });
+    const cell = within(row).getAllByRole('cell')[4] as HTMLElement;
+    const fmt = new Intl.DateTimeFormat('es-CO', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    });
+    const end = within(cell).getByText(`hasta ${fmt.format(new Date('2026-09-13T16:00:00.000Z'))}`);
+    // Visible por debajo de 768 px y oculto desde md (allí lo lleva el `title`).
+    expect(end.className).toMatch(/(^|\s)md:hidden(\s|$)/);
+    expect(end.className).not.toMatch(/sr-only/);
+    expect(end.closest('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('P-3: cada dato de la tarjeta móvil lleva su rótulo, sin cambiar el contenido del cliente', () => {
+    renderTable({
+      orders: [buildOrder({ result: undefined })],
+    });
+
+    const row = screen.getByRole('row', { name: /OT-0001/ });
+    const cells = within(row).getAllByRole('cell');
+    const expected: Array<[number, string]> = [
+      [2, 'Resultado:'],
+      [3, 'Tipo de trabajo:'],
+      [4, 'Ventana:'],
+      [5, 'Asignado a:'],
+      [6, 'Cliente:'],
+      [7, 'Municipio:'],
+    ];
+    for (const [index, label] of expected) {
+      const caption = within(cells[index] as HTMLElement).getByText(label);
+      expect(caption.className).toMatch(/(^|\s)md:sr-only(\s|$)/);
+    }
+    expect(within(cells[6] as HTMLElement).getByText('Cliente Ejemplo').tagName).toBe('SPAN');
   });
 
   it('abre el detalle de la fila con el callback onOpenRow (spec §4.6)', async () => {

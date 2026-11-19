@@ -26,6 +26,7 @@ import { randomUUID } from 'node:crypto';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import {
   AccessPermissionKey,
+  EXECUTION_ORDER_QUEUES,
   ExecutionOrderResult,
   ExecutionOrderStatus,
   UserRole,
@@ -197,6 +198,19 @@ export class ExecutionOrdersController {
     required: false,
     type: String,
     description: 'ISO 8601, sobre la ventana planificada.',
+  })
+  @ApiQuery({
+    name: 'queue',
+    required: false,
+    enum: EXECUTION_ORDER_QUEUES,
+    description:
+      'Cola de la bandeja (v1.1), combinable con los demás filtros. Con cola la respuesta incluye `queueCounts`; sin ella la respuesta no cambia.',
+  })
+  @ApiQuery({
+    name: 'number',
+    required: false,
+    type: String,
+    description: 'Búsqueda parcial por número de OT (v1.1). Solo el número, nunca el cliente.',
   })
   @ApiQuery({ name: 'page', required: false, type: Number, minimum: 1, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, minimum: 1, maximum: 100, example: 20 })

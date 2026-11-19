@@ -5,8 +5,18 @@
 //
 // Scaffold F2: helpers puros sin cableado del endpoint — el listado de OT y
 // su adopción por `ExecutionOrdersClient` son F5 (orden de despacho OLA2 §3).
-import { ExecutionOrderResult, ExecutionOrderStatus, WfmWorkType } from '@iwana/shared';
-import type { ListExecutionOrdersQuery } from '@iwana/shared';
+import {
+  EXECUTION_ORDER_QUEUES,
+  ExecutionOrderNumberSearchSchema,
+  ExecutionOrderResult,
+  ExecutionOrderStatus,
+  WfmWorkType,
+} from '@iwana/shared';
+import type {
+  ExecutionOrderQueue,
+  ExecutionOrderQueueCounts,
+  ListExecutionOrdersQuery,
+} from '@iwana/shared';
 
 function optionalEnumValue<T extends string>(
   value: string | null,
@@ -30,6 +40,14 @@ const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 function optionalDateOnly(value: string | null): string | undefined {
   const trimmed = optionalNonEmptyText(value);
   return trimmed && DATE_ONLY_PATTERN.test(trimmed) ? trimmed : undefined;
+}
+
+/** Búsqueda por número (contrato v1.1): un valor que el servidor rechazaría
+ * se ignora en vez de convertir la bandeja en un error. */
+function optionalNumberSearch(value: string | null): string | undefined {
+  if (value === null) return undefined;
+  const parsed = ExecutionOrderNumberSearchSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function optionalPositiveInt(value: string | null): number | undefined {
@@ -60,6 +78,8 @@ export function parseExecutionOrdersQuery(params: URLSearchParams): ListExecutio
   const visitRequestId = optionalNonEmptyText(params.get('visitRequestId'));
   const windowFrom = optionalDateOnly(params.get('windowFrom'));
   const windowTo = optionalDateOnly(params.get('windowTo'));
+  const queue = optionalEnumValue<ExecutionOrderQueue>(params.get('queue'), EXECUTION_ORDER_QUEUES);
+  const number = optionalNumberSearch(params.get('number'));
   const page = optionalPositiveInt(params.get('page'));
   const limit = optionalPositiveInt(params.get('limit'));
 
@@ -73,6 +93,8 @@ export function parseExecutionOrdersQuery(params: URLSearchParams): ListExecutio
   if (visitRequestId) query.visitRequestId = visitRequestId;
   if (windowFrom) query.windowFrom = windowFrom;
   if (windowTo) query.windowTo = windowTo;
+  if (queue) query.queue = queue;
+  if (number) query.number = number;
   if (page) query.page = page;
   if (limit) query.limit = limit;
   return query;
@@ -100,7 +122,67 @@ export function serializeExecutionOrdersQuery(query: ExecutionOrdersQueryPatch):
   if (query.visitRequestId) next.set('visitRequestId', query.visitRequestId);
   if (query.windowFrom) next.set('windowFrom', query.windowFrom);
   if (query.windowTo) next.set('windowTo', query.windowTo);
+  if (query.queue) next.set('queue', query.queue);
+  if (query.number) next.set('number', query.number);
   if (query.page && query.page > 1) next.set('page', String(query.page));
   if (query.limit && query.limit !== 20) next.set('limit', String(query.limit));
   return next.toString();
+}
+
+/** Cola de entrada por defecto (spec 2026-11-19 §3 I). */
+export const DEFAULT_EXECUTION_ORDER_QUEUE: ExecutionOrderQueue = 'ACTIVE';
+
+/**
+ * Parámetros que hacen «explícito» un enlace: si la URL trae cualquiera de
+ * ellos y no trae `queue`, la bandeja no se reinterpreta como Activas (CA-10).
+ * `page` y `limit` no cuentan: no filtran.
+ */
+const EXPLICIT_LINK_PARAMS = [
+  'status',
+  'result',
+  'workType',
+  'assigneeId',
+  'organizationSiteId',
+  'ticketId',
+  'taskId',
+  'visitRequestId',
+  'windowFrom',
+  'windowTo',
+  'number',
+  'executionOrderId',
+] as const;
+
+/**
+ * Cola efectiva de la bandeja (§3 I y CA-10):
+ * 1. `queue` válida en la URL → esa cola.
+ * 2. Sin `queue` y sin ningún parámetro explícito → `ACTIVE` (entrada por defecto).
+ * 3. Sin `queue` y con algún parámetro explícito → `ALL`: el enlace se respeta
+ *    tal cual (`ALL` no restringe nada) y la bandeja sigue recibiendo conteos.
+ */
+export function resolveExecutionOrderQueue(params: URLSearchParams): ExecutionOrderQueue {
+  const queue = optionalEnumValue<ExecutionOrderQueue>(params.get('queue'), EXECUTION_ORDER_QUEUES);
+  if (queue) return queue;
+  const hasExplicitParam = EXPLICIT_LINK_PARAMS.some((key) => Boolean(params.get(key)?.trim()));
+  return hasExplicitParam ? 'ALL' : DEFAULT_EXECUTION_ORDER_QUEUE;
+}
+
+/**
+ * Valida `queueCounts` de la respuesta sin cast: cada cola del contrato debe
+ * traer un entero no negativo. Ausente o malformado → `null` (chips sin conteo).
+ */
+export function readExecutionOrderQueueCounts(value: unknown): ExecutionOrderQueueCounts | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const counts: Partial<Record<ExecutionOrderQueue, number>> = {};
+  for (const queue of EXECUTION_ORDER_QUEUES) {
+    const count: unknown = Reflect.get(value, queue);
+    if (typeof count !== 'number' || !Number.isInteger(count) || count < 0) return null;
+    counts[queue] = count;
+  }
+  return isCompleteQueueCounts(counts) ? counts : null;
+}
+
+function isCompleteQueueCounts(
+  counts: Partial<Record<ExecutionOrderQueue, number>>,
+): counts is ExecutionOrderQueueCounts {
+  return EXECUTION_ORDER_QUEUES.every((queue) => typeof counts[queue] === 'number');
 }

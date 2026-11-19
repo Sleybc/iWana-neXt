@@ -52,6 +52,8 @@ import {
   type ServiceProvisioningStatus,
   type ListExecutionOrdersResponse,
   type Page,
+  EXECUTION_ORDER_QUEUES,
+  type ExecutionOrderQueueCounts,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { applySort, buildPageMeta, clampPage } from '../../../common/pagination';
@@ -94,6 +96,12 @@ import {
   type IEvidenceAssetPort,
 } from '../ports/evidence-asset.port';
 import { OrganizationOperationalAccessPort } from '../../organization/ports/organization-operational-access.port';
+import { SettingsPriorityTenantReadPort } from '../../tenant/ports/settings-priority-tenant-read.port';
+import {
+  buildExecutionOrderQueuePredicate,
+  escapeLikePattern,
+  type ExecutionOrderQueueContext,
+} from './execution-order-queues';
 import type {
   LinkExecutionOrderToScheduleInput,
   RescheduleExecutionOrderInput,
@@ -378,6 +386,11 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
     @Optional()
     @Inject(SERVICE_PROVISIONING_READ_PORT)
     private readonly serviceProvisioningReadPort?: ServiceProvisioningReadPort,
+    // v1.1 colas: zona horaria del tenant para «Hoy» (R6). Opcional para los
+    // specs que construyen el servicio a mano; el listado con cola falla
+    // cerrado (503) sin él.
+    @Optional()
+    private readonly tenantSettingsReadPort?: SettingsPriorityTenantReadPort,
   ) {}
 
   async getById(id: string): Promise<ExecutionOrder> {
@@ -1050,6 +1063,16 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
       validated.limit ?? EXECUTION_ORDER_LIST_DEFAULT_LIMIT,
     );
 
+    // v1.1: la zona del tenant solo se lee si la petición trae cola (conteo
+    // de «Hoy»); sin cola el listado no hace ninguna lectura adicional.
+    const queueContext: ExecutionOrderQueueContext | undefined = validated.queue
+      ? {
+          actorSub: actor.sub,
+          timezone: await this.resolveTenantTimezone(tenantId),
+          now: this.currentInstant(),
+        }
+      : undefined;
+
     const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(ExecutionOrder, 'order')
@@ -1114,6 +1137,38 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
           windowTo: validated.windowTo,
         });
       }
+      // v1.1 (spec colas §3 J): solo el número de la OT; nunca cliente (H9).
+      if (validated.number) {
+        qb.andWhere("order.execution_order_number ILIKE :numberPattern ESCAPE '\\'", {
+          numberPattern: `%${escapeLikePattern(validated.number)}%`,
+        });
+      }
+
+      // v1.1 (spec colas §3 H, CA-9, R3): los conteos salen de un clon del QB
+      // con TODO el WHERE anterior (tenant, alcance del actor, anuladas,
+      // filtros sueltos y búsqueda) y cada cola usa el mismo predicado que
+      // aplica al listado: conteo de la cola = `meta.total` con esa cola.
+      let queueCounts: ExecutionOrderQueueCounts | undefined;
+      if (queueContext) {
+        const countsQb = qb.clone().orderBy();
+        countsQb.select('COUNT(*)::int', 'ALL');
+        for (const queue of EXECUTION_ORDER_QUEUES) {
+          if (queue === 'ALL') continue;
+          const predicate = buildExecutionOrderQueuePredicate(queue, queueContext);
+          countsQb
+            .addSelect(`COUNT(*) FILTER (WHERE ${predicate.sql})::int`, queue)
+            .setParameters(predicate.params);
+        }
+        const raw = (await countsQb.getRawOne<Record<string, unknown>>()) ?? {};
+        queueCounts = Object.fromEntries(
+          EXECUTION_ORDER_QUEUES.map((queue) => [queue, Number(raw[queue] ?? 0)]),
+        ) as ExecutionOrderQueueCounts;
+
+        if (validated.queue && validated.queue !== 'ALL') {
+          const predicate = buildExecutionOrderQueuePredicate(validated.queue, queueContext);
+          qb.andWhere(predicate.sql, predicate.params);
+        }
+      }
 
       qb.skip((page - 1) * limit).take(limit);
 
@@ -1127,13 +1182,16 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
       );
 
       const [orders, total] = await qb.getManyAndCount();
-      return { orders, total, sortResult };
+      return { orders, total, sortResult, queueCounts };
     });
 
     // SEC-D4: una sola query de etiquetas por página (nunca una por fila).
     const assigneeLabels = await this.resolveAssigneeLabels(result.orders);
 
+    // CA-12: `queueCounts` solo existe si la petición trajo `queue`; sin ella
+    // la forma de la respuesta es idéntica a la v1.
     return {
+      ...(result.queueCounts ? { queueCounts: result.queueCounts } : {}),
       data: result.orders.map((order) => this.toListItem(order, assigneeLabels)),
       meta: buildPageMeta({
         total: result.total,
@@ -1145,6 +1203,27 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
         sortDir: result.sortResult.appliedSortDir ?? undefined,
       }),
     };
+  }
+
+  /** Instante de referencia de la cola «Hoy»; aislado para las pruebas. */
+  protected currentInstant(): Date {
+    return new Date();
+  }
+
+  /**
+   * Zona horaria del tenant (cola «Hoy», R6). Fail-closed: sin el puerto no
+   * se cae a la zona del servidor.
+   */
+  private async resolveTenantTimezone(tenantId: string): Promise<string> {
+    if (!this.tenantSettingsReadPort) {
+      throw new ServiceUnavailableException('Zona horaria del tenant no disponible');
+    }
+    const { timezone } = await this.tenantSettingsReadPort.getSnapshot({ tenantId });
+    // SEC-Q1: una zona no IANA rompería el SQL (500); se responde 503 controlado.
+    if (typeof timezone !== 'string' || !isValidIanaTimezone(timezone)) {
+      throw new ServiceUnavailableException('Zona horaria del tenant no disponible');
+    }
+    return timezone;
   }
 
   /**
@@ -4609,5 +4688,15 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
       default:
         return ExecutionOrderStatus.COMPLETED;
     }
+  }
+}
+
+function isValidIanaTimezone(timezone: string): boolean {
+  if (timezone.length === 0) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
   }
 }

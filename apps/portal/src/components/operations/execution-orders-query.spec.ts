@@ -4,7 +4,12 @@
 // (estado de bandeja en la URL: Atrás vuelve a la página anterior) en su capa
 // de serialización y la validación de fecha-only del rango de ventana (§7.2 H5).
 import { ExecutionOrderResult, ExecutionOrderStatus, WfmWorkType } from '@iwana/shared';
-import { parseExecutionOrdersQuery, serializeExecutionOrdersQuery } from './execution-orders-query';
+import {
+  parseExecutionOrdersQuery,
+  readExecutionOrderQueueCounts,
+  resolveExecutionOrderQueue,
+  serializeExecutionOrdersQuery,
+} from './execution-orders-query';
 
 describe('execution-orders-query', () => {
   describe('parseExecutionOrdersQuery', () => {
@@ -125,6 +130,59 @@ describe('execution-orders-query', () => {
         new URLSearchParams(serializeExecutionOrdersQuery(source)),
       );
       expect(parsed).toEqual(source);
+    });
+  });
+});
+
+describe('execution-orders-query — colas y búsqueda (v1.1)', () => {
+  it('lee y escribe queue y number en la URL', () => {
+    const query = parseExecutionOrdersQuery(new URLSearchParams('queue=TODAY&number=OTE-2026'));
+    expect(query).toEqual({ queue: 'TODAY', number: 'OTE-2026' });
+    expect(serializeExecutionOrdersQuery(query)).toBe('queue=TODAY&number=OTE-2026');
+  });
+
+  it('ignora una cola desconocida y una búsqueda que el contrato rechaza', () => {
+    expect(parseExecutionOrdersQuery(new URLSearchParams('queue=BLOCKED'))).toEqual({});
+    expect(parseExecutionOrdersQuery(new URLSearchParams('number=Pérez%20Gómez'))).toEqual({});
+    expect(parseExecutionOrdersQuery(new URLSearchParams(`number=${'1'.repeat(41)}`))).toEqual({});
+    expect(parseExecutionOrdersQuery(new URLSearchParams('number=%20ote-1%20'))).toEqual({
+      number: 'ote-1',
+    });
+  });
+
+  describe('resolveExecutionOrderQueue (§3 I, CA-10)', () => {
+    it.each([
+      ['', 'ACTIVE'],
+      ['page=2&limit=50', 'ACTIVE'],
+      ['queue=TO_SCHEDULE', 'TO_SCHEDULE'],
+      ['queue=ALL&status=COMPLETED', 'ALL'],
+      ['queue=BOGUS', 'ACTIVE'],
+      ['status=COMPLETED', 'ALL'],
+      ['executionOrderId=eo-001', 'ALL'],
+      ['ticketId=t-1', 'ALL'],
+      ['number=OTE-1', 'ALL'],
+      ['status=', 'ACTIVE'],
+    ])('«%s» → %s', (search, expected) => {
+      expect(resolveExecutionOrderQueue(new URLSearchParams(search))).toBe(expected);
+    });
+  });
+
+  describe('readExecutionOrderQueueCounts', () => {
+    const complete = { ALL: 9, ACTIVE: 5, TO_SCHEDULE: 2, UNASSIGNED: 1, TODAY: 3, MINE: 0 };
+
+    it('acepta los seis conteos enteros no negativos', () => {
+      expect(readExecutionOrderQueueCounts(complete)).toEqual(complete);
+    });
+
+    it.each([
+      ['ausente', undefined],
+      ['nulo', null],
+      ['incompleto', { ALL: 1 }],
+      ['negativo', { ...complete, TODAY: -1 }],
+      ['decimal', { ...complete, MINE: 1.5 }],
+      ['texto', { ...complete, ACTIVE: '5' }],
+    ])('devuelve null si viene %s', (_label, value) => {
+      expect(readExecutionOrderQueueCounts(value)).toBeNull();
     });
   });
 });

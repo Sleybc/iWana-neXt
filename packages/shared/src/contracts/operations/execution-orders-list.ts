@@ -1,6 +1,7 @@
 import { ExecutionOrderResult, ExecutionOrderStatus } from '../../enums/operations';
 import { WfmWorkType } from '../../enums/wfm';
 import { ExecutionOrderAssigneeView, Page } from './execution-orders';
+import { z } from 'zod';
 
 /**
  * Contrato de API tipado del listado de OT de ejecución — MOD11.
@@ -8,8 +9,8 @@ import { ExecutionOrderAssigneeView, Page } from './execution-orders';
  * Archivo HERMANO del contrato congelado `execution-orders.ts`: nace separado
  * porque aquel declara "no modificar sin versionar" y este listado es un
  * contrato nuevo (spec 2026-09-13 §4.7.1, aprobada por el CTO). Este archivo
- * es la fuente de verdad del contrato de listado v1; un cambio posterior se
- * versiona y se notifica a AI-EM-ARCH, nunca se parchea en silencio
+ * es la fuente de verdad del contrato de listado (v1.1 desde 2026-11-19:
+ * colas y búsqueda por número); un cambio posterior se versiona y se notifica a AI-EM-ARCH, nunca se parchea en silencio
  * (protocolo multiagente §3bis regla 1).
  *
  * La proyección es deliberadamente más pobre que `ExecutionOrderDetail`:
@@ -65,6 +66,60 @@ export interface ExecutionOrderListItem {
   updatedAt: string;
 }
 
+// ─── Colas y búsqueda por número (contrato de listado v1.1, 2026-11-19) ──────
+//
+// Spec 2026-11-19-mod11-bandeja-ordenes-colas-ux §3 H–J y §4. Aditivo: sin
+// `queue` ni `number` la respuesta es idéntica a la v1 (CA-12); `queueCounts`
+// solo existe cuando la petición trae `queue`.
+
+/**
+ * Colas de la bandeja. Todas se combinan (AND) con los filtros sueltos y con
+ * el alcance del actor; ninguna incluye anuladas (la bandeja nunca las lista).
+ *
+ * - `ALL`: sin restricción adicional (equivale a no enviar cola, pero pide conteos).
+ * - `ACTIVE`: estado no terminal (fuera de `EXECUTION_ORDER_TERMINAL_STATUSES`).
+ * - `TO_SCHEDULE`: activa y sin ventana planificada (`planned_window_start_at` nulo).
+ * - `UNASSIGNED`: activa, sin técnico y sin cuadrilla.
+ * - `TODAY`: ventana que empieza hoy en la zona horaria del tenant, en
+ *   cualquier estado (D3: lo vencido no entra).
+ * - `MINE`: activa y asignada como técnico a quien consulta (`sub` del JWT).
+ */
+export const EXECUTION_ORDER_QUEUES = [
+  'ALL',
+  'ACTIVE',
+  'TO_SCHEDULE',
+  'UNASSIGNED',
+  'TODAY',
+  'MINE',
+] as const;
+export type ExecutionOrderQueue = (typeof EXECUTION_ORDER_QUEUES)[number];
+export const ExecutionOrderQueueSchema = z.enum(EXECUTION_ORDER_QUEUES);
+
+/** Estados terminales: una OT en ellos no es «activa». */
+export const EXECUTION_ORDER_TERMINAL_STATUSES = [
+  ExecutionOrderStatus.COMPLETED,
+  ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS,
+  ExecutionOrderStatus.NOT_EXECUTED,
+  ExecutionOrderStatus.CANCELLED,
+] as const;
+
+/** Largo máximo de la búsqueda: el de la columna `execution_order_number`. */
+export const EXECUTION_ORDER_NUMBER_SEARCH_MAX_LENGTH = 40;
+
+/**
+ * Búsqueda por número de OT: coincidencia parcial sin distinguir mayúsculas,
+ * SOLO contra el número (nunca cliente ni otro campo: spec H9/CA-8).
+ */
+export const ExecutionOrderNumberSearchSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(EXECUTION_ORDER_NUMBER_SEARCH_MAX_LENGTH)
+  .regex(/^[A-Za-z0-9._/-]+$/u, 'Solo letras, dígitos y . _ / -');
+
+/** Conteo por cola con el mismo filtro y alcance que el listado de la petición. */
+export type ExecutionOrderQueueCounts = Record<ExecutionOrderQueue, number>;
+
 /**
  * Query de `GET /tasks/execution-orders` (ADR-065 §10).
  *
@@ -91,6 +146,10 @@ export interface ListExecutionOrdersQuery {
   windowFrom?: string;
   /** Rango sobre `planned_window_start_at`, ISO 8601. */
   windowTo?: string;
+  /** Cola (v1.1). Su presencia añade `queueCounts` a la respuesta. */
+  queue?: ExecutionOrderQueue;
+  /** Búsqueda parcial por número de OT (v1.1); ver `ExecutionOrderNumberSearchSchema`. */
+  number?: string;
   page?: number;
   limit?: number;
   /** Nombre lógico de campo (ADR-065 §17). Ignorado con lista blanca vacía. */
@@ -104,4 +163,10 @@ export interface ListExecutionOrdersQuery {
  * No nace envelope nuevo (spec §4.7.1); el alias solo nombra el reuso.
  * `meta.capabilities` v1: `{ randomAccess: true, sortableFields: [] }`.
  */
-export type ListExecutionOrdersResponse = Page<ExecutionOrderListItem>;
+export type ListExecutionOrdersResponse = Page<ExecutionOrderListItem> & {
+  /**
+   * v1.1: presente SOLO si la petición trae `queue`. Cada conteo es el
+   * `meta.total` que devolvería la misma petición con esa cola.
+   */
+  queueCounts?: ExecutionOrderQueueCounts;
+};

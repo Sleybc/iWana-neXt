@@ -64,6 +64,26 @@ describe('ExecutionOrdersToolbar', () => {
     expect(screen.getByRole('button', { name: 'Actualizar' })).toBeInTheDocument();
   });
 
+  it('C: los seis filtros van en una fila compacta y la ayuda del rango sigue asociada a sus campos (spec 2026-11-19 §3 C)', () => {
+    const { container } = renderToolbar();
+
+    const row = container.firstElementChild as HTMLElement;
+    expect(row.className).toMatch(/xl:flex-nowrap/);
+    for (const id of ['execution-orders-window-from', 'execution-orders-window-to']) {
+      expect(document.getElementById(id)).toHaveAccessibleDescription(
+        'Filtra por la fecha de inicio planificada.',
+      );
+    }
+  });
+
+  it('P-4: la ayuda del rango es visible (UX spec §7.2), no solo para lectores de pantalla', () => {
+    renderToolbar();
+
+    const help = screen.getByText('Filtra por la fecha de inicio planificada.');
+    expect(help.className).not.toMatch(/sr-only/);
+    expect(help.id).toBe('execution-orders-window-help');
+  });
+
   it('emite el patch de estado con el enum del contrato (sin enums crudos en la UI)', async () => {
     const user = userEvent.setup();
     const { onFilterChange } = renderToolbar();

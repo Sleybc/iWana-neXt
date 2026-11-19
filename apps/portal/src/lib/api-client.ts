@@ -8238,6 +8238,10 @@ export const tasksApi = {
       if (params?.visitRequestId) searchParams.set('visitRequestId', params.visitRequestId);
       if (params?.windowFrom) searchParams.set('windowFrom', params.windowFrom);
       if (params?.windowTo) searchParams.set('windowTo', params.windowTo);
+      // v1.1 (spec 2026-11-19 §3 H–J): `queue` añade `queueCounts`; `number`
+      // busca solo por número de OT.
+      if (params?.queue) searchParams.set('queue', params.queue);
+      if (params?.number) searchParams.set('number', params.number);
       if (params?.page) searchParams.set('page', String(params.page));
       if (params?.limit) searchParams.set('limit', String(params.limit));
       const query = searchParams.toString();
