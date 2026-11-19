@@ -58,7 +58,7 @@ Dictámenes: R0 (`prod-ux`) GO con condiciones para D2; `ds-owner` aprueba la ba
 
 1. `app.config.production-urls.spec.ts` falla en la suite completa de la API (pasa sola 29/29). Causa probable: fuga de `MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS` desde el `.env.development` local entre suites; el diff no toca ese spec ni la carga de entorno. Se cierra con el CI de `main` tras el push.
 2. Cerrado: re-revisión de `test-change-reviewer` GO (H1–H6 cerrados, 249/249 aisladas). Residual: falta una prueba de que activar otra línea lleva el foco a su título (D11).
-3. E2E que exigen el aprovisionador, no ejecutadas para no levantar procesos sobre el entorno del usuario: `e2e/tests/api/execution-orders-operational.spec.ts` (literal ETag en `:287`) y `portal-network-provisioning-live.spec.ts:712`, `:1110`.
+3. E2E con aprovisionador, aceptadas por el CI verde (decisión del usuario, 2026-11-19). `portal-network-provisioning-live.spec.ts` se ejecutó en el job «E2E operativo R4.1» del CI 44533663818 (`a1d5c7f9`): `E2E_MOD13_SPEC_FOUND=true` (52,7 s), 385 pasan, 0 fallan, 4 omitidas con motivo. **Abierto:** `e2e/tests/api/execution-orders-operational.spec.ts` (literal ETag en `:287`) no corre en ningún workflow: está en `playwright.api.config.ts` y el aprovisionador solo lanza `test:e2e:portal`; sigue sin evidencia (D12).
 4. G6.5 ✅ 2026-11-19: `f3ef53e2` publicado en `main`; CI run 44409018667 `success` y E2E Web Admin Smoke run 44409018742 `success`. El gate 1 queda cerrado en CI (sin `.env.development`). El gate 3 sigue sin evidencia: el CI de `main` no corre esas E2E.
 
 ## 6. Deudas
@@ -75,6 +75,7 @@ Dictámenes: R0 (`prod-ux`) GO con condiciones para D2; `ds-owner` aprueba la ba
 | D8 | `sign()` en `r2` hace scroll; ninguna E2E detecta el lienzo fuera del pliegue | `sr-qa` |
 | D9 | `TasksModule` importa `SubscribersModule` completo por un puerto | AI-EM-ARCH |
 | D11 | Prueba de foco al título al activar otra línea; nombres exactos inexactos en `ExecutionOrderDrawer.spec.tsx` ~:498-512 | `sr-qa` |
+| D12 | Ningún workflow ejecuta las E2E de `playwright.api.config.ts` (p. ej. `execution-orders-operational.spec.ts`) | `plat-ops` |
 | D10 | Datos sintéticos de las E2E con API real en el tenant del usuario (p. ej. OTE-20261118-003) | usuario |
 
 ## 7. Archivos
