@@ -1,6 +1,8 @@
 // apps/portal/src/components/operations/ExecutionOrdersTable.tsx
 // Tabla operativa de la bandeja de OT — contrato de componente
 // docs/specs/2026-09-13-mod11-operaciones-tablas-operativas-contrato-componente.md
+// v1.3 (enmienda 2026-11-19, decisión del usuario): 6 columnas — Orden
+// (número + tipo de trabajo) y Estado (+ resultado); Cliente intacta (CA-8).
 // v1.0 (AI-DS-OWNER, congelado): 8 columnas de la proyección
 // `ExecutionOrderListItem` (§7.2), un solo pie elegido por el discriminador
 // `pagination.randomAccess` en un único ternario (§5), skeleton con forma en
@@ -47,7 +49,7 @@ import { getExecutionOrderWindowAbsence } from './execution-order-window-copy';
 import { formatExecutionOrderWindow } from './execution-order-window-relative';
 
 const ORDERS_RESOURCE = { singular: 'orden de ejecución', plural: 'órdenes de ejecución' } as const;
-const ORDERS_COLUMN_COUNT = 8;
+const ORDERS_COLUMN_COUNT = 6;
 /** Tope de filas skeleton de la carga inicial (contrato §6.5). */
 const SKELETON_ROW_LIMIT = 8;
 /** F · Móvil (spec 2026-11-19 §3 F): bajo 768 px la misma tabla se lee como
@@ -109,10 +111,8 @@ export function ExecutionOrdersTable({
         >
           <thead className={`${portalDataTableHeadRowClassName} max-md:sr-only`}>
             <tr>
-              <PortalDataTableHead className={headClassName}>Número</PortalDataTableHead>
+              <PortalDataTableHead className={headClassName}>Orden</PortalDataTableHead>
               <PortalDataTableHead className={headClassName}>Estado</PortalDataTableHead>
-              <PortalDataTableHead className={headClassName}>Resultado</PortalDataTableHead>
-              <PortalDataTableHead className={headClassName}>Tipo de trabajo</PortalDataTableHead>
               <PortalDataTableHead className={headClassName}>
                 Ventana planificada
               </PortalDataTableHead>
@@ -145,10 +145,11 @@ export function ExecutionOrdersTable({
                       : ''
                   }`}
                 >
-                  <td className={`${nowrapCellClassName} font-mono text-xs`}>
+                  {/* Orden (enmienda 6 columnas): número y, debajo, tipo de trabajo. */}
+                  <td className={nowrapCellClassName}>
                     <button
                       type="button"
-                      className={`text-left font-medium underline-offset-4 hover:underline max-md:min-h-11 ${interactiveFocusClassName}`}
+                      className={`text-left font-mono text-xs font-medium underline-offset-4 hover:underline max-md:min-h-11 ${interactiveFocusClassName}`}
                       onClick={(event) => {
                         event.stopPropagation();
                         onOpenRow(order);
@@ -156,25 +157,26 @@ export function ExecutionOrdersTable({
                     >
                       {order.number}
                     </button>
+                    <span className="block text-xs text-gray-600 dark:text-gray-400">
+                      <MobileCaption>Tipo de trabajo:</MobileCaption>
+                      {EXECUTION_ORDER_WORK_TYPE_LABELS[order.workType]}
+                    </span>
                   </td>
+                  {/* Estado con su resultado al lado cuando existe. */}
                   <td className={nowrapCellClassName}>
-                    <Badge variant={EXECUTION_ORDER_STATUS_VARIANTS[order.status]}>
-                      {EXECUTION_ORDER_STATUS_LABELS[order.status]}
-                    </Badge>
-                  </td>
-                  <td className={nowrapCellClassName}>
-                    <MobileCaption>Resultado:</MobileCaption>
-                    {order.result ? (
-                      <Badge variant={EXECUTION_ORDER_RESULT_VARIANTS[order.result]}>
-                        {EXECUTION_ORDER_RESULT_LABELS[order.result]}
+                    <span className="inline-flex flex-wrap items-center gap-1">
+                      <Badge variant={EXECUTION_ORDER_STATUS_VARIANTS[order.status]}>
+                        {EXECUTION_ORDER_STATUS_LABELS[order.status]}
                       </Badge>
-                    ) : (
-                      <span>—</span>
-                    )}
-                  </td>
-                  <td className={nowrapCellClassName}>
-                    <MobileCaption>Tipo de trabajo:</MobileCaption>
-                    <span>{EXECUTION_ORDER_WORK_TYPE_LABELS[order.workType]}</span>
+                      {order.result ? (
+                        <>
+                          <MobileCaption>Resultado:</MobileCaption>
+                          <Badge variant={EXECUTION_ORDER_RESULT_VARIANTS[order.result]}>
+                            {EXECUTION_ORDER_RESULT_LABELS[order.result]}
+                          </Badge>
+                        </>
+                      ) : null}
+                    </span>
                   </td>
                   <WindowCell order={order} />
                   <td className={cellClassName}>

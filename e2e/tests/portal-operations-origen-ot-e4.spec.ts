@@ -132,7 +132,7 @@ test.describe('E4-portal: OT sin ventana (HTTP simulado)', () => {
       table
         .getByRole('row', { name: new RegExp(number) })
         .getByRole('cell')
-        .nth(4);
+        .nth(2);
 
     for (const open of ['001', '002', '003', '004', '005']) {
       await expect(windowCell(`OTE-E4-${open}`)).toHaveText('Por programar');
@@ -145,7 +145,7 @@ test.describe('E4-portal: OT sin ventana (HTTP simulado)', () => {
     await expect(windowed).toHaveText(/2026|oct|\d{1,2}:\d{2}/i);
 
     // Sin columna extra, sin encabezados ordenables y el orden del servidor se respeta.
-    await expect(table.getByRole('columnheader')).toHaveCount(8);
+    await expect(table.getByRole('columnheader')).toHaveCount(6);
     await expect(table.locator('th[aria-sort]')).toHaveCount(0);
     await expect(table.locator('thead button')).toHaveCount(0);
     const numbers = await table.getByRole('button', { name: /^OTE-E4-/ }).allTextContents();

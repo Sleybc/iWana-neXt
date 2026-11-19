@@ -238,6 +238,8 @@ Todas las celdas de fecha y número en `font-mono text-xs` (JetBrains Mono, firm
 
 ### 7.2 `ExecutionOrdersTable` — 8 columnas (proyección spec §4.7.1)
 
+> **Enmienda 2026-11-19 (decisión del usuario, [spec bandeja con colas v1.2](2026-11-19-mod11-bandeja-ordenes-colas-ux.md) §3 D):** la tabla pinta **6 columnas**: «Orden» (número + tipo de trabajo), «Estado» (estado + resultado cuando existe), Ventana planificada, Asignado a, Cliente (idéntica, sin cambios) y Municipio. Los ocho datos de la tabla siguiente se conservan; cambian solo los encabezados que los agrupan.
+
 | # | Encabezado | Dato | Render |
 | --- | --- | --- | --- |
 | 1 | Número | `number` (campo del contrato congelado `ExecutionOrderListItem`; `executionOrderNumber` es el nombre lógico del tramo futuro de ordenación, no de la proyección) | `font-mono text-xs`, botón de apertura |

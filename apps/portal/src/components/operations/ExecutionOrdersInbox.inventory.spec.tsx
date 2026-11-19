@@ -7,7 +7,7 @@
 // después del rediseño. La columna Cliente no se toca (F-4).
 import type { ReactNode } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
-import { ExecutionOrderStatus, UserRole, WfmWorkType } from '@iwana/shared';
+import { ExecutionOrderResult, ExecutionOrderStatus, UserRole, WfmWorkType } from '@iwana/shared';
 import type { ExecutionOrderListItem } from '@/lib/api-client';
 import { tasksApi } from '@/lib/api-client';
 import { ExecutionOrdersClient } from './ExecutionOrdersClient';
@@ -162,15 +162,24 @@ describe('Bandeja de OT — inventario de no regresión (CA-1)', () => {
   });
 
   it('conserva las columnas, incluida Cliente sin cambios, y la fila abre su consola', async () => {
-    mockList([buildOrder()], true);
+    mockList(
+      [
+        buildOrder({
+          status: ExecutionOrderStatus.COMPLETED,
+          result: ExecutionOrderResult.REQUIRES_FOLLOW_UP,
+        }),
+      ],
+      true,
+    );
     await renderInbox();
 
     const table = await screen.findByRole('table', { name: 'Bandeja de órdenes de ejecución' });
+    // Enmienda 6 columnas (2026-11-19): Número y Tipo de trabajo en «Orden»,
+    // Resultado en «Estado»; los ocho datos siguen en la fila.
+    expect(within(table).getAllByRole('columnheader')).toHaveLength(6);
     for (const header of [
-      'Número',
+      'Orden',
       'Estado',
-      'Resultado',
-      'Tipo de trabajo',
       'Ventana planificada',
       'Asignado a',
       'Cliente',
@@ -178,6 +187,8 @@ describe('Bandeja de OT — inventario de no regresión (CA-1)', () => {
     ]) {
       expect(within(table).getByRole('columnheader', { name: header })).toBeInTheDocument();
     }
+    expect(within(table).getByText('Instalación')).toBeInTheDocument();
+    expect(within(table).getByText('Requiere seguimiento')).toBeInTheDocument();
     expect(within(table).getByText('Cliente de prueba')).toBeInTheDocument();
     expect(within(table).getByRole('button', { name: 'OT-INV-0001' })).toBeInTheDocument();
   });

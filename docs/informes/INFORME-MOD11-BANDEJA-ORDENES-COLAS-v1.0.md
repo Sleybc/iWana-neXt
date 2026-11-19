@@ -102,7 +102,7 @@ La prueba de inventario `ExecutionOrdersInbox.inventory.spec.tsx` (11 tests) man
 
 - Fijar línea base de conteos completos: api 618 suites / 8225 tests; portal 446 / 5018; shared 57 / 794.
 - El commit, cuando el usuario lo pida. Debe hacerse con índice temporal y excluir `next-env.d.ts`, `.claude/launch.json` y los cambios de otras sesiones.
-- G6.5, después del push y con el CI de main en verde.
+- G6.5 de `1075bb31` + `0255ad37`: ✅ 2026-11-19, CI 44610374056 success y E2E Web Admin Smoke 44610374024 success.
 
 ## 9. Cierre G6
 
@@ -112,3 +112,21 @@ La prueba de inventario `ExecutionOrdersInbox.inventory.spec.tsx` (11 tests) man
   - test-change-reviewer, boundary-reviewer y contract-drift-reviewer, con los veredictos de §4.
   - La integración de colas contra Postgres real: 14/14.
 - **API completa:** 617/618 suites. El rojo está en `app.config.production-urls.spec.ts` y se debe a `MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS` del `.env.development` local. El diff no toca ese archivo y el CI de main está verde en c9c36094 (run 44540744391). Queda como deuda de entorno.
+
+## 10. Enmienda posterior: seis columnas (sin commit)
+
+- **Decisión del usuario** (2026-11-19, tras el push de `0255ad37`): «seis columnas, Cliente intacta». Reemplaza el «mantener 8» de §5.
+- **Cambio:**
+  - «Orden» funde el número y el tipo de trabajo.
+  - «Estado» funde el estado y el resultado; el resultado solo se pinta si existe.
+  - Cliente sigue idéntica (CA-8).
+  - Los ocho datos siguen en la fila.
+- **Pruebas:**
+  - Portal operations + lib: 64 suites / 1012 tests, en verde (tras Prettier).
+  - typecheck y ESLint: limpios.
+  - Expectativas ajustadas: el inventario, la tabla y la E2E E4 (6 encabezados, ventana en la columna 3), revisadas por test-change-reviewer.
+  - Atendidos los dos hallazgos bloqueantes del revisor: hay una prueba nueva con resultado presente en la celda Estado (también en el inventario), y se restituyeron los rótulos móviles visibles «Tipo de trabajo:» y «Resultado:» (`md:sr-only`).
+- **Medida a 1440×900:** primera fila en y=545 y 6 filas visibles. La fila baja de 57 a 53 px.
+- **Medida a 375 px:** sin desplazamiento lateral.
+- **E2E del portal:** 27/27 en verde con axe (bandeja-ot, origen-ot-e4 con 6 encabezados, pager-a11y).
+- **Contrato de tabla:** la §7.2 lleva nota de enmienda. La spec pasa a v1.2.

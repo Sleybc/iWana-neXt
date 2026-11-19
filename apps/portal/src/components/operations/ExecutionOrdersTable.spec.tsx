@@ -8,9 +8,10 @@
 import type { ComponentProps } from 'react';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ExecutionOrderStatus, WfmWorkType } from '@iwana/shared';
+import { ExecutionOrderResult, ExecutionOrderStatus, WfmWorkType } from '@iwana/shared';
 import type { ExecutionOrderListItem } from '@/lib/api-client';
 import { ExecutionOrdersTable } from './ExecutionOrdersTable';
+import { EXECUTION_ORDER_RESULT_LABELS, EXECUTION_ORDER_STATUS_LABELS } from './operations-labels';
 import type { OperationsTablePagination } from './operations-table-pagination';
 
 type OrderOverrides = Partial<Omit<ExecutionOrderListItem, 'result' | 'assignee'>> & {
@@ -79,14 +80,13 @@ describe('ExecutionOrdersTable', () => {
     jest.clearAllMocks();
   });
 
-  it('pinta las 8 columnas del contrato §7.2 y la fila de la proyección', () => {
+  it('pinta las 6 columnas (enmienda: Orden funde tipo de trabajo, Estado funde resultado) y los ocho datos', () => {
     renderTable();
 
+    expect(screen.getAllByRole('columnheader')).toHaveLength(6);
     for (const header of [
-      'Número',
+      'Orden',
       'Estado',
-      'Resultado',
-      'Tipo de trabajo',
       'Ventana planificada',
       'Asignado a',
       'Cliente',
@@ -108,7 +108,33 @@ describe('ExecutionOrdersTable', () => {
       orders: [buildOrder({ result: undefined, municipality: null })],
     });
 
-    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
+    // Sin resultado, Estado muestra solo el estado; el municipio vacío sigue en «—».
+    const row = screen.getByRole('row', { name: /OT-0001/ });
+    const cells = within(row).getAllByRole('cell');
+    expect(within(cells[5] as HTMLElement).getByText('—')).toBeInTheDocument();
+    expect(screen.getAllByText('—')).toHaveLength(1);
+    expect(screen.queryByText('Resultado:')).not.toBeInTheDocument();
+  });
+
+  it('con resultado, Estado pinta el estado y el resultado con su rótulo móvil', () => {
+    renderTable({
+      orders: [
+        buildOrder({
+          status: ExecutionOrderStatus.COMPLETED,
+          result: ExecutionOrderResult.EXECUTED,
+        }),
+      ],
+    });
+
+    const row = screen.getByRole('row', { name: /OT-0001/ });
+    const statusCell = within(row).getAllByRole('cell')[1] as HTMLElement;
+    expect(statusCell).toHaveTextContent(
+      EXECUTION_ORDER_STATUS_LABELS[ExecutionOrderStatus.COMPLETED],
+    );
+    expect(statusCell).toHaveTextContent(
+      EXECUTION_ORDER_RESULT_LABELS[ExecutionOrderResult.EXECUTED],
+    );
+    expect(within(statusCell).getByText('Resultado:').className).toMatch(/(^|\s)md:sr-only(\s|$)/);
   });
 
   describe('ventana nula (E4, contrato v1.2 §7.2 col. 5)', () => {
@@ -117,7 +143,7 @@ describe('ExecutionOrdersTable', () => {
         orders: [buildOrder({ status, schedule: { eventId: null, window: null } })],
       });
       const row = screen.getByRole('row', { name: /OT-0001/ });
-      return within(row).getAllByRole('cell')[4] as HTMLElement;
+      return within(row).getAllByRole('cell')[2] as HTMLElement;
     }
 
     it.each([
@@ -161,7 +187,7 @@ describe('ExecutionOrdersTable', () => {
       });
 
       const row = screen.getByRole('row', { name: /OT-0001/ });
-      const cell = within(row).getAllByRole('cell')[4] as HTMLElement;
+      const cell = within(row).getAllByRole('cell')[2] as HTMLElement;
       const fmt = new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
       // Spec 2026-11-19 §3 E: la celda muestra el inicio relativo y el intervalo
       // exacto pasa al `title` (antes se pintaba completo en la celda).
@@ -307,16 +333,16 @@ describe('ExecutionOrdersTable', () => {
     }
     const row = screen.getByText('Cliente Ejemplo').closest('tr') as HTMLElement;
     const cells = within(row).getAllByRole('cell');
-    expect(cells).toHaveLength(8);
-    // Número, Estado, Resultado, Tipo de trabajo y Ventana: una sola línea.
-    for (const index of [0, 1, 2, 3, 4]) {
+    expect(cells).toHaveLength(6);
+    // Orden, Estado y Ventana: una sola línea.
+    for (const index of [0, 1, 2]) {
       expect(cells[index]?.className).toMatch(/md:whitespace-nowrap/);
     }
     for (const cell of cells) {
       expect(cell.className).toMatch(/md:py-2/);
     }
     // Cliente: ni nowrap ni truncado; su contenido no cambia.
-    const clientCell = cells[6] as HTMLElement;
+    const clientCell = cells[4] as HTMLElement;
     expect(clientCell.className).not.toMatch(/whitespace-nowrap|truncate|line-clamp/);
     expect(clientCell).toHaveTextContent('Cliente Ejemplo');
   });
@@ -325,7 +351,7 @@ describe('ExecutionOrdersTable', () => {
     renderTable();
 
     const row = screen.getByRole('row', { name: /OT-0001/ });
-    const cell = within(row).getAllByRole('cell')[4] as HTMLElement;
+    const cell = within(row).getAllByRole('cell')[2] as HTMLElement;
     const fmt = new Intl.DateTimeFormat('es-CO', {
       hour: 'numeric',
       minute: '2-digit',
@@ -346,18 +372,19 @@ describe('ExecutionOrdersTable', () => {
     const row = screen.getByRole('row', { name: /OT-0001/ });
     const cells = within(row).getAllByRole('cell');
     const expected: Array<[number, string]> = [
-      [2, 'Resultado:'],
-      [3, 'Tipo de trabajo:'],
-      [4, 'Ventana:'],
-      [5, 'Asignado a:'],
-      [6, 'Cliente:'],
-      [7, 'Municipio:'],
+      [2, 'Ventana:'],
+      [3, 'Asignado a:'],
+      [4, 'Cliente:'],
+      [5, 'Municipio:'],
     ];
+    expect(within(cells[0] as HTMLElement).getByText('Tipo de trabajo:').className).toMatch(
+      /(^|\s)md:sr-only(\s|$)/,
+    );
     for (const [index, label] of expected) {
       const caption = within(cells[index] as HTMLElement).getByText(label);
       expect(caption.className).toMatch(/(^|\s)md:sr-only(\s|$)/);
     }
-    expect(within(cells[6] as HTMLElement).getByText('Cliente Ejemplo').tagName).toBe('SPAN');
+    expect(within(cells[4] as HTMLElement).getByText('Cliente Ejemplo').tagName).toBe('SPAN');
   });
 
   it('abre el detalle de la fila con el callback onOpenRow (spec §4.6)', async () => {
@@ -416,7 +443,7 @@ describe('ExecutionOrdersTable', () => {
     const skeletonRows = document.querySelectorAll('tbody tr');
     expect(skeletonRows.length).toBe(8);
     skeletonRows.forEach((row) => {
-      expect(row.querySelector('td')?.getAttribute('colspan')).toBe('8');
+      expect(row.querySelector('td')?.getAttribute('colspan')).toBe('6');
     });
   });
 

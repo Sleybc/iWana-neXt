@@ -1,9 +1,10 @@
 # Spec UX — MOD11 Operaciones · Bandeja de órdenes de ejecución con colas
 
-**Versión:** 1.1
+**Versión:** 1.2
 **Estado:** Aprobado (G0) por el usuario en sesión el 2026-11-19 · D1–D4 resueltas con la recomendación · Plan: [2026-11-19-mod11-bandeja-ordenes-colas](../plans/2026-11-19-mod11-bandeja-ordenes-colas.md)
 **Fecha:** 2026-11-19
 **Cambios v1.1 (2026-11-19, decisiones del usuario en ejecución):** §3 D conserva las 8 columnas; §3 B reemplazado por colas Activas, Por programar, Sin asignar, Hoy, Mías y Todas con conteos (los estados pasan al filtro Estado); CA-2 aceptado con 6 filas. Detalle en [INFORME-MOD11-BANDEJA-ORDENES-COLAS-v1.0](../informes/INFORME-MOD11-BANDEJA-ORDENES-COLAS-v1.0.md) §5–§6.
+**Cambios v1.2 (2026-11-19, decisión del usuario):** §3 D pasa a **seis columnas, Cliente intacta**: «Orden» funde número y tipo de trabajo; «Estado» funde estado y resultado; Ventana, Asignado a, Cliente y Municipio siguen como columnas propias. Reemplaza el «8 columnas» de v1.1.
 **Emisor:** Claude Code, con criterio de AI-PROD-UX
 **Alcance de pantalla:** `/dashboard/operations/execution-orders` (encabezado, filtros y tabla); no cambia la consola de la orden ni la bandeja de tareas
 **Relacionado:** [subrutas y bandeja de OT](2026-09-13-mod11-operaciones-subrutas-bandeja-ot-ux.md) §4.5, §6 y §7.2 (vigente; esta spec la complementa y no la reemplaza) · [tablas operativas](2026-09-13-mod11-operaciones-tablas-operativas-contrato-componente.md) · [bandeja de tickets con colas](2026-11-18-mod10-bandeja-colas-de-trabajo-ux.md) (precedente) · [consola: densidad y enlaces](2026-11-18-mod11-consola-orden-densidad-y-enlaces-ux.md) · [bloqueo en proyecciones](2026-11-05-privacy-bloqueo-proyecciones-operativas-spec.md) (F-4, sin G0)
