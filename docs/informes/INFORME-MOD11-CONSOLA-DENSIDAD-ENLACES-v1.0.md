@@ -66,7 +66,7 @@ Dictámenes: R0 (`prod-ux`) GO con condiciones para D2; `ds-owner` aprueba la ba
 | # | Deuda | Dueño sugerido |
 |---|---|---|
 | D1 | La bandeja de órdenes sigue mostrando `customerDisplayLabel` con titular bloqueado | `sec-eng` · spec de bloqueo en proyecciones (bloquea G7) |
-| D2 | MOD13 dice «certificado» y el gate publica el requisito pendiente en OTE-20261111-003; el portal acepta `ACTIVE`, el gate solo `CERTIFIED` | `sr-backend` |
+| D2 | Cerrada en `ca6a433e` (§8): `getCompletion` no pasaba el estado de aprovisionamiento al evaluador. Queda abierto: con `enforced=false` el cierre retira el requisito y el detalle no; el portal acepta `ACTIVE` y el gate solo `CERTIFIED` | `sr-backend` |
 | D3 | La agenda no abre un evento concreto; el enlace va al día de la visita | Programación |
 | D4 | «Cerrar OT» y dos textos de `ExecutionOrderCloseSection.tsx` con «OT»; aviso de pendientes sigue `role="alert"` | `fe-platform` con autorización |
 | D5 | `cierre-venta-live:207`: con dos contratos en borrador el endpoint devuelve null y no hay paso Contrato | `sr-backend` |
@@ -80,3 +80,15 @@ Dictámenes: R0 (`prod-ux`) GO con condiciones para D2; `ds-owner` aprueba la ba
 ## 7. Archivos
 
 Producción portal: `ExecutionOrderMomentContainer`, `ExecutionOrderProvisioningPanel`, `ExecutionOrderRequirementIndex`, `RequirementChecklist`, `ExecutionOrderSummary`, `ExecutionOrderCommitmentSection`, `ExecutionOrderCloseSection`, `ExecutionOrderEvidenceAction`, `execution-order-contract-signing`, `operations-labels`; nuevos `use-execution-order-provisioning`, `ExecutionOrderClosureBar`, `execution-order-links`. API: `tasks.module`, `assurance.module`, controlador, DTO, interceptor, OpenAPI; nuevos `execution-order-console-links.service` y el puerto y adaptador de Assurance. Contrato: `packages/shared/src/contracts/operations/execution-orders.ts`. Pruebas y E2E: ver `git status`.
+
+## 8. Correcciones posteriores al cierre (2026-11-19)
+
+Hallazgos de la medición en navegador de la sesión de Mesa de ayuda sobre `f3ef53e2` y `ca6a433e`, corregidos con autorización del usuario.
+
+| Commit | Qué corrige | Evidencia |
+|---|---|---|
+| `ca6a433e` | `getCompletion` lee el estado de aprovisionamiento por el mismo puerto que el cierre (`getGateStatus`), solo si la plantilla tiene requisito PROVISIONING y con fallo cerrado; cierra D2. Cabecera de Requisitos y Compromiso compactados: el título del cuerpo activo pasa de 837 a 701 px (barra en 815). Se retira el punto suelto del texto accesible de la ventana | Spec nueva de completion 6/6 (roja antes); tasks 796/796; portal 4957 pasan, 1 omitida. CI 44526054897 `failure` por la E2E `portal-operations-origen-ot-e4.spec.ts:161` (la ayuda de la ventana quedó oculta) |
+| `5de9584a` | El ETag del detalle pasa a `"1.8-<version>-<huella del cuerpo>"` con `Cache-Control: private, no-cache`: la versión de la orden no sube con la certificación en MOD13, los reversos de consumo ni la evidencia caducada, y el navegador servía el estado viejo. If-Match sigue usando el número de versión | Prueba nueva (misma versión, cuerpo distinto) roja antes; tasks 797/797; integración 47 + 1 omitida. CI 44528596051 `failure` por la misma E2E e4, aún sin arreglo |
+| `a1d5c7f9` | La ayuda de la ventana vuelve como línea visible bajo «Por programar» (spec §3 A), enlazada con `aria-describedby` | E2E e4 3/3 contra el puerto 3002; `operations` 850/850. **CI 44533663818 `success`** y E2E Web Admin Smoke 44533663849 `success` |
+
+Revisado sin cambio de código: los botones medidos en 852 px eran los atajos de la barra de cierre; con el administrador la orden solo admite `CREATE_FOLLOW_UP` y el cuerpo activo no tiene acción. Para un usuario que registra, la acción va bajo el título (≈733–777 px por cálculo, sin verificar en pantalla). Los enlaces a ticket y visita se verificaron en OTE-20261117-003.
