@@ -400,6 +400,13 @@ export class TicketsService {
           validated.subscriberId,
         )
       : [];
+    const subscriberExpedienteId = validated.subscriberId
+      ? await this.crmSubscriberReadPort.findExpedienteId(
+          tenantId,
+          schemaName,
+          validated.subscriberId,
+        )
+      : null;
 
     const slaCaseExpr = SLA_BREACH_CASE_SQL;
     const canReadSubscribers = permissions.has(AccessPermissionKey.CRM_SUBSCRIBERS_READ);
@@ -441,7 +448,13 @@ export class TicketsService {
       }
 
       if (validated.subscriberId) {
-        qb.andWhere(subscriberTicketLinkPredicate(validated.subscriberId, subscriberContractIds));
+        qb.andWhere(
+          subscriberTicketLinkPredicate(
+            validated.subscriberId,
+            subscriberContractIds,
+            subscriberExpedienteId,
+          ),
+        );
       }
 
       // Bajar filtro slaBreachStatus al WHERE (DEF-4)

@@ -75,7 +75,11 @@ describe('TicketsService', () => {
   let pqrService: jest.Mocked<PqrService>;
   let timelineService: jest.Mocked<TimelineService>;
   let fieldServicePort: jest.Mocked<AssuranceFieldServicePort>;
-  let crmSubscriberReadPort: { listContractIds: jest.Mock; assertWritableReferences: jest.Mock };
+  let crmSubscriberReadPort: {
+    listContractIds: jest.Mock;
+    findExpedienteId: jest.Mock;
+    assertWritableReferences: jest.Mock;
+  };
 
   const actor: JwtPayload = {
     sub: 'support-001',
@@ -129,6 +133,7 @@ describe('TicketsService', () => {
     } as jest.Mocked<AssuranceFieldServicePort>;
     crmSubscriberReadPort = {
       listContractIds: jest.fn().mockResolvedValue([]),
+      findExpedienteId: jest.fn().mockResolvedValue(null),
       assertWritableReferences: jest.fn().mockResolvedValue(undefined),
     };
 

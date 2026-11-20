@@ -4,7 +4,7 @@ import { subscriberTicketLinkPredicate } from './subscriber-ticket-link.predicat
 
 type Clause = { sql: string; params: Record<string, unknown> };
 
-function collect(contractIds: string[]): Clause[] {
+function collect(contractIds: string[], expedienteId: string | null = null): Clause[] {
   const clauses: Clause[] = [];
   const builder = {
     where: (sql: string, params: Record<string, unknown>) => (
@@ -16,7 +16,7 @@ function collect(contractIds: string[]): Clause[] {
       builder
     ),
   };
-  subscriberTicketLinkPredicate('s-1', contractIds).whereFactory(builder as never);
+  subscriberTicketLinkPredicate('s-1', contractIds, expedienteId).whereFactory(builder as never);
   return clauses;
 }
 
@@ -35,13 +35,27 @@ describe('subscriberTicketLinkPredicate (regla única ticket → suscriptor)', (
     expect(collect([])).toHaveLength(2);
   });
 
+  it('cubre el ticket cuyo asunto es el expediente del suscriptor (instalación automática)', () => {
+    const clauses = collect([], 'e-1');
+    expect(clauses).toHaveLength(3);
+    expect(clauses[2]?.sql).toContain('st.subject_ref_id = :subscriberExpedienteId');
+    expect(clauses[2]?.params).toEqual({
+      expedienteSubjectType: 'EXPEDIENTE',
+      subscriberExpedienteId: 'e-1',
+    });
+  });
+
+  it('sin expediente omite la rama de expediente', () => {
+    expect(collect(['c-1'], null)).toHaveLength(3);
+  });
+
   it('paridad: el listado de tickets y el puerto de visitas usan la misma regla', () => {
     const read = (file: string) => readFileSync(join(__dirname, file), 'utf-8');
-    expect(read('tickets.service.ts')).toContain(
-      'subscriberTicketLinkPredicate(validated.subscriberId, subscriberContractIds)',
+    expect(read('tickets.service.ts')).toMatch(
+      /subscriberTicketLinkPredicate\(\s*validated\.subscriberId,\s*subscriberContractIds,\s*subscriberExpedienteId,?\s*\)/,
     );
-    expect(read('../ports/assurance-subscriber-tickets-read.adapter.ts')).toContain(
-      'subscriberTicketLinkPredicate(subscriberId, contractIds)',
+    expect(read('../ports/assurance-subscriber-tickets-read.adapter.ts')).toMatch(
+      /subscriberTicketLinkPredicate\(\s*subscriberId,\s*contractIds,\s*expedienteId,?\s*\)/,
     );
   });
 });

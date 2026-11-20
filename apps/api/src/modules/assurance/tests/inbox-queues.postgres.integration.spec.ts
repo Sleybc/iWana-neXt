@@ -409,6 +409,7 @@ describeWithDb('MOD10 bandeja con colas — PostgreSQL real', () => {
     Object.defineProperty(crm, 'privacyMarksReadPort', { value: new PrivacyMarksAdapter(single) });
     const crmPort = {
       listContractIds: async () => [],
+      findExpedienteId: async () => null,
       resolveTicketParties: (...args: Parameters<SubscribersService['resolveTicketParties']>) =>
         crm.resolveTicketParties(...args),
       findTicketRequesterIdsByName: (

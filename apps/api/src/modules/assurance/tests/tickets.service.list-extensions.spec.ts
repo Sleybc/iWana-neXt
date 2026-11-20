@@ -53,7 +53,10 @@ describe('TicketsService.list — campos del listado y orden', () => {
       {} as never,
       {} as never,
       {} as never,
-      { listContractIds: jest.fn().mockResolvedValue([]) } as never,
+      {
+        listContractIds: jest.fn().mockResolvedValue([]),
+        findExpedienteId: jest.fn().mockResolvedValue(null),
+      } as never,
       (withPorts ? visits : undefined) as never,
       (withPorts ? orders : undefined) as never,
       { getEffectivePermissionsForUser: async () => permissions } as never,

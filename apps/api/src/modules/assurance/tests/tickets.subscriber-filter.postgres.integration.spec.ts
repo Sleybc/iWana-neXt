@@ -48,8 +48,12 @@ describeWithDb('Assurance tickets por suscriptor — PostgreSQL real', () => {
   let dataSource: DataSource;
   let service: TicketsService;
   const listContractIdsMock = jest.fn().mockResolvedValue([contractId]);
+  const expedienteId = randomUUID();
+  const otherExpedienteId = randomUUID();
+  const findExpedienteIdMock = jest.fn().mockResolvedValue(expedienteId);
   const crmSubscriberReadPort = {
     listContractIds: listContractIdsMock,
+    findExpedienteId: findExpedienteIdMock,
   } as unknown as CrmSubscriberReadPort;
 
   const actor: JwtPayload = {
@@ -168,9 +172,21 @@ describeWithDb('Assurance tickets por suscriptor — PostgreSQL real', () => {
 
   beforeEach(() => {
     listContractIdsMock.mockReset().mockResolvedValue([contractId]);
+    findExpedienteIdMock.mockReset().mockResolvedValue(expedienteId);
   });
 
-  it('incluye las tres vías de vínculo del suscriptor y excluye otros suscriptores y tenants', async () => {
+  it('incluye las cuatro vías de vínculo del suscriptor y excluye otros suscriptores y tenants', async () => {
+    // El ticket de instalación automático se ata al expediente del que nació el suscriptor.
+    const expedienteTicketId = await insertTicket({
+      requesterType: TicketRequesterType.INTERNAL_USER,
+      subjectType: TicketSubjectType.EXPEDIENTE,
+      subjectRefId: expedienteId,
+    });
+    await insertTicket({
+      requesterType: TicketRequesterType.INTERNAL_USER,
+      subjectType: TicketSubjectType.EXPEDIENTE,
+      subjectRefId: otherExpedienteId,
+    });
     const requesterTicketId = await insertTicket({
       requesterType: TicketRequesterType.SUBSCRIBER,
       requesterRefId: subscriberId,
@@ -203,9 +219,10 @@ describeWithDb('Assurance tickets por suscriptor — PostgreSQL real', () => {
     const result = await inTenant(() => service.list({ subscriberId } as never, actor));
 
     expect((result.data as SupportTicket[]).map(({ id }) => id).sort()).toEqual(
-      [requesterTicketId, subjectTicketId, contractTicketId].sort(),
+      [requesterTicketId, subjectTicketId, contractTicketId, expedienteTicketId].sort(),
     );
-    expect(result.total).toBe(3);
+    expect(result.total).toBe(4);
+    expect(findExpedienteIdMock).toHaveBeenCalledWith(tenantId, schemaName, subscriberId);
     expect(listContractIdsMock).toHaveBeenCalledTimes(1);
     expect(listContractIdsMock).toHaveBeenCalledWith(tenantId, schemaName, subscriberId);
   });

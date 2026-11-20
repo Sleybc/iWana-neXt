@@ -236,7 +236,10 @@ describeWithDb('Assurance listado de tickets paso 2 — PostgreSQL real', () => 
       new PqrService(single),
       new TimelineService(single),
       {} as never,
-      { listContractIds: async () => [] } as unknown as CrmSubscriberReadPort,
+      {
+        listContractIds: async () => [],
+        findExpedienteId: async () => null,
+      } as unknown as CrmSubscriberReadPort,
       new FieldServiceWorkAdapter(),
       executionOrders,
       { getEffectivePermissionsForUser: async () => permissions } as never,

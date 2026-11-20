@@ -36,6 +36,7 @@ describe('TicketsService.list — colas, búsqueda y cliente en la fila', () => 
   let qrQuery: jest.Mock;
   let crm: {
     listContractIds: jest.Mock;
+    findExpedienteId: jest.Mock;
     resolveTicketParties: jest.Mock;
     findTicketRequesterIdsByName: jest.Mock;
   };
@@ -92,6 +93,7 @@ describe('TicketsService.list — colas, búsqueda y cliente en la fila', () => 
     (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, fn) => fn(qr));
     crm = {
       listContractIds: jest.fn().mockResolvedValue([]),
+      findExpedienteId: jest.fn().mockResolvedValue(null),
       resolveTicketParties: jest.fn().mockResolvedValue([
         {
           type: 'SUBSCRIBER',

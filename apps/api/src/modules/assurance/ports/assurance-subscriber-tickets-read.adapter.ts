@@ -36,6 +36,11 @@ export class AssuranceSubscriberTicketsReadAdapter extends AssuranceSubscriberTi
       schemaName,
       subscriberId,
     );
+    const expedienteId = await this.crmSubscriberReadPort.findExpedienteId(
+      tenantId,
+      schemaName,
+      subscriberId,
+    );
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const rows = await qr.manager
@@ -43,7 +48,7 @@ export class AssuranceSubscriberTicketsReadAdapter extends AssuranceSubscriberTi
         .select('st.id', 'id')
         .addSelect('st.ticket_number', 'ticket_number')
         .where('st.tenant_id = :tenantId', { tenantId })
-        .andWhere(subscriberTicketLinkPredicate(subscriberId, contractIds))
+        .andWhere(subscriberTicketLinkPredicate(subscriberId, contractIds, expedienteId))
         .orderBy('st.created_at', 'DESC')
         .addOrderBy('st.id', 'DESC')
         .limit(ASSURANCE_SUBSCRIBER_TICKETS_READ_LIMIT)
