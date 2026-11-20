@@ -33,7 +33,9 @@ import {
   type ExecutionOrderLookupResponse,
   type LinkExecutionOrderBody,
   type TicketPartyRef,
+  getInitials,
 } from '@iwana/shared';
+import { COMMENT_AUTHOR_TONES, buildCommentAuthorTones } from './comment-author-tone';
 import type {
   AssuranceCommentSubmission,
   AssuranceTicket,
@@ -406,6 +408,16 @@ export function AssuranceTicketDetail({
   const datesSectionTitleId = `${idPrefix}-rail-dates`;
 
   const usersById = useMemo(() => new Map(assignees.map((user) => [user.id, user])), [assignees]);
+  // Un tono por persona, en orden de aparición, para distinguir quién escribió cada comentario.
+  const authorTones = useMemo(
+    () =>
+      buildCommentAuthorTones(
+        [...comments]
+          .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+          .map((comment) => comment.authorUserId ?? ''),
+      ),
+    [comments],
+  );
   // «Adjuntos (N)»: los de los comentarios que esta persona puede ver (la API ya filtra los
   // internos), en orden de creación. Sale de la misma respuesta de comentarios: sin otra carga.
   const ticketAttachments = useMemo(
@@ -1454,14 +1466,32 @@ export function AssuranceTicketDetail({
                       );
                     }
                     const { comment } = entry;
+                    const authorName = getAssuranceAuthorDisplayName(
+                      usersById.get(comment.authorUserId),
+                    );
+                    const toneIndex = authorTones.get(comment.authorUserId ?? '') ?? 0;
+                    const tone = COMMENT_AUTHOR_TONES[toneIndex] ?? COMMENT_AUTHOR_TONES[0]!;
                     return (
                       <article
                         key={comment.id}
-                        className="rounded-xl border border-gray-200 p-3 dark:border-dark-border"
+                        data-author-tone={toneIndex}
+                        className={cn(
+                          'rounded-xl border border-l-4 border-gray-200 p-3 dark:border-dark-border',
+                          tone.border,
+                        )}
                       >
                         <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold leading-none',
+                              tone.mark,
+                            )}
+                          >
+                            {getInitials(authorName)}
+                          </span>
                           <p className="text-sm font-medium text-gray-900 dark:text-white">
-                            {getAssuranceAuthorDisplayName(usersById.get(comment.authorUserId))}
+                            {authorName}
                           </p>
                           {renderVisibilityBadge(comment)}
                           <span className="text-xs text-gray-500 dark:text-gray-400">
