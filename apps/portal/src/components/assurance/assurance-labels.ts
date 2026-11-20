@@ -415,3 +415,53 @@ export function getAssuranceTimelineDescription(
       return getAssuranceTimelineEventLabel(event.eventType);
   }
 }
+
+/** Eventos que entran a «Comentarios» como línea discreta (spec 2026-11-20 asignación visible, D1). */
+const THREAD_LINE_EVENT_TYPES: ReadonlySet<string> = new Set([
+  TicketTimelineEventType.ASSIGNED,
+  TicketTimelineEventType.REASSIGNED,
+  TicketTimelineEventType.STATUS_CHANGED,
+]);
+
+export interface AssuranceThreadLine {
+  /** Una sola línea: «Ana asignó a Luis», «Ana cambió el estado a En progreso». */
+  text: string;
+  /** Nota escrita por un usuario; se pinta como texto plano. */
+  note: string | null;
+}
+
+/**
+ * Línea de la conversación para una asignación, reasignación o cambio de estado; `null` para el
+ * resto de eventos (CA-2). Con el usuario fuera de la lista cargada se usa el rótulo del
+ * historial («cambió el responsable»), nunca el identificador.
+ */
+export function getAssuranceThreadLine(
+  event: AssuranceTimelineEvent,
+  usersById: Map<string, InternalUser>,
+): AssuranceThreadLine | null {
+  if (!THREAD_LINE_EVENT_TYPES.has(event.eventType)) return null;
+  const payload = (event.payload ?? {}) as Record<string, unknown>;
+  const actor = event.actorUserId
+    ? getAssuranceAuthorDisplayName(usersById.get(event.actorUserId))
+    : 'Sistema';
+  const rawNote = typeof payload.note === 'string' ? payload.note.trim() : '';
+  const note = rawNote || null;
+
+  if (event.eventType === TicketTimelineEventType.STATUS_CHANGED) {
+    return {
+      text: `${actor} cambió el estado a ${getAssuranceTicketStatusLabel(String(payload.to ?? '')).toLowerCase()}`,
+      note,
+    };
+  }
+
+  const assignedUserId = typeof payload.assignedUserId === 'string' ? payload.assignedUserId : null;
+  const assignedUser = assignedUserId ? usersById.get(assignedUserId) : null;
+  const verb = event.eventType === TicketTimelineEventType.ASSIGNED ? 'asignó a' : 'reasignó a';
+  if (!assignedUserId) return { text: `${actor} quitó el responsable`, note };
+  return {
+    text: assignedUser
+      ? `${actor} ${verb} ${formatAssuranceUserName(assignedUser)}`
+      : `${actor} cambió el responsable`,
+    note,
+  };
+}

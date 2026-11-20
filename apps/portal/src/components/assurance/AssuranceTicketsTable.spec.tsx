@@ -443,3 +443,37 @@ describe('Bandeja P2 · cliente en la fila y búsqueda (spec 2026-11-18 §3 K, L
     expect(screen.queryByText('Aún no hay tickets')).not.toBeInTheDocument();
   });
 });
+
+describe('AssuranceTicketsTable — ticket cerrado en solo lectura (spec 2026-11-20 §2, CA-4)', () => {
+  const options = [{ value: 'user-1', label: 'Ana Pérez' }];
+
+  it.each([TicketStatus.CLOSED, TicketStatus.CANCELLED])(
+    '%s: sin «Cambiar responsable» ni «Asignarme»; se ve el responsable como dato',
+    (status) => {
+      renderTable({
+        tickets: [{ ...baseTicket, status }],
+        canManage: true,
+        onAssignToMe: jest.fn(),
+        onReassign: jest.fn(),
+        assigneeOptions: options,
+      });
+      expect(screen.queryByRole('button', { name: /Cambiar responsable/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Asignarme/ })).not.toBeInTheDocument();
+      expect(screen.getAllByText('Sin asignar').length).toBeGreaterThan(0);
+    },
+  );
+
+  it('RESOLVED conserva «Cambiar responsable» y «Asignarme»', () => {
+    renderTable({
+      tickets: [{ ...baseTicket, status: TicketStatus.RESOLVED }],
+      canManage: true,
+      onAssignToMe: jest.fn(),
+      onReassign: jest.fn(),
+      assigneeOptions: options,
+    });
+    expect(
+      screen.getByRole('button', { name: /Cambiar responsable de TK-001/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Asignarme TK-001' })).toBeInTheDocument();
+  });
+});

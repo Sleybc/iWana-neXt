@@ -408,3 +408,62 @@ describe.each(CONTAINERS)('Inventario del lateral — contenedor %s', (container
     }
   });
 });
+
+describe('Ticket cerrado en solo lectura (spec 2026-11-20 ticket cerrado §2, CA-4)', () => {
+  const CLOSED_LINE = 'Este ticket está cerrado. Si el caso continúa, crea uno nuevo';
+
+  it.each([TicketStatus.CLOSED, TicketStatus.CANCELLED])(
+    '%s: sin redactor ni controles de asignación; línea y «Crear ticket»',
+    (status) => {
+      const onCreateFollowUpTicket = jest.fn();
+      const ticket = makeTicket({ status, allowedTransitions: [] });
+      render(
+        <AssuranceTicketPane
+          {...baseProps(ticket)}
+          contextSubscriberId={SUBSCRIBER_ID}
+          onCreateFollowUpTicket={onCreateFollowUpTicket}
+        />,
+      );
+      const scope = screen.getByRole('region', { name: 'Ticket abierto' });
+      expect(within(scope).queryByLabelText('Nuevo comentario')).toBeNull();
+      expect(within(scope).queryByRole('button', { name: 'Agregar comentario' })).toBeNull();
+      expect(within(scope).getByText(CLOSED_LINE)).toBeVisible();
+      expect(within(scope).queryByRole('combobox', { name: 'Responsable' })).toBeNull();
+      expect(within(scope).queryByRole('combobox', { name: 'Área' })).toBeNull();
+      expect(within(scope).queryByRole('button', { name: 'Guardar asignación' })).toBeNull();
+      // Visita y orden también en solo lectura: la API responde 409.
+      expect(within(scope).getByRole('button', { name: 'Solicitar visita' })).toBeDisabled();
+      expect(
+        within(scope).getByRole('button', { name: 'Vincular orden de trabajo' }),
+      ).toBeDisabled();
+      // Responsable y área quedan como dato.
+      expectLabel(scope, 'Responsable', 'assigneeData');
+      expectText(scope, 'Agente Sintético', 'assigneeName');
+      expectLabel(scope, 'Área', 'queueData');
+      within(scope).getByRole('button', { name: 'Crear ticket' }).click();
+      expect(onCreateFollowUpTicket).toHaveBeenCalledWith(
+        expect.objectContaining({ id: TICKET_ID }),
+      );
+    },
+  );
+
+  it('sin permiso de crear: la línea sin botón', () => {
+    render(<AssuranceTicketPane {...baseProps(makeTicket({ status: TicketStatus.CLOSED }))} />);
+    const scope = screen.getByRole('region', { name: 'Ticket abierto' });
+    expect(within(scope).getByText(CLOSED_LINE)).toBeVisible();
+    expect(within(scope).queryByRole('button', { name: 'Crear ticket' })).toBeNull();
+  });
+
+  it('RESOLVED conserva el redactor y la asignación', () => {
+    render(
+      <AssuranceTicketPane
+        {...baseProps(makeTicket({ status: TicketStatus.RESOLVED }))}
+        onCreateFollowUpTicket={jest.fn()}
+      />,
+    );
+    const scope = screen.getByRole('region', { name: 'Ticket abierto' });
+    expect(within(scope).getByLabelText('Nuevo comentario')).toBeInTheDocument();
+    expect(within(scope).queryByText(CLOSED_LINE)).toBeNull();
+    expect(within(scope).getByRole('combobox', { name: 'Responsable' })).toBeInTheDocument();
+  });
+});

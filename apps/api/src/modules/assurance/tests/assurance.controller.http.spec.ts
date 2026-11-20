@@ -1,4 +1,9 @@
-import { ForbiddenException, INestApplication, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  INestApplication,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { UserRole } from '@iwana/shared';
@@ -65,6 +70,19 @@ jest.mock('../../auth/guards/jwt-auth.guard', () => ({
         return true;
       }
 
+      if (authHeader === 'Bearer support-noperm-token') {
+        req.user = {
+          sub: 'support-noperm-001',
+          email: 'support-noperm@example.test',
+          role: UserRole.SUPPORT,
+          tenantId: 'tenant-001',
+          schemaName: 'tenant_001',
+          jti: 'jti-support-noperm',
+          type: 'tenant',
+        } as JwtPayload;
+        return true;
+      }
+
       if (authHeader === 'Bearer tech-token') {
         req.user = {
           sub: 'tech-001',
@@ -85,7 +103,17 @@ jest.mock('../../auth/guards/jwt-auth.guard', () => ({
 
 jest.mock('../../access-control/guards/permissions.guard', () => ({
   PermissionsGuard: class PermissionsGuard {
-    canActivate() {
+    // El usuario 'support-noperm-001' tiene rol SUPPORT pero no tiene ningún permiso granular.
+    canActivate(context: {
+      switchToHttp: () => { getRequest: () => { user?: JwtPayload } };
+      getHandler: () => unknown;
+    }): boolean {
+      const required: string[] =
+        Reflect.getMetadata('permissions', context.getHandler() as object) ?? [];
+      const user = context.switchToHttp().getRequest().user;
+      if (required.length > 0 && user?.sub === 'support-noperm-001') {
+        throw new ForbiddenException('No tiene permisos para ejecutar esta accion.');
+      }
       return true;
     }
   },
@@ -130,6 +158,7 @@ describe('AssuranceController HTTP', () => {
     requestFieldService: jest.fn(),
     assign: jest.fn(),
     linkWorkOrder: jest.fn(),
+    linkExecutionOrder: jest.fn(),
   };
 
   const commentsServiceMock = {
@@ -232,6 +261,86 @@ describe('AssuranceController HTTP', () => {
         queueName: 'NOC',
       })
       .expect(201);
+  });
+
+  describe('ticket cerrado en solo lectura (spec 2026-11-20)', () => {
+    const closed = () =>
+      new ConflictException({
+        code: 'TICKET_CLOSED_READ_ONLY',
+        message: 'Este ticket está cerrado. Si el caso continúa, crea uno nuevo.',
+      });
+
+    it('responde 409 con código al comentar un ticket cerrado', async () => {
+      ticketsServiceMock.getById.mockResolvedValueOnce({ id: TICKET_UUID });
+      commentsServiceMock.addComment.mockRejectedValueOnce(closed());
+      const response = await request(app.getHttpServer())
+        .post(`/api/v1/assurance/tickets/${TICKET_UUID}/comments`)
+        .set('Authorization', 'Bearer support-token')
+        .send({ body: 'Hola' })
+        .expect(409);
+      expect(response.body).toMatchObject({ code: 'TICKET_CLOSED_READ_ONLY' });
+    });
+
+    it('responde 409 con código al reasignar un ticket cerrado', async () => {
+      ticketsServiceMock.assign.mockRejectedValueOnce(closed());
+      const response = await request(app.getHttpServer())
+        .post(`/api/v1/assurance/tickets/${TICKET_UUID}/assign`)
+        .set('Authorization', 'Bearer support-token')
+        .send({ assignedUserId: '22222222-2222-4222-8222-222222222222' })
+        .expect(409);
+      expect(response.body).toMatchObject({ code: 'TICKET_CLOSED_READ_ONLY' });
+    });
+
+    it.each([
+      ['link-work-order', 'linkWorkOrder', { workOrderId: '33333333-3333-4333-8333-333333333333' }],
+      [
+        'link-execution-order',
+        'linkExecutionOrder',
+        { executionOrderId: '33333333-3333-4333-8333-333333333333' },
+      ],
+      ['request-field-service', 'requestFieldService', { notes: null }],
+    ] as const)(
+      'responde 409 con código en %s sobre un ticket cerrado',
+      async (path, method, body) => {
+        ticketsServiceMock[method].mockRejectedValueOnce(closed());
+        const response = await request(app.getHttpServer())
+          .post(`/api/v1/assurance/tickets/${TICKET_UUID}/${path}`)
+          .set('Authorization', 'Bearer support-token')
+          .send(body)
+          .expect(409);
+        expect(response.body).toMatchObject({ code: 'TICKET_CLOSED_READ_ONLY' });
+      },
+    );
+  });
+
+  describe('POST /tickets/:id/assign rechazos (CA-8)', () => {
+    const body = { assignedUserId: '22222222-2222-4222-8222-222222222222' };
+
+    it.each([
+      ['sin nota', body],
+      ['con nota', { ...body, note: 'Pasa a NOC por caída del nodo' }],
+    ])('returns 403 when TECHNICIAN assigns (%s)', async (_label, payload) => {
+      ticketsServiceMock.assign.mockClear();
+      await request(app.getHttpServer())
+        .post(`/api/v1/assurance/tickets/${TICKET_UUID}/assign`)
+        .set('Authorization', 'Bearer tech-token')
+        .send(payload)
+        .expect(403);
+      expect(ticketsServiceMock.assign).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['sin nota', body],
+      ['con nota', { ...body, note: 'Pasa a NOC por caída del nodo' }],
+    ])('returns 403 when the user lacks assurance.tickets.manage (%s)', async (_label, payload) => {
+      ticketsServiceMock.assign.mockClear();
+      await request(app.getHttpServer())
+        .post(`/api/v1/assurance/tickets/${TICKET_UUID}/assign`)
+        .set('Authorization', 'Bearer support-noperm-token')
+        .send(payload)
+        .expect(403);
+      expect(ticketsServiceMock.assign).not.toHaveBeenCalled();
+    });
   });
 
   it('returns 201 when SUPPORT links a work order reference', async () => {

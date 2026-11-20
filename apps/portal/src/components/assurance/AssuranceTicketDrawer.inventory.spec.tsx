@@ -373,7 +373,11 @@ function propertyMismatches(
       ticket.subjectType === TicketSubjectType.SUBSCRIBER &&
       ticket.subjectRefId === contextSubscriberId;
     const expected = !relatedIsContext && (spec.when ? spec.when(ticket) : true);
-    const locate = HEADER_CONTROL_PROPERTIES.has(key) ? findHeaderControlValue : findProperty;
+    // Spec 2026-11-20 ticket cerrado §2: en cerrado o cancelado Responsable y Área son dato.
+    const locate =
+      HEADER_CONTROL_PROPERTIES.has(key) && !isTerminal(ticket.status)
+        ? findHeaderControlValue
+        : findProperty;
     const found = locate(panel, PROPERTY_LABELS[key], spec.value(ticket, users)) !== null;
     if (found !== expected) {
       mismatches.push(`propiedad ${key}: se esperaba ${expected ? 'visible' : 'ausente'}`);
@@ -464,19 +468,22 @@ const ACTION_INVENTORY: Record<string, ActionSpec> = {
   assignee: {
     surface: 'actions',
     locate: (p) => within(p).queryByRole('combobox', { name: 'Responsable' }),
-    expected: (c) => (c.canManage ? 'enabled' : 'disabled'),
+    // Spec 2026-11-20 ticket cerrado §2: sin control en cerrado o cancelado.
+    expected: (c) => (isTerminal(c.status) ? 'absent' : c.canManage ? 'enabled' : 'disabled'),
   },
   area: {
     surface: 'actions',
     locate: (p) => within(p).queryByRole('combobox', { name: 'Área' }),
-    expected: (c) => (c.canManage ? 'enabled' : 'disabled'),
+    // Spec 2026-11-20 ticket cerrado §2: sin control en cerrado o cancelado.
+    expected: (c) => (isTerminal(c.status) ? 'absent' : c.canManage ? 'enabled' : 'disabled'),
   },
   // Ajuste CA-2 aprobado 2026-11-16: aparece solo cuando cambia responsable o área
   // (`revealSurface` cambia el área cuando la lista está habilitada). Guarda sin cambio.
   assignmentSubmit: {
     surface: 'actions',
     locate: (p) => within(p).queryByRole('button', { name: 'Guardar asignación' }),
-    expected: (c) => (c.canManage ? 'enabled' : 'absent'),
+    // Spec 2026-11-20 ticket cerrado §2: sin guardado en cerrado o cancelado.
+    expected: (c) => (c.canManage && !isTerminal(c.status) ? 'enabled' : 'absent'),
   },
   // Spec §4 nota v1.1: el formulario en línea no se abre sin el permiso de su acción; el botón
   // de la fila queda deshabilitado y es lo que se localiza cuando el formulario no está.
@@ -510,12 +517,16 @@ const ACTION_INVENTORY: Record<string, ActionSpec> = {
   linkWorkOrderInput: {
     surface: 'actions',
     locate: (p) => within(p).queryByRole('textbox', { name: 'Orden de trabajo' }),
-    expected: (c) => (c.canManage && c.canReadExecutionOrders ? 'present' : 'absent'),
+    // Ticket cerrado §2: en terminal no se vincula (la API responde 409).
+    expected: (c) =>
+      c.canManage && c.canReadExecutionOrders && !isTerminal(c.status) ? 'present' : 'absent',
   },
   linkWorkOrderNote: {
     surface: 'actions',
     locate: (p) => within(p).queryByRole('textbox', { name: 'Nota de vínculo' }),
-    expected: (c) => (c.canManage && c.canReadExecutionOrders ? 'present' : 'absent'),
+    // Ticket cerrado §2: en terminal no se vincula (la API responde 409).
+    expected: (c) =>
+      c.canManage && c.canReadExecutionOrders && !isTerminal(c.status) ? 'present' : 'absent',
   },
   linkWorkOrder: {
     surface: 'actions',
@@ -524,7 +535,8 @@ const ACTION_INVENTORY: Record<string, ActionSpec> = {
       within(p).queryByRole('button', { name: 'Vincular orden de trabajo' }),
     // P2b §3 L: «Confirmar vínculo» aparece con una orden encontrada; antes de buscar se localiza
     // el botón de la fila, que exige gestión y ver órdenes de trabajo.
-    expected: (c) => (c.canManage && c.canReadExecutionOrders ? 'enabled' : 'disabled'),
+    expected: (c) =>
+      c.canManage && c.canReadExecutionOrders && !isTerminal(c.status) ? 'enabled' : 'disabled',
   },
   readOnlyNotice: {
     surface: 'actions',
@@ -539,23 +551,26 @@ const ACTION_INVENTORY: Record<string, ActionSpec> = {
   commentBody: {
     surface: 'thread',
     locate: (p) => within(p).queryByRole('textbox', { name: 'Nuevo comentario' }),
-    expected: (c) => (c.canOperate ? 'enabled' : 'absent'),
+    // Spec 2026-11-20 ticket cerrado §2: sin redactor en cerrado o cancelado.
+    expected: (c) => (c.canOperate && !isTerminal(c.status) ? 'enabled' : 'absent'),
   },
   commentInternal: {
     surface: 'thread',
     locate: (p) => within(p).queryByRole('checkbox', { name: 'Interno' }),
-    expected: (c) => (c.canOperate ? 'enabled' : 'absent'),
+    // Spec 2026-11-20 ticket cerrado §2: sin redactor en cerrado o cancelado.
+    expected: (c) => (c.canOperate && !isTerminal(c.status) ? 'enabled' : 'absent'),
   },
   commentAttach: {
     surface: 'thread',
     locate: (p) => within(p).queryByLabelText('Adjuntar archivos'),
-    expected: (c) => (c.canOperate ? 'enabled' : 'absent'),
+    // Spec 2026-11-20 ticket cerrado §2: sin redactor en cerrado o cancelado.
+    expected: (c) => (c.canOperate && !isTerminal(c.status) ? 'enabled' : 'absent'),
   },
   commentSubmit: {
     surface: 'thread',
     locate: (p) => within(p).queryByRole('button', { name: 'Agregar comentario' }),
     // Sin texto está deshabilitado; la prueba de interacción cubre el habilitado.
-    expected: (c) => (c.canOperate ? 'disabled' : 'absent'),
+    expected: (c) => (c.canOperate && !isTerminal(c.status) ? 'disabled' : 'absent'),
   },
 };
 

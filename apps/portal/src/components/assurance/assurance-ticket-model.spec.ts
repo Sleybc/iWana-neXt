@@ -1,10 +1,17 @@
-import { SlaBreachStatus, TicketFieldDecision, TicketPriority, TicketStatus } from '@iwana/shared';
+import {
+  SlaBreachStatus,
+  TicketFieldDecision,
+  TicketPriority,
+  TicketRequesterType,
+  TicketStatus,
+} from '@iwana/shared';
 import type { AssuranceTicket } from '@/lib/api-client';
 import {
   compareTickets,
   getTicketDeadline,
   getTicketDeadlineState,
   getTicketAssigneeLabel,
+  getFollowUpSubscriber,
   getTicketFieldWork,
   isTerminalTicket,
   needsAttention,
@@ -332,5 +339,36 @@ describe('responsable del listado (CA-15)', () => {
         lastName: 'Patrón',
       } as never),
     ).toBe('Numa Patrón');
+  });
+});
+
+describe('getFollowUpSubscriber (spec 2026-11-20 ticket cerrado §2)', () => {
+  const base: Pick<AssuranceTicket, 'requesterType' | 'requesterRefId'> = {
+    requesterType: TicketRequesterType.SUBSCRIBER,
+    requesterRefId: 'sub-1',
+  };
+
+  it('usa el nombre del detalle, luego el del listado y luego un texto neutro', () => {
+    expect(
+      getFollowUpSubscriber({
+        ...base,
+        requester: { displayName: 'Titular Uno' } as never,
+      }),
+    ).toEqual({ id: 'sub-1', label: 'Titular Uno' });
+    expect(getFollowUpSubscriber({ ...base, requesterDisplayName: 'Titular Dos' })).toEqual({
+      id: 'sub-1',
+      label: 'Titular Dos',
+    });
+    expect(getFollowUpSubscriber(base)).toEqual({
+      id: 'sub-1',
+      label: 'Cliente del ticket anterior',
+    });
+  });
+
+  it('sin suscriptor solicitante no precarga cliente', () => {
+    expect(
+      getFollowUpSubscriber({ ...base, requesterType: TicketRequesterType.INTERNAL_USER }),
+    ).toBeNull();
+    expect(getFollowUpSubscriber({ ...base, requesterRefId: null })).toBeNull();
   });
 });

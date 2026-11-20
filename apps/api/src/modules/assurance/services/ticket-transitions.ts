@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import {
   AccessPermissionKey,
   TicketStatus,
@@ -127,4 +128,26 @@ export function allowedTicketTransitions(
           ? ('PQR_RECORD_INCOMPLETE' as const)
           : null,
     }));
+}
+
+/** Estados en solo lectura para personas: sin comentarios, adjuntos ni reasignación (spec 2026-11-20). */
+export const READ_ONLY_TICKET_STATUSES: readonly TicketStatus[] = [
+  TicketStatus.CLOSED,
+  TicketStatus.CANCELLED,
+];
+
+export const TICKET_CLOSED_READ_ONLY = 'TICKET_CLOSED_READ_ONLY';
+
+/**
+ * Rechaza con 409 las escrituras de personas sobre un ticket cerrado o cancelado. Se llama con el
+ * ticket leído con bloqueo dentro de la misma transacción de la escritura. Lo que escribe el
+ * sistema (aviso de cierre de orden, historial, importación UISP) no pasa por aquí.
+ */
+export function assertTicketWritable(ticket: { status: TicketStatus }): void {
+  if (READ_ONLY_TICKET_STATUSES.includes(ticket.status)) {
+    throw new ConflictException({
+      code: TICKET_CLOSED_READ_ONLY,
+      message: 'Este ticket está cerrado. Si el caso continúa, crea uno nuevo.',
+    });
+  }
 }

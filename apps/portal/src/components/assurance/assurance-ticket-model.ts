@@ -1,4 +1,10 @@
-import { SlaBreachStatus, TicketFieldDecision, TicketPriority, TicketStatus } from '@iwana/shared';
+import {
+  SlaBreachStatus,
+  TicketFieldDecision,
+  TicketPriority,
+  TicketRequesterType,
+  TicketStatus,
+} from '@iwana/shared';
 import type { AssuranceTicket, InternalUser } from '@/lib/api-client';
 import { EXECUTION_ORDER_STATUS_LABELS } from '@/components/operations/operations-labels';
 import {
@@ -16,6 +22,28 @@ const TERMINAL_STATUSES = new Set<TicketStatus>([TicketStatus.CLOSED, TicketStat
 /** Cerrado o cancelado: el detalle deja de ofrecer acciones. */
 export function isTerminalTicket(ticket: Pick<AssuranceTicket, 'status'>): boolean {
   return TERMINAL_STATUSES.has(ticket.status);
+}
+
+/** Nombre del cliente precargado cuando el detalle oculta el del titular (privacidad). */
+export const FOLLOW_UP_UNNAMED_SUBSCRIBER_LABEL = 'Cliente del ticket anterior';
+
+/**
+ * Cliente con el que se precarga el ticket nuevo que continúa uno cerrado (spec 2026-11-20 ticket
+ * cerrado §2). Solo si el solicitante es un suscriptor; si no, la creación abre sin cliente.
+ */
+export function getFollowUpSubscriber(
+  ticket: Pick<
+    AssuranceTicket,
+    'requesterType' | 'requesterRefId' | 'requester' | 'requesterDisplayName'
+  >,
+): { id: string; label: string } | null {
+  if (ticket.requesterType !== TicketRequesterType.SUBSCRIBER || !ticket.requesterRefId)
+    return null;
+  const label =
+    ticket.requester?.displayName?.trim() ||
+    ticket.requesterDisplayName?.trim() ||
+    FOLLOW_UP_UNNAMED_SUBSCRIBER_LABEL;
+  return { id: ticket.requesterRefId, label };
 }
 
 /** Cuenta como abierto en listas y conteos: ni resuelto, ni cerrado, ni cancelado (D1). */

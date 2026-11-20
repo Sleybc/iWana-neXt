@@ -13,7 +13,7 @@ import {
   portalPanelDenseActionClassName,
 } from '@/components/shared/portal-ui';
 import { AssuranceTicketDetail } from './AssuranceTicketDetail';
-import { ASSURANCE_PATH } from './assurance-routes';
+import { ASSURANCE_PATH, getAssuranceCreateFromTicketPath } from './assurance-routes';
 import { AssuranceAccessState } from './assurance-ui';
 import {
   getAssuranceRoleAccess,
@@ -107,6 +107,10 @@ export function AssuranceTicketPageClient() {
       canManage={canManage}
       canOperate={canView}
       emptyDescription="Vuelve a la mesa de ayuda para elegir otro caso."
+      // Ticket cerrado: la creación vive en Mesa de ayuda; se abre allí con su cliente (§2).
+      onCreateFollowUpTicket={
+        canManage ? (source) => router.push(getAssuranceCreateFromTicketPath(source.id)) : undefined
+      }
       onCreateLinkedTask={() => {
         router.push(
           `/dashboard/operations/tasks/new?ticketId=${encodeURIComponent(ticketId)}&fromAssurance=1`,

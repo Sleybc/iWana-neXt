@@ -472,6 +472,63 @@ describeWithDb('Adjuntos de tickets — PostgreSQL real', () => {
     expect(storage.objects.has(`${schemaName}/ticket_attachment/${mediaAssetId}`)).toBe(false);
   });
 
+  describe('ticket cerrado en solo lectura (spec 2026-11-20)', () => {
+    it.each([TicketStatus.CLOSED, TicketStatus.CANCELLED])(
+      'en %s rechaza el comentario con adjuntos con 409 y no guarda nada',
+      async (status) => {
+        const ticketId = await insertTicket();
+        await dataSource.query(
+          `UPDATE ${quotedSchema}.support_tickets SET status = $2 WHERE id = $1`,
+          [ticketId, status],
+        );
+        await expect(
+          inTenant(() =>
+            service.createCommentWithAttachments(
+              ticketId,
+              { body: 'Tarde', isInternal: true },
+              [file(syntheticPng(), 'foto.png', 'image/png')],
+              support,
+            ),
+          ),
+        ).rejects.toMatchObject({ status: 409, response: { code: 'TICKET_CLOSED_READ_ONLY' } });
+        expect(await count('ticket_comments', ticketId)).toBe(0);
+        expect(await count('ticket_comment_attachments', ticketId)).toBe(0);
+      },
+    );
+
+    it('la importación de UISP sigue adjuntando sobre un ticket cerrado (CA-3)', async () => {
+      const adapter = new AssuranceMigrationImportAdapter(media);
+      const batchId = randomUUID();
+      const ticketId = await insertTicket();
+      await dataSource.query(
+        `UPDATE ${quotedSchema}.support_tickets SET status = $2, import_batch_id = $3 WHERE id = $1`,
+        [ticketId, TicketStatus.CLOSED, batchId],
+      );
+      const insertedComments = (await dataSource.query(
+        `INSERT INTO ${quotedSchema}.ticket_comments (ticket_id, tenant_id, body, is_internal, author_user_id)
+         VALUES ($1, $2, 'Comentario importado', false, $3) RETURNING id::text AS id`,
+        [ticketId, tenantId, supportId],
+      )) as Array<{ id: string }>;
+      const commentId = insertedComments[0]!.id;
+      const result = (await runInTenantSchema(dataSource, schemaName, (qr) =>
+        adapter.createImportedAttachment(
+          { manager: qr.manager, tenantId, schemaName, batchId, actorId: supportId },
+          {
+            ticketId,
+            commentId,
+            externalId: 'uisp:ticket_attachment:900099',
+            filename: 'acta.pdf',
+            declaredContentType: 'application/pdf',
+            buffer: syntheticPdf(),
+            uploadedByUserId: null,
+          },
+        ),
+      )) as { status: string };
+      expect(result.status).toBe('CREATED');
+      expect(await count('ticket_comment_attachments', ticketId)).toBe(1);
+    });
+  });
+
   it('puerto de importación (bloque C): idempotente por external_id, motivo por rechazo y retiro del lote', async () => {
     const adapter = new AssuranceMigrationImportAdapter(media);
     const batchId = randomUUID();

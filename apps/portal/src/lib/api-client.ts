@@ -3595,6 +3595,8 @@ export interface AddAssuranceCommentDto {
 export interface AssignAssuranceTicketDto {
   assignedUserId?: string | null | undefined;
   queueName?: TicketQueue | null | undefined;
+  /** Nota opcional de la (re)asignación (MOD10 asignación visible, CA-6). */
+  note?: string | null | undefined;
 }
 
 export interface RequestAssuranceFieldServiceDto {

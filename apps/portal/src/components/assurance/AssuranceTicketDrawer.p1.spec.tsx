@@ -523,8 +523,11 @@ describe('AssuranceTicketDrawer P1 — formularios en línea y permisos (§4 not
       );
       expect(hint).toBeVisible();
       expect(toggle).toHaveAccessibleDescription(hint.textContent ?? '');
-      // «Vincular orden de trabajo» solo depende de canManage: el estado no lo bloquea.
-      expect(screen.getByRole('button', { name: 'Vincular orden de trabajo' })).toBeEnabled();
+      // «Vincular orden de trabajo» depende de canManage y, desde la regla de ticket cerrado
+      // (spec 2026-11-20 §2), de que el ticket no sea terminal: la API responde 409.
+      const link = screen.getByRole('button', { name: 'Vincular orden de trabajo' });
+      if (status === TicketStatus.CLOSED) expect(link).toBeDisabled();
+      else expect(link).toBeEnabled();
     },
   );
 

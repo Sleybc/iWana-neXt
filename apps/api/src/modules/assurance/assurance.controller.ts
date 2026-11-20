@@ -87,6 +87,7 @@ import { CommentsService } from './services/comments.service';
 import { SlaService } from './services/sla.service';
 import { TicketsService } from './services/tickets.service';
 import { TimelineService } from './services/timeline.service';
+import { redactAssignmentNotes } from './services/comment-visibility';
 import { TicketAttachmentsService } from './services/ticket-attachments.service';
 import { TicketAttachmentsUploadSizeInterceptor } from './ticket-attachments-upload-size.interceptor';
 import {
@@ -449,7 +450,7 @@ export class AssuranceController {
   @ApiOperation({ summary: 'Listar timeline del ticket' })
   async listTimeline(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: JwtPayload) {
     await this.ticketsService.getById(id, actor);
-    return this.timelineService.listTimeline(id);
+    return redactAssignmentNotes(await this.timelineService.listTimeline(id), actor);
   }
 
   @Post('tickets/:id/field-service')

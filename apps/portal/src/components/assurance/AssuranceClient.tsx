@@ -45,6 +45,7 @@ import { AssuranceCreateTicketForm } from './AssuranceCreateTicketForm';
 import type { AssuranceCreateTicketSubmitPayload } from './AssuranceCreateTicketForm';
 import { AssuranceTicketDrawer } from './AssuranceTicketDrawer';
 import { AssuranceTicketsTable } from './AssuranceTicketsTable';
+import type { ReassignPayload } from './AssigneeReassignControl';
 import {
   ASSURANCE_INBOX_QUEUES,
   ASSURANCE_TICKET_PRIORITY_LABELS,
@@ -58,7 +59,9 @@ import {
 import type { AssuranceInboxQueue } from './assurance-labels';
 import { AssuranceAccessState } from './assurance-ui';
 import { createAssuranceVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
-import { ASSURANCE_TICKET_QUERY_KEY } from './assurance-routes';
+import { ASSURANCE_CREATE_FROM_QUERY_KEY, ASSURANCE_TICKET_QUERY_KEY } from './assurance-routes';
+import type { SearchablePickerItem } from '@/components/shared/SearchablePicker';
+import { getFollowUpSubscriber } from './assurance-ticket-model';
 import {
   getAssuranceRoleAccess,
   loadOperationalUsers,
@@ -129,6 +132,7 @@ function AssuranceClientInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const ticketIdParam = searchParams.get(ASSURANCE_TICKET_QUERY_KEY);
+  const createFromParam = searchParams.get(ASSURANCE_CREATE_FROM_QUERY_KEY);
   const { user, isLoading: authLoading } = useAuth();
   const { hasPermission } = usePermissions();
   const canManageWfmSchedule = hasPermission(AccessPermissionKey.WFM_SCHEDULE_MANAGE);
@@ -167,6 +171,8 @@ function AssuranceClientInner() {
   const [outOfRangeNotice, setOutOfRangeNotice] = useState<string | null>(null);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  /** Cliente precargado al crear desde un ticket cerrado (spec 2026-11-20 ticket cerrado §2). */
+  const [createSubscriber, setCreateSubscriber] = useState<SearchablePickerItem | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreateSubmitting, setIsCreateSubmitting] = useState(false);
 
@@ -409,6 +415,37 @@ function AssuranceClientInner() {
     [canManageAssurance, loadData, user],
   );
 
+  // Reasignar desde la fila (spec 2026-11-20 asignación visible, bloque C): mismo flujo y mensajes
+  // que «Asignarme»; el responsable elegido sale de la lista que ya alimenta el detalle.
+  const reassignTicket = useCallback(
+    async (ticket: AssuranceTicket, payload: ReassignPayload) => {
+      if (!canManageAssurance) return;
+      setAssignError(null);
+      setFeedback(null);
+      setAssigningTicketId(ticket.id);
+      try {
+        await assuranceApi.tickets.assign(ticket.id, payload);
+        const label = assigneeLabelById.get(payload.assignedUserId);
+        setFeedback(
+          label
+            ? `El ticket ${ticket.ticketNumber} quedó asignado a ${label}.`
+            : `El responsable del ticket ${ticket.ticketNumber} quedó actualizado.`,
+        );
+        await loadData();
+      } catch (assignTicketError) {
+        setAssignError(mapAssuranceError(assignTicketError));
+      } finally {
+        setAssigningTicketId(null);
+      }
+    },
+    [assigneeLabelById, canManageAssurance, loadData],
+  );
+  const assigneeOptions = useMemo(
+    () =>
+      assignees.map((entry) => ({ value: entry.id, label: getAssuranceUserDisplayName(entry) })),
+    [assignees],
+  );
+
   const pageCount = ticketsMeta.totalPages ?? (ticketsMeta.total > 0 ? 1 : 0);
   const effectivePage = ticketsMeta.page ?? page;
   const { from, to } = listPageWindow({
@@ -471,6 +508,59 @@ function AssuranceClientInner() {
     setIsDrawerOpen(false);
     clearTicketMessages();
   }, [clearTicketMessages]);
+
+  // Ticket cerrado o cancelado: abre «Crear ticket» con su cliente (spec 2026-11-20 §2).
+  const openCreateFromTicket = useCallback(
+    (source: AssuranceTicket) => {
+      closeTicket();
+      setCreateError(null);
+      setCreateSubscriber(getFollowUpSubscriber(source));
+      setIsCreateOpen(true);
+    },
+    [closeTicket],
+  );
+
+  // La página propia del ticket llega con `?crearDesde=`: se lee el ticket, se abre la creación y
+  // el parámetro se retira para que recargar no la reabra.
+  useEffect(() => {
+    if (!createFromParam || authLoading || !user || !canManageAssurance) return;
+    let cancelled = false;
+    void assuranceApi.tickets
+      .get(createFromParam)
+      .then((source) => {
+        if (!cancelled) openCreateFromTicket(source);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCreateSubscriber(null);
+          setIsCreateOpen(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          router.replace(
+            withSearchParams(
+              pathname,
+              mergeUrlSearchParams(searchParams, {
+                [ASSURANCE_CREATE_FROM_QUERY_KEY]: null,
+              }),
+            ),
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    createFromParam,
+    authLoading,
+    user,
+    canManageAssurance,
+    openCreateFromTicket,
+    router,
+    pathname,
+    searchParams,
+  ]);
 
   // La URL manda (spec §6 CA-11): recargar con `?ticketId=` reabre el panel y «Atrás» (el
   // parámetro desaparece) lo cierra. Solo se reacciona a cambios del parámetro, no a cada render.
@@ -621,9 +711,14 @@ function AssuranceClientInner() {
               setFeedback(null);
               openTicket(ticket);
             }}
-            onOpenCreate={() => setIsCreateOpen(true)}
+            onOpenCreate={() => {
+              setCreateSubscriber(null);
+              setIsCreateOpen(true);
+            }}
             canManage={canManageAssurance}
             onAssignToMe={(ticket) => void assignToMe(ticket)}
+            assigneeOptions={assigneeOptions}
+            onReassign={(ticket, payload) => void reassignTicket(ticket, payload)}
             assigningTicketId={assigningTicketId}
           />
 
@@ -730,6 +825,9 @@ function AssuranceClientInner() {
           </DialogHeader>
           {canManageAssurance ? (
             <AssuranceCreateTicketForm
+              // El formulario fija sus valores al montar: otra clave al cambiar de cliente.
+              key={createSubscriber?.id ?? 'sin-cliente'}
+              subscriber={createSubscriber}
               assignees={assignees}
               slaPolicies={slaPolicies}
               allowWfmFollowUp={canManageWfmSchedule}
@@ -789,6 +887,7 @@ function AssuranceClientInner() {
         assignees={assignees}
         canManage={canManageAssurance}
         canOperate={canViewAssurance}
+        onCreateFollowUpTicket={canManageAssurance ? openCreateFromTicket : undefined}
         onCreateLinkedTask={() => {
           const ticketId = ticketDetail.ticketId;
           if (!ticketId) return;

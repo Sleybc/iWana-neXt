@@ -17,6 +17,7 @@ import {
   type TicketFieldWork,
 } from './assurance-ticket-model';
 import { formatElapsed } from '@/lib/format-relative-time';
+import { AssigneeMark } from './AssigneeMark';
 import { formatTicketAttachmentCount } from './ticket-attachments';
 import { TicketPriorityBadge, TicketStatusBadge } from './ticket-badges';
 
@@ -181,9 +182,9 @@ export function TicketListItem({
                 <FieldWorkIcon className="h-3.5 w-3.5" aria-hidden="true" />
               </span>
             ) : null}
-            <span className="min-w-0 flex-1 truncate" title={assigneeLabel}>
-              {assigneeLabel}
-            </span>
+            {/* La descripción accesible ya dice «Responsable X»: el círculo no repite el prefijo. */}
+            <AssigneeMark label={assigneeLabel} size="xs" />
+            <span className="min-w-0 flex-1" aria-hidden="true" />
             {attachmentsLabel ? (
               <span
                 data-testid="ticket-attachment-clip"
@@ -271,9 +272,7 @@ export function TicketListItem({
               </span>
             ) : null}
             <span aria-hidden="true">·</span>
-            <span className="min-w-0 flex-1 truncate @lg:flex-initial">
-              <span className="sr-only">Responsable:</span> {assigneeLabel}
-            </span>
+            <AssigneeMark label={assigneeLabel} size="xs" srPrefix="Responsable:" />
             {attachmentsLabel ? (
               <span
                 data-testid="ticket-attachment-clip"

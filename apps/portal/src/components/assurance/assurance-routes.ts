@@ -7,3 +7,10 @@ export const ASSURANCE_TICKET_QUERY_KEY = 'ticketId';
 export function getAssuranceTicketPath(ticketId: string): string {
   return `${ASSURANCE_PATH}/tickets/${encodeURIComponent(ticketId)}`;
 }
+
+/** Parámetro de la bandeja que abre «Crear ticket» precargado desde un ticket cerrado. */
+export const ASSURANCE_CREATE_FROM_QUERY_KEY = 'crearDesde';
+
+export function getAssuranceCreateFromTicketPath(ticketId: string): string {
+  return `${ASSURANCE_PATH}?${ASSURANCE_CREATE_FROM_QUERY_KEY}=${encodeURIComponent(ticketId)}`;
+}

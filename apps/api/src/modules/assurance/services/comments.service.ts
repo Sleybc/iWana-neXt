@@ -9,6 +9,7 @@ import { TicketTimelineEventType, UserRole } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { TimelineService } from './timeline.service';
 import { canSeeInternal } from './comment-visibility';
+import { assertTicketWritable } from './ticket-transitions';
 
 const RESTRICTED_ROLES: UserRole[] = [UserRole.TECHNICIAN, UserRole.CONTRACTOR];
 
@@ -29,7 +30,11 @@ export class CommentsService {
     const validated = AddCommentSchema.parse(input);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const ticket = await qr.manager.findOne(SupportTicket, { where: { id: ticketId, tenantId } });
+      // Bloqueo de fila: un cierre concurrente espera o se ve aquí ya confirmado.
+      const ticket = await qr.manager.findOne(SupportTicket, {
+        where: { id: ticketId, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
 
       if (!ticket) {
         throw new NotFoundException(`Ticket ${ticketId} no encontrado`);
@@ -41,6 +46,8 @@ export class CommentsService {
       ) {
         throw new ForbiddenException('No tienes acceso a este ticket');
       }
+
+      assertTicketWritable(ticket);
 
       await this.crmSubscriberReadPort.assertWritableReferences(
         ticketTitularReferences(ticket),

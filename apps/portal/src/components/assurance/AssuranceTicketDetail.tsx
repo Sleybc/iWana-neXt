@@ -73,8 +73,10 @@ import {
   ASSURANCE_UNLINKED_WORK_ORDER_LABEL,
   formatAssuranceDateTime,
   formatAssuranceReference,
+  getAssuranceAssigneeLabel,
   getAssuranceAuthorDisplayName,
   getAssuranceFieldDecisionLabel,
+  getAssuranceQueueLabel,
   getAssuranceRequesterTypeLabel,
   getAssuranceSlaStatusLabel,
   getAssuranceSlaStatusVariant,
@@ -85,6 +87,7 @@ import {
   getAssuranceTicketStatusLabel,
   getAssuranceTicketStatusVariant,
   getAssuranceTicketTypeLabel,
+  getAssuranceThreadLine,
   getAssuranceTimelineDescription,
   getAssuranceTimelineEventLabel,
   getAssuranceUserDisplayName,
@@ -96,6 +99,7 @@ import {
   getTicketVisitHref,
 } from './assurance-ticket-links';
 import { assuranceTextareaClassName } from './assurance-ui';
+import { ASSIGNMENT_NOTE_MAX_LENGTH, withAssignmentNote } from './AssigneeReassignControl';
 import { TicketAttachmentList } from './TicketAttachmentList';
 import { TicketAttachmentPicker } from './TicketAttachmentPicker';
 import { formatTicketAttachmentCount } from './ticket-attachments';
@@ -124,6 +128,11 @@ export interface AssuranceTicketDetailProps {
   canManage: boolean;
   canOperate: boolean;
   onCreateLinkedTask?: () => void;
+  /**
+   * Crear un ticket nuevo del mismo cliente desde un ticket cerrado o cancelado (spec 2026-11-20
+   * ticket cerrado §2). Solo lo pasa el contenedor cuando quien lo ve puede crear tickets.
+   */
+  onCreateFollowUpTicket?: ((ticket: AssuranceTicket) => void) | undefined;
   /** Enlace «Abrir en página» en la cabecera de acciones (solo en el panel, spec §3 K). */
   openInPageHref?: string | undefined;
   /** Texto del estado «Ticket no disponible»; cambia según el contenedor. */
@@ -349,6 +358,7 @@ export function AssuranceTicketDetail({
   canManage,
   canOperate,
   onCreateLinkedTask,
+  onCreateFollowUpTicket,
   openInPageHref,
   emptyDescription = 'Selecciona otro caso desde la tabla para consultar su trazabilidad operativa.',
   children,
@@ -368,6 +378,7 @@ export function AssuranceTicketDetail({
   const [statusNotes, setStatusNotes] = useState('');
   const [assignedUserId, setAssignedUserId] = useState('');
   const [queueName, setQueueName] = useState('');
+  const [assignmentNote, setAssignmentNote] = useState('');
   const [fieldServiceNotes, setFieldServiceNotes] = useState('');
   const [orderNumber, setOrderNumber] = useState('');
   const [orderLookup, setOrderLookup] = useState<OrderLookup>({ kind: 'idle' });
@@ -385,6 +396,7 @@ export function AssuranceTicketDetail({
   const visitHintId = `${idPrefix}-visit-hint`;
   const workOrderHintId = `${idPrefix}-work-order-hint`;
   const commentBodyId = `${idPrefix}-comment-body`;
+  const assignmentNoteId = `${idPrefix}-assignment-note`;
   const statusSectionTitleId = `${idPrefix}-rail-status`;
   const visitSectionTitleId = `${idPrefix}-rail-visit`;
   const caseSectionTitleId = `${idPrefix}-rail-case`;
@@ -405,6 +417,7 @@ export function AssuranceTicketDetail({
 
     setAssignedUserId(ticket.assignedUserId ?? '');
     setQueueName(ticket.queueName ?? '');
+    setAssignmentNote('');
     setCommentBody('');
     setCommentIsInternal(false);
     setCommentFiles([]);
@@ -477,7 +490,11 @@ export function AssuranceTicketDetail({
   }));
   const terminal = ticket ? isTerminalTicket(ticket) : false;
   const fieldServiceAllowed = canRequestFieldService(ticket?.status);
-  const showComposer = canOperate && !isLoading && !error && Boolean(ticket);
+  // Cerrado o cancelado: sin redactor; la línea de cierre ocupa su lugar (spec ticket cerrado §2).
+  const showComposer = canOperate && !isLoading && !error && Boolean(ticket) && !terminal;
+  const showClosedNotice = !isLoading && !error && Boolean(ticket) && terminal;
+  // Responsable y área quedan como dato en un ticket terminal (spec ticket cerrado §2).
+  const assignmentEditable = !terminal;
   // «Guardar asignación» aparece una sola vez bajo la fila Responsable/Área (spec 2026-11-20 §3 B)
   // y guarda los dos juntos.
   const assigneeChanged = assignedUserId !== (ticket?.assignedUserId ?? '');
@@ -489,7 +506,8 @@ export function AssuranceTicketDetail({
   const visitFormVisible = visitFormOpen && !fieldServiceBlocked;
   // Buscar la orden por número exige ver órdenes de trabajo, además de gestionar el ticket.
   const canLookupOrders = hasPermission(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ);
-  const workOrderBlocked = !canManage || !canLookupOrders;
+  // Vincular orden también queda bloqueado en un ticket terminal (spec ticket cerrado §2; la API responde 409).
+  const workOrderBlocked = !canManage || !canLookupOrders || terminal;
   const workOrderFormVisible = workOrderFormOpen && !workOrderBlocked;
   // Un mensaje se pinta junto a su control mientras ese control siga montado. Si la acción lo
   // retiró (p. ej. el estado pasó a terminal y ya no hay formulario de estado), cae al inicio del
@@ -599,6 +617,20 @@ export function AssuranceTicketDetail({
     </Badge>
   );
 
+  // «Comentarios» intercala por fecha las asignaciones y los cambios de estado como líneas de una
+  // sola línea (spec 2026-11-20 asignación visible, bloque A). Solo lee el historial que la API
+  // ya entrega a esta persona: no añade nada de los comentarios internos que no puede ver (CA-3).
+  type ConversationEntry =
+    | { kind: 'comment'; at: string; comment: AssuranceTicketComment }
+    | { kind: 'line'; at: string; id: string; text: string; note: string | null };
+  const conversation: ConversationEntry[] = [
+    ...comments.map((comment) => ({ kind: 'comment' as const, at: comment.createdAt, comment })),
+    ...timeline.flatMap((event) => {
+      const line = getAssuranceThreadLine(event, usersById);
+      return line ? [{ kind: 'line' as const, at: event.occurredAt, id: event.id, ...line }] : [];
+    }),
+  ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+
   // «Todo» intercala comentarios e historial por fecha y omite «Comentario agregado», que
   // repetiría el comentario que ya está en la lista (spec MOD10 §3 F, riesgo R6).
   const allItems: PortalTimelineItem[] = [
@@ -613,6 +645,26 @@ export function AssuranceTicketDetail({
       (_, index) => timeline[index]?.eventType !== TicketTimelineEventType.COMMENT_ADDED,
     ),
   ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+
+  const closedNotice =
+    showClosedNotice && ticket ? (
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="mr-auto text-sm text-gray-700 dark:text-gray-200">
+          Este ticket está cerrado. Si el caso continúa, crea uno nuevo
+        </p>
+        {onCreateFollowUpTicket ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className={actionRowButtonClassName}
+            onClick={() => onCreateFollowUpTicket(ticket)}
+          >
+            Crear ticket
+          </Button>
+        ) : null}
+      </div>
+    ) : undefined;
 
   const composer = showComposer ? (
     <div
@@ -686,7 +738,9 @@ export function AssuranceTicketDetail({
         </Button>
       </div>
     </div>
-  ) : undefined;
+  ) : (
+    closedNotice
+  );
 
   // CA-5: solo la ficha pasa su titular; Mesa de ayuda y la página propia lo muestran siempre.
   const relatedIsContext =
@@ -704,10 +758,16 @@ export function AssuranceTicketDetail({
       disabled={!canManage}
       onClick={async () => {
         setActionSource('assignment');
-        await onAssign({
-          assignedUserId: assignedUserId || undefined,
-          queueName: (queueName || undefined) as AssignAssuranceTicketDto['queueName'],
-        });
+        // La nota solo acompaña un cambio de responsable y, vacía, no viaja (CA-6).
+        await onAssign(
+          withAssignmentNote(
+            {
+              assignedUserId: assignedUserId || undefined,
+              queueName: (queueName || undefined) as AssignAssuranceTicketDto['queueName'],
+            },
+            assigneeChanged ? assignmentNote : '',
+          ),
+        );
       }}
     >
       Guardar asignación
@@ -860,35 +920,67 @@ export function AssuranceTicketDetail({
                 {/* Responsable y Área en una fila con su guardado único. La fila se apila bajo
                     29rem: «Monitoreo operativo», la etiqueta más larga de Área, no cabe en 2/5 del
                     riel de 20rem ni a 375 px (dictamen D3 §3). */}
-                <div className="@container">
-                  <div className="grid grid-cols-1 gap-1.5 @[29rem]:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-                    <Select
-                      id={`${idPrefix}-assign-user`}
-                      label="Responsable"
-                      className={railSelectClassName}
-                      value={assignedUserId}
-                      placeholder={
-                        assignedUserId
-                          ? ASSURANCE_UNAVAILABLE_ASSIGNEE_LABEL
-                          : ASSURANCE_UNASSIGNED_LABEL
-                      }
-                      options={assigneeOptions}
-                      onChange={(event) => setAssignedUserId(event.target.value)}
-                      disabled={!canManage}
-                    />
-                    <Select
-                      id={`${idPrefix}-assign-queue`}
-                      label="Área"
-                      className={railSelectClassName}
-                      value={queueName}
-                      placeholder={ASSURANCE_EMPTY_QUEUE_LABEL}
-                      options={ASSURANCE_QUEUE_OPTIONS}
-                      onChange={(event) => setQueueName(event.target.value)}
-                      disabled={!canManage}
+                {!assignmentEditable ? (
+                  <PortalFieldList>
+                    <PortalFieldRow className={railFieldRowClassName} label="Responsable">
+                      {getAssuranceAssigneeLabel(
+                        current.assignedUserId,
+                        assignees.find((user) => user.id === current.assignedUserId),
+                      )}
+                    </PortalFieldRow>
+                    <PortalFieldRow className={railFieldRowClassName} label="Área">
+                      {getAssuranceQueueLabel(current.queueName)}
+                    </PortalFieldRow>
+                  </PortalFieldList>
+                ) : (
+                  <div className="@container">
+                    <div className="grid grid-cols-1 gap-1.5 @[29rem]:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                      <Select
+                        id={`${idPrefix}-assign-user`}
+                        label="Responsable"
+                        className={railSelectClassName}
+                        value={assignedUserId}
+                        placeholder={
+                          assignedUserId
+                            ? ASSURANCE_UNAVAILABLE_ASSIGNEE_LABEL
+                            : ASSURANCE_UNASSIGNED_LABEL
+                        }
+                        options={assigneeOptions}
+                        onChange={(event) => setAssignedUserId(event.target.value)}
+                        disabled={!canManage}
+                      />
+                      <Select
+                        id={`${idPrefix}-assign-queue`}
+                        label="Área"
+                        className={railSelectClassName}
+                        value={queueName}
+                        placeholder={ASSURANCE_EMPTY_QUEUE_LABEL}
+                        options={ASSURANCE_QUEUE_OPTIONS}
+                        onChange={(event) => setQueueName(event.target.value)}
+                        disabled={!canManage}
+                      />
+                    </div>
+                  </div>
+                )}
+                {assignmentEditable && assigneeChanged && canManage ? (
+                  <div className="space-y-1">
+                    <label
+                      htmlFor={assignmentNoteId}
+                      className="block text-xs font-medium text-gray-700 dark:text-gray-200"
+                    >
+                      Nota para el nuevo responsable (opcional)
+                    </label>
+                    <textarea
+                      id={assignmentNoteId}
+                      rows={2}
+                      maxLength={ASSIGNMENT_NOTE_MAX_LENGTH}
+                      value={assignmentNote}
+                      onChange={(event) => setAssignmentNote(event.target.value)}
+                      className={cn(assuranceTextareaClassName, 'min-h-14')}
                     />
                   </div>
-                </div>
-                {assigneeChanged || queueChanged ? (
+                ) : null}
+                {assignmentEditable && (assigneeChanged || queueChanged) ? (
                   <div className="flex justify-end">{assignmentSave}</div>
                 ) : null}
                 {messagesFor('assignment')}
@@ -1318,30 +1410,52 @@ export function AssuranceTicketDetail({
               </TabsList>
 
               <TabsContent value="comments" className="mt-3 space-y-3">
-                {comments.length === 0 ? (
+                {conversation.length === 0 ? (
                   <PortalEmptyState
                     embedded
                     title="Sin comentarios registrados"
                     description="Usa este espacio para dejar contexto operativo o trazabilidad de atención."
                   />
                 ) : (
-                  comments.map((comment) => (
-                    <article
-                      key={comment.id}
-                      className="rounded-xl border border-gray-200 p-3 dark:border-dark-border"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">
-                          {getAssuranceAuthorDisplayName(usersById.get(comment.authorUserId))}
-                        </p>
-                        {renderVisibilityBadge(comment)}
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {formatAssuranceDateTime(comment.createdAt)}
-                        </span>
-                      </div>
-                      {renderCommentBody(comment)}
-                    </article>
-                  ))
+                  conversation.map((entry) => {
+                    if (entry.kind === 'line') {
+                      return (
+                        <div
+                          key={`line-${entry.id}`}
+                          className="px-3 text-xs text-gray-600 dark:text-gray-300"
+                        >
+                          <p className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
+                            <span>{entry.text}</span>
+                            <span aria-hidden="true">·</span>
+                            <time dateTime={entry.at}>{formatAssuranceDateTime(entry.at)}</time>
+                          </p>
+                          {entry.note ? (
+                            <p className="mt-0.5 whitespace-pre-line break-words text-gray-700 dark:text-gray-200">
+                              {entry.note}
+                            </p>
+                          ) : null}
+                        </div>
+                      );
+                    }
+                    const { comment } = entry;
+                    return (
+                      <article
+                        key={comment.id}
+                        className="rounded-xl border border-gray-200 p-3 dark:border-dark-border"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">
+                            {getAssuranceAuthorDisplayName(usersById.get(comment.authorUserId))}
+                          </p>
+                          {renderVisibilityBadge(comment)}
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {formatAssuranceDateTime(comment.createdAt)}
+                          </span>
+                        </div>
+                        {renderCommentBody(comment)}
+                      </article>
+                    );
+                  })
                 )}
               </TabsContent>
 

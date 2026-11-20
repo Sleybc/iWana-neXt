@@ -39,8 +39,11 @@ import {
   getTicketDeadline,
   getTicketFieldWork,
   getTicketStory,
+  isTerminalTicket,
   needsAttention,
 } from './assurance-ticket-model';
+import { AssigneeMark } from './AssigneeMark';
+import { AssigneeReassignControl, type ReassignPayload } from './AssigneeReassignControl';
 import { formatTicketAttachmentCount } from './ticket-attachments';
 import { TicketPriorityBadge, TicketStatusBadge } from './ticket-badges';
 
@@ -132,6 +135,12 @@ interface AssuranceTicketsTableProps {
   /** «Asignarme» (spec §3 G); solo se ofrece con `canManage` y en tickets sin responsable. */
   onAssignToMe?: ((ticket: AssuranceTicket) => void) | undefined;
   assigningTicketId?: string | null | undefined;
+  /**
+   * Reasignar desde la fila (spec 2026-11-20 asignación visible, bloque C): con `canManage`, el
+   * responsable es un control con los mismos usuarios que el detalle; sin él, solo se muestra.
+   */
+  assigneeOptions?: ReadonlyArray<{ value: string; label: string }> | undefined;
+  onReassign?: ((ticket: AssuranceTicket, payload: ReassignPayload) => void) | undefined;
   /** Reloj inyectable para pruebas. */
   now?: number | undefined;
 }
@@ -165,6 +174,8 @@ export function AssuranceTicketsTable({
   queueEmptyState,
   onAssignToMe,
   assigningTicketId = null,
+  assigneeOptions = [],
+  onReassign,
   now = Date.now(),
 }: AssuranceTicketsTableProps) {
   const hasActiveFilters = Boolean(
@@ -181,6 +192,7 @@ export function AssuranceTicketsTable({
   const showPager = !isLoading && total > 0;
   const showPageSize = showPager && randomAccess;
   const canAssignToMe = canManage && Boolean(onAssignToMe);
+  const canReassign = canManage && Boolean(onReassign) && assigneeOptions.length > 0;
 
   const filterSelect = (
     id: string,
@@ -373,7 +385,11 @@ export function AssuranceTicketsTable({
                     ? (assigneeLabelById.get(ticket.assignedUserId) ??
                       getAssuranceAssigneeLabel(ticket.assignedUserId, null))
                     : getAssuranceAssigneeLabel(null, null);
-                  const showAssignToMe = canAssignToMe && !ticket.assignedUserId;
+                  // Cerrado o cancelado: el responsable queda como dato (spec ticket cerrado §2).
+                  const readOnlyAssignment = isTerminalTicket(ticket);
+                  const showAssignToMe =
+                    canAssignToMe && !ticket.assignedUserId && !readOnlyAssignment;
+                  const showReassign = canReassign && !readOnlyAssignment;
 
                   return (
                     <tr
@@ -466,15 +482,24 @@ export function AssuranceTicketsTable({
                         )}
                       >
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                          <p className="min-w-0">
-                            <span className="font-medium text-gray-900 dark:text-white">
-                              {assigneeLabel}
-                            </span>
-                            <span className="text-xs text-gray-600 dark:text-gray-300">
-                              {' · '}
+                          <div className="flex min-w-0 items-center gap-2">
+                            {showReassign ? (
+                              <AssigneeReassignControl
+                                ticketNumber={ticket.ticketNumber}
+                                assigneeLabel={assigneeLabel}
+                                currentAssigneeId={ticket.assignedUserId ?? null}
+                                options={assigneeOptions}
+                                disabled={assigningTicketId === ticket.id}
+                                onReassign={(payload) => onReassign?.(ticket, payload)}
+                                showName
+                              />
+                            ) : (
+                              <AssigneeMark label={assigneeLabel} showName />
+                            )}
+                            <span className="shrink-0 text-xs text-gray-600 dark:text-gray-300">
                               {getAssuranceQueueLabel(ticket.queueName)}
                             </span>
-                          </p>
+                          </div>
                           {showAssignToMe ? (
                             <Button
                               type="button"

@@ -113,10 +113,14 @@ export const CreateSlaPolicySchema = z.object({
   isActive: z.boolean().optional().default(true),
 });
 
+export const ASSIGNMENT_NOTE_MAX_LENGTH = 2000;
+
 export const AssignTicketSchema = z
   .object({
     assignedUserId: z.string().uuid().optional().nullable(),
     queueName: z.nativeEnum(TicketQueue).optional().nullable(),
+    /** Nota opcional de la (re)asignación; se guarda en el payload del historial (CA-6). */
+    note: z.string().trim().max(ASSIGNMENT_NOTE_MAX_LENGTH).optional().nullable(),
   })
   .refine(
     (value) => value.assignedUserId !== undefined || value.queueName !== undefined,
@@ -359,6 +363,13 @@ export class AssignTicketDto {
   @ApiPropertyOptional({ enum: TicketQueue })
   @Allow()
   queueName?: TicketQueue | null;
+
+  @ApiPropertyOptional({
+    maxLength: ASSIGNMENT_NOTE_MAX_LENGTH,
+    description: 'Nota opcional de la (re)asignación; se guarda en el historial',
+  })
+  @Allow()
+  note?: string | null;
 }
 
 /**

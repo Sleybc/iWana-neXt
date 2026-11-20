@@ -102,6 +102,7 @@ import {
   needsPqrCompletionCheck,
   requiresPqrCompletion,
   TICKET_OWNERSHIP_RESTRICTED_ROLES,
+  assertTicketWritable,
 } from './ticket-transitions';
 
 const RESTRICTED_ROLES: readonly UserRole[] = TICKET_OWNERSHIP_RESTRICTED_ROLES;
@@ -663,11 +664,15 @@ export class TicketsService {
     const port = this.requireExecutionOrderReadPort();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const ticket = await qr.manager.findOne(SupportTicket, { where: { id, tenantId } });
+      const ticket = await qr.manager.findOne(SupportTicket, {
+        where: { id, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!ticket) {
         throw new NotFoundException(`Ticket ${id} no encontrado`);
       }
       this._ensureOwnership(ticket, actor);
+      assertTicketWritable(ticket);
       await this.crmSubscriberReadPort.assertWritableReferences(
         ticketTitularReferences(ticket),
         qr,
@@ -873,17 +878,32 @@ export class TicketsService {
   }
 
   async update(id: string, input: UpdateTicketInput, actor: JwtPayload): Promise<SupportTicket> {
+    return this._update(id, input, actor);
+  }
+
+  private async _update(
+    id: string,
+    input: UpdateTicketInput,
+    actor: JwtPayload,
+    assignmentNote?: string | null,
+  ): Promise<SupportTicket> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = UpdateTicketSchema.parse(input);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const ticket = await qr.manager.findOne(SupportTicket, { where: { id, tenantId } });
+      // Bloqueo de fila: un cierre concurrente espera o se ve aquí ya confirmado.
+      const ticket = await qr.manager.findOne(SupportTicket, {
+        where: { id, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
 
       if (!ticket) {
         throw new NotFoundException(`Ticket ${id} no encontrado`);
       }
 
       this._ensureOwnership(ticket, actor);
+
+      assertTicketWritable(ticket);
 
       await this.crmSubscriberReadPort.assertWritableReferences(
         ticketTitularReferences(ticket),
@@ -933,6 +953,7 @@ export class TicketsService {
           payload: {
             previousAssignedUserId: ticket.assignedUserId,
             assignedUserId: validated.assignedUserId,
+            ...(assignmentNote ? { note: assignmentNote } : {}),
           },
           actorUserId: actor.sub,
         });
@@ -955,13 +976,14 @@ export class TicketsService {
   async assign(id: string, input: AssignTicketInput, actor: JwtPayload): Promise<SupportTicket> {
     const validated = AssignTicketSchema.parse(input);
 
-    return this.update(
+    return this._update(
       id,
       {
         assignedUserId: validated.assignedUserId,
         queueName: validated.queueName,
       },
       actor,
+      validated.note,
     );
   }
 
@@ -1071,13 +1093,17 @@ export class TicketsService {
     const validated = RequestFieldServiceSchema.parse(input);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const ticket = await qr.manager.findOne(SupportTicket, { where: { id, tenantId } });
+      const ticket = await qr.manager.findOne(SupportTicket, {
+        where: { id, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
 
       if (!ticket) {
         throw new NotFoundException(`Ticket ${id} no encontrado`);
       }
 
       this._ensureOwnership(ticket, actor);
+      assertTicketWritable(ticket);
 
       await this.crmSubscriberReadPort.assertWritableReferences(
         ticketTitularReferences(ticket),
@@ -1146,13 +1172,17 @@ export class TicketsService {
     const validated = LinkWorkOrderSchema.parse(input);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const ticket = await qr.manager.findOne(SupportTicket, { where: { id, tenantId } });
+      const ticket = await qr.manager.findOne(SupportTicket, {
+        where: { id, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
 
       if (!ticket) {
         throw new NotFoundException(`Ticket ${id} no encontrado`);
       }
 
       this._ensureOwnership(ticket, actor);
+      assertTicketWritable(ticket);
 
       await this.crmSubscriberReadPort.assertWritableReferences(
         ticketTitularReferences(ticket),

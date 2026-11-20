@@ -548,6 +548,16 @@ export function SubscriberSupportTab({
     isLinkingWorkOrder: drawerAction === 'link-work-order',
     canManage: canManageTickets,
     canOperate: canManageTickets,
+    // Ticket cerrado o cancelado: crear otro del mismo titular con el diálogo de la ficha
+    // (spec 2026-11-20 ticket cerrado §2). El panel modal se cierra para no apilar capas.
+    onCreateFollowUpTicket: canManageTickets
+      ? () => {
+          if (!splitView) closeDrawer();
+          setCreateError(null);
+          dismissCreateFeedback();
+          setCreateOpen(true);
+        }
+      : undefined,
     onAddComment: (payload: AssuranceCommentSubmission) =>
       runDrawerAction('comment', async () => {
         const ticketId = drawerTicket!.id;

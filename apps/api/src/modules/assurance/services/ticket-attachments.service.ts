@@ -38,6 +38,7 @@ import {
 } from '../ports/ticket-attachment-media.port';
 import { TimelineService } from './timeline.service';
 import { canSeeInternal } from './comment-visibility';
+import { assertTicketWritable } from './ticket-transitions';
 
 /** Mismos roles que `CommentsService`: solo ven tickets asignados y nunca comentarios internos. */
 const RESTRICTED_ROLES: readonly string[] = [UserRole.TECHNICIAN, UserRole.CONTRACTOR];
@@ -136,9 +137,11 @@ export class TicketAttachmentsService {
       result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
         const ticket = await qr.manager.findOne(SupportTicket, {
           where: { id: ticketId, tenantId },
+          lock: { mode: 'pessimistic_write' },
         });
         if (!ticket) throw new NotFoundException(`Ticket ${ticketId} no encontrado`);
         assertTicketAccess(ticket, actor);
+        assertTicketWritable(ticket);
         await this.crmSubscriberReadPort.assertWritableReferences(
           ticketTitularReferences(ticket),
           qr,

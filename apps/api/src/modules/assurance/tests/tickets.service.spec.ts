@@ -81,6 +81,15 @@ describe('TicketsService', () => {
     assertWritableReferences: jest.Mock;
   };
 
+  const adminActor = {
+    sub: 'admin-001',
+    email: 'admin@example.test',
+    role: UserRole.ADMIN,
+    tenantId: 'tenant-001',
+    schemaName: 'tenant_001',
+    jti: 'jti-adm',
+    type: 'tenant',
+  } as JwtPayload;
   const actor: JwtPayload = {
     sub: 'support-001',
     email: 'support@example.test',
@@ -1414,6 +1423,109 @@ describe('TicketsService', () => {
       expect(result).toEqual(closedTicket);
       expect(updateMock).toHaveBeenCalled();
       expect(crmSubscriberReadPort.assertWritableReferences).not.toHaveBeenCalled();
+    });
+  });
+  describe('assign() payload del historial (ASSIGNED / REASSIGNED)', () => {
+    const NEW_USER = '22222222-2222-4222-8222-222222222222';
+
+    function mockTicket(assignedUserId: string | null) {
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schemaName, fn) => {
+        const mockQr = {
+          manager: {
+            findOne: jest.fn().mockResolvedValue({
+              id: 'ticket-010',
+              tenantId: 'tenant-001',
+              type: TicketType.CUSTOMER_INCIDENT,
+              assignedUserId,
+              status: TicketStatus.IN_PROGRESS,
+              priority: TicketPriority.NORMAL,
+              createdAt: new Date('2026-05-09T12:00:00Z'),
+              firstRespondedAt: null,
+              resolvedAt: null,
+              slaFirstResponseAt: null,
+              slaResolveByAt: null,
+            }),
+            update: jest.fn().mockResolvedValue({ affected: 1 }),
+            findOneByOrFail: jest.fn().mockResolvedValue({ id: 'ticket-010' }),
+          },
+        };
+        return fn(mockQr as any);
+      });
+    }
+
+    function assignmentCall() {
+      return timelineService.recordWithManager.mock.calls.find(([, event]: any[]) =>
+        [TicketTimelineEventType.ASSIGNED, TicketTimelineEventType.REASSIGNED].includes(
+          event.eventType,
+        ),
+      )?.[1];
+    }
+
+    it('records ASSIGNED with previous and new responsable only (sin nota)', async () => {
+      mockTicket(null);
+      await service.assign('ticket-010', { assignedUserId: NEW_USER }, adminActor);
+      expect(assignmentCall()).toEqual({
+        ticketId: 'ticket-010',
+        tenantId: 'tenant-001',
+        eventType: TicketTimelineEventType.ASSIGNED,
+        payload: { previousAssignedUserId: null, assignedUserId: NEW_USER },
+        actorUserId: adminActor.sub,
+      });
+    });
+
+    it('records REASSIGNED with previous and new responsable only (sin nota)', async () => {
+      mockTicket(actor.sub);
+      await service.assign('ticket-010', { assignedUserId: NEW_USER }, actor);
+      expect(assignmentCall()).toEqual({
+        ticketId: 'ticket-010',
+        tenantId: 'tenant-001',
+        eventType: TicketTimelineEventType.REASSIGNED,
+        payload: { previousAssignedUserId: actor.sub, assignedUserId: NEW_USER },
+        actorUserId: actor.sub,
+      });
+    });
+
+    it.each(['', '   ', null])('omits a blank note (%p) from the payload', async (note) => {
+      mockTicket(actor.sub);
+      await service.assign('ticket-010', { assignedUserId: NEW_USER, note } as any, actor);
+      expect(assignmentCall()?.payload).toEqual({
+        previousAssignedUserId: actor.sub,
+        assignedUserId: NEW_USER,
+      });
+    });
+
+    it('stores a trimmed note in the REASSIGNED payload (CA-6)', async () => {
+      mockTicket(actor.sub);
+      await service.assign(
+        'ticket-010',
+        { assignedUserId: NEW_USER, note: '  Pasa a NOC por caída del nodo  ' },
+        actor,
+      );
+      expect(assignmentCall()?.payload).toEqual({
+        previousAssignedUserId: actor.sub,
+        assignedUserId: NEW_USER,
+        note: 'Pasa a NOC por caída del nodo',
+      });
+    });
+
+    it('stores the note in the ASSIGNED payload (CA-6)', async () => {
+      mockTicket(null);
+      await service.assign(
+        'ticket-010',
+        { assignedUserId: NEW_USER, note: 'Primer responsable' },
+        adminActor,
+      );
+      expect(assignmentCall()?.payload).toEqual({
+        previousAssignedUserId: null,
+        assignedUserId: NEW_USER,
+        note: 'Primer responsable',
+      });
+    });
+
+    it('rejects a note over the length cap', async () => {
+      await expect(
+        service.assign('ticket-010', { assignedUserId: NEW_USER, note: 'x'.repeat(2001) }, actor),
+      ).rejects.toThrow();
     });
   });
 });
