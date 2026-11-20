@@ -2,7 +2,7 @@
 
 **Versión:** 1.0
 **Fecha:** 2026-11-19
-**Estado:** G6 de los pasos 1 y 2 ✅ en desarrollo · sin commit · G6.5 pendiente (push autorizado y CI de `main` en verde)
+**Estado:** G6 de los pasos 1 y 2 ✅ · publicado `a5335db9` + `97729945` · G6.5 ✅ 2026-11-19 (CI 44655291145 y E2E Web Admin Smoke 44655290124, ambos success)
 **Spec:** [2026-11-19-mod09-agenda-programacion-densidad-y-enlaces-ux](../specs/2026-11-19-mod09-agenda-programacion-densidad-y-enlaces-ux.md) v1.0 · **Plan:** [2026-11-19-mod09-agenda-programacion-densidad-y-enlaces](../plans/2026-11-19-mod09-agenda-programacion-densidad-y-enlaces.md) · **Launcher:** [PROMPT-MOD09-AGENDA-DENSIDAD-ENLACES-LAUNCH-v1.0](../prompts/PROMPT-MOD09-AGENDA-DENSIDAD-ENLACES-LAUNCH-v1.0.md)
 **Base:** `main` en `9f9aeca0`
 
