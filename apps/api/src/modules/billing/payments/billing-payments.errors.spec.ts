@@ -507,6 +507,15 @@ describe('BillingPaymentsService — rechazos y acceso a datos protegidos', () =
   });
 
   describe('estado de cuenta', () => {
+    // El documento de ejemplo vence el 2026-11-19: sin reloj fijo, estas pruebas caducan con el calendario.
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-11-10T12:00:00.000Z'));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
     const statementOverrides = {
       registered_amount: [{ registered_amount: '20.00', allocated_amount: '0.00' }],
     };

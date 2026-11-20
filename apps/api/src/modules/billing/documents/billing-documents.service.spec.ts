@@ -578,6 +578,15 @@ describe('BillingDocumentsService — emisión, anulación y descarte', () => {
   });
 
   describe('listado y detalle', () => {
+    // El documento de ejemplo vence el 2026-11-19: sin reloj fijo, estas pruebas caducan con el calendario.
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-11-10T12:00:00.000Z'));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
     it.each([
       ['PAGADO', { status: 'EMITIDO', paid_amount: '119.00' }],
       ['VENCIDO', { status: 'EMITIDO', due_date: '2020-01-01' }],
