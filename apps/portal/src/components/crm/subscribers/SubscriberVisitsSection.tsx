@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { ChevronRight } from 'lucide-react';
 import { ScheduleEventStatus, VisitRequestStatus, WorkOrderSourceContext } from '@iwana/shared';
 import { Badge, Button, cn, interactiveFocusClassName } from '@iwana/ui';
 import type { SubscriberRecord, WfmScheduleEvent, WfmVisitRequest } from '@/lib/api-client';
@@ -22,6 +23,7 @@ import {
   PortalPanel,
   PortalSidePeek,
   PortalSkeletonBlock,
+  portalPanelDenseTitleClassName,
 } from '@/components/shared/portal-ui';
 
 /** Id del panel: la franja de resumen de Tickets salta aquí («Visitas próximas»). */
@@ -32,7 +34,19 @@ interface SubscriberVisitsSectionProps {
   canRead: boolean;
   /** Visitas cargadas (o `null` si fallaron): la pestaña cuenta las próximas para la franja. */
   onEntriesChange?: (entries: VisitEntry[] | null) => void;
+  /**
+   * Historial plegable (decisión del usuario 2026-11-20): cerrado salvo que la pestaña lo abra.
+   * La carga ocurre igual al montar: la pestaña la usa para contar y evitar duplicados.
+   */
+  /** Controlado por la pestaña (cerrado por defecto). Sin control, la sección empieza abierta. */
+  open?: boolean | undefined;
+  onOpenChange?: ((open: boolean) => void) | undefined;
+  /** Ids de solicitud o evento que ya muestra la franja «Próximas visitas» (CA-14). */
+  excludeIds?: ReadonlySet<string> | undefined;
 }
+
+const VISITS_HISTORY_CONTENT_ID = 'subscriber-visits-history-content';
+const NO_EXCLUDED_IDS: ReadonlySet<string> = new Set();
 
 export type VisitEntry = {
   id: string;
@@ -187,15 +201,32 @@ export async function loadSubscriberVisitEntries(subscriberId: string): Promise<
   return sortVisits([...requests.map(fromVisitRequest), ...events.map(fromScheduleEvent)]);
 }
 
-function buildAgendamientoHref(entry: VisitEntry): string {
-  if (entry.kind === 'request' && entry.visitRequest && !entry.visitRequest.scheduleEventId) {
+/**
+ * Enlace a la visita en Programación: la solicitud sin evento abre su traspaso a agendar; lo
+ * demás, la agenda. Lo comparten el historial y la franja «Próximas visitas» (spec bloque I).
+ */
+export function buildVisitAgendaHref(visit: {
+  visitRequestId: string | null;
+  scheduleEventId: string | null;
+  date: string | null;
+}): string {
+  if (visit.visitRequestId && !visit.scheduleEventId) {
     return buildPendingVisitSchedulingHref({
       source: 'pending-visits',
-      visitRequestId: entry.visitRequest.id,
-      focusDate: validDate(entry.date) ? new Date(entry.date!).toISOString().slice(0, 10) : null,
+      visitRequestId: visit.visitRequestId,
+      focusDate: validDate(visit.date) ? new Date(visit.date!).toISOString().slice(0, 10) : null,
     });
   }
   return '/dashboard/scheduling/agenda';
+}
+
+function buildAgendamientoHref(entry: VisitEntry): string {
+  const request = entry.kind === 'request' ? entry.visitRequest : undefined;
+  return buildVisitAgendaHref({
+    visitRequestId: request?.id ?? null,
+    scheduleEventId: request ? (request.scheduleEventId ?? null) : (entry.event?.id ?? null),
+    date: entry.date,
+  });
 }
 
 function VisitRow({ entry, onOpen }: { entry: VisitEntry; onOpen: (entry: VisitEntry) => void }) {
@@ -225,9 +256,43 @@ function VisitRow({ entry, onOpen }: { entry: VisitEntry; onOpen: (entry: VisitE
 }
 
 /** Detalle de solo lectura en `PortalSidePeek`: foco, `Escape` y retorno los da la primitive (§5.4). */
+export interface VisitDetail {
+  workType: string;
+  statusLabel: string;
+  statusVariant: VisitEntry['statusVariant'];
+  origin: string;
+  dateLabel: string;
+  address: string | null;
+  /** Enlace de la acción principal; con `actionLabel` distinto para ir al ticket. */
+  href: string;
+  actionLabel?: string | undefined;
+}
+
+function toVisitDetail(entry: VisitEntry): VisitDetail {
+  return {
+    workType: entry.workType,
+    statusLabel: entry.statusLabel,
+    statusVariant: entry.statusVariant,
+    origin: entry.origin,
+    dateLabel: validDate(entry.date) ? formatWfmDateTime(entry.date) : 'Pendiente de fecha',
+    address: entry.address,
+    href: buildAgendamientoHref(entry),
+  };
+}
+
 function VisitDetailPanel({ entry, onClose }: { entry: VisitEntry | null; onClose: () => void }) {
-  const dateLabel =
-    entry && validDate(entry.date) ? formatWfmDateTime(entry.date) : 'Pendiente de fecha';
+  return <VisitDetailSidePeek detail={entry ? toVisitDetail(entry) : null} onClose={onClose} />;
+}
+
+/** Detalle compartido por el historial y la franja «Próximas visitas» (R9: ningún dato se pierde). */
+export function VisitDetailSidePeek({
+  detail: entry,
+  onClose,
+}: {
+  detail: VisitDetail | null;
+  onClose: () => void;
+}) {
+  const dateLabel = entry?.dateLabel ?? '';
   return (
     <PortalSidePeek
       open={entry !== null}
@@ -268,10 +333,10 @@ function VisitDetailPanel({ entry, onClose }: { entry: VisitEntry | null; onClos
             ) : null}
           </dl>
           <Link
-            href={buildAgendamientoHref(entry)}
+            href={entry.href}
             className="mt-6 inline-flex min-h-11 items-center rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-iwana-secondary-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:border-dark-border dark:text-gray-200"
           >
-            Abrir en Agendamiento
+            {entry.actionLabel ?? 'Abrir en Agendamiento'}
           </Link>
         </>
       ) : null}
@@ -283,7 +348,13 @@ export function SubscriberVisitsSection({
   subscriber,
   canRead,
   onEntriesChange,
+  open: controlledOpen,
+  onOpenChange,
+  excludeIds = NO_EXCLUDED_IDS,
 }: SubscriberVisitsSectionProps) {
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(true);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = onOpenChange ?? setUncontrolledOpen;
   const [entries, setEntries] = useState<VisitEntry[]>([]);
   const [loading, setLoading] = useState(canRead);
   const [showSkeleton, setShowSkeleton] = useState(false);
@@ -367,11 +438,15 @@ export function SubscriberVisitsSection({
         />
       );
     }
-    if (entries.length === 0) {
+    // Lo que ya está en «Próximas visitas» no se repite aquí (CA-14).
+    const listed = entries.filter((entry) => !excludeIds.has(entry.id));
+    if (listed.length === 0) {
       // Vacío de una línea (§7): la sección no reserva espacio sin visitas.
       return (
         <p className="text-sm text-gray-600 dark:text-gray-300">
-          Este suscriptor no tiene visitas propias. Las visitas de un ticket se ven en el ticket.
+          {entries.length === 0
+            ? 'Este suscriptor no tiene visitas propias. Las visitas de un ticket se ven en el ticket.'
+            : 'No hay otras visitas en el historial.'}
         </p>
       );
     }
@@ -380,17 +455,42 @@ export function SubscriberVisitsSection({
         aria-label="Visitas vinculadas"
         className="divide-y divide-gray-100 dark:divide-dark-border"
       >
-        {entries.map((entry) => (
+        {listed.map((entry) => (
           <VisitRow key={entry.key} entry={entry} onOpen={setSelectedVisit} />
         ))}
       </ul>
     );
-  }, [canRead, entries, error, loadVisits, loading, showSkeleton]);
+  }, [canRead, entries, error, excludeIds, loadVisits, loading, showSkeleton]);
 
   return (
     <>
-      <PortalPanel id={SUBSCRIBER_VISITS_PANEL_ID} title="Visitas" density="dense">
-        {content}
+      <PortalPanel id={SUBSCRIBER_VISITS_PANEL_ID} density="dense">
+        <h2 className={portalPanelDenseTitleClassName}>
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={VISITS_HISTORY_CONTENT_ID}
+            onClick={() => setOpen(!open)}
+            className={cn(
+              'inline-flex min-h-11 items-center gap-1.5 rounded-lg pr-2 text-left sm:min-h-9',
+              interactiveFocusClassName,
+            )}
+          >
+            <ChevronRight
+              className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-90')}
+              aria-hidden="true"
+            />
+            Historial de visitas
+          </button>
+        </h2>
+        <div
+          id={VISITS_HISTORY_CONTENT_ID}
+          // Sin permiso o con error, el aviso (y «Reintentar») se ve aunque el historial esté plegado.
+          hidden={canRead && !error && !open}
+          className="mt-2"
+        >
+          {content}
+        </div>
       </PortalPanel>
       <VisitDetailPanel entry={selectedVisit} onClose={closeVisit} />
     </>

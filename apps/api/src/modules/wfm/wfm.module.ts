@@ -17,6 +17,9 @@ import { SubscribersModule } from '../crm/subscribers/subscribers.module';
 import { UsersModule } from '../users/users.module';
 import { ExecutionOrderSchedulingModule } from '../tasks/execution-order-scheduling.module';
 import { WfmController } from './wfm.controller';
+import { WfmSubscriberVisitsController } from './wfm-subscriber-visits.controller';
+import { SubscriberUpcomingVisitsService } from './services/subscriber-upcoming-visits.service';
+import { AssuranceSubscriberTicketsReadModule } from '../assurance/ports/assurance-subscriber-tickets-read.module';
 import { NonRealizationCausesService } from './services/non-realization-causes.service';
 import { NonRealizationSlaService } from './services/non-realization-sla.service';
 import { OperationalEventualitiesService } from './services/operational-eventualities.service';
@@ -56,6 +59,8 @@ import { AccessControlModule } from '../access-control/access-control.module';
     ExecutionOrderSchedulingModule,
     WfmPrivacyModule,
     AccessControlModule,
+    // Tickets del suscriptor por puerto de Assurance (spec 2026-11-20 v1.1, H13); módulo fino sin ciclo.
+    AssuranceSubscriberTicketsReadModule,
     TypeOrmModule.forFeature([
       NonRealizationCause,
       ScheduleEvent,
@@ -67,7 +72,7 @@ import { AccessControlModule } from '../access-control/access-control.module';
       WfmOperationalEventuality,
     ]),
   ],
-  controllers: [WfmController],
+  controllers: [WfmController, WfmSubscriberVisitsController],
   providers: [
     NonRealizationCausesService,
     NonRealizationSlaService,
@@ -80,6 +85,7 @@ import { AccessControlModule } from '../access-control/access-control.module';
     ScheduleRecommendationsService,
     OperatingWindowResolverService,
     OperationalEventualitiesService,
+    SubscriberUpcomingVisitsService,
     WfmOrganizationSitesAdapter,
     FieldServiceWorkAdapter,
     WfmTenantSettingsReadAdapter,

@@ -62,6 +62,7 @@ export * from './contracts/operations/execution-orders-completion';
 export * from './contracts/operations/execution-orders-list';
 export * from './contracts/operations/execution-order-transitions';
 export * from './contracts/operations/operational-tasks';
+export * from './contracts/operations/subscriber-upcoming-visits';
 export * from './contracts/configuration/settings-priority.contract';
 export * from './contracts/inventory/executor-custody';
 export * from './contracts/inventory';

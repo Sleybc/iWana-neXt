@@ -50,6 +50,12 @@ export interface TicketListItemProps {
   selected?: boolean | undefined;
   /** Reloj inyectable para pruebas. */
   now?: number | undefined;
+  /**
+   * Vista dividida (spec 2026-11-20 v1.2, bloque J): tres líneas como máximo — número y asunto;
+   * estado, prioridad, visita, responsable, adjuntos, comentarios y fecha; relato. El tipo va
+   * en el nombre accesible y en el título.
+   */
+  dense?: boolean | undefined;
   onOpen: (opener: HTMLButtonElement) => void;
 }
 
@@ -67,6 +73,7 @@ export function TicketListItem({
   highlighted = false,
   selected = false,
   now = Date.now(),
+  dense = false,
   onOpen,
 }: TicketListItemProps) {
   const deadlineState = getTicketDeadlineState(ticket);
@@ -107,6 +114,114 @@ export function TicketListItem({
     .join(', ');
 
   const FieldWorkIcon = fieldWork?.kind === 'order' ? ClipboardList : CalendarClock;
+
+  if (dense) {
+    const typeLabel = ticket.type ? getAssuranceTicketTypeLabel(ticket.type) : null;
+    const openedLabel = `Abierto ${formatAssuranceDate(ticket.createdAt)}`;
+    // El nombre no cambia (pruebas y lectores ya lo conocen); lo que la fila compacta no escribe
+    // completo va en la descripción accesible (H5).
+    const denseDescription = [
+      typeLabel ? `Tipo ${typeLabel.toLowerCase()}` : null,
+      `Responsable ${assigneeLabel}`,
+      fieldWork ? fieldWork.label : null,
+      deadlineLabel,
+      openedLabel,
+    ]
+      .filter(Boolean)
+      .join('. ');
+    const descriptionId = `ticket-row-${ticket.id}-detalle`;
+    return (
+      <li>
+        <button
+          type="button"
+          aria-label={accessibleName}
+          aria-describedby={descriptionId}
+          aria-current={selected ? 'true' : undefined}
+          title={typeLabel ?? undefined}
+          onClick={(event) => onOpen(event.currentTarget)}
+          className={cn(
+            'block min-h-11 w-full rounded-xl border-l-2 border-transparent px-3 py-0.5 text-left transition-colors hover:bg-iwana-surface-soft dark:hover:bg-dark-surface-3',
+            interactiveFocusClassName,
+            (highlighted || selected) && 'bg-iwana-surface-soft dark:bg-dark-surface-3',
+            selected && 'border-iwana-primary dark:border-iwana-primary-500',
+          )}
+        >
+          {/* Alto ≈ 60 px (CA-17): 4 de relleno + 20 + 20 + 16, sin márgenes entre líneas. */}
+          <span className="flex items-baseline gap-x-2 leading-5">
+            <span className="shrink-0 font-mono text-xs font-semibold text-iwana-secondary-700 dark:text-gray-300">
+              {ticket.ticketNumber}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-white">
+              {ticket.subject}
+            </span>
+            {deadlineLabel ? (
+              <span
+                className={cn(
+                  'max-w-[45%] shrink-0 truncate text-xs',
+                  overdue
+                    ? 'font-semibold text-error-700 dark:text-error-400'
+                    : atRisk
+                      ? 'text-amber-700 dark:text-amber-400'
+                      : 'text-gray-600 dark:text-gray-300',
+                )}
+              >
+                {deadlineLabel}
+              </span>
+            ) : null}
+          </span>
+          <span className="flex h-5 min-w-0 items-center gap-x-2 overflow-hidden text-xs text-gray-600 dark:text-gray-300">
+            <TicketStatusBadge status={ticket.status} />
+            <TicketPriorityBadge priority={ticket.priority} />
+            {fieldWork ? (
+              <span
+                data-testid="ticket-field-work"
+                title={fieldWork.label}
+                className="inline-flex shrink-0 items-center"
+              >
+                <FieldWorkIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              </span>
+            ) : null}
+            <span className="min-w-0 flex-1 truncate" title={assigneeLabel}>
+              {assigneeLabel}
+            </span>
+            {attachmentsLabel ? (
+              <span
+                data-testid="ticket-attachment-clip"
+                title={`Con ${attachmentsLabel}`}
+                className="inline-flex shrink-0 items-center gap-1"
+              >
+                <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
+                <span aria-hidden="true">{attachmentCount}</span>
+                <span className="sr-only">Con {attachmentsLabel}</span>
+              </span>
+            ) : null}
+            {commentsLabel ? (
+              <span
+                data-testid="ticket-comment-count"
+                title={`Con ${commentsLabel}`}
+                className="inline-flex shrink-0 items-center gap-1"
+              >
+                <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
+                <span aria-hidden="true">{commentCount}</span>
+                <span className="sr-only">Con {commentsLabel}</span>
+              </span>
+            ) : null}
+            <span className="shrink-0" title={openedLabel}>
+              {formatAssuranceDate(ticket.createdAt)}
+            </span>
+          </span>
+          {story ? (
+            <span className="line-clamp-1 text-xs leading-4 text-gray-600 dark:text-gray-300">
+              {story}
+            </span>
+          ) : null}
+        </button>
+        <span id={descriptionId} className="sr-only">
+          {denseDescription}
+        </span>
+      </li>
+    );
+  }
 
   return (
     <li>

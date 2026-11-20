@@ -306,3 +306,8 @@ export function useAuth(): AuthContextValue {
 
   return context;
 }
+
+/** Sin proveedor devuelve null: para piezas que también se montan fuera del árbol autenticado. */
+export function useOptionalAuth(): AuthContextValue | null {
+  return useContext(AuthContext) ?? null;
+}

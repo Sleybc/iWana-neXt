@@ -332,7 +332,10 @@ describe('Ficha del suscriptor — inventario de no regresión (W0, CA-1)', () =
     await user.click(screen.getByRole('tab', { name: 'Soporte' }));
     const panel = screen.getByRole('tabpanel');
     expect(within(panel).getByRole('heading', { name: 'Tickets' })).toBeInTheDocument();
-    expect(within(panel).getByRole('heading', { name: 'Visitas' })).toBeInTheDocument();
+    // P3: «Visitas» pasa a «Historial de visitas» plegable (decisión del usuario 2026-11-20).
+    expect(
+      within(panel).getByRole('heading', { name: 'Historial de visitas' }),
+    ).toBeInTheDocument();
     expect(await within(panel).findByText('Este suscriptor no tiene tickets')).toBeInTheDocument();
     expect(
       await within(panel).findByText(/Este suscriptor no tiene visitas propias/),

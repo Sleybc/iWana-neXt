@@ -3,8 +3,12 @@
 import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AccessPermissionKey, TicketFieldDecision } from '@iwana/shared';
-import type { ContractResponse, LinkExecutionOrderBody } from '@iwana/shared';
+import { AccessPermissionKey, TicketFieldDecision, UserRole } from '@iwana/shared';
+import type {
+  ContractResponse,
+  LinkExecutionOrderBody,
+  SubscriberUpcomingVisitsResponse,
+} from '@iwana/shared';
 import type {
   AssuranceCommentSubmission,
   AssuranceSlaPolicy,
@@ -19,6 +23,8 @@ import type {
 } from '@/lib/api-client';
 import { assuranceApi, usersApi } from '@/lib/api-client';
 import { usePermissions } from '@/components/access-control/permissions-context';
+import { useOptionalAuth } from '@/components/auth/AuthProvider';
+import { getAssuranceTicketPath } from '@/components/assurance/assurance-routes';
 import { formatContractAlias, formatSubscriberName } from './subscriber-ui';
 import { SUBSCRIBER_TICKETS_PANEL_ID, SubscriberTicketsSection } from './SubscriberTicketsSection';
 import {
@@ -27,6 +33,10 @@ import {
   isOpenVisitEntry,
   type VisitEntry,
 } from './SubscriberVisitsSection';
+import {
+  SUBSCRIBER_UPCOMING_VISITS_PANEL_ID,
+  SubscriberUpcomingVisitsStrip,
+} from './SubscriberUpcomingVisitsStrip';
 import { AssuranceCreateTicketForm } from '@/components/assurance/AssuranceCreateTicketForm';
 import type { AssuranceCreateTicketSubmitPayload } from '@/components/assurance/AssuranceCreateTicketForm';
 import {
@@ -34,7 +44,6 @@ import {
   AssuranceTicketPane,
 } from '@/components/assurance/AssuranceTicketDrawer';
 import type { AssuranceTicketDetailProps } from '@/components/assurance/AssuranceTicketDetail';
-import { needsAttention } from '@/components/assurance/assurance-ticket-model';
 import { getTicketCommentAttachmentError } from '@/components/assurance/ticket-attachments';
 import { createAssuranceVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
 import { PortalSuccessAlert, useMinWidth } from '@/components/shared/portal-ui';
@@ -102,14 +111,23 @@ function writeTicketParam(ticketId: string | null, mode: Exclude<TicketHistoryMo
   else window.history.replaceState(window.history.state, '', url);
 }
 
-/** Ticket de entrada en vista dividida (§3 C): el abierto más reciente; sin abiertos, el más reciente. */
+/**
+ * Ticket de entrada en vista dividida (spec v1.2 bloque J, ajusta C/D3): el primero de la lista
+ * tal como está ordenada (abiertos primero, por urgencia), para que la fila seleccionada quede
+ * arriba y a la vista (CA-18).
+ */
 function pickEntryTicket(tickets: readonly AssuranceTicket[]): AssuranceTicket | null {
-  const newest = (list: readonly AssuranceTicket[]) =>
-    list.reduce<AssuranceTicket | null>(
-      (best, item) => (!best || item.createdAt > best.createdAt ? item : best),
-      null,
-    );
-  return newest(tickets.filter(needsAttention)) ?? newest(tickets);
+  return tickets[0] ?? null;
+}
+
+/** Roles que el endpoint de próximas visitas acepta (contrato v1.0); además del permiso (CA-15). */
+const UPCOMING_VISITS_ROLES = new Set<string>([UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT]);
+
+/** Resultado cumplido cuya carga es un arreglo: lo demás cuenta como fallo de carga. */
+function isFulfilledList<T>(
+  result: PromiseSettledResult<T[]>,
+): result is PromiseFulfilledResult<T[]> {
+  return result.status === 'fulfilled' && Array.isArray(result.value);
 }
 
 /** Lleva el foco al encabezado de un panel de la pestaña (CA-11 y franja de resumen). */
@@ -133,6 +151,10 @@ export function SubscriberSupportTab({
   const canReadVisits = hasPermission(AccessPermissionKey.WFM_SCHEDULE_READ);
   const canManageWfmSchedule = hasPermission(AccessPermissionKey.WFM_SCHEDULE_MANAGE);
   const canReadUsers = hasPermission(AccessPermissionKey.USERS_READ);
+  const role = useOptionalAuth()?.user?.role;
+  // La franja solo se ofrece a quien el servidor la entrega: rol y permiso (CA-15).
+  const canReadUpcomingVisits =
+    canReadVisits && !subscriber.privacyRestricted && !!role && UPCOMING_VISITS_ROLES.has(role);
   // Nombres de responsables al montar, en paralelo con la lista (spec §12 paso 1, CA-4).
   const shouldLoadUsers =
     !subscriber.privacyRestricted && (canManageTickets || (canReadTickets && canReadUsers));
@@ -147,6 +169,8 @@ export function SubscriberSupportTab({
   const [slaPolicies, setSlaPolicies] = useState<AssuranceSlaPolicy[]>([]);
   const [createdTicketId, setCreatedTicketId] = useState<string | null>(null);
   const [visitEntries, setVisitEntries] = useState<VisitEntry[] | null>(null);
+  const [upcoming, setUpcoming] = useState<SubscriberUpcomingVisitsResponse | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [closeAnnouncement, setCloseAnnouncement] = useState('');
 
   const [drawerTicket, setDrawerTicket] = useState<AssuranceTicket | null>(null);
@@ -283,13 +307,13 @@ export function SubscriberSupportTab({
         // Otro ticket se abrió mientras cargaba este: se descarta la respuesta tardía.
         if (openTicketIdRef.current !== ticket.id) return;
         setDrawerTicket(ticketResult.status === 'fulfilled' ? ticketResult.value : ticket);
-        setComments(commentsResult.status === 'fulfilled' ? commentsResult.value : []);
-        setTimeline(timelineResult.status === 'fulfilled' ? timelineResult.value : []);
-        if (
-          ticketResult.status === 'rejected' ||
-          commentsResult.status === 'rejected' ||
-          timelineResult.status === 'rejected'
-        ) {
+        // Guarda de datos (QA3): una lista con forma inesperada se trata como fallo de carga,
+        // no rompe el detalle.
+        const commentsOk = isFulfilledList(commentsResult);
+        const timelineOk = isFulfilledList(timelineResult);
+        setComments(commentsOk ? commentsResult.value : []);
+        setTimeline(timelineOk ? timelineResult.value : []);
+        if (ticketResult.status === 'rejected' || !commentsOk || !timelineOk) {
           setDrawerError('No fue posible cargar todos los detalles del ticket.');
         }
         setDrawerLoading(false);
@@ -306,8 +330,13 @@ export function SubscriberSupportTab({
         assuranceApi.tickets.listComments(ticketId),
         assuranceApi.tickets.listTimeline(ticketId),
       ]);
-      if (commentsResult.status === 'fulfilled') setComments(commentsResult.value);
-      if (timelineResult.status === 'fulfilled') setTimeline(timelineResult.value);
+      if (isFulfilledList(commentsResult)) setComments(commentsResult.value);
+      if (isFulfilledList(timelineResult)) setTimeline(timelineResult.value);
+      // Forma inesperada tras una acción: se avisa como al abrir, sin descartar en silencio.
+      const malformed = [commentsResult, timelineResult].some(
+        (result) => result.status === 'fulfilled' && !Array.isArray(result.value),
+      );
+      if (malformed) setDrawerError('No fue posible cargar todos los detalles del ticket.');
       return ticketResult.status === 'fulfilled' ? ticketResult.value : null;
     },
     [],
@@ -406,11 +435,39 @@ export function SubscriberSupportTab({
     return () => window.removeEventListener('popstate', onPopState);
   }, [dismissTicket, openTicket]);
 
-  const upcomingVisits = useMemo(
-    () => (canReadVisits && visitEntries ? visitEntries.filter(isOpenVisitEntry).length : null),
-    [canReadVisits, visitEntries],
+  // «Visitas próximas» cuenta todas las de la franja (bloque I); sin franja, las propias de antes.
+  const upcomingVisits = useMemo(() => {
+    if (canReadUpcomingVisits && upcoming) return upcoming.total;
+    return canReadVisits && visitEntries ? visitEntries.filter(isOpenVisitEntry).length : null;
+  }, [canReadUpcomingVisits, canReadVisits, upcoming, visitEntries]);
+  // Lo que ya muestra la franja no se repite en el historial (CA-14).
+  const upcomingVisitIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const item of upcoming?.items ?? []) {
+      ids.add(item.id);
+      if (item.visitRequestId) ids.add(item.visitRequestId);
+      if (item.scheduleEventId) ids.add(item.scheduleEventId);
+    }
+    return ids;
+  }, [upcoming]);
+  const showVisits = useCallback(() => {
+    if (canReadUpcomingVisits) {
+      focusPanelHeading(SUBSCRIBER_UPCOMING_VISITS_PANEL_ID);
+      return;
+    }
+    setHistoryOpen(true);
+    focusPanelHeading(SUBSCRIBER_VISITS_PANEL_ID);
+  }, [canReadUpcomingVisits]);
+  // La visita de un ticket abre ese ticket en la pestaña (vista dividida o panel), con `ticket=`.
+  const openTicketFromVisit = useCallback(
+    (ticketId: string, opener: HTMLButtonElement) => {
+      const ticket = listedTicketsRef.current.find((item) => item.id === ticketId);
+      if (!ticket) return false;
+      openTicket(ticket, opener, 'push');
+      return true;
+    },
+    [openTicket],
   );
-  const showVisits = useCallback(() => focusPanelHeading(SUBSCRIBER_VISITS_PANEL_ID), []);
 
   const runDrawerAction = useCallback(
     async (
@@ -520,8 +577,19 @@ export function SubscriberSupportTab({
         <PortalSuccessAlert message={createFeedback} onDismiss={dismissCreateFeedback} />
       ) : null}
 
+      {/* Franja única de visitas pendientes, sobre la lista (spec v1.1 bloque I). */}
+      {canReadUpcomingVisits ? (
+        <SubscriberUpcomingVisitsStrip
+          subscriberId={subscriber.id}
+          privacyRestricted={subscriber.privacyRestricted}
+          onLoaded={setUpcoming}
+          onOpenTicket={canReadTickets ? openTicketFromVisit : undefined}
+          ticketFallbackHref={canReadTickets ? getAssuranceTicketPath : undefined}
+        />
+      ) : null}
+
       {/* Vista dividida desde 1280 px (§3 A, D1 §2): lista de 25rem y el ticket al lado. Por
-          debajo, una columna y el panel lateral. Visitas, debajo de la grilla (§3 E). */}
+          debajo, una columna y el panel lateral. El historial de visitas, plegado debajo. */}
       <div
         className={
           splitView
@@ -531,6 +599,7 @@ export function SubscriberSupportTab({
       >
         <SubscriberTicketsSection
           subscriber={subscriber}
+          dense={splitView}
           canRead={canReadTickets}
           users={assignees}
           usersPending={usersPending}
@@ -580,6 +649,9 @@ export function SubscriberSupportTab({
         subscriber={subscriber}
         canRead={canReadVisits}
         onEntriesChange={setVisitEntries}
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        excludeIds={canReadUpcomingVisits ? upcomingVisitIds : undefined}
       />
 
       <p className="sr-only" role="status">

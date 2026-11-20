@@ -375,7 +375,12 @@ describe('SubscriberSupportTab — rediseño (spec 2026-11-17)', () => {
     render(<SubscriberSupportTab subscriber={subscriber} />);
     const figure = await screen.findByRole('button', { name: 'Ver 1 visitas próximas' });
     await user.click(figure);
-    expect(screen.getByRole('heading', { name: 'Visitas' })).toHaveFocus();
+    // P3: sin franja (sin rol), la cifra abre y enfoca el «Historial de visitas».
+    expect(screen.getByRole('heading', { name: 'Historial de visitas' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Historial de visitas' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
   });
 
   it('sin visitas, la sección es una línea', async () => {

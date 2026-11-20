@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { SlidersHorizontal } from 'lucide-react';
+import { Info, SlidersHorizontal } from 'lucide-react';
 import { TicketPriority, TicketType } from '@iwana/shared';
 import { Button, Select, cn, interactiveFocusClassName } from '@iwana/ui';
 import type { AssuranceTicket, InternalUser, SubscriberRecord } from '@/lib/api-client';
@@ -57,6 +57,8 @@ interface SubscriberTicketsSectionProps {
   selectedTicketId?: string | null;
   /** Lista cargada (cada consulta): la pestaña resuelve el ticket de la URL y el de entrada. */
   onTicketsLoaded?: (tickets: readonly AssuranceTicket[]) => void;
+  /** Vista dividida: fila de tres líneas como máximo (spec v1.2 bloque J). */
+  dense?: boolean;
 }
 
 type TicketFilter = 'abiertos' | 'cerrados' | 'todos' | 'vencidos';
@@ -179,6 +181,7 @@ export function SubscriberTicketsSection({
   highlightTicketId = null,
   selectedTicketId = null,
   onTicketsLoaded,
+  dense = false,
 }: SubscriberTicketsSectionProps) {
   const [tickets, setTickets] = useState<AssuranceTicket[]>([]);
   const [total, setTotal] = useState<number | null>(null);
@@ -294,6 +297,13 @@ export function SubscriberTicketsSection({
     requestedKeyRef.current = key;
     void loadTickets();
   }, [canRead, loadTickets, refreshKey, subscriber.id, subscriber.privacyRestricted]);
+
+  // La fila seleccionada queda a la vista en la lista (CA-18): al entrar y con ticket por URL.
+  useEffect(() => {
+    if (!selectedTicketId) return;
+    const row = listRef.current?.querySelector<HTMLElement>('[aria-current="true"]');
+    row?.scrollIntoView?.({ block: 'nearest' });
+  }, [selectedTicketId, loaded, usersPending]);
 
   const initialLoading = canRead && !error && (!loaded || usersPending);
 
@@ -440,7 +450,7 @@ export function SubscriberTicketsSection({
             type="button"
             variant="secondary"
             size="sm"
-            className="min-h-11 shrink-0 gap-1.5 @lg:hidden"
+            className={cn('shrink-0 gap-1.5 @lg:hidden', dense ? 'min-h-9' : 'min-h-11')}
             aria-expanded={filtersOpen}
             aria-controls="subscriber-ticket-filters"
             onClick={() => setFiltersOpen((open) => !open)}
@@ -485,6 +495,10 @@ export function SubscriberTicketsSection({
               className="min-w-0 @lg:min-w-48 @lg:flex-1"
             />
           </div>
+          {/* Vista dividida: «Crear ticket» baja a la fila de colas para ahorrar una línea (CA-17). */}
+          {dense && actions ? (
+            <div className="flex shrink-0 items-center gap-2">{actions}</div>
+          ) : null}
         </div>
 
         {notice}
@@ -526,6 +540,7 @@ export function SubscriberTicketsSection({
                 fieldWork={getTicketFieldWork(ticket)}
                 highlighted={ticket.id === highlightTicketId}
                 selected={ticket.id === selectedTicketId}
+                dense={dense}
                 now={now}
                 onOpen={(opener) => onOpenTicket(ticket, opener)}
               />
@@ -553,30 +568,56 @@ export function SubscriberTicketsSection({
     <PortalPanel
       id={SUBSCRIBER_TICKETS_PANEL_ID}
       density="dense"
-      contentClassName="space-y-2 px-3 pb-3 pt-2 sm:px-4"
+      contentClassName={
+        dense ? 'space-y-1.5 px-3 pb-2 pt-1.5 sm:px-4' : 'space-y-2 px-3 pb-3 pt-2 sm:px-4'
+      }
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h2 className={cn(portalPanelDenseTitleClassName, 'order-1')}>Tickets</h2>
-        {figures.length > 0 ? (
-          <div
-            role="group"
-            aria-label="Resumen de tickets"
-            className="order-3 grid basis-full auto-cols-fr grid-flow-col gap-2 sm:order-2 sm:flex sm:basis-auto"
-          >
-            {figures}
-          </div>
-        ) : null}
-        {showNoDeadlineNote ? (
-          <p className="sr-only text-xs text-gray-600 dark:text-gray-300 sm:not-sr-only sm:order-3">
-            Estos tickets no tienen plazo de atención; se ordenan por prioridad.
-          </p>
-        ) : null}
-        {actions ? (
-          <div className="order-2 ml-auto flex shrink-0 items-center gap-2 sm:order-4">
-            {actions}
-          </div>
-        ) : null}
-      </div>
+      {dense ? (
+        // Vista dividida (CA-17): título y cifras en una línea; el aviso de orden queda como
+        // texto accesible con un icono de ayuda, y «Crear ticket» va junto a las colas.
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className={portalPanelDenseTitleClassName}>Tickets</h2>
+          {figures.length > 0 ? (
+            <div role="group" aria-label="Resumen de tickets" className="flex min-w-0 gap-1.5">
+              {figures}
+            </div>
+          ) : null}
+          {showNoDeadlineNote ? (
+            <span
+              className="inline-flex shrink-0 text-gray-600 dark:text-gray-300"
+              title="Estos tickets no tienen plazo de atención; se ordenan por prioridad."
+            >
+              <Info className="h-4 w-4" aria-hidden="true" />
+              <span className="sr-only">
+                Estos tickets no tienen plazo de atención; se ordenan por prioridad.
+              </span>
+            </span>
+          ) : null}
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h2 className={cn(portalPanelDenseTitleClassName, 'order-1')}>Tickets</h2>
+          {figures.length > 0 ? (
+            <div
+              role="group"
+              aria-label="Resumen de tickets"
+              className="order-3 grid basis-full auto-cols-fr grid-flow-col gap-2 sm:order-2 sm:flex sm:basis-auto"
+            >
+              {figures}
+            </div>
+          ) : null}
+          {showNoDeadlineNote ? (
+            <p className="sr-only text-xs text-gray-600 dark:text-gray-300 sm:not-sr-only sm:order-3">
+              Estos tickets no tienen plazo de atención; se ordenan por prioridad.
+            </p>
+          ) : null}
+          {actions ? (
+            <div className="order-2 ml-auto flex shrink-0 items-center gap-2 sm:order-4">
+              {actions}
+            </div>
+          ) : null}
+        </div>
+      )}
       {content}
     </PortalPanel>
   );

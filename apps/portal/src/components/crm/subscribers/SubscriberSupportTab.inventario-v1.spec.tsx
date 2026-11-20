@@ -267,7 +267,11 @@ describe('SubscriberSupportTab — inventario v1.0 que el rediseño conserva', (
     const user = userEvent.setup();
     render(<SubscriberSupportTab subscriber={subscriber} />);
 
-    expect(await screen.findByRole('heading', { name: 'Visitas' })).toBeInTheDocument();
+    // P3: la sección pasa a «Historial de visitas», plegada por defecto; se abre con un clic.
+    expect(
+      await screen.findByRole('heading', { name: 'Historial de visitas' }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Historial de visitas' }));
     const visits = await screen.findAllByRole('button', { name: /^Ver detalle de visita: / });
     expect(visits).toHaveLength(2);
     expect(wfmApi.visitRequests.list).toHaveBeenCalledWith(
@@ -302,6 +306,8 @@ describe('SubscriberSupportTab — inventario v1.0 que el rediseño conserva', (
     render(<SubscriberSupportTab subscriber={subscriber} />);
 
     expect(await screen.findByText('No fue posible cargar los tickets')).toBeInTheDocument();
+    // P3: historial plegado por defecto.
+    await user.click(screen.getByRole('button', { name: 'Historial de visitas' }));
     expect(await screen.findAllByRole('button', { name: /^Ver detalle de visita: / })).toHaveLength(
       2,
     );

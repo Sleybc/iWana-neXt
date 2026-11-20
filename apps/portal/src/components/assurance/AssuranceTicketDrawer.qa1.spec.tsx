@@ -70,6 +70,8 @@ jest.mock('next/navigation', () => ({
 
 jest.mock('@/components/auth/AuthProvider', () => ({
   useAuth: () => mockAuth,
+  // P3: la pestaña lee el rol con useOptionalAuth; sin rol no monta la franja de visitas.
+  useOptionalAuth: () => null,
 }));
 
 jest.mock('@/components/access-control/permissions-context', () => ({

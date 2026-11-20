@@ -3,11 +3,17 @@
  * Enumera lo que la pestaña Soporte ofrece hoy y que el rediseño debe conservar: colas,
  * filtros, los ocho datos de la fila, acciones del ticket y estados vacíos. Asevera por rol
  * y texto accesible, nunca por estructura DOM, para seguir siendo válida antes y después.
+ *
+ * QA3 (2026-11-20, paso 3, spec v1.2 bloque I y R9): la sección «Visitas» se retira y su
+ * contenido pasa a la franja «Próximas visitas» (activas) y al «Historial de visitas» plegable
+ * (las demás). El último caso comprueba que ningún dato ni acción de la sección se pierde.
+ * Sin sesión (mockAuth nulo) la pestaña no monta la franja, como en W0: los demás casos no cambian.
  */
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   AccessPermissionKey,
+  ScheduleEventStatus,
   SlaBreachStatus,
   TicketFieldDecision,
   TicketPriority,
@@ -15,8 +21,16 @@ import {
   TicketSource,
   TicketStatus,
   TicketType,
+  UserRole,
+  WfmWorkType,
 } from '@iwana/shared';
-import type { AssuranceTicket, AssuranceTicketComment, SubscriberRecord } from '@/lib/api-client';
+import type { SubscriberUpcomingVisitItem } from '@iwana/shared';
+import type {
+  AssuranceTicket,
+  AssuranceTicketComment,
+  SubscriberRecord,
+  WfmScheduleEvent,
+} from '@/lib/api-client';
 import { assuranceApi, usersApi, wfmApi } from '@/lib/api-client';
 import {
   ASSURANCE_UNASSIGNED_LABEL,
@@ -25,6 +39,11 @@ import {
 import { SubscriberSupportTab } from './SubscriberSupportTab';
 
 const mockPermissions = { current: new Set<AccessPermissionKey>() };
+const mockAuth: { current: { user: { role: string } } | null } = { current: null };
+
+jest.mock('@/components/auth/AuthProvider', () => ({
+  useOptionalAuth: () => mockAuth.current,
+}));
 
 // Referencias estables (useRouter, usePermissions): un objeto nuevo por render dispara efectos
 // en bucle. La pestaña no usa useAuth hoy; si el rediseño lo introduce, se mockea igual.
@@ -63,6 +82,7 @@ jest.mock('@/lib/api-client', () => ({
   },
   usersApi: { list: jest.fn() },
   wfmApi: {
+    subscriberUpcomingVisits: jest.fn(),
     visitRequests: { list: jest.fn() },
     events: { list: jest.fn() },
   },
@@ -179,6 +199,7 @@ async function openTicket(user: ReturnType<typeof userEvent.setup>, number: stri
 describe('SubscriberSupportTab — inventario W0 (CA-1, vista dividida)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockAuth.current = null;
     window.history.replaceState(null, '', '/');
     mockPermissions.current = new Set(ALL);
     (assuranceApi.tickets.list as jest.Mock).mockResolvedValue({ data: ALL_TICKETS });
@@ -306,5 +327,102 @@ describe('SubscriberSupportTab — inventario W0 (CA-1, vista dividida)', () => 
     render(<SubscriberSupportTab subscriber={subscriber} />);
     expect(await screen.findByText('No tienes acceso a los tickets')).toBeInTheDocument();
     expect(assuranceApi.tickets.list).not.toHaveBeenCalled();
+  });
+
+  it('visitas (R9): lo que mostraba la sección «Visitas» queda en la franja o en el historial, sin perder datos ni acciones', async () => {
+    const user = userEvent.setup();
+    const ACTIVE = '11111111-1111-4111-8111-111111111111';
+    const DONE = '44444444-4444-4444-8444-444444444444';
+    const CONTRACT = '55555555-5555-4555-8555-555555555555';
+    const activeVisit: SubscriberUpcomingVisitItem = {
+      key: `EVENT:${ACTIVE}`,
+      kind: 'EVENT',
+      id: ACTIVE,
+      visitRequestId: null,
+      scheduleEventId: ACTIVE,
+      status: ScheduleEventStatus.SCHEDULED,
+      workType: WfmWorkType.TECHNICAL_VISIT,
+      scheduledAt: '2099-02-01T14:00:00.000Z',
+      requestedWindowStartAt: null,
+      address: 'Carrera sintética 1',
+      origin: {
+        type: 'CONTRACT',
+        ticketId: null,
+        ticketNumber: null,
+        expedienteId: null,
+        contractId: CONTRACT,
+      },
+      createdAt: '2026-11-18T10:00:00.000Z',
+    };
+    const event = (id: string, status: ScheduleEventStatus, type: WfmWorkType, at: string) => ({
+      id,
+      tenantId: 'tenant-a',
+      type,
+      status,
+      scheduledStartAt: at,
+      address: 'Carrera sintética 1',
+      expedienteId: null,
+      contractId: CONTRACT,
+      subscriberId: subscriber.id,
+      ticketId: null,
+      createdAt: at,
+    });
+    mockAuth.current = { user: { role: UserRole.SUPPORT } };
+    (wfmApi.subscriberUpcomingVisits as jest.Mock).mockResolvedValue({
+      items: [activeVisit],
+      total: 1,
+      truncated: false,
+    });
+    // Antes, la sección listaba las dos: la activa y la terminada.
+    (wfmApi.events.list as jest.Mock).mockResolvedValue({
+      data: [
+        event(
+          ACTIVE,
+          ScheduleEventStatus.SCHEDULED,
+          WfmWorkType.TECHNICAL_VISIT,
+          '2099-02-01T14:00:00.000Z',
+        ),
+        event(
+          DONE,
+          ScheduleEventStatus.COMPLETED,
+          WfmWorkType.INSTALLATION,
+          '2026-01-10T14:00:00.000Z',
+        ),
+      ] as unknown as WfmScheduleEvent[],
+    });
+    render(<SubscriberSupportTab subscriber={subscriber} />);
+
+    // Activa → franja: fecha, tipo, estado, origen, dirección y «Abrir en Agendamiento».
+    const strip = await screen.findByRole('list', { name: 'Visitas pendientes' });
+    const [item] = within(strip).getAllByRole('listitem');
+    expect(item).toHaveTextContent('Contrato');
+    // Quinta pasada de P3 (regla nueva): la dirección sale de la línea; queda en el nombre accesible y en «Ver detalle».
+    expect(item).not.toHaveTextContent('Carrera sintética 1');
+    expect(item).not.toHaveTextContent('Por agendar');
+    expect(
+      within(item!).getByRole('link', {
+        name: /^Abrir en Agendamiento: visita .*carrera sintética 1, contrato$/i,
+      }),
+    ).toHaveAttribute('href', expect.stringContaining('/dashboard/scheduling/'));
+    await user.click(within(item!).getByRole('button', { name: /^Ver detalle de visita: / }));
+    const stripDetail = await screen.findByRole('dialog', { name: 'Detalle de la visita' });
+    expect(within(stripDetail).getByText('Carrera sintética 1')).toBeInTheDocument();
+    expect(within(stripDetail).getByRole('link', { name: /Agendamiento/ })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    // Terminada → historial, a un clic, con su detalle y su acción; la activa no se repite.
+    const toggle = screen.getByRole('button', { name: 'Historial de visitas' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await user.click(toggle);
+    const history = await screen.findByRole('list', { name: 'Visitas vinculadas' });
+    const historyRows = within(history).getAllByRole('button', {
+      name: /^Ver detalle de visita: /,
+    });
+    expect(historyRows).toHaveLength(1);
+    await user.click(historyRows[0]!);
+    const detail = await screen.findByRole('dialog', { name: 'Detalle de la visita' });
+    expect(within(detail).getByText('Carrera sintética 1')).toBeInTheDocument();
+    expect(within(detail).getByRole('link', { name: 'Abrir en Agendamiento' })).toBeVisible();
   });
 });

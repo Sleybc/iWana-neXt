@@ -248,14 +248,15 @@ describe('SubscriberSupportTab — vista dividida (P1)', () => {
       setViewport(true);
       const user = userEvent.setup();
       render(<SubscriberSupportTab subscriber={subscriber} />);
-      expect(await screen.findByRole('heading', { name: 'TK-2026-0802' })).toBeInTheDocument();
-      await user.click(row('TK-2026-0801'));
+      // P3-J: el de entrada es el primero de la lista (0801, prioridad alta).
       expect(await screen.findByRole('heading', { name: 'TK-2026-0801' })).toBeInTheDocument();
+      await user.click(row('TK-2026-0802'));
+      expect(await screen.findByRole('heading', { name: 'TK-2026-0802' })).toBeInTheDocument();
       act(() => {
         window.history.back();
       });
-      expect(await screen.findByRole('heading', { name: 'TK-2026-0802' })).toBeInTheDocument();
-      expect(urlParam('ticket')).toBe('t-empty');
+      expect(await screen.findByRole('heading', { name: 'TK-2026-0801' })).toBeInTheDocument();
+      expect(urlParam('ticket')).toBe('t-clip');
     });
 
     it('un ticket ajeno o inexistente se ignora sin consultarlo ni revelar nada', async () => {
@@ -275,26 +276,29 @@ describe('SubscriberSupportTab — vista dividida (P1)', () => {
       const user = userEvent.setup();
       render(<SubscriberSupportTab subscriber={subscriber} />);
       await waitFor(() => expect(rows()).toHaveLength(2));
-      await user.click(row('TK-2026-0801'));
+      // P3-J: al entrar se abre 0801 (primero de la lista); se cambia a otro ticket (0802).
       const pane = await screen.findByRole('region', { name: 'Ticket abierto' });
+      await within(pane).findByRole('heading', { name: 'TK-2026-0801' });
+      await user.click(row('TK-2026-0802'));
       expect(
-        await within(pane).findByRole('heading', { name: 'TK-2026-0801' }),
+        await within(pane).findByRole('heading', { name: 'TK-2026-0802' }),
       ).toBeInTheDocument();
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       expect(rows()).toHaveLength(2);
       expect(within(pane).getByRole('textbox', { name: 'Nuevo comentario' })).toBeInTheDocument();
       // Cambiar de ticket con el ratón deja el foco en la fila (no es modal).
-      expect(row('TK-2026-0801')).toHaveFocus();
+      expect(row('TK-2026-0802')).toHaveFocus();
     });
 
-    it('al entrar abre el abierto más reciente, con una sola carga (R2)', async () => {
+    // P3-J (spec v1.2 bloque J): el de entrada es el primero de la lista ordenada, no el más reciente.
+    it('al entrar abre el primero de la lista, con una sola carga (R2)', async () => {
       setViewport(true);
       render(<SubscriberSupportTab subscriber={subscriber} />);
-      expect(await screen.findByRole('heading', { name: 'TK-2026-0802' })).toBeInTheDocument();
+      expect(await screen.findByRole('heading', { name: 'TK-2026-0801' })).toBeInTheDocument();
       await waitFor(() => expect(assuranceApi.tickets.listTimeline).toHaveBeenCalled());
       expect(assuranceApi.tickets.get).toHaveBeenCalledTimes(1);
       expect(assuranceApi.tickets.listComments).toHaveBeenCalledTimes(1);
-      expect(urlParam('ticket')).toBe('t-empty');
+      expect(urlParam('ticket')).toBe('t-clip');
       // La apertura automática no roba el foco.
       expect(document.body).toHaveFocus();
     });
@@ -348,7 +352,8 @@ describe('SubscriberSupportTab — vista dividida (P1)', () => {
       );
     });
 
-    it('D3: «abierto» es todo lo no resuelto ni cerrado; gana el más reciente aunque esté en progreso', async () => {
+    // P3-J ajusta D3: gana el primero de la lista tal como está ordenada (abiertos primero).
+    it('D3 (P3-J): abre el primero de la lista ordenada; un resuelto no gana a los abiertos', async () => {
       setViewport(true);
       const open = ticket({
         id: 't-o',
@@ -373,22 +378,25 @@ describe('SubscriberSupportTab — vista dividida (P1)', () => {
         data.find((item) => item.id === id),
       );
       render(<SubscriberSupportTab subscriber={subscriber} />);
-      expect(await screen.findByRole('heading', { name: 'TK-2026-0902' })).toBeInTheDocument();
+      // compareTickets: abiertos primero; misma prioridad y sin plazo, gana el más antiguo (0901).
+      expect(await screen.findByRole('heading', { name: 'TK-2026-0901' })).toBeInTheDocument();
+      expect(row('TK-2026-0901')).toHaveAttribute('aria-current', 'true');
     });
 
     it('CA-7: la fila del ticket abierto se anuncia como actual', async () => {
       setViewport(true);
       render(<SubscriberSupportTab subscriber={subscriber} />);
-      await screen.findByRole('heading', { name: 'TK-2026-0802' });
-      expect(row('TK-2026-0802')).toHaveAttribute('aria-current', 'true');
-      expect(row('TK-2026-0801')).not.toHaveAttribute('aria-current');
+      await screen.findByRole('heading', { name: 'TK-2026-0801' });
+      expect(row('TK-2026-0801')).toHaveAttribute('aria-current', 'true');
+      expect(row('TK-2026-0802')).not.toHaveAttribute('aria-current');
     });
 
-    it('E: Visitas sigue presente bajo la vista dividida', async () => {
+    // P3: «Visitas» pasa a «Historial de visitas» plegable (decisión del usuario 2026-11-20).
+    it('E: el historial de visitas sigue presente bajo la vista dividida', async () => {
       setViewport(true);
       render(<SubscriberSupportTab subscriber={subscriber} />);
-      await screen.findByRole('heading', { name: 'TK-2026-0802' });
-      expect(screen.getByRole('heading', { name: 'Visitas' })).toBeInTheDocument();
+      await screen.findByRole('heading', { name: 'TK-2026-0801' });
+      expect(screen.getByRole('heading', { name: 'Historial de visitas' })).toBeInTheDocument();
     });
   });
 

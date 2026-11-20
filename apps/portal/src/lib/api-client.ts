@@ -24,6 +24,7 @@ import type {
   ExecutionOrderLookupResponse,
   LinkExecutionOrderBody,
   LinkExecutionOrderResponse,
+  SubscriberUpcomingVisitsResponse,
 } from '@iwana/shared';
 
 import {
@@ -4673,6 +4674,14 @@ export const wfmApi = {
     list: (tenantSlug?: string) =>
       request<InternalUser[]>('/wfm/eligible-assignees', { returnFullResponse: true }, tenantSlug),
   },
+
+  /** Franja «Próximas visitas» de la pestaña Soporte (contrato v1.0, spec 2026-11-20 bloque I). */
+  subscriberUpcomingVisits: (subscriberId: string, tenantSlug?: string) =>
+    request<SubscriberUpcomingVisitsResponse>(
+      `/wfm/subscribers/${encodeURIComponent(subscriberId)}/upcoming-visits`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
 
   visitRequests: {
     list: (params?: ListWfmVisitRequestsParams, tenantSlug?: string) => {

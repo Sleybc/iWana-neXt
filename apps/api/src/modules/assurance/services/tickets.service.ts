@@ -11,6 +11,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
+import { subscriberTicketLinkPredicate } from './subscriber-ticket-link.predicate';
 import {
   Brackets,
   DataSource,
@@ -440,35 +441,7 @@ export class TicketsService {
       }
 
       if (validated.subscriberId) {
-        qb.andWhere(
-          new Brackets((subscriberQuery) => {
-            subscriberQuery
-              .where(
-                '(st.requester_type = :subscriberRequesterType AND st.requester_ref_id = :subscriberId)',
-                {
-                  subscriberRequesterType: TicketRequesterType.SUBSCRIBER,
-                  subscriberId: validated.subscriberId,
-                },
-              )
-              .orWhere(
-                '(st.subject_type = :subscriberSubjectType AND st.subject_ref_id = :subscriberId)',
-                {
-                  subscriberSubjectType: TicketSubjectType.SUBSCRIBER,
-                  subscriberId: validated.subscriberId,
-                },
-              );
-
-            if (subscriberContractIds.length > 0) {
-              subscriberQuery.orWhere(
-                '(st.subject_type = :contractSubjectType AND st.subject_ref_id IN (:...subscriberContractIds))',
-                {
-                  contractSubjectType: TicketSubjectType.CONTRACT,
-                  subscriberContractIds,
-                },
-              );
-            }
-          }),
-        );
+        qb.andWhere(subscriberTicketLinkPredicate(validated.subscriberId, subscriberContractIds));
       }
 
       // Bajar filtro slaBreachStatus al WHERE (DEF-4)
