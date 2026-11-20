@@ -264,8 +264,8 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
     useState(false);
 
   const loadSequenceRef = useRef(0);
-  // Conteos del encabezado (§3 H): se recargan con cada recarga de la agenda (Actualizar,
-  // agendar, confirmar borrador, devolver a pendientes); la primera carga no los repite.
+  // Conteos del encabezado (§3 H): se recargan con Actualizar y tras agendar, confirmar
+  // borrador o devolver a pendientes; no al cambiar de vista, fecha o filtro.
   const [pendingCountsRefreshKey, setPendingCountsRefreshKey] = useState(0);
   const hasLoadedDataRef = useRef(false);
   const handledCreateQueryRef = useRef<string | null>(null);
@@ -612,10 +612,10 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
     [],
   );
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (options?: { keepPendingCounts?: boolean }) => {
     const requestId = loadSequenceRef.current + 1;
     loadSequenceRef.current = requestId;
-    if (hasLoadedDataRef.current) {
+    if (hasLoadedDataRef.current && !options?.keepPendingCounts) {
       setPendingCountsRefreshKey((key) => key + 1);
     }
     hasLoadedDataRef.current = true;
@@ -891,7 +891,8 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
       return;
     }
 
-    void loadData();
+    // Recarga por cambio de vista, fecha o filtro: los conteos de pendientes no dependen de eso.
+    void loadData({ keepPendingCounts: true });
   }, [authLoading, canView, loadData, user]);
 
   useEffect(() => {

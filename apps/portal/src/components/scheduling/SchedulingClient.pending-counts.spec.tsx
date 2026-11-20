@@ -162,4 +162,18 @@ describe('SchedulingClient — conteos del encabezado con el hook real', () => {
       await waitFor(() => expect(countCalls()).toBe(8));
     },
   );
+
+  it('cambiar de vista recarga la agenda sin repetir las consultas de conteo', async () => {
+    authAs(UserRole.ADMIN);
+    render(<SchedulingClient surface="agenda" />);
+
+    await screen.findByRole('link', { name: 'Pendientes: 3' });
+    expect(countCalls()).toBe(4);
+    const agendaLoads = api.events.list.mock.calls.length;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Semana' }));
+    await waitFor(() => expect(api.events.list.mock.calls.length).toBeGreaterThan(agendaLoads));
+    await screen.findByRole('button', { name: 'Actualizar' });
+    expect(countCalls()).toBe(4);
+  });
 });
