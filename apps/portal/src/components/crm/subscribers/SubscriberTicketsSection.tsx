@@ -631,7 +631,11 @@ export function SubscriberTicketsSection({
             tabIndex={-1}
             aria-label="Tickets vinculados"
             // Contenedor de la fila (D1 §3) y, en vista dividida, desplazamiento propio (§3 E, CA-8).
-            className="@container divide-y divide-gray-100 focus:outline-none dark:divide-dark-border xl:max-h-[32rem] xl:overflow-y-auto"
+            className={cn(
+              '@container divide-y focus:outline-none dark:divide-dark-border xl:max-h-[32rem] xl:overflow-y-auto',
+              // Vista dividida: la línea entre tickets se marca más, para que cada uno se lea aparte.
+              dense ? 'divide-gray-200' : 'divide-gray-100',
+            )}
           >
             {visibleTickets.map((ticket) => (
               <TicketListItem

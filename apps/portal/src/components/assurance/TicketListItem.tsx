@@ -141,13 +141,14 @@ export function TicketListItem({
           title={typeLabel ?? undefined}
           onClick={(event) => onOpen(event.currentTarget)}
           className={cn(
-            'block min-h-11 w-full rounded-xl border-l-2 border-transparent px-3 py-0.5 text-left transition-colors hover:bg-iwana-surface-soft dark:hover:bg-dark-surface-3',
+            'block min-h-11 w-full rounded-xl border-l-2 border-transparent px-3 py-2 text-left transition-colors hover:bg-iwana-surface-soft dark:hover:bg-dark-surface-3',
             interactiveFocusClassName,
             (highlighted || selected) && 'bg-iwana-surface-soft dark:bg-dark-surface-3',
             selected && 'border-iwana-primary dark:border-iwana-primary-500',
           )}
         >
-          {/* Alto ≈ 60 px (CA-17): 4 de relleno + 20 + 20 + 16, sin márgenes entre líneas. */}
+          {/* Alto ≈ 74 px: 16 de relleno + 20 + 2 + 20 + 16. Con la separación entre filas caben
+              5 completas a 1440×900 (CA-17); más aire deja la quinta en el borde. */}
           <span className="flex items-baseline gap-x-2 leading-5">
             <span className="shrink-0 font-mono text-xs font-semibold text-iwana-secondary-700 dark:text-gray-300">
               {ticket.ticketNumber}
@@ -170,7 +171,7 @@ export function TicketListItem({
               </span>
             ) : null}
           </span>
-          <span className="flex h-5 min-w-0 items-center gap-x-2 overflow-hidden text-xs text-gray-600 dark:text-gray-300">
+          <span className="mt-0.5 flex h-5 min-w-0 items-center gap-x-2 overflow-hidden text-xs text-gray-600 dark:text-gray-300">
             <TicketStatusBadge status={ticket.status} />
             <TicketPriorityBadge priority={ticket.priority} />
             {fieldWork ? (
