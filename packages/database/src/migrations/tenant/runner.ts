@@ -172,6 +172,7 @@ import { TicketCommentAttachments2120000000212 } from './212_ticket_comment_atta
 import { AssetLoansSubscriberIndex2130000000213 } from './213_asset_loans_subscriber_index';
 import { AddExecutionOrderClosedTimelineEvent2140000000214 } from './214_add_execution_order_closed_timeline_event';
 import { RestoreVisitTicketLinks2150000000215 } from './215_restore_visit_ticket_links';
+import { ResolveInstallationTicketsWithExecutedOrder2160000000216 } from './216_resolve_installation_tickets_with_executed_order';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -425,6 +426,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   AssetLoansSubscriberIndex2130000000213,
   AddExecutionOrderClosedTimelineEvent2140000000214,
   RestoreVisitTicketLinks2150000000215,
+  ResolveInstallationTicketsWithExecutedOrder2160000000216,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;
