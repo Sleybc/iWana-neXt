@@ -1,9 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Info, SlidersHorizontal } from 'lucide-react';
+import { Info, Search, SlidersHorizontal, X } from 'lucide-react';
 import { TicketPriority, TicketType } from '@iwana/shared';
-import { Button, Select, cn, interactiveFocusClassName } from '@iwana/ui';
+import {
+  Button,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Select,
+  cn,
+  interactiveFocusClassName,
+} from '@iwana/ui';
 import type { AssuranceTicket, InternalUser, SubscriberRecord } from '@/lib/api-client';
 import { assuranceApi } from '@/lib/api-client';
 import {
@@ -79,6 +87,8 @@ const PRIORITY_OPTIONS = [
   ].map((value) => ({ value, label: ASSURANCE_TICKET_PRIORITY_LABELS[value] })),
 ];
 const TYPE_OPTIONS = [{ value: '', label: 'Todos' }, ...ASSURANCE_TICKET_TYPE_OPTIONS];
+const SEARCH_FIELD_ID = 'subscriber-ticket-search';
+const denseIconButtonClassName = 'h-9 w-9 shrink-0 p-0';
 
 interface UrlFilters {
   filter: TicketFilter | null;
@@ -191,6 +201,7 @@ export function SubscriberTicketsSection({
   const [type, setType] = useState('');
   const [search, setSearch] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [resultsAnnouncement, setResultsAnnouncement] = useState('');
   const [showSkeleton, setShowSkeleton] = useState(false);
   const [error, setError] = useState(false);
@@ -209,6 +220,22 @@ export function SubscriberTicketsSection({
   const activeFilter: TicketFilter = filter ?? (openCount > 0 ? 'abiertos' : 'todos');
   const query = search.trim().toLocaleLowerCase('es');
   const hasRefinement = Boolean(priority || type || query);
+  // Vista dividida: la búsqueda sigue abierta mientras tenga texto.
+  const searchVisible = searchOpen || search !== '';
+  const refinements = [
+    priority
+      ? {
+          key: 'priority' as const,
+          label: `Prioridad: ${PRIORITY_OPTIONS.find((option) => option.value === priority)?.label ?? priority}`,
+        }
+      : null,
+    type
+      ? {
+          key: 'type' as const,
+          label: `Tipo: ${TYPE_OPTIONS.find((option) => option.value === type)?.label ?? type}`,
+        }
+      : null,
+  ].filter((item): item is { key: 'priority' | 'type'; label: string } => item !== null);
 
   const visibleTickets = tickets.filter((ticket) => {
     const byChip =
@@ -266,6 +293,10 @@ export function SubscriberTicketsSection({
     },
     [applyFilters],
   );
+
+  useEffect(() => {
+    if (searchOpen) document.getElementById(SEARCH_FIELD_ID)?.focus();
+  }, [searchOpen]);
 
   const loadTickets = useCallback(async () => {
     if (!canRead || subscriber.privacyRestricted) return;
@@ -424,82 +455,156 @@ export function SubscriberTicketsSection({
       { id: 'cerrados', label: 'Resueltos y cerrados', count: closedCount },
       { id: 'todos', label: 'Todos', count: tickets.length },
     ];
+    const showOverdueChip = slaPoliciesConfigured && overdueCount > 0;
+
+    // Vista dividida (spec v1.3 bloque K): el estado ocupa una fila de tres opciones iguales,
+    // sin desplazamiento; debajo solo va lo que hay que decir (vencidos y filtros activos).
+    const denseTools = (
+      <div className="space-y-1.5">
+        <div role="group" aria-label="Filtrar tickets" className="grid grid-cols-3 gap-1.5">
+          {chips.map((item) => (
+            <PortalFilterChip
+              key={item.id}
+              active={activeFilter === item.id}
+              onClick={() => applyFilters({ filter: item.id })}
+              className="min-w-0 justify-center px-2"
+            >
+              <span aria-hidden="true" className="truncate">
+                {item.id === 'cerrados' ? 'Cerrados' : item.label}{' '}
+                <span className="tabular-nums">{item.count}</span>
+              </span>
+              <span className="sr-only">
+                {item.label} ({item.count})
+              </span>
+            </PortalFilterChip>
+          ))}
+        </div>
+        {showOverdueChip || refinements.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {showOverdueChip ? (
+              <button
+                type="button"
+                aria-pressed={activeFilter === 'vencidos'}
+                aria-label={
+                  overdueCount === 1
+                    ? 'Ver 1 ticket vencido'
+                    : `Ver ${overdueCount} tickets vencidos`
+                }
+                onClick={() =>
+                  activeFilter === 'vencidos'
+                    ? applyFilters({ filter: null })
+                    : showFromSummary('vencidos')
+                }
+                className={cn(
+                  'inline-flex min-h-7 items-center rounded-full border px-2.5 text-xs font-medium tabular-nums',
+                  activeFilter === 'vencidos'
+                    ? 'border-error-600 bg-error-600 text-white'
+                    : 'border-error-200 bg-error-50 text-error-700 dark:border-error-800 dark:bg-error-950 dark:text-error-300',
+                  interactiveFocusClassName,
+                )}
+              >
+                {overdueCount === 1 ? '1 vencido' : `${overdueCount} vencidos`}
+              </button>
+            ) : null}
+            {refinements.map((item) => (
+              <span
+                key={item.key}
+                className="inline-flex min-h-7 items-center gap-1 rounded-full border border-gray-200 bg-iwana-surface-soft pl-2.5 pr-1 text-xs text-gray-800 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100"
+              >
+                {item.label}
+                <button
+                  type="button"
+                  aria-label={`Quitar el filtro ${item.label}`}
+                  onClick={() => applyFilters({ [item.key]: '' })}
+                  className={cn(
+                    'inline-flex h-6 w-6 items-center justify-center rounded-full',
+                    interactiveFocusClassName,
+                  )}
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
 
     return (
       <div className="@container space-y-2">
         {/* Herramientas según el ancho de la lista, no del viewport (vista dividida, D1 §3): en una
             fila desde `@3xl` (CA-2); estrecho, chips desplazables + «Filtros» (§9). */}
-        <div className="flex flex-wrap items-center gap-2 @3xl:flex-nowrap">
-          <div
-            role="group"
-            aria-label="Filtrar tickets"
-            className="-mx-1 flex min-w-0 flex-1 gap-2 overflow-x-auto px-1 py-0.5 @lg:flex-none"
-          >
-            {chips.map((item) => (
-              <PortalFilterChip
-                key={item.id}
-                active={activeFilter === item.id}
-                onClick={() => applyFilters({ filter: item.id })}
-                className="shrink-0"
-              >
-                {item.label} ({item.count})
-              </PortalFilterChip>
-            ))}
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className={cn('shrink-0 gap-1.5 @lg:hidden', dense ? 'min-h-9' : 'min-h-11')}
-            aria-expanded={filtersOpen}
-            aria-controls="subscriber-ticket-filters"
-            onClick={() => setFiltersOpen((open) => !open)}
-          >
-            <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-            Filtros
-          </Button>
-          <div
-            id="subscriber-ticket-filters"
-            role="group"
-            aria-label="Más filtros de tickets"
-            className={cn(
-              'min-w-0 basis-full flex-col gap-2 @lg:flex @lg:flex-1 @lg:basis-auto @lg:flex-row @lg:items-center',
-              filtersOpen ? 'flex' : 'hidden',
-            )}
-          >
-            <div className="@lg:w-40 @lg:shrink-0">
-              <Select
-                aria-label="Prioridad"
-                value={priority}
-                options={PRIORITY_OPTIONS}
-                onChange={(event) => applyFilters({ priority: event.target.value })}
+        {dense ? (
+          denseTools
+        ) : (
+          <div className="flex flex-wrap items-center gap-2 @3xl:flex-nowrap">
+            <div
+              role="group"
+              aria-label="Filtrar tickets"
+              className="-mx-1 flex min-w-0 flex-1 gap-2 overflow-x-auto px-1 py-0.5 @lg:flex-none"
+            >
+              {chips.map((item) => (
+                <PortalFilterChip
+                  key={item.id}
+                  active={activeFilter === item.id}
+                  onClick={() => applyFilters({ filter: item.id })}
+                  className="shrink-0"
+                >
+                  {item.label} ({item.count})
+                </PortalFilterChip>
+              ))}
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className={cn('shrink-0 gap-1.5 @lg:hidden', dense ? 'min-h-9' : 'min-h-11')}
+              aria-expanded={filtersOpen}
+              aria-controls="subscriber-ticket-filters"
+              onClick={() => setFiltersOpen((open) => !open)}
+            >
+              <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+              Filtros
+            </Button>
+            <div
+              id="subscriber-ticket-filters"
+              role="group"
+              aria-label="Más filtros de tickets"
+              className={cn(
+                'min-w-0 basis-full flex-col gap-2 @lg:flex @lg:flex-1 @lg:basis-auto @lg:flex-row @lg:items-center',
+                filtersOpen ? 'flex' : 'hidden',
+              )}
+            >
+              <div className="@lg:w-40 @lg:shrink-0">
+                <Select
+                  aria-label="Prioridad"
+                  value={priority}
+                  options={PRIORITY_OPTIONS}
+                  onChange={(event) => applyFilters({ priority: event.target.value })}
+                />
+              </div>
+              <div className="@lg:w-48 @lg:shrink-0">
+                <Select
+                  aria-label="Tipo"
+                  value={type}
+                  options={TYPE_OPTIONS}
+                  onChange={(event) => applyFilters({ type: event.target.value })}
+                />
+              </div>
+              <PortalSearchField
+                id={SEARCH_FIELD_ID}
+                label="Buscar tickets por número o asunto"
+                placeholder="Número o asunto"
+                value={search}
+                onChange={(value) => {
+                  setSearch(value);
+                  onFiltersChange?.();
+                }}
+                className="min-w-0 @lg:min-w-48 @lg:flex-1"
               />
             </div>
-            <div className="@lg:w-48 @lg:shrink-0">
-              <Select
-                aria-label="Tipo"
-                value={type}
-                options={TYPE_OPTIONS}
-                onChange={(event) => applyFilters({ type: event.target.value })}
-              />
-            </div>
-            <PortalSearchField
-              id="subscriber-ticket-search"
-              label="Buscar tickets por número o asunto"
-              placeholder="Número o asunto"
-              value={search}
-              onChange={(value) => {
-                setSearch(value);
-                onFiltersChange?.();
-              }}
-              className="min-w-0 @lg:min-w-48 @lg:flex-1"
-            />
           </div>
-          {/* Vista dividida: «Crear ticket» baja a la fila de colas para ahorrar una línea (CA-17). */}
-          {dense && actions ? (
-            <div className="flex shrink-0 items-center gap-2">{actions}</div>
-          ) : null}
-        </div>
+        )}
 
         {notice}
 
@@ -575,24 +680,136 @@ export function SubscriberTicketsSection({
       {dense ? (
         // Vista dividida (CA-17): título y cifras en una línea; el aviso de orden queda como
         // texto accesible con un icono de ayuda, y «Crear ticket» va junto a las colas.
-        <div className="flex min-w-0 items-center gap-2">
-          <h2 className={portalPanelDenseTitleClassName}>Tickets</h2>
-          {figures.length > 0 ? (
-            <div role="group" aria-label="Resumen de tickets" className="flex min-w-0 gap-1.5">
-              {figures}
-            </div>
+        <div className="flex min-w-0 items-center gap-1.5">
+          {searchVisible ? (
+            <>
+              <h2 className="sr-only">Tickets</h2>
+              <PortalSearchField
+                id={SEARCH_FIELD_ID}
+                label="Buscar tickets por número o asunto"
+                placeholder="Número o asunto"
+                value={search}
+                onChange={(value) => {
+                  setSearch(value);
+                  onFiltersChange?.();
+                }}
+                className="min-w-0 flex-1"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className={denseIconButtonClassName}
+                aria-label="Cerrar la búsqueda"
+                onClick={() => {
+                  setSearch('');
+                  setSearchOpen(false);
+                  onFiltersChange?.();
+                }}
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </>
+          ) : (
+            <>
+              <h2 className={portalPanelDenseTitleClassName}>Tickets</h2>
+              {showSummary ? (
+                <span className="text-xs tabular-nums text-gray-600 dark:text-gray-300">
+                  <span aria-hidden="true">{total ?? tickets.length}</span>
+                  <span className="sr-only">{total ?? tickets.length} tickets en total</span>
+                </span>
+              ) : null}
+              {showNoDeadlineNote ? (
+                <span
+                  className="inline-flex shrink-0 text-gray-600 dark:text-gray-300"
+                  title="Estos tickets no tienen plazo de atención; se ordenan por prioridad."
+                >
+                  <Info className="h-4 w-4" aria-hidden="true" />
+                  <span className="sr-only">
+                    Estos tickets no tienen plazo de atención; se ordenan por prioridad.
+                  </span>
+                </span>
+              ) : null}
+              <span className="flex-1" />
+              {showSummary ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className={denseIconButtonClassName}
+                  aria-label="Buscar tickets"
+                  onClick={() => setSearchOpen(true)}
+                >
+                  <Search className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              ) : null}
+            </>
+          )}
+          {showSummary ? (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className={cn(denseIconButtonClassName, 'relative')}
+                  aria-label={
+                    refinements.length === 0
+                      ? 'Filtros'
+                      : refinements.length === 1
+                        ? 'Filtros, 1 activo'
+                        : `Filtros, ${refinements.length} activos`
+                  }
+                >
+                  <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                  {refinements.length > 0 ? (
+                    <span
+                      aria-hidden="true"
+                      className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-iwana-ink px-1 text-[11px] font-semibold text-white dark:bg-white dark:text-gray-900"
+                    >
+                      {refinements.length}
+                    </span>
+                  ) : null}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-64 space-y-3 p-3">
+                <div className="space-y-1">
+                  <label
+                    htmlFor="subscriber-ticket-priority"
+                    className="text-xs text-gray-600 dark:text-gray-300"
+                  >
+                    Prioridad
+                  </label>
+                  <Select
+                    id="subscriber-ticket-priority"
+                    aria-label="Prioridad"
+                    value={priority}
+                    options={PRIORITY_OPTIONS}
+                    onChange={(event) => applyFilters({ priority: event.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label
+                    htmlFor="subscriber-ticket-type"
+                    className="text-xs text-gray-600 dark:text-gray-300"
+                  >
+                    Tipo
+                  </label>
+                  <Select
+                    id="subscriber-ticket-type"
+                    aria-label="Tipo"
+                    value={type}
+                    options={TYPE_OPTIONS}
+                    onChange={(event) => applyFilters({ type: event.target.value })}
+                  />
+                </div>
+                <Button type="button" variant="secondary" size="sm" onClick={clearFilters}>
+                  Limpiar filtros
+                </Button>
+              </PopoverContent>
+            </Popover>
           ) : null}
-          {showNoDeadlineNote ? (
-            <span
-              className="inline-flex shrink-0 text-gray-600 dark:text-gray-300"
-              title="Estos tickets no tienen plazo de atención; se ordenan por prioridad."
-            >
-              <Info className="h-4 w-4" aria-hidden="true" />
-              <span className="sr-only">
-                Estos tickets no tienen plazo de atención; se ordenan por prioridad.
-              </span>
-            </span>
-          ) : null}
+          {actions ? <div className="flex shrink-0 items-center">{actions}</div> : null}
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">

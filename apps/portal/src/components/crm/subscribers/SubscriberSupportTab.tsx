@@ -624,6 +624,7 @@ export function SubscriberSupportTab({
                 variant="secondary"
                 size="sm"
                 className="min-h-11 gap-1.5 sm:min-h-9"
+                aria-label="Crear ticket"
                 onClick={() => {
                   setCreateError(null);
                   dismissCreateFeedback();
@@ -631,7 +632,7 @@ export function SubscriberSupportTab({
                 }}
               >
                 <Plus className="h-4 w-4" aria-hidden />
-                Crear ticket
+                {splitView ? 'Crear' : 'Crear ticket'}
               </Button>
             ) : undefined
           }

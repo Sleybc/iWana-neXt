@@ -1,10 +1,11 @@
 # Spec UX — MOD05 Suscriptores · Soporte en vista dividida
 
-**Versión:** 1.2
+**Versión:** 1.3
 **Estado:** Aprobado (G0) por el usuario en sesión el 2026-11-20 · D1–D4 resueltas con la recomendación · Plan: [2026-11-20-mod05-soporte-vista-dividida](../plans/2026-11-20-mod05-soporte-vista-dividida.md)
 **Fecha:** 2026-11-20
 **Cambios v1.1 (2026-11-20, pedido del usuario tras publicar los pasos 1 y 2):** paso 3, franja única de próximas visitas (bloque I, H11–H13, CA-13 a CA-16, D5). Sustituye al bloque E.
 **Cambios v1.2 (2026-11-20, pedido del usuario):** densidad de la lista en vista dividida (bloque J, H14, CA-17 y CA-18). Ajusta el bloque C.
+**Cambios v1.3 (2026-11-20, pedido del usuario):** cabecera de la lista en vista dividida (bloque K, H15, CA-19 a CA-21). Retira de esa cabecera las cifras «Abiertos» y «Visitas próximas», que repetían el control de estado y la franja.
 **Emisor:** Claude Code, con criterio de AI-PROD-UX
 **Alcance de pantalla:** `/dashboard/crm/subscribers/[id]?tab=soporte` (paso 1) y `/dashboard/assurance` (paso 2, bloque G)
 **Relacionado:** [rediseño de la pestaña Soporte](2026-11-17-mod05-pestana-soporte-rediseno-ux.md), [detalle del ticket](2026-11-16-mod10-detalle-ticket-ux.md) y [bandeja con colas](2026-11-18-mod10-bandeja-colas-de-trabajo-ux.md) (vigentes; esta spec las complementa y no las reemplaza) · [ficha estilo UISP](2026-11-10-mod05-ficha-suscriptor-estilo-uisp-ux.md)
@@ -34,6 +35,7 @@ Medido en el Chrome del usuario (1464×788, administrador) sobre un suscriptor c
 | H12 | La visita de un ticket se ve dentro del ticket, en «Visita y orden de trabajo» | `AssuranceTicketDetail.tsx`; medido |
 | H13 | La solicitud de visita creada desde un ticket no guarda el suscriptor: el filtro de visitas por suscriptor no la trae | `visit-request-origin-orchestration.ts:441-451` |
 | H14 | Tras el paso 1, a 1440×900: filas de 116 px (antes 60), 3 visibles (antes 5), primera fila en el píxel 542 (antes 478); el ticket abierto al entrar era el quinto de la lista y quedaba fuera de la vista | Medido con el suscriptor sintético |
+| H15 | En la lista de 400 px la cabecera amontonaba tres capas: la cifra «Abiertos» repetía el chip «Abiertos (N)», la cifra «Visitas próximas» repetía la franja, y los chips se desplazaban de lado con «Resueltos y cerrados» cortado bajo «Filtros» y «Crear ticket» | Captura del usuario; `SubscriberTicketsSection.tsx` |
 | H10 | La bandeja de Mesa de ayuda mostraba «3 tickets» en «Todos» mientras este suscriptor tenía 11 | Medido; **causa sin investigar** |
 
 ## 2. Problema
@@ -68,6 +70,7 @@ Para leer la historia de soporte de un cliente hay que abrir y cerrar un panel p
 | **I · Próximas visitas** | Una franja sobre la lista con las visitas pendientes del suscriptor, de cualquier origen: fecha o «por agendar», tipo de trabajo y origen. La de un ticket abre ese ticket en la vista dividida; la de una oportunidad o contrato abre su visita en la agenda. Sin pendientes, la franja es una línea. La sección «Visitas» del fondo se retira como bloque; su historial queda a un clic, como «Historial de visitas» plegable en la misma pestaña (D5) | Cada dato y acción que hoy tiene una visita sin ticket («Abrir en Agendamiento» incluido); la visita de un ticket sigue en su ticket; el contador «Visitas próximas» pasa a contar todas |
 
 | **J · Lista densa** | La fila en vista dividida ocupa como máximo tres líneas: número y asunto; estado, prioridad e indicador de visita; relato. Tipo, responsable, adjuntos y fecha van en esas líneas o en una secundaria compacta, sin añadir una cuarta. El ticket abierto al entrar es el primero de la lista tal como está ordenada (ajusta el bloque C) y la fila seleccionada siempre queda a la vista | Los ocho datos de H5, visibles o con nombre accesible; el orden de la lista; un ticket pedido por URL se respeta y la lista se desplaza hasta él |
+| **K · Cabecera de la lista** | En vista dividida: una línea con título, total, Buscar, Filtros y «Crear»; debajo, el estado en tres opciones de igual ancho («Abiertos», «Cerrados», «Todos») sin desplazamiento; una tercera línea solo con «N vencidos» (si N > 0) y los filtros activos, cada uno con su «quitar». La búsqueda se abre desde su icono y sigue abierta mientras tenga texto. Prioridad y Tipo viven en un menú flotante | Todos los filtros y su estado en la URL; el nombre accesible «Resueltos y cerrados (N)» y «Crear ticket»; el aviso de tickets sin plazo; la pantalla ancha y el móvil, sin cambios |
 
 **Fuera de alcance:** rediseñar el detalle del ticket, responder desde la lista, etiquetas de ticket, tareas enlazadas al estilo UISP, selección múltiple y cualquier dato del titular que la lista no muestre hoy.
 
@@ -104,6 +107,9 @@ Regla → dato; antes de congelar se cruza cada fila con DTO y origen.
 | CA-16 | 3 | A 1440×900 la franja se ve sin desplazar; el historial de visitas sin ticket sigue a un clic |
 | CA-17 | 3 | A 1440×900, en vista dividida, se ven al menos 5 filas de la lista con la franja de visitas presente, medido en navegador |
 | CA-18 | 3 | Al entrar y al abrir un ticket por URL, la fila seleccionada está visible en la lista sin desplazar a mano |
+| CA-19 | 3 | A 1440×900 la cabecera de la lista no se desplaza de lado ni corta texto, y ningún dato aparece dos veces |
+| CA-20 | 3 | Estado, vencidos, prioridad, tipo y búsqueda siguen disponibles; estado, prioridad y tipo siguen en la URL |
+| CA-21 | 3 | La cabecera en reposo ocupa dos líneas y la primera fila de la lista no baja respecto a la v1.2 (píxel 530) |
 
 ## 6. Decisiones
 
