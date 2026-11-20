@@ -853,7 +853,8 @@ test.describe('Importación desde UISP — ADR-110 contra Portal, API y worker r
     // ── Portal: clip en la ficha y sección «Adjuntos (3)» del caso (CA-4) ──
     await page.goto(`/dashboard/crm/subscribers/${subscriberId}?tab=soporte`);
     await expect(page.getByTestId('ticket-attachment-clip')).toHaveCount(1, { timeout: 30_000 });
-    await page.getByRole('button', { name: /, con 3 adjuntos$/u }).click();
+    // El nombre de la fila puede seguir con «, con N comentarios» (listado con conteo de comentarios).
+    await page.getByRole('button', { name: /, con 3 adjuntos(,|$)/u }).click({ timeout: 30_000 });
     await expect(
       page.getByTestId('ticket-attachments-section').getByRole('heading', { name: 'Adjuntos (3)' }),
     ).toBeVisible({ timeout: 30_000 });
