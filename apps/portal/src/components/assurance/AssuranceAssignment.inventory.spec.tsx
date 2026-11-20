@@ -307,6 +307,20 @@ describe('Inventario W0 · guardado conjunto responsable + área (CA-7)', () => 
     });
   });
 
+  it('«Sin asignar» en el selector quita el responsable y conserva el área (ajuste 2026-11-20)', async () => {
+    const user = userEvent.setup();
+    const { dialog, onAssign } = renderDetail();
+    await user.click(within(dialog).getByRole('combobox', { name: 'Responsable' }));
+    await user.click(
+      within(await screen.findByRole('listbox', { name: 'Responsable' })).getByRole('option', {
+        name: 'Sin asignar',
+      }),
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Guardar asignación' }));
+    expect(onAssign).toHaveBeenCalledTimes(1);
+    expect(onAssign).toHaveBeenCalledWith(expect.objectContaining({ assignedUserId: null }));
+  });
+
   it('sin permiso de gestión, Responsable deshabilitado y sin «Guardar asignación»', () => {
     const { dialog } = renderDetail({ canManage: false, canOperate: false });
     expect(within(dialog).getByRole('combobox', { name: 'Responsable' })).toBeDisabled();
@@ -367,8 +381,10 @@ describe('Inventario W0 · bandeja (AssuranceTicketsTable, bloques B y C)', () =
   function renderTable(overrides: Partial<ComponentProps<typeof AssuranceTicketsTable>> = {}) {
     const onAssignToMe = jest.fn();
     const onReassign = jest.fn(
-      async (_ticket: AssuranceTicket, _payload: { assignedUserId: string; note?: string }) =>
-        undefined,
+      async (
+        _ticket: AssuranceTicket,
+        _payload: { assignedUserId: string | null; note?: string },
+      ) => undefined,
     );
     const props: ComponentProps<typeof AssuranceTicketsTable> = {
       tickets: [
@@ -486,6 +502,31 @@ describe('Inventario W0 · bandeja (AssuranceTicketsTable, bloques B y C)', () =
       expect.objectContaining({ id: 'tk-a' }),
       { assignedUserId: AGENT_B.id },
     ]);
+  });
+
+  it('C · «Dejar sin asignar» quita el responsable desde la fila (ajuste 2026-11-20)', async () => {
+    const user = userEvent.setup();
+    const { onReassign } = renderTable();
+    await user.click(
+      within(rowOf('TK-A')).getByRole('button', {
+        name: 'Cambiar responsable de TK-A: Agente Uno',
+      }),
+    );
+    await user.click(await screen.findByRole('button', { name: 'Dejar sin asignar' }));
+    expect(onReassign.mock.calls[0]).toEqual([
+      expect.objectContaining({ id: 'tk-a' }),
+      { assignedUserId: null },
+    ]);
+  });
+
+  it('C · un ticket sin responsable no ofrece «Dejar sin asignar»', async () => {
+    const user = userEvent.setup();
+    renderTable();
+    await user.click(
+      within(rowOf('TK-NONE')).getByRole('button', { name: /Cambiar responsable de TK-NONE/ }),
+    );
+    await screen.findByRole('list', { name: 'Asignar a' });
+    expect(screen.queryByRole('button', { name: 'Dejar sin asignar' })).toBeNull();
   });
 
   it('C · la nota opcional viaja con la reasignación (CA-6)', async () => {

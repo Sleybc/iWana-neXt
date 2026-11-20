@@ -3,13 +3,15 @@
 import { useId, useState } from 'react';
 import { Popover, PopoverContent, PopoverTrigger, cn, interactiveFocusClassName } from '@iwana/ui';
 import { AssigneeMark } from './AssigneeMark';
+import { ASSURANCE_UNASSIGNED_LABEL } from './assurance-labels';
 import { assuranceTextareaClassName } from './assurance-ui';
 
 /** Tope de la nota de asignación: el mismo que valida la API (`ASSIGNMENT_NOTE_MAX_LENGTH`). */
 export const ASSIGNMENT_NOTE_MAX_LENGTH = 2000;
 
 export interface ReassignPayload {
-  assignedUserId: string;
+  /** `null` quita el responsable («Sin asignar»). */
+  assignedUserId: string | null;
   note?: string;
 }
 
@@ -99,6 +101,28 @@ export function AssigneeReassignControl({
           className={cn(assuranceTextareaClassName, 'min-h-14')}
         />
         <ul aria-label="Asignar a" className="max-h-64 space-y-0.5 overflow-y-auto">
+          {currentAssigneeId ? (
+            <li>
+              <button
+                type="button"
+                aria-label="Dejar sin asignar"
+                onClick={() => {
+                  onReassign(withAssignmentNote({ assignedUserId: null }, note));
+                  setOpen(false);
+                  setNote('');
+                }}
+                className={cn(
+                  'flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-gray-900 hover:bg-iwana-surface-soft md:min-h-9 dark:text-white dark:hover:bg-dark-surface-3',
+                  interactiveFocusClassName,
+                )}
+              >
+                <AssigneeMark label={ASSURANCE_UNASSIGNED_LABEL} />
+                <span aria-hidden="true" className="min-w-0 truncate">
+                  {ASSURANCE_UNASSIGNED_LABEL}
+                </span>
+              </button>
+            </li>
+          ) : null}
           {choices.map((option) => (
             <li key={option.value}>
               <button

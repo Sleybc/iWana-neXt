@@ -425,11 +425,15 @@ function AssuranceClientInner() {
       setAssigningTicketId(ticket.id);
       try {
         await assuranceApi.tickets.assign(ticket.id, payload);
-        const label = assigneeLabelById.get(payload.assignedUserId);
+        const label = payload.assignedUserId
+          ? assigneeLabelById.get(payload.assignedUserId)
+          : undefined;
         setFeedback(
-          label
-            ? `El ticket ${ticket.ticketNumber} quedó asignado a ${label}.`
-            : `El responsable del ticket ${ticket.ticketNumber} quedó actualizado.`,
+          payload.assignedUserId === null
+            ? `El ticket ${ticket.ticketNumber} quedó sin asignar.`
+            : label
+              ? `El ticket ${ticket.ticketNumber} quedó asignado a ${label}.`
+              : `El responsable del ticket ${ticket.ticketNumber} quedó actualizado.`,
         );
         await loadData();
       } catch (assignTicketError) {

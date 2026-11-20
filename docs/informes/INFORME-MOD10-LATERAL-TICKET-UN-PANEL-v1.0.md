@@ -193,3 +193,14 @@ Ajuste del usuario del 2026-11-20: «Pasa que suba el aviso a la cabecera». En 
 - Ya no se repite donde iba el redactor.
 - Portal: **81/1289** en verde; typecheck y eslint en exit 0. La prueba fija que el aviso aparece una sola vez, como estado y antes del hilo.
 - Pendiente: medirlo en el navegador a 375 px. El tenant de pruebas no tiene tickets cerrados.
+
+### A.6 Quitar el responsable
+
+Ajuste del usuario del 2026-11-20: «Sí, agrega la opción «Sin asignar»». Antes, desde ningún punto del portal se podía devolver un ticket a «Sin asignar».
+
+- El selector «Responsable» del detalle ofrece «Sin asignar» primero. Al guardar envía `assignedUserId: null` y conserva el área.
+- En la fila de la bandeja, «Dejar sin asignar» encabeza la lista solo si el ticket tiene responsable.
+- La API ya lo aceptaba: el historial registra `REASSIGNED` con `assignedUserId: null` y la conversación lo muestra como «quitó el responsable».
+- Portal: **81/1292** en verde (3 pruebas nuevas). Typecheck y eslint en exit 0.
+- Visto en el navegador con el ticket sintético TK-20261117-004, sin guardar.
+- El ticket TK-20261117-002, que quedó asignado por un cambio ajeno, se devolvió a «Sin asignar» por la API.

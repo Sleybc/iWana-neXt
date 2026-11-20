@@ -104,6 +104,9 @@ import { TicketAttachmentList } from './TicketAttachmentList';
 import { TicketAttachmentPicker } from './TicketAttachmentPicker';
 import { formatTicketAttachmentCount } from './ticket-attachments';
 
+/** Valor del selector para «Sin asignar» (el componente Select no admite valor vacío). */
+const UNASSIGNED_OPTION_VALUE = '__unassigned__';
+
 /** Partes del detalle: el contenedor (panel o página) decide dónde va cada una. */
 export interface AssuranceTicketDetailParts {
   content: ReactNode;
@@ -484,10 +487,14 @@ export function AssuranceTicketDetail({
   const statusMessages =
     actionSource === 'status' && (actionFeedback || actionError) ? messagesFor('status') : null;
 
-  const assigneeOptions = assignees.map((user) => ({
-    value: user.id,
-    label: getAssuranceUserDisplayName(user),
-  }));
+  // «Sin asignar» es una opción más: permite quitar el responsable (ajuste del usuario 2026-11-20).
+  const assigneeOptions = [
+    { value: UNASSIGNED_OPTION_VALUE, label: ASSURANCE_UNASSIGNED_LABEL },
+    ...assignees.map((user) => ({
+      value: user.id,
+      label: getAssuranceUserDisplayName(user),
+    })),
+  ];
   const terminal = ticket ? isTerminalTicket(ticket) : false;
   const fieldServiceAllowed = canRequestFieldService(ticket?.status);
   // Cerrado o cancelado: sin redactor; la línea de cierre ocupa su lugar (spec ticket cerrado §2).
@@ -767,7 +774,8 @@ export function AssuranceTicketDetail({
         await onAssign(
           withAssignmentNote(
             {
-              assignedUserId: assignedUserId || undefined,
+              // Vacío y cambiado = quitar el responsable (`null`); vacío sin cambio no viaja.
+              assignedUserId: assignedUserId || (assigneeChanged ? null : undefined),
               queueName: (queueName || undefined) as AssignAssuranceTicketDto['queueName'],
             },
             assigneeChanged ? assignmentNote : '',
@@ -945,14 +953,16 @@ export function AssuranceTicketDetail({
                         id={`${idPrefix}-assign-user`}
                         label="Responsable"
                         className={railSelectClassName}
-                        value={assignedUserId}
-                        placeholder={
-                          assignedUserId
-                            ? ASSURANCE_UNAVAILABLE_ASSIGNEE_LABEL
-                            : ASSURANCE_UNASSIGNED_LABEL
-                        }
+                        value={assignedUserId || UNASSIGNED_OPTION_VALUE}
+                        placeholder={ASSURANCE_UNAVAILABLE_ASSIGNEE_LABEL}
                         options={assigneeOptions}
-                        onChange={(event) => setAssignedUserId(event.target.value)}
+                        onChange={(event) =>
+                          setAssignedUserId(
+                            event.target.value === UNASSIGNED_OPTION_VALUE
+                              ? ''
+                              : event.target.value,
+                          )
+                        }
                         disabled={!canManage}
                       />
                       <Select
