@@ -1,8 +1,14 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
-import { resolveMigrationDbCredentials, runInTenantSchema, TicketTimelineEvent } from '@iwana/db';
+import {
+  resolveMigrationDbCredentials,
+  runInTenantSchema,
+  SupportTicket,
+  TicketTimelineEvent,
+} from '@iwana/db';
 import { ExecutionOrderResult, TicketTimelineEventType } from '@iwana/shared';
 import { AssuranceExecutionOrderNotifierAdapter } from '../ports/assurance-execution-order-notifier.adapter';
+import { SlaService } from '../services/sla.service';
 import { TimelineService } from '../services/timeline.service';
 import {
   applyTenantMigrationsInOrder,
@@ -36,7 +42,8 @@ describeWithDb('Assurance historial del ticket — enum de eventos en PostgreSQL
       username: credentials.username,
       password: credentials.password,
       database: databaseName,
-      entities: [TicketTimelineEvent],
+      // El adaptador consulta el ticket para la resolución automática del de instalación.
+      entities: [TicketTimelineEvent, SupportTicket],
       migrations: [],
       synchronize: false,
       logging: false,
@@ -84,6 +91,7 @@ describeWithDb('Assurance historial del ticket — enum de eventos en PostgreSQL
     const adapter = new AssuranceExecutionOrderNotifierAdapter(
       dataSource,
       new TimelineService(dataSource),
+      new SlaService(dataSource),
     );
     const ticketId = randomUUID();
     const executionOrderId = randomUUID();
