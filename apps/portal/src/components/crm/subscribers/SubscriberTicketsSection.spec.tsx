@@ -181,12 +181,43 @@ describe('SubscriberTicketsSection', () => {
       'aria-pressed',
       'true',
     );
-    // Spec 2026-11-17 §4: «Abierto {fecha}», el nombre sin prefijo y sin descripción en la fila.
+    // Spec 2026-11-17 §4: «Abierto {fecha}» y el nombre sin prefijo. Spec 2026-11-20 §3 D: la
+    // descripción ya va en la fila, en una línea truncada.
     expect(list).toHaveTextContent('Abierto 24/06/2026');
     expect(list).toHaveTextContent('Numa Patrón');
-    expect(list).not.toHaveTextContent('El usuario solicita un cambio de ONU por intermitencia.');
+    expect(
+      within(list).getByText('El usuario solicita un cambio de ONU por intermitencia.'),
+    ).toHaveClass('line-clamp-1');
     expect(list).not.toHaveTextContent('Vence');
     expect(list).not.toHaveTextContent('SLA');
+  });
+
+  it('P2 §3 F: sin descripción, el relato es el extracto del primer comentario y se cuentan los comentarios', async () => {
+    (assuranceApi.tickets.list as jest.Mock).mockResolvedValue({
+      data: [
+        ticket({
+          id: 'ticket-excerpt',
+          ticketNumber: 'TK-2001',
+          status: TicketStatus.OPEN,
+          slaResolveByAt: null,
+          subject: 'Lentitud',
+          description: null,
+          firstCommentExcerpt: 'El cliente llamó dos veces',
+          commentCount: 2,
+        }),
+      ],
+    });
+    render(
+      <SubscriberTicketsSection
+        subscriber={subscriber}
+        canRead
+        refreshKey={0}
+        onOpenTicket={jest.fn()}
+      />,
+    );
+    const list = await screen.findByRole('list', { name: 'Tickets vinculados' });
+    expect(within(list).getByText('El cliente llamó dos veces')).toHaveClass('line-clamp-1');
+    expect(within(list).getByText('Con 2 comentarios')).toBeInTheDocument();
   });
 
   it('plazo pasado sin estado vencido no se cuenta como vencido (P3: manda slaBreachStatus)', async () => {

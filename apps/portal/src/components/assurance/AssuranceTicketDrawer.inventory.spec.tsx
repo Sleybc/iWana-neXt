@@ -305,8 +305,10 @@ const PROPERTY_INVENTORY: Record<PropertyKey, PropertySpec> = {
     when: (t) => Boolean(t.slaPolicyId),
   },
   updated: { value: (t) => formatAssuranceDateTime(t.updatedAt) },
+  // F0 (spec 2026-11-20 §3): sin descripción pero con comentarios, el bloque no se muestra.
   description: {
     value: (t) => t.description?.trim() || 'Sin descripción adicional registrada para este caso.',
+    when: (t) => Boolean(t.description?.trim()) || COMMENTS_IN_PANEL.current.length === 0,
   },
 };
 

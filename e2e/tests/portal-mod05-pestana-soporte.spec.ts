@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { seedPortalSession } from './helpers/portal-session';
 
@@ -388,6 +389,9 @@ test.describe('MOD05 · pestaña Soporte', () => {
   test('CA-SO-04/06: consulta módulos por separado, persiste la pestaña, abre detalles y crea un ticket fijado', async ({
     page,
   }) => {
+    // Spec 2026-11-20 §3 A: desde 1280 px la pestaña entra en vista dividida, sin «Cerrar».
+    // Este flujo cubre el panel lateral de siempre, por debajo del corte.
+    await page.setViewportSize({ width: 1279, height: 720 });
     await seedSession(page);
     const calls = await setupMocks(page);
 
@@ -467,6 +471,67 @@ test.describe('MOD05 · pestaña Soporte', () => {
     expect(calls.events).toHaveLength(2);
   });
 
+  test('Vista dividida CA-2/CA-3/CA-4/CA-7: a 1440 abre el ticket de entrada en la columna, lo deja en la URL y pasa axe claro/oscuro', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await seedSession(page);
+    const calls = await setupMocks(page);
+    const unknownId = '00000000-0000-4000-8000-0000000007ff';
+    const unknownRequests: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes(`/assurance/tickets/${unknownId}`))
+        unknownRequests.push(request.url());
+    });
+
+    // CA-4: un id que no está en la lista del suscriptor no se abre ni se consulta.
+    await page.goto(`/dashboard/crm/subscribers/${SUBSCRIBER_ID}?tab=soporte&ticket=${unknownId}`);
+    const pane = page.getByRole('region', { name: 'Ticket abierto' });
+    await expect(pane.getByRole('heading', { name: 'TK-2026-0701', exact: true })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`ticket=${TICKET_ID}`));
+    expect(unknownRequests).toEqual([]);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Cerrar', exact: true })).toHaveCount(0);
+
+    // CA-7: la fila del ticket abierto se anuncia con aria-current y se alcanza con teclado.
+    const row = page.getByRole('button', {
+      name: 'Abrir ticket TK-2026-0701: Intermitencia sintética',
+    });
+    await expect(row).toHaveAttribute('aria-current', 'true');
+    await row.focus();
+    await page.keyboard.press('Enter');
+    await expect(row).toBeFocused();
+
+    // CA-3: recargar conserva el ticket.
+    await page.reload();
+    await expect(pane.getByRole('heading', { name: 'TK-2026-0701', exact: true })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`tab=soporte&ticket=${TICKET_ID}`));
+    expect(calls.tickets.length).toBeGreaterThanOrEqual(2);
+
+    // CA-8: «Visitas» sigue en la pestaña, bajo la grilla.
+    await expect(page.getByRole('heading', { name: 'Visitas', exact: true })).toBeVisible();
+
+    for (const theme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      await page.evaluate(() =>
+        Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null))),
+      );
+      const result = await new AxeBuilder({ page })
+        .include('[aria-label="Ticket abierto"]')
+        .include('ul:has([aria-current="true"])')
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+        .analyze();
+      const blocking = result.violations.filter(
+        (v) => v.impact === 'serious' || v.impact === 'critical',
+      );
+      expect(
+        blocking,
+        `axe vista dividida (${theme}): ${blocking.map((v) => v.id).join(', ')}`,
+      ).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: 'light' });
+  });
+
   test('MOD09 adjuntos CA-4: la lista de tickets marca con un clip los que tienen adjuntos', async ({
     page,
   }) => {
@@ -499,6 +564,44 @@ test.describe('MOD05 · pestaña Soporte', () => {
     });
     await expect(withoutFiles).toBeVisible();
     await expect(withoutFiles.getByTestId('ticket-attachment-clip')).toHaveCount(0);
+  });
+
+  test('CA-9/CA-10 (pantalla): sin descripción, la fila muestra el extracto y el conteo que envía la API', async ({
+    page,
+  }) => {
+    await seedSession(page);
+    await setupMocks(page, {
+      tickets: [
+        buildTicket({
+          description: '',
+          commentCount: 2,
+          firstCommentExcerpt: 'Relato sintético del primer comentario visible',
+        }),
+        buildTicket({
+          id: '00000000-0000-4000-8000-000000000707',
+          ticketNumber: 'TK-2026-0707',
+          subject: 'Con descripción propia',
+          description: 'Descripción sintética propia',
+          commentCount: 0,
+          firstCommentExcerpt: null,
+        }),
+      ],
+    });
+
+    await page.goto(`/dashboard/crm/subscribers/${SUBSCRIBER_ID}?tab=soporte`);
+    const withStory = page.getByRole('button', {
+      name: 'Abrir ticket TK-2026-0701: Intermitencia sintética, Abierto, prioridad normal, con 2 comentarios',
+    });
+    await expect(withStory).toBeVisible();
+    await expect(withStory).toContainText('Relato sintético del primer comentario visible');
+    await expect(withStory).toContainText('Con 2 comentarios');
+
+    const own = page.getByRole('button', {
+      name: 'Abrir ticket TK-2026-0707: Con descripción propia, Abierto, prioridad normal',
+      exact: true,
+    });
+    await expect(own).toContainText('Descripción sintética propia');
+    await expect(own).not.toContainText('comentarios');
   });
 
   test('CA-SO-03: cada aviso de permiso evita su petición de lectura', async ({ page }) => {

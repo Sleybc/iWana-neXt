@@ -204,3 +204,20 @@ export function getTicketAssigneeLabel(
   }
   return getAssuranceAssigneeLabel(ticket.assignedUserId, user);
 }
+
+/**
+ * Línea de relato de la lista (spec 2026-11-20 §3 D y F): la descripción y, si está vacía, el
+ * extracto del primer comentario visible para quien consulta. Es texto escrito por usuarios: se
+ * pinta como nodo de texto de React, nunca como HTML ni markdown.
+ */
+export function getTicketStory(ticket: {
+  description?: string | null | undefined;
+  firstCommentExcerpt?: string | null | undefined;
+}): string | null {
+  return ticket.description?.trim() || ticket.firstCommentExcerpt?.trim() || null;
+}
+
+/** «1 comentario» / «N comentarios». */
+export function formatTicketCommentCount(count: number): string {
+  return count === 1 ? '1 comentario' : `${count} comentarios`;
+}

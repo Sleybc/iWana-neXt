@@ -100,3 +100,39 @@ describe('TicketListItem (spec §4, dictamen §5.4)', () => {
     expect(onOpen).toHaveBeenCalledWith(row);
   });
 });
+
+describe('TicketListItem · relato y comentarios (spec 2026-11-20 §3 F, CA-9, CA-10)', () => {
+  it('sin descripción, el relato es el extracto del primer comentario visible', () => {
+    const { row } = renderItem({
+      ticket: item({ description: '  ', firstCommentExcerpt: 'Cliente reporta caída nocturna' }),
+    });
+    expect(within(row).getByText('Cliente reporta caída nocturna')).toHaveClass('line-clamp-1');
+  });
+
+  it('con descripción, manda la descripción', () => {
+    const { row } = renderItem({
+      ticket: item({ description: 'Relato propio', firstCommentExcerpt: 'Otro texto' }),
+    });
+    expect(within(row).getByText('Relato propio')).toBeInTheDocument();
+    expect(row).not.toHaveTextContent('Otro texto');
+  });
+
+  it('el extracto es texto: no interpreta HTML', () => {
+    const { row } = renderItem({
+      ticket: item({ firstCommentExcerpt: '<img src=x onerror=alert(1)> hola' }),
+    });
+    expect(row.querySelector('img')).toBeNull();
+    expect(row).toHaveTextContent('<img src=x onerror=alert(1)> hola');
+  });
+
+  it('muestra la cantidad de comentarios con texto accesible y la suma al nombre', () => {
+    const { row } = renderItem({ ticket: item({ commentCount: 3 }) });
+    expect(within(row).getByText('Con 3 comentarios')).toHaveClass('sr-only');
+    expect(row).toHaveAccessibleName(expect.stringContaining('con 3 comentarios'));
+  });
+
+  it('sin comentarios no muestra el contador', () => {
+    const { row } = renderItem({ ticket: item({ commentCount: 0 }) });
+    expect(row).not.toHaveTextContent(/comentario/);
+  });
+});

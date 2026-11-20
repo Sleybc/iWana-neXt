@@ -20,6 +20,7 @@ import {
 } from '@iwana/db';
 import {
   TICKET_ATTACHMENTS_MAX_PER_COMMENT,
+  TICKET_LIST_COMMENT_EXCERPT_MAX,
   TicketTimelineEventType,
   UserRole,
   ticketAttachmentStatusFromMediaStatus,
@@ -36,10 +37,10 @@ import {
   type TicketAttachmentFileInput,
 } from '../ports/ticket-attachment-media.port';
 import { TimelineService } from './timeline.service';
+import { canSeeInternal } from './comment-visibility';
 
 /** Mismos roles que `CommentsService`: solo ven tickets asignados y nunca comentarios internos. */
 const RESTRICTED_ROLES: readonly string[] = [UserRole.TECHNICIAN, UserRole.CONTRACTOR];
-const RESTRICTED_FROM_INTERNAL: readonly string[] = [UserRole.TECHNICIAN, UserRole.CONTRACTOR];
 
 export interface UploadedTicketAttachmentFile {
   buffer: Buffer;
@@ -266,7 +267,12 @@ export class TicketAttachmentsService {
     return this.toViews(schemaName, rows);
   }
 
-  /** `attachmentCount` de cada ticket del listado (cuenta solo lo que el actor puede ver). */
+  /**
+   * Resumen de cada ticket del listado, en una sola consulta por página y con la regla de
+   * internos del detalle (`canSeeInternal`): `attachmentCount`, `commentCount` y, solo con la
+   * descripción vacía, `firstCommentExcerpt` (primer comentario visible con texto, espacios
+   * simples, truncado a 200). Spec MOD05 Soporte vista dividida §4, CA-9 y CA-10.
+   */
   async decorateTicketList<T extends { data: unknown[] }>(
     result: T,
     actor: JwtPayload,
@@ -275,30 +281,68 @@ export class TicketAttachmentsService {
     const ids = result.data
       .map((ticket) => (ticket as { id?: unknown }).id)
       .filter((id): id is string => typeof id === 'string');
-    const counts = new Map<string, number>();
+    const summaries = new Map<
+      string,
+      { attachmentCount: number; commentCount: number; excerpt: string | null }
+    >();
     if (ids.length > 0) {
       const rows = await runInTenantSchema(
         this.dataSource,
         schemaName,
         (qr) =>
           qr.query(
-            `SELECT a.ticket_id::text AS ticket_id, COUNT(*)::int AS total
-             FROM ticket_comment_attachments a
-             JOIN ticket_comments c ON c.id = a.comment_id AND c.ticket_id = a.ticket_id
-            WHERE a.tenant_id = $1 AND a.ticket_id = ANY($2::uuid[])
-              AND ($3::boolean OR c.is_internal = FALSE)
-            GROUP BY a.ticket_id`,
-            [tenantId, ids, canSeeInternal(actor)],
-          ) as Promise<Array<{ ticket_id: string; total: number }>>,
+            `SELECT t.id::text AS ticket_id,
+                    (SELECT COUNT(*)::int
+                       FROM ticket_comment_attachments a
+                       JOIN ticket_comments c ON c.id = a.comment_id AND c.ticket_id = a.ticket_id
+                      WHERE a.tenant_id = $1 AND a.ticket_id = t.id
+                        AND ($3::boolean OR c.is_internal = FALSE)) AS attachment_count,
+                    (SELECT COUNT(*)::int
+                       FROM ticket_comments c
+                      WHERE c.tenant_id = $1 AND c.ticket_id = t.id
+                        AND ($3::boolean OR c.is_internal = FALSE)) AS comment_count,
+                    fc.excerpt AS first_excerpt
+               FROM unnest($2::uuid[]) AS t(id)
+               LEFT JOIN LATERAL (
+                 SELECT left(btrim(regexp_replace(c.body, '[[:space:]]+', ' ', 'g')), $4::int) AS excerpt
+                   FROM ticket_comments c
+                  WHERE c.tenant_id = $1 AND c.ticket_id = t.id
+                    AND ($3::boolean OR c.is_internal = FALSE)
+                    AND c.body ~ '[^[:space:]]'
+                  ORDER BY c.created_at ASC, c.id ASC
+                  LIMIT 1
+               ) fc ON TRUE`,
+            [tenantId, ids, canSeeInternal(actor), TICKET_LIST_COMMENT_EXCERPT_MAX],
+          ) as Promise<
+            Array<{
+              ticket_id: string;
+              attachment_count: number;
+              comment_count: number;
+              first_excerpt: string | null;
+            }>
+          >,
       );
-      for (const row of rows) counts.set(row.ticket_id, Number(row.total));
+      for (const row of rows) {
+        summaries.set(row.ticket_id, {
+          attachmentCount: Number(row.attachment_count),
+          commentCount: Number(row.comment_count),
+          excerpt: row.first_excerpt ?? null,
+        });
+      }
     }
     return {
       ...result,
-      data: result.data.map((ticket) => ({
-        ...(ticket as object),
-        attachmentCount: counts.get((ticket as { id?: string }).id ?? '') ?? 0,
-      })),
+      data: result.data.map((ticket) => {
+        const { id, description } = ticket as { id?: string; description?: unknown };
+        const summary = summaries.get(id ?? '');
+        const descriptionEmpty = typeof description !== 'string' || description.trim() === '';
+        return {
+          ...(ticket as object),
+          attachmentCount: summary?.attachmentCount ?? 0,
+          commentCount: summary?.commentCount ?? 0,
+          firstCommentExcerpt: descriptionEmpty ? (summary?.excerpt ?? null) : null,
+        };
+      }),
     };
   }
 
@@ -404,10 +448,6 @@ export class TicketAttachmentsService {
       status: ticketAttachmentStatusFromMediaStatus(statuses.get(row.mediaAssetId)),
     }));
   }
-}
-
-export function canSeeInternal(actor: JwtPayload): boolean {
-  return !RESTRICTED_FROM_INTERNAL.includes(actor.role);
 }
 
 function assertTicketAccess(ticket: SupportTicket, actor: JwtPayload): void {

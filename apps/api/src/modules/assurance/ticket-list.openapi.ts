@@ -1,5 +1,9 @@
 import type { SchemaObject } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
-import { ASSURANCE_WORK_QUEUES, TICKET_LIST_ORDERS } from '@iwana/shared';
+import {
+  ASSURANCE_WORK_QUEUES,
+  TICKET_LIST_COMMENT_EXCERPT_MAX,
+  TICKET_LIST_ORDERS,
+} from '@iwana/shared';
 import {
   TICKET_ACTIVE_VISIT_OPENAPI,
   TICKET_EXECUTION_ORDER_OPENAPI,
@@ -24,6 +28,8 @@ export const TICKET_LIST_OPENAPI: SchemaObject = {
           'activeVisit',
           'executionOrder',
           'requesterDisplayName',
+          'commentCount',
+          'firstCommentExcerpt',
         ],
         properties: {
           id: { type: 'string', format: 'uuid' },
@@ -61,6 +67,23 @@ export const TICKET_LIST_OPENAPI: SchemaObject = {
               'Nombre visible del solicitante, con la regla del detalle: nulo si no es un ' +
               'suscriptor, sin crm.subscribers.read, con titular suprimido o con datos bloqueados, ' +
               'con referencia no resoluble o si CRM no responde.',
+          },
+          commentCount: {
+            type: 'integer',
+            minimum: 0,
+            description:
+              'Comentarios que el usuario ve en el detalle, con su misma regla: técnico y ' +
+              'contratista no cuentan los internos.',
+          },
+          firstCommentExcerpt: {
+            type: 'string',
+            maxLength: TICKET_LIST_COMMENT_EXCERPT_MAX,
+            nullable: true,
+            example: 'El cliente reporta intermitencia desde el lunes',
+            description:
+              'Primer comentario visible para el usuario (misma regla de internos del detalle), ' +
+              'en espacios simples y truncado en servidor a 200 caracteres. Nulo si la descripción ' +
+              'tiene texto o no hay comentario visible con texto.',
           },
         },
       },

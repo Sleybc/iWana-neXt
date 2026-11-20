@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   ListTicketsOrderSchema,
+  TICKET_LIST_COMMENT_EXCERPT_MAX,
   TICKET_LIST_ORDERS,
   TicketListItemExtensionSchema,
 } from './ticket-list.contract';
@@ -74,6 +75,29 @@ describe('ticket-list.contract (spec MOD05 pestaña Soporte §16 B-1 a B-3)', ()
       TicketListItemExtensionSchema.safeParse(item({ requesterDisplayName: 'x'.repeat(301) }))
         .success,
     ).toBe(false);
+  });
+
+  it('commentCount y firstCommentExcerpt: opcionales, entero ≥ 0 y extracto ≤ 200 o nulo', () => {
+    expect(
+      TicketListItemExtensionSchema.safeParse(
+        item({ commentCount: 3, firstCommentExcerpt: 'Sin servicio desde ayer' }),
+      ).success,
+    ).toBe(true);
+    expect(
+      TicketListItemExtensionSchema.safeParse(item({ commentCount: 0, firstCommentExcerpt: null }))
+        .success,
+    ).toBe(true);
+    expect(TicketListItemExtensionSchema.safeParse(item({ commentCount: -1 })).success).toBe(false);
+    expect(TicketListItemExtensionSchema.safeParse(item({ commentCount: 1.5 })).success).toBe(
+      false,
+    );
+    expect(
+      TicketListItemExtensionSchema.safeParse(
+        item({ firstCommentExcerpt: 'x'.repeat(TICKET_LIST_COMMENT_EXCERPT_MAX + 1) }),
+      ).success,
+    ).toBe(false);
+    expect(TICKET_LIST_COMMENT_EXCERPT_MAX).toBe(200);
+    expect(shared.TICKET_LIST_COMMENT_EXCERPT_MAX).toBe(200);
   });
 
   it('el orden admite recent y urgency, recent por defecto', () => {

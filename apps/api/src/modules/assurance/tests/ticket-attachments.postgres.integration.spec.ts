@@ -36,6 +36,7 @@ import {
 import { TicketAttachmentMediaProvider } from '../../media/ticket-attachment-media.provider';
 import { AssuranceMigrationImportAdapter } from '../migration-adapters/assurance-migration-import.adapter';
 import { AssuranceTitularErasureParticipant } from '../privacy/assurance-titular-erasure.participant';
+import { CommentsService } from '../services/comments.service';
 import { TicketAttachmentsService } from '../services/ticket-attachments.service';
 import { TimelineService } from '../services/timeline.service';
 import {
@@ -327,7 +328,9 @@ describeWithDb('Adjuntos de tickets — PostgreSQL real', () => {
     const techCount = await inTenant(() =>
       service.decorateTicketList({ data: [{ id: ticketId }] }, technician),
     );
-    expect(techCount.data).toEqual([{ id: ticketId, attachmentCount: 1 }]);
+    expect(techCount.data).toEqual([
+      { id: ticketId, attachmentCount: 1, commentCount: 1, firstCommentExcerpt: 'Para el cliente' },
+    ]);
     // Sí descarga el adjunto del comentario visible.
     await expect(
       inTenant(() => service.signLink(ticketId, visible.attachments[0]!.id, 'inline', technician)),
@@ -349,7 +352,9 @@ describeWithDb('Adjuntos de tickets — PostgreSQL real', () => {
     const supportCount = await inTenant(() =>
       service.decorateTicketList({ data: [{ id: ticketId }] }, support),
     );
-    expect(supportCount.data).toEqual([{ id: ticketId, attachmentCount: 2 }]);
+    expect(supportCount.data).toEqual([
+      { id: ticketId, attachmentCount: 2, commentCount: 2, firstCommentExcerpt: 'Nota interna' },
+    ]);
   });
 
   it('GATE (b): un archivo con firma falsa se rechaza y no se guarda nada (ni comentario ni archivos)', async () => {
@@ -549,5 +554,125 @@ describeWithDb('Adjuntos de tickets — PostgreSQL real', () => {
     await expect(
       dataSource.query(`DELETE FROM ${quotedSchema}.ticket_comments WHERE id = $1`, [created.id]),
     ).rejects.toMatchObject({ driverError: { code: '23001' } });
+  });
+  // Vista dividida §4 (CA-9, CA-10): el resumen del listado coincide, rol por rol, con lo que
+  // muestra el detalle de comentarios; un interno nunca se cuenta ni aparece en el extracto.
+  describe('resumen de comentarios del listado por rol', () => {
+    const roles: Array<[UserRole, boolean]> = [
+      [UserRole.ADMIN, true],
+      [UserRole.NOC, true],
+      [UserRole.SUPPORT, true],
+      [UserRole.TECHNICIAN, false],
+      [UserRole.CONTRACTOR, false],
+    ];
+    let ticketId: string;
+    let quietTicketId: string;
+    let comments: CommentsService;
+
+    async function insertComment(
+      id: string,
+      body: string,
+      isInternal: boolean,
+      at: string,
+    ): Promise<void> {
+      await dataSource.query(
+        `INSERT INTO ${quotedSchema}.ticket_comments
+           (ticket_id, tenant_id, body, is_internal, author_user_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [id, tenantId, body, isInternal, supportId, at],
+      );
+    }
+
+    beforeAll(async () => {
+      comments = new CommentsService(
+        dataSource,
+        new TimelineService(dataSource),
+        {} as unknown as CrmSubscriberReadPort,
+      );
+      // Ticket importado sin descripción: el primero es interno; luego un público con espacios y
+      // saltos, un público vacío y otro interno.
+      ticketId = await insertTicket(null);
+      await insertComment(ticketId, 'Diagnóstico interno reservado', true, '2026-11-01T10:00:00Z');
+      await insertComment(
+        ticketId,
+        `  Sin servicio
+
+ desde ayer ${'x'.repeat(300)}`,
+        false,
+        '2026-11-01T11:00:00Z',
+      );
+      await insertComment(ticketId, '   ', false, '2026-11-01T12:00:00Z');
+      await insertComment(ticketId, 'Otra nota interna', true, '2026-11-01T13:00:00Z');
+      // Ticket con solo comentarios internos.
+      quietTicketId = await insertTicket(null);
+      await insertComment(quietTicketId, 'Solo interno', true, '2026-11-01T10:00:00Z');
+    });
+
+    it.each(roles)('%s: conteo y extracto iguales al detalle', async (role, seesInternal) => {
+      const viewer = actor(randomUUID(), role);
+      // Técnico y contratista solo abren tickets asignados: se asignan para leer el detalle real.
+      await dataSource.query(
+        `UPDATE ${quotedSchema}.support_tickets SET assigned_user_id = $2 WHERE id = ANY($1::uuid[])`,
+        [[ticketId, quietTicketId], viewer.sub],
+      );
+      const visibleInDetail = await inTenant(() => comments.listComments(ticketId, viewer));
+      const quietDetail = await inTenant(() => comments.listComments(quietTicketId, viewer));
+
+      const listed = await inTenant(() =>
+        service.decorateTicketList(
+          {
+            data: [
+              { id: ticketId, description: null },
+              { id: quietTicketId, description: '' },
+            ],
+          },
+          viewer,
+        ),
+      );
+      const [row, quiet] = listed.data as unknown as Array<{
+        commentCount: number;
+        firstCommentExcerpt: string | null;
+      }>;
+
+      expect(row!.commentCount).toBe(visibleInDetail.length);
+      expect(row!.commentCount).toBe(seesInternal ? 4 : 2);
+      expect(quiet!.commentCount).toBe(quietDetail.length);
+      expect(quiet!.commentCount).toBe(seesInternal ? 1 : 0);
+      if (seesInternal) {
+        expect(row!.firstCommentExcerpt).toBe('Diagnóstico interno reservado');
+        expect(quiet!.firstCommentExcerpt).toBe('Solo interno');
+      } else {
+        expect(row!.firstCommentExcerpt).toMatch(/^Sin servicio desde ayer x+$/u);
+        expect(row!.firstCommentExcerpt).toHaveLength(200);
+        expect(JSON.stringify(listed)).not.toMatch(/interno|reservado/iu);
+        expect(quiet!.firstCommentExcerpt).toBeNull();
+      }
+    });
+
+    it('la regla del detalle es la misma: el técnico asignado recibe exactamente esos comentarios', async () => {
+      const assigned = actor(randomUUID(), UserRole.TECHNICIAN);
+      await dataSource.query(
+        `UPDATE ${quotedSchema}.support_tickets SET assigned_user_id = $2 WHERE id = $1`,
+        [ticketId, assigned.sub],
+      );
+      const detail = await inTenant(() => comments.listComments(ticketId, assigned));
+      const listed = await inTenant(() =>
+        service.decorateTicketList({ data: [{ id: ticketId, description: null }] }, assigned),
+      );
+      expect(detail.every((c) => !c.isInternal)).toBe(true);
+      expect((listed.data[0] as unknown as { commentCount: number }).commentCount).toBe(
+        detail.length,
+      );
+    });
+
+    it('con descripción no se envía extracto', async () => {
+      const listed = await inTenant(() =>
+        service.decorateTicketList(
+          { data: [{ id: ticketId, description: 'Relato del cliente' }] },
+          support,
+        ),
+      );
+      expect(listed.data[0]).toMatchObject({ commentCount: 4, firstCommentExcerpt: null });
+    });
   });
 });

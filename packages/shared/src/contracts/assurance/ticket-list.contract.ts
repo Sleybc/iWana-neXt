@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { TicketActiveVisitSchema, TicketExecutionOrderSchema } from './ticket-detail.contract';
 
+/** Largo máximo de `firstCommentExcerpt`. */
+export const TICKET_LIST_COMMENT_EXCERPT_MAX = 200;
+
 /**
  * Listado de tickets, paso 2 (spec MOD05 pestaña Soporte 2026-11-17 §16 B-1 a B-3). Campos que
  * `GET /assurance/tickets` añade a cada ticket, con las mismas formas que el detalle.
@@ -22,6 +25,18 @@ export const TicketListItemExtensionSchema = z
      * DATOS_BLOQUEADOS, con referencia no resoluble o si CRM falla.
      */
     requesterDisplayName: z.string().max(300).nullable(),
+    /**
+     * Comentarios que quien consulta ve en el detalle, con su misma regla: los internos no
+     * cuentan para técnico ni contratista (spec MOD05 Soporte vista dividida §4, CA-9).
+     * Opcional solo por compatibilidad; el listado siempre lo envía.
+     */
+    commentCount: z.number().int().min(0).optional(),
+    /**
+     * Extracto del primer comentario visible para quien consulta, en espacios simples y
+     * truncado en servidor a 200 caracteres. Nulo si la descripción tiene texto, si no hay
+     * comentario visible con texto (CA-10). Opcional solo por compatibilidad.
+     */
+    firstCommentExcerpt: z.string().max(TICKET_LIST_COMMENT_EXCERPT_MAX).nullable().optional(),
   })
   .strict();
 export type TicketListItemExtension = z.infer<typeof TicketListItemExtensionSchema>;

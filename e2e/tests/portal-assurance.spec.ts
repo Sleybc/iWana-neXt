@@ -812,3 +812,52 @@ test('support can create, comment, escalate to field service and resolve a ticke
   await expect(ticketRow.getByText('TK-20260509-001', { exact: true })).toBeVisible();
   await expect(ticketRow.getByText('Resuelto', { exact: true })).toBeVisible();
 });
+
+test('Soporte CA-11: Anterior/Siguiente recorre la lista de la cola sin cerrar el panel y conserva las columnas', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await setupAssuranceMocks(page);
+  await seedPortalSession(page);
+  await page.goto('/dashboard/assurance', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('heading', { name: 'Mesa de ayuda' })).toBeVisible();
+
+  for (const subject of ['Recorrido sintético uno', 'Recorrido sintético dos']) {
+    await page.getByRole('button', { name: 'Nuevo ticket' }).first().click();
+    await expect(page.getByRole('heading', { name: 'Crear ticket' })).toBeVisible();
+    await page.getByRole('combobox', { name: 'Suscriptor' }).fill('Ada');
+    await page.getByRole('option', { name: 'Ada Sintética — Bogotá' }).click();
+    await page.getByLabel('Asunto', { exact: true }).fill(subject);
+    await page.getByRole('button', { name: 'Crear ticket' }).click();
+    await expect(page.getByText(/El ticket TK-20260509-00\d fue creado\./)).toBeVisible();
+  }
+
+  const queues = page.getByRole('group', { name: 'Colas de trabajo' });
+  await queues.getByRole('button', { name: /^Todos/ }).click();
+  await expect(page).toHaveURL(/[?&]queue=all/);
+  const headers = page.getByRole('columnheader');
+  const columnsBefore = await headers.allInnerTexts();
+  expect(columnsBefore.length).toBeGreaterThan(0);
+
+  const rows = page.getByRole('row').filter({ hasText: /TK-20260509-00\d/ });
+  await expect(rows).toHaveCount(2);
+  const order = (await rows.allInnerTexts()).map((text) => text.match(/TK-20260509-00\d/)?.[0]);
+  await page.getByRole('button', { name: order[0]!, exact: true }).click();
+
+  const dialog = page.getByRole('dialog');
+  const nav = dialog.getByRole('navigation', { name: 'Recorrer tickets de la lista' });
+  await expect(nav).toContainText('1 de 2');
+  await expect(dialog.getByRole('heading', { name: order[0]! })).toBeVisible();
+  await expect(nav.getByRole('button', { name: 'Anterior' })).toBeDisabled();
+
+  await nav.getByRole('button', { name: 'Siguiente' }).click();
+  await expect(nav).toContainText('2 de 2');
+  await expect(dialog.getByRole('heading', { name: order[1]! })).toBeVisible();
+  await expect(nav.getByRole('button', { name: 'Siguiente' })).toBeDisabled();
+  await expect(page).toHaveURL(/[?&]queue=all/);
+
+  await nav.getByRole('button', { name: 'Anterior' }).click();
+  await expect(nav).toContainText('1 de 2');
+  await expect(dialog).toBeVisible();
+  expect(await headers.allInnerTexts()).toEqual(columnsBefore);
+});

@@ -5,9 +5,10 @@ describe('ticket-list.openapi (spec MOD05 pestaña Soporte §16 B-1 a B-3)', () 
   const item = (TICKET_LIST_OPENAPI.properties!['data'] as { items: Record<string, unknown> })
     .items as { required: string[]; properties: Record<string, { nullable?: boolean }> };
 
-  it('cada ticket declara los campos del contrato compartido, todos requeridos y anulables', () => {
+  it('cada ticket declara los campos del contrato compartido, todos requeridos; anulables salvo conteos', () => {
     for (const field of Object.keys(TicketListItemExtensionSchema.shape)) {
       expect(item.required).toContain(field);
+      if (field === 'commentCount') continue;
       expect(item.properties[field]?.nullable).toBe(true);
     }
     expect(item.required).toEqual(expect.arrayContaining(['id', 'attachmentCount']));
@@ -29,6 +30,21 @@ describe('ticket-list.openapi (spec MOD05 pestaña Soporte §16 B-1 a B-3)', () 
     expect(contract.safeParse(null).success).toBe(true);
     expect(field.description).toMatch(/crm.subscribers.read/u);
     expect(field.description).toMatch(/bloqueados/u);
+  });
+
+  // Vista dividida §4 (CA-9, CA-10): conteo entero ≥ 0 y extracto con el tope del contrato.
+  it('commentCount y firstCommentExcerpt reflejan el contrato y la regla de internos', () => {
+    expect(item.properties['commentCount']).toMatchObject({ type: 'integer', minimum: 0 });
+    const excerpt = item.properties['firstCommentExcerpt'] as {
+      maxLength: number;
+      nullable: boolean;
+      description: string;
+    };
+    expect(excerpt).toMatchObject({ type: 'string', maxLength: 200, nullable: true });
+    expect(excerpt.description).toMatch(/internos/u);
+    const contract = TicketListItemExtensionSchema.shape.firstCommentExcerpt;
+    expect(contract.safeParse('x'.repeat(200)).success).toBe(true);
+    expect(contract.safeParse('x'.repeat(201)).success).toBe(false);
   });
 
   it('no declara correo ni otros datos del responsable', () => {

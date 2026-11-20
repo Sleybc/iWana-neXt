@@ -166,7 +166,8 @@ describe('SubscriberSupportTab — rediseño (spec 2026-11-17)', () => {
     expect(rows()[1]).toHaveTextContent('Numa Patrón');
   });
 
-  it('orden: vencido, luego prioridad; la descripción no va en la fila', async () => {
+  // Spec 2026-11-20 §3 D sustituye la regla de 2026-11-17: la fila trae una línea del relato.
+  it('orden: vencido, luego prioridad; la descripción va en la fila como una línea', async () => {
     render(<SubscriberSupportTab subscriber={subscriber} />);
     await waitFor(() => expect(rows()).toHaveLength(3));
     expect(rows().map((row) => row.getAttribute('aria-label'))).toEqual([
@@ -174,7 +175,7 @@ describe('SubscriberSupportTab — rediseño (spec 2026-11-17)', () => {
       'Abrir ticket TK-a: Caída total, Abierto, prioridad crítica',
       'Abrir ticket TK-c: Cambio de clave, Abierto, prioridad baja',
     ]);
-    expect(screen.queryByText('Sin servicio en la sede norte')).not.toBeInTheDocument();
+    expect(screen.getByText('Sin servicio en la sede norte')).toHaveClass('line-clamp-1');
   });
 
   it('solo con lectura de tickets: no consulta usuarios y dice «Responsable no disponible»', async () => {

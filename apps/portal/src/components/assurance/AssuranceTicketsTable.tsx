@@ -35,7 +35,12 @@ import {
   getAssuranceAssigneeLabel,
 } from './assurance-labels';
 import type { AssuranceBadgeVariant } from './assurance-labels';
-import { getTicketDeadline, getTicketFieldWork, needsAttention } from './assurance-ticket-model';
+import {
+  getTicketDeadline,
+  getTicketFieldWork,
+  getTicketStory,
+  needsAttention,
+} from './assurance-ticket-model';
 import { formatTicketAttachmentCount } from './ticket-attachments';
 import { TicketPriorityBadge, TicketStatusBadge } from './ticket-badges';
 
@@ -360,6 +365,7 @@ export function AssuranceTicketsTable({
 
                 {tickets.map((ticket) => {
                   const due = buildDueCell(ticket, now);
+                  const story = getTicketStory(ticket);
                   const fieldWork = getTicketFieldWork(ticket);
                   const FieldWorkIcon = fieldWork?.kind === 'order' ? ClipboardList : CalendarClock;
                   const attachmentCount = ticket.attachmentCount ?? 0;
@@ -429,6 +435,12 @@ export function AssuranceTicketsTable({
                               </span>
                             ) : null}
                           </div>
+                          {/* §3 G: una línea del relato bajo el asunto; texto, nunca HTML. */}
+                          {story ? (
+                            <span className="line-clamp-1 text-xs text-gray-600 dark:text-gray-300">
+                              {story}
+                            </span>
+                          ) : null}
                         </div>
                       </td>
                       <td

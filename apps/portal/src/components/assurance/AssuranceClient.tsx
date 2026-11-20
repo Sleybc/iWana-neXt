@@ -442,6 +442,31 @@ function AssuranceClientInner() {
     [openTicketDetail, writeTicketParam],
   );
 
+  // §3 G (CA-11): anterior y siguiente recorren la lista filtrada ya cargada sin cerrar el panel.
+  // Cada paso reemplaza `?ticketId=` para no llenar el historial; «Atrás» sigue cerrando el panel.
+  const openTicketId = isDrawerOpen ? ticketDetail.ticketId : null;
+  const openTicketIndex = openTicketId
+    ? tickets.findIndex((ticket) => ticket.id === openTicketId)
+    : -1;
+  const stepToTicket = useCallback(
+    (ticket: AssuranceTicket) => {
+      void openTicketDetail(ticket.id, ticket);
+      writeTicketParam(ticket.id, 'replace');
+    },
+    [openTicketDetail, writeTicketParam],
+  );
+  const previousTicket = openTicketIndex > 0 ? tickets[openTicketIndex - 1] : undefined;
+  const nextTicket =
+    openTicketIndex >= 0 && openTicketIndex < tickets.length - 1
+      ? tickets[openTicketIndex + 1]
+      : undefined;
+  const ticketNavigation = {
+    position: openTicketIndex >= 0 ? openTicketIndex + 1 : null,
+    total: tickets.length,
+    onPrevious: previousTicket ? () => stepToTicket(previousTicket) : undefined,
+    onNext: nextTicket ? () => stepToTicket(nextTicket) : undefined,
+  };
+
   const closeTicket = useCallback(() => {
     setIsDrawerOpen(false);
     clearTicketMessages();
@@ -760,6 +785,7 @@ function AssuranceClientInner() {
       <AssuranceTicketDrawer
         open={isDrawerOpen}
         {...ticketDetail.detailProps}
+        navigation={ticketNavigation}
         assignees={assignees}
         canManage={canManageAssurance}
         canOperate={canViewAssurance}

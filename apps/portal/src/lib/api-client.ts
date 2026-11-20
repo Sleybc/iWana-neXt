@@ -3472,6 +3472,10 @@ export interface AssuranceTicket {
   executionOrder?: TicketListItemExtension['executionOrder'];
   /** Solo en el listado (bandeja paso 2 §3 L): nulo sin permiso CRM o con titular bloqueado o suprimido. */
   requesterDisplayName?: TicketListItemExtension['requesterDisplayName'];
+  /** Solo en el listado (spec 2026-11-20 §3 F): comentarios que puede ver quien consulta. */
+  commentCount?: TicketListItemExtension['commentCount'];
+  /** Solo en el listado: extracto del primer comentario visible, solo si la descripción está vacía. */
+  firstCommentExcerpt?: TicketListItemExtension['firstCommentExcerpt'];
   /** Solo en el detalle (`GET /tickets/:id`), paso 2 (spec MOD10 §5, D4 = orden de ejecución). */
   requester?: TicketDetailExtension['requester'];
   relatedTo?: TicketDetailExtension['relatedTo'];

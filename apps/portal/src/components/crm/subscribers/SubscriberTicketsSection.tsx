@@ -53,6 +53,10 @@ interface SubscriberTicketsSectionProps {
   /** Se llama al cambiar un filtro: la pestaña descarta el aviso de éxito (§7). */
   onFiltersChange?: () => void;
   highlightTicketId?: string | null;
+  /** Ticket abierto en la vista dividida: su fila se marca como actual (CA-7). */
+  selectedTicketId?: string | null;
+  /** Lista cargada (cada consulta): la pestaña resuelve el ticket de la URL y el de entrada. */
+  onTicketsLoaded?: (tickets: readonly AssuranceTicket[]) => void;
 }
 
 type TicketFilter = 'abiertos' | 'cerrados' | 'todos' | 'vencidos';
@@ -173,6 +177,8 @@ export function SubscriberTicketsSection({
   notice,
   onFiltersChange,
   highlightTicketId = null,
+  selectedTicketId = null,
+  onTicketsLoaded,
 }: SubscriberTicketsSectionProps) {
   const [tickets, setTickets] = useState<AssuranceTicket[]>([]);
   const [total, setTotal] = useState<number | null>(null);
@@ -269,13 +275,15 @@ export function SubscriberTicketsSection({
         order: 'urgency',
       });
       // El servidor ya ordena por urgencia; el orden local se conserva (mismas claves, §5.1).
-      setTickets([...response.data].sort(compareTickets));
+      const sorted = [...response.data].sort(compareTickets);
+      setTickets(sorted);
       setTotal(response.meta?.total ?? response.total ?? null);
       setLoaded(true);
+      onTicketsLoaded?.(sorted);
     } catch {
       setError(true);
     }
-  }, [canRead, subscriber.id, subscriber.privacyRestricted]);
+  }, [canRead, onTicketsLoaded, subscriber.id, subscriber.privacyRestricted]);
 
   // Una consulta al montar y una por cada `refreshKey`. La clave evita la segunda consulta
   // idéntica que StrictMode provoca al repetir el efecto en desarrollo (CA-SO-04).
@@ -408,13 +416,14 @@ export function SubscriberTicketsSection({
     ];
 
     return (
-      <div className="space-y-2">
-        {/* Herramientas en una fila desde `lg` (CA-2); en móvil chips desplazables + «Filtros» (§9). */}
-        <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap">
+      <div className="@container space-y-2">
+        {/* Herramientas según el ancho de la lista, no del viewport (vista dividida, D1 §3): en una
+            fila desde `@3xl` (CA-2); estrecho, chips desplazables + «Filtros» (§9). */}
+        <div className="flex flex-wrap items-center gap-2 @3xl:flex-nowrap">
           <div
             role="group"
             aria-label="Filtrar tickets"
-            className="-mx-1 flex min-w-0 flex-1 gap-2 overflow-x-auto px-1 py-0.5 sm:flex-none"
+            className="-mx-1 flex min-w-0 flex-1 gap-2 overflow-x-auto px-1 py-0.5 @lg:flex-none"
           >
             {chips.map((item) => (
               <PortalFilterChip
@@ -431,7 +440,7 @@ export function SubscriberTicketsSection({
             type="button"
             variant="secondary"
             size="sm"
-            className="min-h-11 shrink-0 gap-1.5 sm:hidden"
+            className="min-h-11 shrink-0 gap-1.5 @lg:hidden"
             aria-expanded={filtersOpen}
             aria-controls="subscriber-ticket-filters"
             onClick={() => setFiltersOpen((open) => !open)}
@@ -444,11 +453,11 @@ export function SubscriberTicketsSection({
             role="group"
             aria-label="Más filtros de tickets"
             className={cn(
-              'min-w-0 basis-full flex-col gap-2 sm:flex sm:flex-1 sm:basis-auto sm:flex-row sm:items-center',
+              'min-w-0 basis-full flex-col gap-2 @lg:flex @lg:flex-1 @lg:basis-auto @lg:flex-row @lg:items-center',
               filtersOpen ? 'flex' : 'hidden',
             )}
           >
-            <div className="sm:w-40 sm:shrink-0">
+            <div className="@lg:w-40 @lg:shrink-0">
               <Select
                 aria-label="Prioridad"
                 value={priority}
@@ -456,7 +465,7 @@ export function SubscriberTicketsSection({
                 onChange={(event) => applyFilters({ priority: event.target.value })}
               />
             </div>
-            <div className="sm:w-48 sm:shrink-0">
+            <div className="@lg:w-48 @lg:shrink-0">
               <Select
                 aria-label="Tipo"
                 value={type}
@@ -473,7 +482,7 @@ export function SubscriberTicketsSection({
                 setSearch(value);
                 onFiltersChange?.();
               }}
-              className="min-w-0 sm:min-w-48 sm:flex-1"
+              className="min-w-0 @lg:min-w-48 @lg:flex-1"
             />
           </div>
         </div>
@@ -502,7 +511,8 @@ export function SubscriberTicketsSection({
             ref={listRef}
             tabIndex={-1}
             aria-label="Tickets vinculados"
-            className="divide-y divide-gray-100 focus:outline-none dark:divide-dark-border"
+            // Contenedor de la fila (D1 §3) y, en vista dividida, desplazamiento propio (§3 E, CA-8).
+            className="@container divide-y divide-gray-100 focus:outline-none dark:divide-dark-border xl:max-h-[32rem] xl:overflow-y-auto"
           >
             {visibleTickets.map((ticket) => (
               <TicketListItem
@@ -515,6 +525,7 @@ export function SubscriberTicketsSection({
                 slaDeadline={needsAttention(ticket) ? getTicketDeadline(ticket) : null}
                 fieldWork={getTicketFieldWork(ticket)}
                 highlighted={ticket.id === highlightTicketId}
+                selected={ticket.id === selectedTicketId}
                 now={now}
                 onOpen={(opener) => onOpenTicket(ticket, opener)}
               />

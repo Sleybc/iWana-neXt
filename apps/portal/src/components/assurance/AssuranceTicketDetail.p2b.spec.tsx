@@ -196,11 +196,12 @@ afterEach(() => {
 });
 
 describe('P2b · J dos columnas con riel', () => {
-  it('el riel trae sus cinco tarjetas en orden y se apila antes del hilo bajo lg', () => {
+  // Spec 2026-11-20 / D1 §4: el corte pasa del viewport (`lg`) al contenedor (`@3xl`, 48rem).
+  it('el riel trae sus cinco tarjetas en orden y se apila antes del hilo bajo @3xl', () => {
     const { dialog } = renderDrawer();
     const body = within(dialog).getByTestId('ticket-detail-body');
     expect(body.className).toContain('flex flex-col gap-4');
-    expect(body.className).toContain('lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-6');
+    expect(body.className).toContain('@3xl:grid @3xl:grid-cols-[minmax(0,1fr)_20rem] @3xl:gap-6');
 
     const aside = rail(dialog);
     const cards = within(aside)
@@ -218,8 +219,8 @@ describe('P2b · J dos columnas con riel', () => {
     // Orden del DOM = orden de lectura: el riel va antes del hilo; desde lg pasa a la derecha.
     const thread = within(dialog).getByRole('tablist', { name: 'Filtrar el hilo del caso' });
     expect(aside.compareDocumentPosition(thread) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(aside.className).toContain('lg:col-start-2');
-    expect(aside.className).toContain('lg:row-start-1');
+    expect(aside.className).toContain('@3xl:col-start-2');
+    expect(aside.className).toContain('@3xl:row-start-1');
   });
 
   it('el panel usa el ancho con riel de D5', () => {

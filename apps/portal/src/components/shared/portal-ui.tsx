@@ -176,7 +176,8 @@ function sortButtonAccessibleName(label: string, activeDir: PortalSortDirection 
   return `Ordenar por ${label}, ascendente`;
 }
 
-function useMinWidth(query: string, serverSnapshot = true): boolean {
+/** `true` si el viewport cumple la consulta `min-width`; reactivo a cambios de tamaño. */
+export function useMinWidth(query: string, serverSnapshot = true): boolean {
   return useSyncExternalStore(
     (onChange) => {
       if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {

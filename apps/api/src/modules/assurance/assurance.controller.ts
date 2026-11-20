@@ -194,7 +194,8 @@ export class AssuranceController {
   })
   @ApiOkResponse({
     description:
-      'Tickets del tenant. Cada ticket trae `attachmentCount`, el nombre del responsable, la ' +
+      'Tickets del tenant. Cada ticket trae `attachmentCount`, `commentCount` y ' +
+      '`firstCommentExcerpt` (con la regla de internos del detalle), el nombre del responsable, la ' +
       'visita activa y la orden de ejecución (nulas sin permiso de lectura de su módulo) y el ' +
       'nombre del solicitante (nulo sin crm.subscribers.read o con titular protegido).',
     schema: TICKET_LIST_OPENAPI,

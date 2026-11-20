@@ -693,3 +693,112 @@ describe('Bandeja P1 · correcciones tras QA1 (bandeja)', () => {
     expect(details).toHaveTextContent(/41/);
   });
 });
+
+describe('Soporte P2 · anterior y siguiente en el panel (spec 2026-11-20 §3 G, CA-11)', () => {
+  const row = (id: string, ticketNumber: string, subject: string) => ({
+    id,
+    ticketNumber,
+    subject,
+    description: null,
+    status: TicketStatus.OPEN,
+    priority: TicketPriority.NORMAL,
+    type: 'INCIDENT',
+    queueName: 'SUPPORT_L1',
+    assignedUserId: null,
+    slaBreachStatus: 'OK',
+    requesterRefId: 'req-1',
+    subjectRefId: 'subj-1',
+    createdAt: '2026-11-19T10:00:00.000Z',
+    updatedAt: '2026-11-19T10:00:00.000Z',
+  });
+  const rows = [
+    row('t-1', 'TK-201', 'Primero'),
+    row('t-2', 'TK-202', 'Segundo'),
+    row('t-3', 'TK-203', 'Tercero'),
+  ];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockHasPermission.mockReturnValue(true);
+    searchParamsMock = new URLSearchParams();
+    mockRouterPush.mockImplementation((href: string) => {
+      searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
+    });
+    mockRouterReplace.mockImplementation((href: string) => {
+      searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
+    });
+    Element.prototype.scrollIntoView = jest.fn();
+    listTicketsMock.mockResolvedValue({ data: rows, total: 3, page: 1, limit: 20 } as never);
+    getTicketMock.mockImplementation(
+      async (id: string) =>
+        ({
+          ...rows.find((ticket) => ticket.id === id),
+          requesterType: 'SUBSCRIBER',
+          subjectType: 'SERVICE',
+          source: 'PORTAL',
+          fieldDecision: TicketFieldDecision.NOT_REQUIRED,
+          workOrderId: null,
+          slaFirstResponseAt: null,
+          slaResolveByAt: null,
+        }) as never,
+    );
+  });
+
+  it('recorre la lista cargada sin cerrar el panel y desactiva los bordes', async () => {
+    const user = userEvent.setup();
+    render(<AssuranceClient />);
+    await user.click(await screen.findByRole('button', { name: 'TK-201' }));
+    const dialog = await screen.findByRole('dialog');
+    const previous = screen.getByRole('button', { name: 'Ticket anterior' });
+    const next = screen.getByRole('button', { name: 'Ticket siguiente' });
+    expect(previous).toBeDisabled();
+    expect(next).toBeEnabled();
+    expect(screen.getByText('1 de 3')).toBeInTheDocument();
+
+    await user.click(next);
+    await waitFor(() => expect(getTicketMock).toHaveBeenLastCalledWith('t-2'));
+    expect(screen.getByRole('dialog')).toBe(dialog);
+    expect(searchParamsMock.get('ticketId')).toBe('t-2');
+    expect(screen.getByText('2 de 3')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Ticket siguiente' }));
+    await waitFor(() => expect(getTicketMock).toHaveBeenLastCalledWith('t-3'));
+    expect(screen.getByRole('button', { name: 'Ticket siguiente' })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'Ticket anterior' }));
+    await waitFor(() => expect(getTicketMock).toHaveBeenLastCalledWith('t-2'));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('respeta el ticket de la URL; si no está en la página, ambos botones quedan desactivados', async () => {
+    searchParamsMock = new URLSearchParams('ticketId=t-9');
+    getTicketMock.mockResolvedValue({
+      ...row('t-9', 'TK-209', 'Fuera'),
+      requesterType: 'SUBSCRIBER',
+      source: 'PORTAL',
+      fieldDecision: TicketFieldDecision.NOT_REQUIRED,
+    } as never);
+    render(<AssuranceClient />);
+    await waitFor(() => expect(getTicketMock).toHaveBeenCalledWith('t-9'));
+    expect(await screen.findByRole('button', { name: 'Ticket anterior' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Ticket siguiente' })).toBeDisabled();
+  });
+
+  it('la tabla pinta el relato bajo el asunto: descripción o extracto del primer comentario', async () => {
+    listTicketsMock.mockResolvedValue({
+      data: [
+        { ...rows[0], description: 'Se cae cada noche' },
+        { ...rows[1], firstCommentExcerpt: '<b>Llamó</b> el cliente', commentCount: 2 },
+      ],
+      total: 2,
+      page: 1,
+      limit: 20,
+    } as never);
+    const { container } = render(<AssuranceClient />);
+    expect(await screen.findByText('Se cae cada noche')).toBeInTheDocument();
+    expect(screen.getByText('<b>Llamó</b> el cliente')).toBeInTheDocument();
+    expect(container.querySelector('b')).toBeNull();
+    // La tabla conserva sus columnas.
+    expect(screen.getAllByRole('columnheader').length).toBeGreaterThanOrEqual(5);
+  });
+});

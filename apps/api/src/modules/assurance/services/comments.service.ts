@@ -8,9 +8,9 @@ import { AddCommentInput, AddCommentSchema } from '../dto';
 import { TicketTimelineEventType, UserRole } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { TimelineService } from './timeline.service';
+import { canSeeInternal } from './comment-visibility';
 
 const RESTRICTED_ROLES: UserRole[] = [UserRole.TECHNICIAN, UserRole.CONTRACTOR];
-const RESTRICTED_FROM_INTERNAL: UserRole[] = [UserRole.TECHNICIAN, UserRole.CONTRACTOR];
 
 @Injectable()
 export class CommentsService {
@@ -92,7 +92,7 @@ export class CommentsService {
         .andWhere('c.tenant_id = :tenantId', { tenantId })
         .orderBy('c.created_at', 'ASC');
 
-      if (RESTRICTED_FROM_INTERNAL.includes(actor.role as UserRole)) {
+      if (!canSeeInternal(actor)) {
         qb.andWhere('c.is_internal = FALSE');
       }
 

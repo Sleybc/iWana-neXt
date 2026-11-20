@@ -160,9 +160,9 @@ const fieldLabelClassName = 'text-sm font-medium text-gray-700 dark:text-gray-30
 
 const supportTextClassName = 'text-xs text-gray-600 dark:text-gray-300';
 
-/** Cuerpo con riel (spec MOD05 §8.6, D5): bajo `lg` el riel se apila antes del hilo. */
+/** Cuerpo con riel (spec MOD05 §8.6, D5): con contenedor < 48rem el riel se apila antes del hilo. */
 const detailBodyClassName =
-  'flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-6';
+  'flex flex-col gap-4 @3xl:grid @3xl:grid-cols-[minmax(0,1fr)_20rem] @3xl:gap-6';
 
 const ORDER_NUMBER_EXAMPLE = 'OTE-20261116-001';
 
@@ -214,7 +214,7 @@ function ActionMessages({
 
 function TicketPanelSkeleton() {
   return (
-    <div aria-busy="true" className="space-y-4">
+    <div aria-busy="true" className="@container space-y-4">
       <span className="sr-only">Cargando el ticket…</span>
       <div aria-hidden="true" className="flex flex-wrap items-center gap-2">
         <SkeletonBlock className="h-6 w-32 rounded-full" />
@@ -223,12 +223,12 @@ function TicketPanelSkeleton() {
         <SkeletonBlock className="h-8 w-56 rounded-xl sm:ml-auto" />
       </div>
       <div aria-hidden="true" className={detailBodyClassName}>
-        <div className="space-y-3 lg:col-start-2 lg:row-start-1">
+        <div className="space-y-3 @3xl:col-start-2 @3xl:row-start-1">
           {Array.from({ length: 3 }, (_, index) => (
             <SkeletonBlock key={index} className="h-24 rounded-xl" />
           ))}
         </div>
-        <div className="space-y-3 lg:col-start-1 lg:row-start-1">
+        <div className="space-y-3 @3xl:col-start-1 @3xl:row-start-1">
           <SkeletonBlock className="h-9 w-64 rounded-xl" />
           <SkeletonBlock className="h-20 rounded-xl" />
         </div>
@@ -668,7 +668,7 @@ export function AssuranceTicketDetail({
     const lookupOrder = orderLookup.kind === 'found' ? orderLookup.order : null;
 
     return (
-      <div className="space-y-2">
+      <div className="@container space-y-2">
         {showTopMessages ? <ActionMessages feedback={actionFeedback} error={actionError} /> : null}
 
         {/* B · Cabecera: insignias y control Estado en una fila (spec §3 J; ajuste CA-10). */}
@@ -792,11 +792,11 @@ export function AssuranceTicketDetail({
           ) : null}
         </div>
 
-        {/* J · Dos columnas: el riel va antes del hilo en el DOM y desde `lg` pasa a la derecha. */}
+        {/* J · Dos columnas: el riel va antes del hilo en el DOM y desde `@3xl` pasa a la derecha. */}
         <div data-testid="ticket-detail-body" className={detailBodyClassName}>
           <section
             aria-label="Datos del caso"
-            className="min-w-0 space-y-4 lg:col-start-2 lg:row-start-1"
+            className="min-w-0 space-y-4 @3xl:col-start-2 @3xl:row-start-1"
           >
             <PortalPanel density="dense" as="section" labelled title="Personas">
               <div className="space-y-3">
@@ -1199,19 +1199,22 @@ export function AssuranceTicketDetail({
           </section>
 
           {/* Izquierda: descripción e hilo (el redactor lo ubica el contenedor). */}
-          <div className="min-w-0 space-y-3 lg:col-start-1 lg:row-start-1">
-            <div className="min-w-0">
-              <h3 className={portalPanelDenseTitleClassName}>Descripción</h3>
-              {current.description?.trim() ? (
-                <p className="mt-1 whitespace-pre-line text-sm text-gray-700 dark:text-gray-200">
-                  {current.description.trim()}
-                </p>
-              ) : (
-                <p className={cn('mt-1 text-sm', portalFieldEmptyValueClassName)}>
-                  Sin descripción adicional registrada para este caso.
-                </p>
-              )}
-            </div>
+          <div className="min-w-0 space-y-3 @3xl:col-start-1 @3xl:row-start-1">
+            {/* F0: sin descripción pero con comentarios, el relato está en el hilo; no se avisa. */}
+            {current.description?.trim() || comments.length === 0 ? (
+              <div className="min-w-0">
+                <h3 className={portalPanelDenseTitleClassName}>Descripción</h3>
+                {current.description?.trim() ? (
+                  <p className="mt-1 whitespace-pre-line text-sm text-gray-700 dark:text-gray-200">
+                    {current.description.trim()}
+                  </p>
+                ) : (
+                  <p className={cn('mt-1 text-sm', portalFieldEmptyValueClassName)}>
+                    Sin descripción adicional registrada para este caso.
+                  </p>
+                )}
+              </div>
+            ) : null}
 
             {/* F · Hilo: filtro Comentarios (por defecto), Historial, Todo. */}
             <Tabs defaultValue="comments">

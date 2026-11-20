@@ -1,7 +1,7 @@
 'use client';
 
 import { Plus } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AccessPermissionKey, TicketFieldDecision } from '@iwana/shared';
 import type { ContractResponse, LinkExecutionOrderBody } from '@iwana/shared';
@@ -29,10 +29,15 @@ import {
 } from './SubscriberVisitsSection';
 import { AssuranceCreateTicketForm } from '@/components/assurance/AssuranceCreateTicketForm';
 import type { AssuranceCreateTicketSubmitPayload } from '@/components/assurance/AssuranceCreateTicketForm';
-import { AssuranceTicketDrawer } from '@/components/assurance/AssuranceTicketDrawer';
+import {
+  AssuranceTicketDrawer,
+  AssuranceTicketPane,
+} from '@/components/assurance/AssuranceTicketDrawer';
+import type { AssuranceTicketDetailProps } from '@/components/assurance/AssuranceTicketDetail';
+import { needsAttention } from '@/components/assurance/assurance-ticket-model';
 import { getTicketCommentAttachmentError } from '@/components/assurance/ticket-attachments';
 import { createAssuranceVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
-import { PortalSuccessAlert } from '@/components/shared/portal-ui';
+import { PortalSuccessAlert, useMinWidth } from '@/components/shared/portal-ui';
 import { getAssuranceTicketStatusLabel } from '@/components/assurance/assurance-labels';
 import {
   Button,
@@ -48,6 +53,8 @@ interface SubscriberSupportTabProps {
   /** Servicios ya cargados en la ficha; se ofrecen en «Relacionado con» al crear (spec §8). */
   contracts?: ContractResponse[];
 }
+
+type AssuranceTicketSharedProps = Omit<AssuranceTicketDetailProps, 'children' | 'openInPageHref'>;
 
 const NO_CONTRACTS: ContractResponse[] = [];
 
@@ -68,6 +75,41 @@ async function loadOperationalUsers(): Promise<InternalUser[]> {
     cursor = response.meta.nextCursor ?? undefined;
   } while (cursor);
   return [...collected.values()];
+}
+
+/** Corte de la vista dividida (dictamen D1 §2): `xl`, lista de 25rem y el ticket al lado. */
+const SPLIT_VIEW_QUERY = '(min-width: 1280px)';
+/** Panel del ticket en vista dividida: no más alto que la lista ni que la ventana. */
+const SPLIT_PANE_CLASS_NAME = 'xl:max-h-[min(40rem,calc(100dvh-8rem))]';
+/** Ticket abierto en la URL (spec §3 B); convive con `tab` y los filtros de H6. */
+const TICKET_PARAM = 'ticket';
+
+type TicketHistoryMode = 'push' | 'replace' | 'none';
+
+function readTicketParam(): string | null {
+  if (typeof window === 'undefined') return null;
+  return new URLSearchParams(window.location.search).get(TICKET_PARAM) || null;
+}
+
+/** Igual que los filtros de H6: historia nativa, sin navegar ni recargar la ficha. */
+function writeTicketParam(ticketId: string | null, mode: Exclude<TicketHistoryMode, 'none'>) {
+  if (typeof window === 'undefined') return;
+  const url = new URL(window.location.href);
+  if (ticketId) url.searchParams.set(TICKET_PARAM, ticketId);
+  else url.searchParams.delete(TICKET_PARAM);
+  if (url.href === window.location.href) return;
+  if (mode === 'push') window.history.pushState(window.history.state, '', url);
+  else window.history.replaceState(window.history.state, '', url);
+}
+
+/** Ticket de entrada en vista dividida (§3 C): el abierto más reciente; sin abiertos, el más reciente. */
+function pickEntryTicket(tickets: readonly AssuranceTicket[]): AssuranceTicket | null {
+  const newest = (list: readonly AssuranceTicket[]) =>
+    list.reduce<AssuranceTicket | null>(
+      (best, item) => (!best || item.createdAt > best.createdAt ? item : best),
+      null,
+    );
+  return newest(tickets.filter(needsAttention)) ?? newest(tickets);
 }
 
 /** Lleva el foco al encabezado de un panel de la pestaña (CA-11 y franja de resumen). */
@@ -117,6 +159,14 @@ export function SubscriberSupportTab({
   const [comments, setComments] = useState<AssuranceTicketComment[]>([]);
   const [timeline, setTimeline] = useState<AssuranceTimelineEvent[]>([]);
   const [ticketOpener, setTicketOpener] = useState<HTMLButtonElement | null>(null);
+  const [listedTickets, setListedTickets] = useState<readonly AssuranceTicket[] | null>(null);
+  const isWide = useMinWidth(SPLIT_VIEW_QUERY, false);
+  const splitView = isWide && canReadTickets && listedTickets !== null && listedTickets.length > 0;
+  // Id abierto, síncrono: evita una segunda carga del mismo ticket (R2) y el doble efecto.
+  const openTicketIdRef = useRef<string | null>(null);
+  const listedTicketsRef = useRef<readonly AssuranceTicket[]>([]);
+  const urlSyncedRef = useRef(false);
+  const autoSelectedRef = useRef(false);
 
   const refreshTickets = useCallback(() => setRefreshTicketsKey((current) => current + 1), []);
 
@@ -197,8 +247,23 @@ export function SubscriberSupportTab({
   );
 
   const openTicket = useCallback(
-    (ticket: AssuranceTicket, opener: HTMLButtonElement) => {
+    (
+      ticket: AssuranceTicket,
+      opener: HTMLButtonElement | null,
+      history: TicketHistoryMode = 'push',
+    ) => {
       if (!canReadTickets || subscriber.privacyRestricted) return;
+      if (history !== 'none') {
+        writeTicketParam(ticket.id, openTicketIdRef.current === ticket.id ? 'replace' : history);
+      }
+      autoSelectedRef.current = false;
+      if (openTicketIdRef.current === ticket.id) {
+        // Ya abierto (otro clic, «atrás» o la URL): sin segunda carga.
+        if (opener) setTicketOpener(opener);
+        setDrawerOpen(true);
+        return;
+      }
+      openTicketIdRef.current = ticket.id;
       setTicketOpener(opener);
       dismissCreateFeedback();
       setCloseAnnouncement('');
@@ -215,6 +280,8 @@ export function SubscriberSupportTab({
         assuranceApi.tickets.listComments(ticket.id),
         assuranceApi.tickets.listTimeline(ticket.id),
       ]).then(([ticketResult, commentsResult, timelineResult]) => {
+        // Otro ticket se abrió mientras cargaba este: se descarta la respuesta tardía.
+        if (openTicketIdRef.current !== ticket.id) return;
         setDrawerTicket(ticketResult.status === 'fulfilled' ? ticketResult.value : ticket);
         setComments(commentsResult.status === 'fulfilled' ? commentsResult.value : []);
         setTimeline(timelineResult.status === 'fulfilled' ? timelineResult.value : []);
@@ -246,8 +313,19 @@ export function SubscriberSupportTab({
     [],
   );
 
+  /** Cierra sin mover el foco ni tocar la URL («atrás» o salida de la vista dividida). */
+  const dismissTicket = useCallback(() => {
+    openTicketIdRef.current = null;
+    autoSelectedRef.current = false;
+    setDrawerOpen(false);
+    setDrawerTicket(null);
+    setTicketOpener(null);
+  }, []);
+
   const closeDrawer = useCallback(() => {
     const closedTicket = drawerTicket;
+    openTicketIdRef.current = null;
+    writeTicketParam(null, 'replace');
     setDrawerOpen(false);
     setDrawerTicket(null);
     setTicketOpener(null);
@@ -265,6 +343,68 @@ export function SubscriberSupportTab({
       );
     }
   }, [drawerTicket, ticketOpener]);
+
+  const onTicketsLoaded = useCallback((tickets: readonly AssuranceTicket[]) => {
+    listedTicketsRef.current = tickets;
+    setListedTickets(tickets);
+  }, []);
+
+  // B y C: con la lista cargada se resuelve el ticket de la URL (solo si es de este suscriptor,
+  // CA-4: si no, se quita sin consultarlo) y, en vista dividida, el de entrada.
+  useEffect(() => {
+    if (!listedTickets) return;
+    if (!urlSyncedRef.current) {
+      urlSyncedRef.current = true;
+      const requestedId = readTicketParam();
+      if (requestedId) {
+        const requested = listedTickets.find((item) => item.id === requestedId);
+        if (requested) {
+          openTicket(requested, null, 'none');
+          return;
+        }
+        writeTicketParam(null, 'replace');
+      }
+    }
+    if (!splitView || openTicketIdRef.current) return;
+    const entry = pickEntryTicket(listedTickets);
+    if (!entry) return;
+    openTicket(entry, null, 'replace');
+    autoSelectedRef.current = true;
+  }, [listedTickets, openTicket, splitView]);
+
+  // Al salir de la vista dividida, el ticket que se abrió solo se cierra: en panel nunca se abre
+  // nada sin pedirlo (§3 C).
+  const wasSplitRef = useRef(false);
+  useEffect(() => {
+    if (wasSplitRef.current && !splitView && autoSelectedRef.current) {
+      dismissTicket();
+      writeTicketParam(null, 'replace');
+    }
+    wasSplitRef.current = splitView;
+  }, [dismissTicket, splitView]);
+
+  // «Atrás» y «adelante» (CA-3): la URL manda; un id ajeno se ignora (CA-4).
+  useEffect(() => {
+    const onPopState = () => {
+      const requestedId = readTicketParam();
+      const requested = requestedId
+        ? listedTicketsRef.current.find((item) => item.id === requestedId)
+        : undefined;
+      if (requested) {
+        openTicket(requested, null, 'none');
+        return;
+      }
+      if (openTicketIdRef.current) dismissTicket();
+      // En vista dividida la columna nunca queda vacía: vuelve el ticket de entrada.
+      const entry = wasSplitRef.current ? pickEntryTicket(listedTicketsRef.current) : null;
+      if (entry) {
+        openTicket(entry, null, 'replace');
+        autoSelectedRef.current = true;
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [dismissTicket, openTicket]);
 
   const upcomingVisits = useMemo(
     () => (canReadVisits && visitEntries ? visitEntries.filter(isOpenVisitEntry).length : null),
@@ -332,6 +472,47 @@ export function SubscriberSupportTab({
 
   if (subscriber.privacyRestricted) return null;
 
+  // Un solo origen de datos del ticket para el panel lateral y el panel fijo (§3 A, R2).
+  const ticketDetailProps: AssuranceTicketSharedProps = {
+    ticket: drawerTicket,
+    comments,
+    timeline,
+    assignees,
+    isLoading: drawerLoading,
+    error: drawerError,
+    actionFeedback: drawerFeedback,
+    actionError: drawerActionError,
+    isCommentSubmitting: drawerAction === 'comment',
+    isTransitionSubmitting: drawerAction === 'transition',
+    isAssignmentSubmitting: drawerAction === 'assignment',
+    isFieldServiceSubmitting: drawerAction === 'field-service',
+    isLinkingWorkOrder: drawerAction === 'link-work-order',
+    canManage: canManageTickets,
+    canOperate: canManageTickets,
+    onAddComment: (payload: AssuranceCommentSubmission) =>
+      runDrawerAction('comment', async () => {
+        const ticketId = drawerTicket!.id;
+        const added = await assuranceApi.tickets.submitComment(ticketId, payload);
+        setComments((current) => [...current, added]);
+        // runDrawerAction recarga el listado (clip y «Adjuntos (N)»); aquí, el ticket abierto.
+        return (await reloadOpenTicket(ticketId)) ?? added;
+      }),
+    onTransitionStatus: (payload: TransitionAssuranceTicketDto) =>
+      runDrawerAction('transition', () =>
+        assuranceApi.tickets.transitionStatus(drawerTicket!.id, payload),
+      ),
+    onAssign: (payload: AssignAssuranceTicketDto) =>
+      runDrawerAction('assignment', () => assuranceApi.tickets.assign(drawerTicket!.id, payload)),
+    onRequestFieldService: (payload: RequestAssuranceFieldServiceDto) =>
+      runDrawerAction('field-service', () =>
+        assuranceApi.tickets.requestFieldService(drawerTicket!.id, payload),
+      ),
+    onLinkWorkOrder: (payload: LinkExecutionOrderBody) =>
+      runDrawerAction('link-work-order', () =>
+        assuranceApi.tickets.linkExecutionOrder(drawerTicket!.id, payload),
+      ),
+  };
+
   return (
     <div className="space-y-4">
       {/* Sin lectura de tickets no hay lista: el aviso va arriba (con lectura va sobre la lista, §7). */}
@@ -339,43 +520,62 @@ export function SubscriberSupportTab({
         <PortalSuccessAlert message={createFeedback} onDismiss={dismissCreateFeedback} />
       ) : null}
 
-      {/* Dirección A (§3): una columna; Tickets a ancho completo y Visitas compacta debajo. */}
-      <SubscriberTicketsSection
-        subscriber={subscriber}
-        canRead={canReadTickets}
-        users={assignees}
-        usersPending={usersPending}
-        slaPoliciesConfigured={slaPolicies.length > 0}
-        upcomingVisits={upcomingVisits}
-        onShowVisits={showVisits}
-        refreshKey={refreshTicketsKey}
-        onOpenTicket={openTicket}
-        onFiltersChange={dismissCreateFeedback}
-        highlightTicketId={createdTicketId}
-        notice={
-          createFeedback && canReadTickets ? (
-            <PortalSuccessAlert message={createFeedback} onDismiss={dismissCreateFeedback} />
-          ) : null
+      {/* Vista dividida desde 1280 px (§3 A, D1 §2): lista de 25rem y el ticket al lado. Por
+          debajo, una columna y el panel lateral. Visitas, debajo de la grilla (§3 E). */}
+      <div
+        className={
+          splitView
+            ? 'xl:grid xl:grid-cols-[25rem_minmax(0,1fr)] xl:items-start xl:gap-4'
+            : undefined
         }
-        actions={
-          canManageTickets ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="min-h-11 gap-1.5 sm:min-h-9"
-              onClick={() => {
-                setCreateError(null);
-                dismissCreateFeedback();
-                setCreateOpen(true);
-              }}
-            >
-              <Plus className="h-4 w-4" aria-hidden />
-              Crear ticket
-            </Button>
-          ) : undefined
-        }
-      />
+      >
+        <SubscriberTicketsSection
+          subscriber={subscriber}
+          canRead={canReadTickets}
+          users={assignees}
+          usersPending={usersPending}
+          slaPoliciesConfigured={slaPolicies.length > 0}
+          upcomingVisits={upcomingVisits}
+          onShowVisits={showVisits}
+          refreshKey={refreshTicketsKey}
+          onOpenTicket={openTicket}
+          onFiltersChange={dismissCreateFeedback}
+          highlightTicketId={createdTicketId}
+          selectedTicketId={splitView ? (drawerTicket?.id ?? null) : null}
+          onTicketsLoaded={onTicketsLoaded}
+          notice={
+            createFeedback && canReadTickets ? (
+              <PortalSuccessAlert message={createFeedback} onDismiss={dismissCreateFeedback} />
+            ) : null
+          }
+          actions={
+            canManageTickets ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="min-h-11 gap-1.5 sm:min-h-9"
+                onClick={() => {
+                  setCreateError(null);
+                  dismissCreateFeedback();
+                  setCreateOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4" aria-hidden />
+                Crear ticket
+              </Button>
+            ) : undefined
+          }
+        />
+        {splitView && drawerTicket ? (
+          <AssuranceTicketPane
+            {...ticketDetailProps}
+            // Alto acotado con desplazamiento propio (CA-8, §3 E): la grilla no crece con el
+            // ticket y «Visitas» queda a la vista; 40rem ≈ el panel de la lista (32rem + cabecera).
+            className={SPLIT_PANE_CLASS_NAME}
+          />
+        ) : null}
+      </div>
       <SubscriberVisitsSection
         subscriber={subscriber}
         canRead={canReadVisits}
@@ -416,52 +616,9 @@ export function SubscriberSupportTab({
       <AssuranceTicketDrawer
         // La página propia filtra por rol y esta pestaña por permiso (MOD10 P2a, decisión 2026-11-16).
         showOpenInPage={false}
-        open={drawerOpen}
-        ticket={drawerTicket}
-        comments={comments}
-        timeline={timeline}
-        assignees={assignees}
-        isLoading={drawerLoading}
-        error={drawerError}
-        actionFeedback={drawerFeedback}
-        actionError={drawerActionError}
-        isCommentSubmitting={drawerAction === 'comment'}
-        isTransitionSubmitting={drawerAction === 'transition'}
-        isAssignmentSubmitting={drawerAction === 'assignment'}
-        isFieldServiceSubmitting={drawerAction === 'field-service'}
-        isLinkingWorkOrder={drawerAction === 'link-work-order'}
-        canManage={canManageTickets}
-        canOperate={canManageTickets}
+        open={drawerOpen && !splitView}
         onClose={closeDrawer}
-        onAddComment={(payload: AssuranceCommentSubmission) =>
-          runDrawerAction('comment', async () => {
-            const ticketId = drawerTicket!.id;
-            const added = await assuranceApi.tickets.submitComment(ticketId, payload);
-            setComments((current) => [...current, added]);
-            // runDrawerAction recarga el listado (clip y «Adjuntos (N)»); aquí, el ticket abierto.
-            return (await reloadOpenTicket(ticketId)) ?? added;
-          })
-        }
-        onTransitionStatus={(payload: TransitionAssuranceTicketDto) =>
-          runDrawerAction('transition', () =>
-            assuranceApi.tickets.transitionStatus(drawerTicket!.id, payload),
-          )
-        }
-        onAssign={(payload: AssignAssuranceTicketDto) =>
-          runDrawerAction('assignment', () =>
-            assuranceApi.tickets.assign(drawerTicket!.id, payload),
-          )
-        }
-        onRequestFieldService={(payload: RequestAssuranceFieldServiceDto) =>
-          runDrawerAction('field-service', () =>
-            assuranceApi.tickets.requestFieldService(drawerTicket!.id, payload),
-          )
-        }
-        onLinkWorkOrder={(payload: LinkExecutionOrderBody) =>
-          runDrawerAction('link-work-order', () =>
-            assuranceApi.tickets.linkExecutionOrder(drawerTicket!.id, payload),
-          )
-        }
+        {...ticketDetailProps}
       />
     </div>
   );
