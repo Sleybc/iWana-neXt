@@ -204,3 +204,14 @@ Ajuste del usuario del 2026-11-20: «Sí, agrega la opción «Sin asignar»». A
 - Portal: **81/1292** en verde (3 pruebas nuevas). Typecheck y eslint en exit 0.
 - Visto en el navegador con el ticket sintético TK-20261117-004, sin guardar.
 - El ticket TK-20261117-002, que quedó asignado por un cambio ajeno, se devolvió a «Sin asignar» por la API.
+
+### A.7 E2E de asignación
+
+`e2e/tests/portal-assurance-asignacion.spec.ts`, nuevo, con la API simulada y nombres sintéticos. Cierra la deuda de E2E de A.3.
+
+- CA-4: iniciales y nombre en la bandeja; en la ficha, solo iniciales.
+- CA-5 y CA-1: reasignación en dos clics con nota, y la línea correspondiente en «Comentarios».
+- CA-5: «Dejar sin asignar»; sin permiso de gestión, la fila no tiene control.
+- CA-9: foco atrapado en el popover, Escape, axe en claro y oscuro con el popover abierto, y 375 px.
+- Resultados: **6/6 en dos corridas** (puerto 3002, `--workers=1`). Regresión: `portal-assurance` y `portal-assurance-adjuntos`, 6/6.
+- Observación: el mock de `/users` en `portal-assurance.spec.ts` no usa la envoltura `{ data: { data, meta } }`. Ese spec no comprueba nombres, así que no falla.
