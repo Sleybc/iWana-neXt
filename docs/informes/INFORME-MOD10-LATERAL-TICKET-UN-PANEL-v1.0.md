@@ -2,7 +2,7 @@
 
 **Versión:** 1.0
 **Fecha:** 2026-11-20
-**Estado:** Olas 1–3 ejecutadas; **punto de control con el usuario pendiente**; sin commit ni push; E2E sin correr (falta la ventana del puerto 3002)
+**Estado:** Olas 1–3 y anexos A y B publicados por orden del usuario · G6.5 ✅ 2026-11-20 (CI 44814321278 (success, seis jobs) y E2E Web Admin Smoke 44814321322 (success), ambos sobre `b20117ac`). Detalle en «Registro de G6.5», al final.
 **Fuente:** [spec](../specs/2026-11-20-mod10-detalle-ticket-lateral-un-panel-ux.md) v1.0 (G0 2026-11-20) · [plan](../plans/2026-11-20-mod10-detalle-ticket-lateral-un-panel.md) · [lanzador](../prompts/PROMPT-MOD10-LATERAL-TICKET-UN-PANEL-LAUNCH-v1.0.md)
 
 ## 1. Qué cambió
@@ -215,3 +215,10 @@ Ajuste del usuario del 2026-11-20: «Sí, agrega la opción «Sin asignar»». A
 - CA-9: foco atrapado en el popover, Escape, axe en claro y oscuro con el popover abierto, y 375 px.
 - Resultados: **6/6 en dos corridas** (puerto 3002, `--workers=1`). Regresión: `portal-assurance` y `portal-assurance-adjuntos`, 6/6.
 - Observación: el mock de `/users` en `portal-assurance.spec.ts` no usa la envoltura `{ data: { data, meta } }`. Ese spec no comprueba nombres, así que no falla.
+
+## Registro de G6.5 (2026-11-20)
+
+- **Run que lo cumple:** CI 44814321278 (success, seis jobs) y E2E Web Admin Smoke 44814321322 (success), ambos sobre `b20117ac`.
+- **Commits cubiertos:** `e352c837` (lateral en un panel), `8381cf1d` (asignación visible y ticket cerrado en solo lectura), `b8518abc` (aviso de cierre en la cabecera), `2e8f6e02` (quitar el responsable), `e0be2e3f` (E2E de asignación), `01bf4747` (tono por autor en los comentarios) y `b20117ac` (spec, plan y lanzador).
+- **Run previo:** 44785230416 rojo por el typecheck de `ticket-timeline-event-type.postgres.integration.spec.ts`, que construía el adaptador de cierre de orden con dos argumentos tras `3e581ddf`; corregido en `38895477`.
+- **Sigue abierto:** la prueba de integración contra Postgres del rechazo 409 en tickets cerrados para comentar sin adjuntos, reasignar, cambiar área, editar y vincular órdenes (contra base real solo está el comentario con adjuntos; el resto se prueba en `ticket-closed-read-only.spec.ts` con dobles), axe y teclado, y el aviso al nuevo responsable (D4 de la spec de asignación).

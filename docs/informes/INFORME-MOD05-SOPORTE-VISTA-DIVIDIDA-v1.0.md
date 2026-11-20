@@ -4,7 +4,7 @@
 **Fecha:** 2026-11-20
 **Spec:** [2026-11-20-mod05-soporte-vista-dividida-ux](../specs/2026-11-20-mod05-soporte-vista-dividida-ux.md) v1.0 (G0 2026-11-20)
 **Plan:** [2026-11-20-mod05-soporte-vista-dividida](../plans/2026-11-20-mod05-soporte-vista-dividida.md) · **Launcher:** [PROMPT-MOD05-SOPORTE-VISTA-DIVIDIDA-LAUNCH-v1.0](../prompts/PROMPT-MOD05-SOPORTE-VISTA-DIVIDIDA-LAUNCH-v1.0.md)
-**Estado:** G6 de paso 1 y paso 2 ✅ en local, sin commit. G6.5 pendiente de push autorizado y CI de `main` en verde.
+**Estado:** Pasos 1, 2 y 3 publicados · G6.5 ✅ 2026-11-20 (CI 44814321278 (success, seis jobs) y E2E Web Admin Smoke 44814321322 (success), ambos sobre `b20117ac`). Detalle en «Registro de G6.5», al final.
 
 ## 1. Resultado
 
@@ -83,7 +83,7 @@ El suscriptor `[SEED-SOPORTE]`, sus 10 tickets, 2 comentarios y 24 eventos de hi
 
 ## Anexo — Paso 3: próximas visitas y lista densa (olas 7–9, spec v1.2)
 
-**Estado:** G6 ✅ en local, sin commit. CA-13 a CA-18 cumplen.
+**Estado:** G6 ✅; publicado en `e3a4ff20` y `d717fd9d`. CA-13 a CA-18 cumplen. G6.5 en «Registro de G6.5».
 
 **Decisiones del usuario (2026-11-20):** historial de visitas plegable en la pestaña, porque la agenda no filtra por suscriptor (D5); franja de una sola línea con «+N más» (CA-17).
 
@@ -125,3 +125,10 @@ A 1280 y 375 px no hay desplazamiento lateral ni regresión. El seed se retiró 
 | D11 | Al cargar, la franja muestra dos visitas durante unos 2 s y luego pasa a una, porque mide el ancho después del primer render | `fe-platform` |
 | D12 | Con la franja desplegada, la quinta fila queda hacia px 903, calculado y no medido. Plegada, que es el estado por defecto, cumple con margen | `fe-platform` |
 | D13 | El mock de la E2E `portal-mod05-lista-operativa.spec.ts` abre el panel de otro suscriptor distinto del de la URL; se corrigió la carrera de CA-LO-07, pero no el mock | `sr-qa` |
+
+## Registro de G6.5 (2026-11-20)
+
+- **Run que lo cumple:** CI 44814321278 (success, seis jobs) y E2E Web Admin Smoke 44814321322 (success), ambos sobre `b20117ac`. Es el primer run verde de `main` desde el paso 3; los anteriores no sirven de evidencia.
+- **Runs intermedios:** 44752123160 (`d717fd9d`) rojo por la E2E `portal-importacion-uisp-live.spec.ts:736`, desactualizada por el nombre accesible de la fila (corregida en `b36f9665`), y por el p95 de `billing-dashboard`; 44758355400 cancelado por un push posterior; 44760435277 (`e400a8ac`) rojo por el manifiesto de texto libre (corregido en `880e0bad`) y por el p95 de `billing-dashboard`; 44785230416 (`27c39663`) rojo por el typecheck de una prueba de integración (corregido en `38895477`).
+- **Cubre, además de los tres pasos:** tickets del expediente en la ficha (`2f8025f2`), cabecera de la lista en vista dividida (`637e84ae`, spec v1.3) y espaciado de la fila (`f4964910`).
+- **Sin verificar tras `f4964910`:** CA-17 en navegador con todas las filas con relato; la E2E que lo mide pasó en el run citado.
