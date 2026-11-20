@@ -7,11 +7,11 @@
 
 ## Proposito
 
-Documento historico de la etapa en la que GitHub Copilot fue la superficie primaria del repo. Se conserva solo para trazabilidad.
+Documento historico de la etapa en la que GitHub Copilot fue la superficie primaria del repo. Se conserva solo para trazabilidad. Copilot dejo de ser asistente activo el 2026-11-20 (ADR-113).
 
 ## Flujo Vigente
 
-Este runbook ya no describe el estado vigente. La superficie activa actual se documenta en `AGENTS.md`, `.github/copilot-instructions.md` y [RUNBOOK-AI-WORKFLOW-MULTIAGENT-v1.1.md](/home/sley/Documentos/appiw/docs/runbooks/RUNBOOK-AI-WORKFLOW-MULTIAGENT-v1.1.md).
+Este runbook ya no describe el estado vigente. La superficie activa actual se documenta en `AGENTS.md`, `.agents/BOOTSTRAP.md` y [RUNBOOK-AI-WORKFLOW-MULTIAGENT-v1.1.md](/home/sley/Documentos/appiw/docs/runbooks/RUNBOOK-AI-WORKFLOW-MULTIAGENT-v1.1.md).
 
 ## Estado actual
 

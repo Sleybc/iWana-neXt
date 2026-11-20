@@ -4,6 +4,7 @@
 **Estado:** Aprobado
 **Aprobado por:** usuario titular del repositorio — 2026-10-09 (decisiones abiertas 2 y 4 de `INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0`)
 **Fecha:** 2026-10-09
+**Enmienda:** 2026-11-20 — Copilot retirado como asistente activo y bootstrap movido a `.agents/BOOTSTRAP.md` ([ADR-113](ADR-113-Retiro-de-GitHub-Copilot-como-Asistente-Activo.md)); el cuerpo se conserva como registro.
 **Modo activo:** ejecutor
 **Autor:** Claude Code
 **Relacionado:** `scripts/sync-agents.mjs` (precedente: subagentes generados desde `.claude/agents/`) · [INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0](../informes/INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0.md)

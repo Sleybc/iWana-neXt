@@ -8,7 +8,6 @@ Este directorio contiene el catalogo activo de skills del proyecto: 43 skills co
 
 La disponibilidad efectiva puede variar segun el cliente:
 
-- GitHub Copilot puede usar `skills-lock.json` como filtro adicional de disponibilidad si ese cliente lo tiene habilitado. El archivo solo lista skills vigentes: las retiradas no figuran.
 - OpenCode consume el catalogo del workspace desde `skills.paths`.
 - Codex usa el catalogo segun el mecanismo de skills disponible en la sesion activa.
 - Claude Code descubre las skills desde `.claude/skills/`, que contiene **punteros generados** por `pnpm sync:skills` (ADR-092): mismo frontmatter que aqui y un cuerpo que remite al `SKILL.md` de este directorio. El contenido vive solo aqui. Toda alta, baja o cambio de frontmatter exige `pnpm sync:skills`; CI lo verifica con `pnpm sync:skills:check`.

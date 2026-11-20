@@ -2,8 +2,8 @@
 /**
  * sync-agents.mjs — genera las definiciones de subagentes por proveedor.
  *
- * Fuente canónica: .claude/agents/*.md (la leen nativamente Claude Code, Cursor
- * y VS Code/Copilot). Este script deriva:
+ * Fuente canónica: .claude/agents/*.md (la leen nativamente Claude Code y
+ * Cursor). Este script deriva:
  *   - .opencode/agents/<name>.md   (frontmatter de OpenCode: mode/permission)
  *   - .codex/agents/<name>.toml    (formato TOML de Codex CLI)
  *

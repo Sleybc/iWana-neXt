@@ -77,7 +77,7 @@ Verificadores auxiliares (fuera de la jerarquía de decisión; los invoca cualqu
 
 **Roles que no existen en esta estructura no son destinos de escalación.** Un perfil que necesite escalar algo sin dueño aquí lo escala a AI-EM-ARCH, quien lo resuelve o lo sube al CTO. (Corrige los destinos fantasma "Staff Engineer" y "Architect de Datos" que arrastraban los perfiles v1.)
 
-**Gobernanza vs modo de sesión (multi-IDE):** la gobernanza de AI-EM-ARCH (boundaries, gates, este protocolo) rige **siempre** vía `AGENTS.md`; pero el modo de sesión por defecto de cualquier cliente (Cursor, Copilot, Claude Code, Codex, OpenCode) es **ejecutor** — puede implementar código respetando los gates. El modo Orquestador (con su límite de "no código productivo") solo aplica con activación explícita ([PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md](../prompts/PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md)). Detalle en el informe vivo de roles §4.
+**Gobernanza vs modo de sesión (multi-IDE):** la gobernanza de AI-EM-ARCH (boundaries, gates, este protocolo) rige **siempre** vía `AGENTS.md`; pero el modo de sesión por defecto de cualquier cliente (Claude Code, Codex, OpenCode) es **ejecutor** — puede implementar código respetando los gates. El modo Orquestador (con su límite de "no código productivo") solo aplica con activación explícita ([PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md](../prompts/PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md)). Detalle en el informe vivo de roles §4.
 
 Separación de responsabilidades de la cadena de UI (reduce solapamiento):
 **qué/flujo** = AI-PROD-UX · **con qué/contrato** = AI-DS-OWNER · **cómo/código** = AI-FE-PLATFORM · **datos/servidor** = AI-SR-FULL · **verifica** = AI-SR-QA.

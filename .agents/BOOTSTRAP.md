@@ -1,6 +1,6 @@
 # iWana neXt — AI Bootstrap
 
-GitHub Copilot, OpenCode, Codex y Claude Code son las IAs activas del workspace. `AGENTS.md` es la fuente maestra de gobernanza, arquitectura, comandos, gotchas, skills y entregables.
+OpenCode, Codex y Claude Code son las IAs activas del workspace. `AGENTS.md` es la fuente maestra de gobernanza, arquitectura, comandos, gotchas, skills y entregables.
 
 Esta es una superficie agnostica de proveedor: cualquier IA que arranque en el workspace debe leer `AGENTS.md` antes de actuar y debe aplicar el mismo flujo, los mismos recordsatorios criticos y la misma trazabilidad documental.
 
@@ -16,7 +16,7 @@ Si dos artefactos chocan en multi-tenancy, seguridad, boundaries o stack, no sin
 
 ## Superficies activas
 
-- `.github/copilot-instructions.md` — este archivo, leido por Copilot automaticamente.
+- `.agents/BOOTSTRAP.md` — este archivo (antes `.github/copilot-instructions.md`, ADR-113).
 - `.opencode/opencode.json` — declaracion explicita de OpenCode: `instructions`, `skills.paths` y `mcp`.
 - `CLAUDE.md` — bootstrap propio de Claude Code, leido automaticamente por esa CLI; reactivado el 2026-07-09.
 - `.github/instructions/*.instructions.md` — reglas contextuales por path, complementan a `AGENTS.md` en su `applyTo`.
@@ -30,7 +30,7 @@ Si dos artefactos chocan en multi-tenancy, seguridad, boundaries o stack, no sin
 - Usa siempre `pnpm`; no uses `npm` ni `yarn` para flujos del repo.
 - Las reglas por archivo viven en `.github/instructions/*.instructions.md` y son complementos, no fuentes maestras.
 - **Todos** los prompts viven en `docs/prompts/`, sin excepcion: los de ejecucion por fase (`PROMPT-{MODULO}-{FASE}-v{VERSION}.md`) y los operativos reutilizables (`PROMPT-OPERATIVO-{NOMBRE}-v{VERSION}.md`). Depositar un prompt en cualquier otra carpeta es defecto bloqueante.
-- OpenCode, Codex y Claude Code quedan en paridad documental con Copilot; los cuatro leen `AGENTS.md` y este bootstrap.
+- OpenCode, Codex y Claude Code quedan en paridad documental; los tres leen `AGENTS.md` y este bootstrap.
 - Las skills del repo viven en `.agents/skills/` y deben reutilizarse desde cualquier cliente que soporte ese catalogo; no dupliques reglas en un sistema paralelo de agentes. Claude Code, al no tener `skills.paths`, las consume via `CLAUDE.md` leyendo el `SKILL.md` correspondiente por descripcion.
 
 ## Recordatorios de alto riesgo
@@ -49,16 +49,6 @@ Para el mapa completo de decisiones y comandos, vuelve a `AGENTS.md`.
 
 Las IAs activas pueden resolver superficies adicionales segun su propia configuracion. La presencia o ausencia de estos archivos no cambia la regla de gobernanza del proyecto: aunque la CLI correspondiente pueda leerlos, en este workspace **AGENTS.md sigue siendo la fuente maestra**.
 
-### GitHub Copilot
-
-La CLI/cliente de Copilot puede leer instrucciones desde varias ubicaciones. Orden de lectura observado en este workspace:
-
-- `AGENTS.md` (fuente maestra)
-- `.github/instructions/**/*.instructions.md` (instrucciones por path)
-- `.github/copilot-instructions.md` (este archivo)
-- `$HOME/.copilot/copilot-instructions.md` (archivo por usuario)
-- rutas definidas por la variable `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`
-
 `GEMINI.md` aparece en el orden observado de la CLI, pero en este repo esta marcado como pasivo y **no** debe usarse como fuente de verdad. `CLAUDE.md` esta activo (ver seccion Claude Code abajo) pero sigue subordinado a `AGENTS.md`.
 
 ### OpenCode
@@ -68,7 +58,7 @@ OpenCode carga su configuracion desde:
 - `./opencode.json`, `./opencode.jsonc` o `.opencode/opencode.json` (al subir desde el cwd al worktree root).
 - `~/.config/opencode/opencode.json` para configuracion global.
 
-`AGENTS.md` se lee automaticamente desde la raiz del proyecto. Este archivo se referencia explicitamente desde `.opencode/opencode.json` en el campo `instructions` para mantener paridad con Copilot. Las skills viven en `skills.paths` (incluye `.agents/skills/`) y los MCPs operativos en `mcp`.
+`AGENTS.md` se lee automaticamente desde la raiz del proyecto. Este archivo se referencia explicitamente desde `.opencode/opencode.json` en el campo `instructions`. Las skills viven en `skills.paths` (incluye `.agents/skills/`) y los MCPs operativos en `mcp`.
 
 ### Codex
 
@@ -90,6 +80,6 @@ Claude Code no tiene un mecanismo nativo de `skills.paths` para directorios de s
 
 - Fuente maestra: `AGENTS.md` — siempre prevalece cuando hay conflicto.
 - Complementos por path: `.github/instructions/*.instructions.md` — aplican en su `applyTo`.
-- Archivos de usuario (`$HOME/.copilot/...`, `~/.config/opencode/...`) o variables de entorno son auxiliares y nunca deben contradecir `AGENTS.md`.
+- Archivos de usuario (`~/.config/opencode/...`, `~/.codex/...`) o variables de entorno son auxiliares y nunca deben contradecir `AGENTS.md`.
 
 Si encuentras que la CLI de cualquier IA esta siguiendo una instruccion que contradice `AGENTS.md`, documenta el conflicto y escalalo — no asumas la autoridad del archivo local que contradice `AGENTS.md`.

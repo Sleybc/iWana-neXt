@@ -30,11 +30,11 @@ Estados admitidos:
 ## Reglas de precedencia
 
 1. AGENTS.md
-2. .github/copilot-instructions.md
+2. .agents/BOOTSTRAP.md
 3. Este indice
 4. La skill individual
 
-`CLAUDE.md` es superficie activa (reactivada 2026-07-09) y aplica el mismo catalogo; desde ADR-092 (2026-10-09) Claude Code lo descubre via los punteros generados en `.claude/skills/` (`pnpm sync:skills`), que remiten al `SKILL.md` de este directorio sin copiar su contenido. `.opencode/` participa como configuracion cliente activa de OpenCode, pero no sustituye la precedencia documental del repo. Codex y Claude Code comparten la misma gobernanza via `AGENTS.md` y `.github/copilot-instructions.md`.
+`CLAUDE.md` es superficie activa (reactivada 2026-07-09) y aplica el mismo catalogo; desde ADR-092 (2026-10-09) Claude Code lo descubre via los punteros generados en `.claude/skills/` (`pnpm sync:skills`), que remiten al `SKILL.md` de este directorio sin copiar su contenido. `.opencode/` participa como configuracion cliente activa de OpenCode, pero no sustituye la precedencia documental del repo. Codex y Claude Code comparten la misma gobernanza via `AGENTS.md` y `.agents/BOOTSTRAP.md`.
 
 ## Reglas de activacion
 
@@ -169,7 +169,7 @@ Claude Code recibe skills que **no viven en este repo**: plugins instalados en l
 
 ### Reglas del nivel externo
 
-1. **Solo Claude Code.** Copilot, OpenCode y Codex no las tienen. Por eso **nunca son obligatorias** en una matriz de dispatch: se citan solo como skill **de apoyo**, con su nombre calificado, el sufijo `(solo Claude Code)` y su condicion. Un bloque nunca puede depender de una skill externa para cumplir un gate.
+1. **Solo Claude Code.** OpenCode y Codex no las tienen. Por eso **nunca son obligatorias** en una matriz de dispatch: se citan solo como skill **de apoyo**, con su nombre calificado, el sufijo `(solo Claude Code)` y su condicion. Un bloque nunca puede depender de una skill externa para cumplir un gate.
 2. **La skill del repo prevalece.** Si una externa choca con el repo en stack, tenancy, seguridad, accesibilidad (WCAG 2.2 AA), idioma (texto visible en español), formato documental o comandos (`pnpm` exclusivamente), manda la skill del repo de la columna «Prevalece» y `AGENTS.md`.
 3. **Se verifican contra la sesion, no contra disco.** Antes de citarla, comprobar que figura en la lista de skills de la sesion activa. No existe `.agents/skills/<nombre>/`, y no debe existir: **no se copian** a `.agents/skills/` ni a `.claude/skills/`, no cuentan en `coreCount` y `pnpm sync:skills` no las toca.
 4. **Sin efectos externos sin confirmacion.** Publicar, enviar, firmar, subir o descargar desde una skill externa exige el «si» explicito del usuario en el chat, igual que cualquier otra accion.

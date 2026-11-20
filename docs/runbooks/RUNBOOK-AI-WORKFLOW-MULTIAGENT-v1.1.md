@@ -7,16 +7,16 @@
 
 ## Proposito
 
-Definir la superficie activa de asistencia IA del repo para reducir drift entre Copilot, OpenCode, Codex y Claude Code, manteniendo una sola gobernanza documental.
+Definir la superficie activa de asistencia IA del repo para reducir drift entre OpenCode, Codex y Claude Code, manteniendo una sola gobernanza documental.
 
 ## Flujo vigente
 
-GitHub Copilot, OpenCode, Codex y Claude Code son asistentes activos del workspace. `AGENTS.md` es la fuente maestra para gobernanza, stack, comandos, skills, gotchas, entregables y boundaries. Claude Code fue reactivado el 2026-07-09 (ver `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md`); no tiene configuracion cliente versionada propia (a diferencia de `.opencode/opencode.json`) — su bootstrap es `CLAUDE.md`, leido automaticamente por esa CLI.
+OpenCode, Codex y Claude Code son asistentes activos del workspace (Copilot retirado el 2026-11-20, ADR-113). `AGENTS.md` es la fuente maestra para gobernanza, stack, comandos, skills, gotchas, entregables y boundaries. Claude Code fue reactivado el 2026-07-09 (ver `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md`); no tiene configuracion cliente versionada propia (a diferencia de `.opencode/opencode.json`) — su bootstrap es `CLAUDE.md`, leido automaticamente por esa CLI.
 
 ## Orden de precedencia
 
 1. `AGENTS.md`
-2. `.github/copilot-instructions.md`
+2. `.agents/BOOTSTRAP.md`
 3. PRD, HLD y ADR vigente del modulo afectado
 4. `.github/instructions/*.instructions.md`
 5. `.agents/skills/INDEX.md` y la skill aplicable
@@ -25,7 +25,7 @@ GitHub Copilot, OpenCode, Codex y Claude Code son asistentes activos del workspa
 ## Superficies activas
 
 - `AGENTS.md`: gobernanza maestra del workspace.
-- `.github/copilot-instructions.md`: bootstrap agnostico de proveedor.
+- `.agents/BOOTSTRAP.md`: bootstrap agnostico de proveedor.
 - `CLAUDE.md`: bootstrap propio de Claude Code, leido automaticamente por esa CLI.
 - `.github/instructions/*.instructions.md`: reglas contextuales por path.
 - `docs/prompts/PROMPT-*.md`: todos los prompts del workspace (ejecucion por fase y operativos reutilizables). Unica carpeta de prompts desde el 2026-07-27.
@@ -45,7 +45,7 @@ GitHub Copilot, OpenCode, Codex y Claude Code son asistentes activos del workspa
 ## Reglas de mantenimiento
 
 - Las reglas globales viven en `AGENTS.md`.
-- El bootstrap debe permanecer agnostico de proveedor aunque conserve el nombre `.github/copilot-instructions.md`.
+- El bootstrap debe permanecer agnostico de proveedor; vive en `.agents/BOOTSTRAP.md` desde ADR-113.
 - Las skills del repo son reutilizables por cualquier asistente que soporte ese catalogo.
 - Los informes historicos se conservan como evidencia, pero no deben contradecir la gobernanza activa.
 

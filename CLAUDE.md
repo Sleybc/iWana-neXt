@@ -1,13 +1,13 @@
 # Claude Code bootstrap — iWana neXt
 
 `AGENTS.md` es la fuente maestra de gobernanza y prevalece sobre este archivo.
-Claude Code es un asistente activo, al mismo nivel que Copilot, OpenCode y Codex;
+Claude Code es un asistente activo, al mismo nivel que OpenCode y Codex;
 su activación y precedencia están documentadas en `AGENTS.md` → **AI Workflow Activo**.
 
 ## Lectura obligatoria
 
 1. `AGENTS.md`.
-2. `.github/copilot-instructions.md`.
+2. `.agents/BOOTSTRAP.md`.
 3. `docs/prds/Stack_Tecnologico.md` y el PRD/HLD/ADR vigente del módulo.
 4. Las reglas por ruta de `.github/instructions/*.instructions.md` que apliquen.
 5. `.agents/skills/INDEX.md` y el `SKILL.md` cuyo dominio coincida con la tarea.

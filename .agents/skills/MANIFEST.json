@@ -5,7 +5,7 @@
   "governance": {
     "precedence": [
       "AGENTS.md",
-      ".github/copilot-instructions.md",
+      ".agents/BOOTSTRAP.md",
       ".agents/skills/INDEX.md",
       "individual skill"
     ],
@@ -244,7 +244,7 @@
   },
   "references": [
     "AGENTS.md",
-    ".github/copilot-instructions.md",
+    ".agents/BOOTSTRAP.md",
     ".agents/skills/INDEX.md",
     "docs/quality/CHECKLIST-SISTEMA-SKILLS-GOBERNANZA-v1.0.md",
     "docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md",
