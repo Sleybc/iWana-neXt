@@ -16,3 +16,10 @@ export enum SubscriberStatus {
   SUSPENDED = 'SUSPENDED',
   CANCELLED = 'CANCELLED',
 }
+
+/** Estados visibles en Suscriptores después de la primera activación. */
+export const ACTIVATED_SUBSCRIBER_STATUSES = [
+  SubscriberStatus.ACTIVE,
+  SubscriberStatus.SUSPENDED,
+  SubscriberStatus.CANCELLED,
+] as const;

@@ -31,6 +31,7 @@ import { hmacPii, resolvePiiHashKey } from '../../../common/crypto/pii-hash-key.
 import {
   PersonType,
   CustomerSegment,
+  ACTIVATED_SUBSCRIBER_STATUSES,
   SubscriberStatus,
   DocumentType,
   ExpedienteStatus,
@@ -107,6 +108,8 @@ import { CrmQuoteReadPort } from '../ports/crm-quote-read.port';
 import { ContractAutoCreationPort } from '../ports/contract-auto-creation.port';
 import { ANONYMIZED } from '../privacy-adapters/titular-erasure/titular-erasure-sql';
 import { titularAnonymizedConflict } from './guards/titular-anonymized-conflict';
+
+const ACTIVATED_SUBSCRIBER_SCOPE_SQL = `(s.activated_at IS NOT NULL AND s.status IN (${ACTIVATED_SUBSCRIBER_STATUSES.map((status) => "'" + status + "'").join(', ')}))`;
 
 const SUBSCRIBER_SECTION_SCHEMAS = {
   identification: z
@@ -804,6 +807,7 @@ export class SubscribersService implements CrmSubscriberReadPort {
         addPrimaryServiceProjection(query);
 
         query.andWhere('s.tenantId = :tenantId', { tenantId });
+        query.andWhere(ACTIVATED_SUBSCRIBER_SCOPE_SQL);
 
         if (filters.status) {
           query.andWhere('s.status = :status', { status: filters.status });
@@ -849,12 +853,32 @@ export class SubscribersService implements CrmSubscriberReadPort {
 
         // La entrada libre llega por el body POST. Escapamos también el carácter
         // escape para que %, _ y \\ se interpreten literalmente en ILIKE.
-        if (filters.search) {
-          const searchPattern = `%${escapeLikePattern(filters.search)}%`;
+        const term = filters.search;
+        if (term) {
+          const unformattedNit = term.replace(/\./gu, '');
+          const nitWithDigit = /^(\d{5,15})-(\d)$/u.exec(unformattedNit);
+          const searchPattern = `%${escapeLikePattern(term)}%`;
           const escapeClause = String.raw`ESCAPE E'\\'`;
           query.andWhere(
-            `(s.firstName ILIKE :search ${escapeClause} OR s.lastName ILIKE :search ${escapeClause} OR s.businessName ILIKE :search ${escapeClause} OR s.nit ILIKE :search ${escapeClause} OR s.commercialName ILIKE :search ${escapeClause})`,
-            { search: searchPattern },
+            `(s.firstName ILIKE :search ${escapeClause}
+              OR s.lastName ILIKE :search ${escapeClause}
+              OR concat_ws(' ', s.firstName, s.lastName) ILIKE :search ${escapeClause}
+              OR s.businessName ILIKE :search ${escapeClause}
+              OR s.commercialName ILIKE :search ${escapeClause}
+              OR s.nit ILIKE :search ${escapeClause}
+              OR (s.nit = :nitBase AND (CAST(:nitDigit AS text) IS NULL
+                OR s.nitVerificationDigit IS NULL OR s.nitVerificationDigit = :nitDigit))
+              OR s.documentNumberHash = :docHash
+              OR s.phoneHash = :phoneHash
+              OR s.emailHash = :emailHash)`,
+            {
+              search: searchPattern,
+              nitBase: nitWithDigit?.[1] ?? unformattedNit,
+              nitDigit: nitWithDigit?.[2] ?? null,
+              docHash: hashDocumentNumber(term, this.piiHashKey),
+              phoneHash: this.hmacPhoneHash(term),
+              emailHash: hashEmail(term, this.piiHashKey),
+            },
           );
         }
 
@@ -929,7 +953,8 @@ export class SubscribersService implements CrmSubscriberReadPort {
          FROM subscribers s
          WHERE s.tenant_id = $1
            AND s.deleted_at IS NULL
-           AND s.anonymized_at IS NULL`,
+           AND s.anonymized_at IS NULL
+           AND ${ACTIVATED_SUBSCRIBER_SCOPE_SQL}`,
         [tenantId],
       )) as Array<{
         active: string | number;
@@ -1359,6 +1384,7 @@ export class SubscribersService implements CrmSubscriberReadPort {
 
         qb.where(conditions.join(' AND '), params);
         qb.andWhere('s.tenantId = :tenantId', { tenantId });
+        qb.andWhere(ACTIVATED_SUBSCRIBER_SCOPE_SQL);
         qb.addSelect(
           `EXISTS (
           SELECT 1
@@ -1696,23 +1722,6 @@ export class SubscribersService implements CrmSubscriberReadPort {
       `Activación automática desde expediente ${expedienteId}`,
       actorId,
     );
-
-    const { schemaName, tenantId } = TenantContext.getOrThrow();
-    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const locked = await qr.manager.findOne(Subscriber, {
-        where: { id: subscriber.id, tenantId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!locked) throw new NotFoundException(`Suscriptor ${subscriber.id} no encontrado`);
-      if (locked.anonymizedAt != null) throw titularAnonymizedConflict();
-      await qr.manager.update(
-        Subscriber,
-        { id: subscriber.id, tenantId },
-        {
-          activatedAt: new Date(),
-        },
-      );
-    });
 
     return this.findById(subscriber.id);
   }

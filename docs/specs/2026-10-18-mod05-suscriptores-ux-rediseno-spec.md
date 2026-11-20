@@ -71,7 +71,7 @@
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-- Modo de búsqueda explícito (QW1). Chips de cola con conteo, «Más filtros» con Tipo, Segmento y Estrato, y vistas guardadas (E2).
+- Búsqueda unificada (QW1), colas con conteo y filtros compactos. Las vistas guardadas siguen en E2.
 - Columna Suscriptor en dos líneas; Tipo y Segmento salen de la tabla (E1).
 - Clic en la fila abre la vista lateral; `Enter` o «Abrir ficha» navega (E2, según SPEC-PORTAL-SIDEPEEK-A11Y).
 - Menos de 768 px: tarjetas con nombre, estado, dirección y botones de llamar y WhatsApp (E3).
@@ -96,19 +96,18 @@
 
 ## 3. Contrato de los quick wins (congelado para la Ola 1)
 
-Solo frontend. **No** cambia ningún contrato de `@iwana/shared` ni de la API.
+El alcance original era frontend. La actualización de QW1 del 2026-11-20 amplía el contrato de búsqueda del listado.
 
-### QW1 — Búsqueda con modo explícito
+### QW1 — Búsqueda y filtros del listado
 
-| Regla | Detalle |
-| --- | --- |
-| R1.1 | Control segmentado accesible antes del input: `Texto` (por defecto), `Documento`, `Teléfono`, `Correo`. Grupo con `role="radiogroup"` o `ToggleGroup` equivalente del DS, etiqueta visible «Buscar por» |
-| R1.2 | `Texto` conserva el comportamiento actual (`subscribersApi.list` con `search`, debounce 350 ms, filtros y paginación) |
-| R1.3 | `Documento`, `Teléfono` y `Correo` llaman a `subscribersApi.search({ documentNumber \| phone \| email })` **al enviar** (Enter o botón), sin debounce: cada consulta es un acceso a PII auditado. En `Documento`, si la persona es jurídica el operador escribe el NIT: se envía `nit` cuando el valor coincide con NIT con o sin DV; si no, `documentNumber` |
-| R1.4 | En modo exacto se ocultan los filtros, el orden y el paginador, y aparece el texto «Coincidencia exacta · N resultado(s)». Con 0 resultados: estado vacío «No hay suscriptores con ese documento» y acción «Buscar como texto» |
-| R1.5 | El modo vive en la URL (`?mode=document`) junto con el resto del estado de `useTableQueryState`; **el valor buscado en modo exacto no va a la URL** (privacidad: nunca PII en query string) |
-| R1.6 | Placeholder por modo: «Nombre, razón social o NIT», «Cédula, NIT o pasaporte», «Teléfono», «Correo». Validación mínima en cliente (correo con formato; documento y teléfono de 3 a 50 caracteres) |
-| R1.7 | Errores de la API se muestran en `PortalAlert` con su mensaje; `privacyRestricted` se respeta igual que en la lista actual |
+**Actualización 2026-11-20.** Se sustituye el selector de modos por una barra compartida con la misma interacción de Mesa de ayuda.
+
+- Nombre y razón social admiten coincidencias parciales. Documento, NIT, teléfono y correo admiten coincidencias exactas. Un término numérico puede coincidir en más de un campo.
+- Una pausa de 350 ms aplica el término junto con los filtros, el orden y la paginación existentes. Una búsqueda nueva vuelve a la primera página. El término viaja en el cuerpo de POST y la auditoría registra un marcador sin el valor.
+- En escritorio, Estado, Tipo de persona, Segmento, Estrato y Etiqueta (si hay catálogo) aparecen bajo las colas. En móvil se mantienen en «Más filtros» y los cambios se confirman con «Aplicar». «Limpiar filtros» restablece también el campo de búsqueda.
+- Los enlaces antiguos descartan los parámetros de modo y búsqueda. Los errores permiten reintentar y la proyección de resultados sigue ajustada a los permisos.
+
+**Alcance del listado.** Oportunidades gestiona Contacto inicial y Prospecto, incluido el registro vinculado al contrato borrador. Suscriptores lista Activo, Suspendido y Cancelado cuando se ha registrado la primera activación del titular. El alcance se aplica también a la búsqueda y a los conteos. El alta comercial del portal abre «Nueva oportunidad».
 
 ### QW2 — Tabs de la ficha
 
@@ -173,8 +172,8 @@ Solo frontend. **No** cambia ningún contrato de `@iwana/shared` ni de la API.
 
 | CA | Criterio | Verifica |
 | --- | --- | --- |
-| CA1 | Buscar una cédula existente en modo Documento devuelve el suscriptor; en modo Texto no se promete cédula | test de componente + navegador |
-| CA2 | El valor buscado en modo exacto nunca aparece en la URL | test de componente |
+| CA1 | Buscar una cédula existente devuelve el suscriptor y un filtro incompatible lo excluye | test de componente, navegador e integración PostgreSQL |
+| CA2 | El término buscado solo viaja en el cuerpo de POST | test de componente |
 | CA3 | Recargar la ficha conserva la tab; `?tab=financiero` cae en Vista general | test de componente + navegador |
 | CA4 | Las tabs se recorren con flechas, `Home` y `End`, y cada tab apunta a su `tabpanel` | test de componente (axe sin violaciones) |
 | CA5 | La tarjeta de Vista general muestra los datos de facturación vigentes y el último pago | test de componente y E2E |

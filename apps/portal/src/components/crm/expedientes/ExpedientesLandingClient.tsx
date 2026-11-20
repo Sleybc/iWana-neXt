@@ -450,7 +450,12 @@ function ExpedientesLandingClientInner() {
         title="Nueva oportunidad"
         description="Registra el mínimo viable y completa el resto a medida que avance."
       >
-        <form onSubmit={handleCreateNew} className="space-y-4" noValidate>
+        <form
+          id="nueva-oportunidad"
+          onSubmit={handleCreateNew}
+          className="scroll-mt-24 space-y-4"
+          noValidate
+        >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
             <Input
               id={CREATE_FORM_NAME_ID}

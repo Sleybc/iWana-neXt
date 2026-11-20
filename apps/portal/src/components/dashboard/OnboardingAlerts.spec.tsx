@@ -98,9 +98,9 @@ describe('OnboardingAlerts', () => {
       'href',
       '/dashboard/commercial?tab=plans',
     );
-    expect(screen.getByRole('link', { name: /Registra tu primer suscriptor/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Crea tu primera oportunidad/i })).toHaveAttribute(
       'href',
-      '/dashboard/crm/subscribers/new',
+      '/dashboard/crm/expedientes#nueva-oportunidad',
     );
     expect(screen.getByRole('link', { name: /Programa tu primera visita/i })).toHaveAttribute(
       'href',

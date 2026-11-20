@@ -3,9 +3,17 @@
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Badge, Button, Input, cn } from '@iwana/ui';
+import { Badge, Button, cn } from '@iwana/ui';
 import type { ListMeta, SubscriberListItem, SubscriberTag } from '@iwana/shared';
-import { COUNTRY_PHONE_PREFIX, CustomerSegment, PersonType, SubscriberStatus } from '@iwana/shared';
+import {
+  AccessPermissionKey,
+  ACTIVATED_SUBSCRIBER_STATUSES,
+  COUNTRY_PHONE_PREFIX,
+  CustomerSegment,
+  MAX_SUBSCRIBER_SEARCH_LENGTH,
+  PersonType,
+  SubscriberStatus,
+} from '@iwana/shared';
 import { CircleDashed, Plus } from 'lucide-react';
 import {
   type ListSubscribersParams,
@@ -14,6 +22,7 @@ import {
   tenantSelfApi,
 } from '@/lib/api-client';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { usePermissions } from '@/components/access-control/permissions-context';
 import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
 import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { useTableQueryState } from '@/lib/use-table-query-state';
@@ -26,6 +35,7 @@ import {
   PortalEmptyState,
   PortalPageSizeSelect,
   PortalPanel,
+  PortalSearchField,
   PortalSkeletonBlock,
   PortalTablePager,
   interactiveFocusClassName,
@@ -72,19 +82,6 @@ const FILTER_KEYS = [
   'queue',
   'peek',
 ] as const;
-
-const SEARCH_MODES = [
-  { value: 'text', label: 'Texto', placeholder: 'Nombre, razón social o NIT', empty: 'texto' },
-  {
-    value: 'document',
-    label: 'Documento',
-    placeholder: 'Cédula, NIT o pasaporte',
-    empty: 'documento',
-  },
-  { value: 'phone', label: 'Teléfono', placeholder: 'Teléfono', empty: 'teléfono' },
-  { value: 'email', label: 'Correo', placeholder: 'Correo', empty: 'correo' },
-] as const;
-type SearchMode = (typeof SEARCH_MODES)[number]['value'];
 
 /** Rótulos visibles por campo lógico — solo se activan si `sortableFields` los autoriza. */
 const SORTABLE_COLUMN_LABELS: Record<string, string> = {
@@ -146,9 +143,9 @@ function SubscribersListClientInner() {
   const outOfRangeShownRef = useRef(false);
   const hasLoadedOnceRef = useRef(false);
   const requestIdRef = useRef(0);
-  const searchInFlightRef = useRef(false);
   const queueCountsRequestIdRef = useRef(0);
   const { user } = useAuth();
+  const { hasPermission } = usePermissions();
 
   const {
     page,
@@ -204,20 +201,11 @@ function SubscribersListClientInner() {
   const [queueCountsLoading, setQueueCountsLoading] = useState(true);
   const [queueCountsError, setQueueCountsError] = useState(false);
   const [countryPrefix, setCountryPrefix] = useState<string | null>(null);
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
   const [outOfRangeNotice, setOutOfRangeNotice] = useState<string | null>(null);
   const [searchDraft, setSearchDraft] = useState('');
-  const [textSearch, setTextSearch] = useState('');
-  const [exactSearched, setExactSearched] = useState(false);
-  const [validationError, setValidationError] = useState<string | null>(null);
-  const urlMode = (SEARCH_MODES.find((item) => item.value === filters.mode) ?? SEARCH_MODES[0])
-    .value;
-  const [selectedMode, setSelectedMode] = useState<SearchMode>(urlMode);
-  const selectedModeRef = useRef<SearchMode>(urlMode);
-  const mode = SEARCH_MODES.find((item) => item.value === selectedMode) ?? SEARCH_MODES[0];
-  const exactMode = mode.value !== 'text';
-
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
   useEffect(() => {
     let active = true;
     const canReadTenantProfile = user?.role === 'ADMIN' || user?.role === 'SUPPORT';
@@ -244,8 +232,8 @@ function SubscribersListClientInner() {
     };
   }, [user?.role, user?.tenantId]);
 
-  const legacyUrlSearch = filters.search ?? '';
-  const statusFilter = filters.status ?? '';
+  const statusFilter =
+    ACTIVATED_SUBSCRIBER_STATUSES.find((status) => status === filters.status) ?? '';
   const personTypeFilter = filters.personType ?? '';
   const segmentFilter = filters.customerSegment ?? '';
   const stratumFilter = filters.stratum ?? '';
@@ -272,19 +260,17 @@ function SubscribersListClientInner() {
   const activeSort = sort && sortableFields.includes(sort.by) ? sort : null;
 
   useEffect(() => {
-    // La confirmación de una navegación propia no vuelve a limpiar la entrada.
-    // Atrás y Adelante sí sincronizan una selección distinta desde la URL.
-    if (selectedModeRef.current !== urlMode) {
-      selectedModeRef.current = urlMode;
-      setSelectedMode(urlMode);
-      setSearchDraft('');
-      setTextSearch('');
+    const obsoleteStatus = Boolean(filters.status && !statusFilter);
+    if (filters.search || filters.mode || obsoleteStatus) {
+      setQuery(
+        {
+          ...(obsoleteStatus ? { page: 1 } : {}),
+          filters: { search: null, mode: null, ...(obsoleteStatus ? { status: null } : {}) },
+        },
+        { history: 'replace' },
+      );
     }
-  }, [urlMode]);
-
-  useEffect(() => {
-    if (legacyUrlSearch) setFilters({ search: null });
-  }, [legacyUrlSearch, setFilters]);
+  }, [filters.search, filters.mode, filters.status, statusFilter, setQuery]);
 
   useEffect(
     () => () => {
@@ -294,25 +280,28 @@ function SubscribersListClientInner() {
   );
 
   useEffect(() => {
-    if (exactMode) return;
-    const timeout = window.setTimeout(() => {
-      const next = searchDraft.trim();
-      if (next === textSearch) return;
-      setTextSearch(next);
-      if (page !== 1) setQuery({ page: 1 }, { history: 'replace' });
-    }, 350);
-
+    const timeout = window.setTimeout(() => setDebouncedSearch(searchDraft.trim()), 350);
     return () => window.clearTimeout(timeout);
-  }, [searchDraft, setQuery, page, textSearch, exactMode]);
+  }, [searchDraft]);
 
+  useEffect(() => {
+    if (debouncedSearch === appliedSearch) return;
+    if (page !== 1) {
+      setQuery({ page: 1 }, { history: 'replace' });
+      return;
+    }
+    setAppliedSearch(debouncedSearch);
+  }, [appliedSearch, debouncedSearch, page, setQuery]);
+
+  const searchTerm = page === 1 ? debouncedSearch : appliedSearch;
   const listParams = useMemo((): ListSubscribersParams => {
     const params: ListSubscribersParams = {
       page,
       limit: pageSize,
     };
-    if (textSearch) params.search = textSearch;
+    if (searchTerm) params.search = searchTerm;
     if (queueStatus) params.status = queueStatus;
-    else if (statusFilter) params.status = statusFilter as SubscriberStatus;
+    else if (statusFilter) params.status = statusFilter;
     if (personTypeFilter) params.personType = personTypeFilter as PersonType;
     if (segmentFilter) params.customerSegment = segmentFilter as CustomerSegment;
     if (stratumFilter) params.stratum = Number(stratumFilter);
@@ -336,7 +325,7 @@ function SubscribersListClientInner() {
     statusFilter,
     stratumFilter,
     tagFilter,
-    textSearch,
+    searchTerm,
     queueSlug,
     queueStatus,
   ]);
@@ -441,7 +430,6 @@ function SubscribersListClientInner() {
   }, [listParams, loadPage, loadQueueCounts]);
 
   useEffect(() => {
-    if (exactMode) return;
     if (statusIntersectionIsEmpty) {
       ++requestIdRef.current;
       setRecords([]);
@@ -456,84 +444,7 @@ function SubscribersListClientInner() {
     return () => {
       ++requestIdState.current;
     };
-  }, [listParams, loadPage, exactMode, statusIntersectionIsEmpty, pageSize]);
-
-  useEffect(() => {
-    if (exactMode) {
-      ++requestIdRef.current;
-      searchInFlightRef.current = false;
-      setRecords([]);
-      setMeta(EMPTY_LIST_META);
-      setInitialLoading(false);
-      setRefreshing(false);
-      setError(null);
-      setExactSearched(false);
-      return;
-    }
-  }, [exactMode, mode.value]);
-
-  function changeMode(nextMode: SearchMode) {
-    if (nextMode === mode.value) return;
-    ++requestIdRef.current;
-    searchInFlightRef.current = false;
-    selectedModeRef.current = nextMode;
-    setSelectedMode(nextMode);
-    setSearchDraft('');
-    setTextSearch('');
-    setRecords([]);
-    setMeta(EMPTY_LIST_META);
-    setError(null);
-    setValidationError(null);
-    setOutOfRangeNotice(null);
-    setInitialLoading(false);
-    setRefreshing(false);
-    setExactSearched(false);
-    setFilters({ mode: nextMode === 'text' ? null : nextMode, search: null });
-  }
-
-  async function searchExact() {
-    if (!exactMode || searchInFlightRef.current) return;
-    const value = searchDraft.trim();
-    const invalid =
-      mode.value === 'email'
-        ? !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-        : value.length < 3 || value.length > 50;
-    if (invalid) {
-      setValidationError(
-        mode.value === 'email' ? 'Escribe un correo válido.' : 'Escribe entre 3 y 50 caracteres.',
-      );
-      return;
-    }
-    setValidationError(null);
-    setError(null);
-    setRecords([]);
-    setInitialLoading(true);
-    setExactSearched(false);
-    searchInFlightRef.current = true;
-    const requestId = ++requestIdRef.current;
-    // Heurística acordada para NIT: nueve dígitos, con DV opcional separado por guion.
-    const params =
-      mode.value === 'document'
-        ? /^\d{9}(?:-\d)?$/.test(value)
-          ? { nit: value.replace(/-\d$/, '') }
-          : { documentNumber: value }
-        : mode.value === 'phone'
-          ? { phone: value }
-          : { email: value };
-    try {
-      const response = await subscribersApi.search(params);
-      if (requestId !== requestIdRef.current) return;
-      setRecords(response.data);
-      setExactSearched(true);
-    } catch (searchError) {
-      if (requestId === requestIdRef.current) setError(mapError(searchError));
-    } finally {
-      if (requestId === requestIdRef.current) {
-        searchInFlightRef.current = false;
-        setInitialLoading(false);
-      }
-    }
-  }
+  }, [listParams, loadPage, statusIntersectionIsEmpty, pageSize]);
 
   const prevPageRef = useRef(page);
   useEffect(() => {
@@ -550,7 +461,7 @@ function SubscribersListClientInner() {
   }, [page]);
 
   const hasActiveFilters = Boolean(
-    textSearch ||
+    searchDraft.trim() ||
     queueSlug ||
     statusFilter ||
     personTypeFilter ||
@@ -567,12 +478,13 @@ function SubscribersListClientInner() {
     total: meta.total,
   });
 
-  const showPager = !exactMode && !initialLoading && meta.total > 0;
+  const showPager = !initialLoading && meta.total > 0;
   const showPageSize = showPager && meta.total > Math.min(...[10, 20, 50]);
 
   function clearFilters() {
     setSearchDraft('');
-    setTextSearch('');
+    setDebouncedSearch('');
+    setAppliedSearch('');
     setFilters({
       search: null,
       queue: null,
@@ -592,9 +504,6 @@ function SubscribersListClientInner() {
   if (queueSlug) {
     const option = SUBSCRIBER_QUEUE_OPTIONS.find((item) => item.value === queueSlug);
     if (option) activeFilterItems.push({ key: 'queue', label: 'Cola', value: option.label });
-  }
-  if (textSearch) {
-    activeFilterItems.push({ key: 'search', label: 'Búsqueda', value: textSearch });
   }
   if (statusFilter) {
     activeFilterItems.push({
@@ -634,11 +543,6 @@ function SubscribersListClientInner() {
   }
 
   function removeFilter(key: string) {
-    if (key === 'search') {
-      setSearchDraft('');
-      setTextSearch('');
-      return;
-    }
     setFilters({ [key]: null });
   }
 
@@ -718,7 +622,7 @@ function SubscribersListClientInner() {
   }
 
   function renderHead(field: string | null, label: string) {
-    if (!exactMode && field && sortableFields.includes(field)) {
+    if (field && sortableFields.includes(field)) {
       return (
         <PortalDataTableSortableHead
           field={field}
@@ -763,17 +667,15 @@ function SubscribersListClientInner() {
           title="No fue posible cargar los suscriptores"
           description={error}
           action={
-            !exactMode ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => void loadPage(listParams)}
-                className="min-h-11 md:min-h-8"
-              >
-                Reintentar
-              </Button>
-            ) : undefined
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void loadPage(listParams)}
+              className="min-h-11 md:min-h-8"
+            >
+              Reintentar
+            </Button>
           }
         />
       ) : null}
@@ -789,168 +691,86 @@ function SubscribersListClientInner() {
 
       <PortalPanel className="overflow-hidden p-0" contentClassName="p-0">
         <div className="flex flex-col gap-3 px-5 py-3">
-          <div className="space-y-2">
-            <span id="subscriber-search-mode-label" className="text-sm font-medium">
-              Buscar por
-            </span>
-            <div
-              role="radiogroup"
-              aria-labelledby="subscriber-search-mode-label"
-              className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap"
-            >
-              {SEARCH_MODES.map((item, index) => (
-                <Button
-                  key={item.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={mode.value === item.value}
-                  tabIndex={mode.value === item.value ? 0 : -1}
-                  variant={mode.value === item.value ? 'primary' : 'ghost'}
-                  className="min-h-11 w-full sm:w-auto"
-                  onClick={() => changeMode(item.value)}
-                  onKeyDown={(event) => {
-                    const next =
-                      event.key === 'Home'
-                        ? 0
-                        : event.key === 'End'
-                          ? SEARCH_MODES.length - 1
-                          : ['ArrowRight', 'ArrowDown'].includes(event.key)
-                            ? (index + 1) % SEARCH_MODES.length
-                            : ['ArrowLeft', 'ArrowUp'].includes(event.key)
-                              ? (index + SEARCH_MODES.length - 1) % SEARCH_MODES.length
-                              : null;
-                    if (next === null) return;
-                    event.preventDefault();
-                    changeMode(SEARCH_MODES[next]!.value);
-                    (
-                      event.currentTarget.parentElement?.children[next] as
-                        | HTMLButtonElement
-                        | undefined
-                    )?.focus();
-                  }}
-                >
-                  {item.label}
-                </Button>
-              ))}
-            </div>
-          </div>
-          <form
-            className="flex flex-col gap-3 sm:flex-row sm:items-center"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void searchExact();
-            }}
-          >
-            <div className="min-w-0 flex-1">
-              <label htmlFor="subscriber-search" className="sr-only">
-                Buscar suscriptor
-              </label>
-              <Input
-                id="subscriber-search"
-                type="search"
-                value={searchDraft}
-                onChange={(event) => setSearchDraft(event.target.value)}
-                placeholder={mode.placeholder}
-                aria-invalid={validationError ? true : undefined}
-                aria-describedby={validationError ? 'subscriber-search-error' : undefined}
-                className="h-12"
-              />
-            </div>
-            {exactMode ? (
-              <Button
-                type="submit"
-                variant="secondary"
-                loading={initialLoading}
-                className="min-h-11"
-              >
-                Buscar
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <PortalSearchField
+              id="subscriber-search"
+              label="Buscar suscriptor"
+              placeholder="Nombre, documento, teléfono o correo"
+              value={searchDraft}
+              maxLength={MAX_SUBSCRIBER_SEARCH_LENGTH}
+              onChange={setSearchDraft}
+              className="min-w-0 flex-1"
+            />
+            {hasPermission(AccessPermissionKey.CRM_EXPEDIENTES_READ) &&
+            hasPermission(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE) ? (
+              <Button asChild size="sm" className="h-11 min-h-11 w-full shrink-0 px-3 sm:w-auto">
+                <Link href="/dashboard/crm/expedientes#nueva-oportunidad">
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                  Nueva oportunidad
+                </Link>
               </Button>
             ) : null}
-            <Button asChild size="sm" className="h-11 min-h-11 w-full shrink-0 px-3 sm:w-auto">
-              <Link href="/dashboard/crm/subscribers/new">
-                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                Nuevo suscriptor
-              </Link>
-            </Button>
-          </form>
-          {validationError ? (
-            <p
-              id="subscriber-search-error"
-              role="alert"
-              className="text-sm text-error-700 dark:text-error-400"
-            >
-              {validationError}
-            </p>
-          ) : null}
-          {exactMode && exactSearched ? (
-            <p role="status" className="text-sm">
-              Coincidencia exacta · {records.length}{' '}
-              {records.length === 1 ? 'resultado' : 'resultados'}
-            </p>
-          ) : null}
+          </div>
 
-          {!exactMode ? (
-            <div className="space-y-4">
-              <SubscriberQueueChips
-                counts={queueCounts}
-                loading={queueCountsLoading}
-                error={queueCountsError}
-                selected={queueSlug}
-                onSelect={selectQueue}
-                onRetry={() => void loadQueueCounts()}
-              />
-              <SubscriberMoreFilters
-                expanded={filtersExpanded}
-                onExpandedChange={setFiltersExpanded}
-                status={statusFilter}
-                personType={personTypeFilter}
-                segment={segmentFilter}
-                stratum={stratumFilter}
-                onStatusChange={(value) => setFilters({ status: value || null })}
-                onPersonTypeChange={(value) => setFilters({ personType: value || null })}
-                onSegmentChange={(value) => setFilters({ customerSegment: value || null })}
-                onStratumChange={(value) => setFilters({ stratum: value || null })}
-                tag={tagFilter}
-                tagOptions={tagOptions}
-                onTagChange={(value) => setFilters({ tagId: value || null })}
-                activeFilters={activeFilterItems}
-                onRemoveFilter={removeFilter}
-                onClearFilters={clearFilters}
-                sortValue={mobileSortValue}
-                sortOptions={mobileSortOptions}
-                showSort={canSort}
-                sortDisabled={refreshing}
-                onApply={(draft) => {
-                  const [sortBy, sortDir] = draft.sortValue.split(':');
-                  let nextSortBy: string | null = null;
-                  let nextSortDir: 'asc' | 'desc' | null = null;
-                  if (
-                    sortBy &&
-                    sortableFields.includes(sortBy) &&
-                    (sortDir === 'asc' || sortDir === 'desc')
-                  ) {
-                    nextSortBy = sortBy;
-                    nextSortDir = sortDir;
-                  }
-                  setQuery(
-                    {
-                      page: 1,
-                      sortBy: nextSortBy,
-                      sortDir: nextSortDir,
-                      filters: {
-                        status: draft.status || null,
-                        personType: draft.personType || null,
-                        customerSegment: draft.segment || null,
-                        stratum: draft.stratum || null,
-                        tagId: draft.tag || null,
-                      },
+          <div className="space-y-3">
+            <SubscriberQueueChips
+              counts={queueCounts}
+              loading={queueCountsLoading}
+              error={queueCountsError}
+              selected={queueSlug}
+              onSelect={selectQueue}
+              onRetry={() => void loadQueueCounts()}
+            />
+            <SubscriberMoreFilters
+              status={statusFilter}
+              personType={personTypeFilter}
+              segment={segmentFilter}
+              stratum={stratumFilter}
+              onStatusChange={(value) => setFilters({ status: value || null })}
+              onPersonTypeChange={(value) => setFilters({ personType: value || null })}
+              onSegmentChange={(value) => setFilters({ customerSegment: value || null })}
+              onStratumChange={(value) => setFilters({ stratum: value || null })}
+              tag={tagFilter}
+              tagOptions={tagOptions}
+              onTagChange={(value) => setFilters({ tagId: value || null })}
+              activeFilters={activeFilterItems}
+              hasActiveFilters={hasActiveFilters}
+              onRemoveFilter={removeFilter}
+              onClearFilters={clearFilters}
+              sortValue={mobileSortValue}
+              sortOptions={mobileSortOptions}
+              showSort={canSort}
+              sortDisabled={refreshing}
+              onApply={(draft) => {
+                const [sortBy, sortDir] = draft.sortValue.split(':');
+                let nextSortBy: string | null = null;
+                let nextSortDir: 'asc' | 'desc' | null = null;
+                if (
+                  sortBy &&
+                  sortableFields.includes(sortBy) &&
+                  (sortDir === 'asc' || sortDir === 'desc')
+                ) {
+                  nextSortBy = sortBy;
+                  nextSortDir = sortDir;
+                }
+                setQuery(
+                  {
+                    page: 1,
+                    sortBy: nextSortBy,
+                    sortDir: nextSortDir,
+                    filters: {
+                      status: draft.status || null,
+                      personType: draft.personType || null,
+                      customerSegment: draft.segment || null,
+                      stratum: draft.stratum || null,
+                      tagId: draft.tag || null,
                     },
-                    { history: 'replace' },
-                  );
-                }}
-              />
-            </div>
-          ) : null}
+                  },
+                  { history: 'replace' },
+                );
+              }}
+            />
+          </div>
         </div>
 
         <div ref={tableShellRef} tabIndex={-1} className="space-y-4 px-5 pb-5">
@@ -995,48 +815,15 @@ function SubscribersListClientInner() {
 
           {!initialLoading && !error && records.length === 0 ? (
             <PortalEmptyState
-              title={
-                exactMode
-                  ? exactSearched
-                    ? `No hay suscriptores con ese ${mode.empty}`
-                    : 'Busca un suscriptor'
-                  : hasActiveFilters
-                    ? 'No se encontraron resultados'
-                    : 'Aún no hay suscriptores'
-              }
+              title={hasActiveFilters ? 'No se encontraron resultados' : 'Aún no hay suscriptores'}
               description={
-                exactMode
-                  ? 'Escribe el dato y selecciona Buscar para consultar una coincidencia exacta.'
-                  : hasActiveFilters
-                    ? 'Ajusta la búsqueda o limpia los filtros para ver otros suscriptores.'
-                    : 'Crea el primero para iniciar el ciclo comercial y postventa.'
+                hasActiveFilters
+                  ? 'Ajusta la búsqueda o limpia los filtros para ver otros suscriptores.'
+                  : 'Los suscriptores aparecen después de su primera activación.'
               }
               icon={CircleDashed}
               className="w-full text-left"
               embedded
-              action={
-                exactMode ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => changeMode('text')}
-                    className="min-h-11 md:min-h-8"
-                  >
-                    Buscar como texto
-                  </Button>
-                ) : hasActiveFilters ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={clearFilters}
-                    className="min-h-11 md:min-h-8"
-                  >
-                    Limpiar filtros
-                  </Button>
-                ) : undefined
-              }
             />
           ) : null}
 

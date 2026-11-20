@@ -280,6 +280,7 @@ interface PortalSearchFieldProps {
   placeholder?: string;
   label?: string;
   className?: string;
+  maxLength?: number;
 }
 
 export function PortalSearchField({
@@ -289,6 +290,7 @@ export function PortalSearchField({
   placeholder,
   label,
   className,
+  maxLength,
 }: PortalSearchFieldProps) {
   return (
     <div className={cn('relative min-w-[200px]', className)}>
@@ -305,6 +307,7 @@ export function PortalSearchField({
         type="search"
         value={value}
         placeholder={placeholder}
+        maxLength={maxLength}
         onChange={(event) => onChange(event.target.value)}
         className="h-12 pl-11"
       />

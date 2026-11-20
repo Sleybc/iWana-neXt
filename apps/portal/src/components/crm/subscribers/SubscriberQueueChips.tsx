@@ -1,9 +1,14 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { Button } from '@iwana/ui';
+import { Button, cn } from '@iwana/ui';
 import type { SubscriberQueueCounts } from '@iwana/shared';
-import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalSkeletonBlock,
+  portalFilterChipClassName,
+  portalFilterChipCountClassName,
+} from '@/components/shared/portal-ui';
 
 export const SUBSCRIBER_QUEUE_OPTIONS = [
   { value: 'active', label: 'Activos', countKey: 'active' },
@@ -68,11 +73,10 @@ export function SubscriberQueueChips({
         const pressed = selected === queue.value;
 
         return (
-          <Button
+          <button
             key={queue.value}
             ref={pressed ? selectedChipRef : undefined}
             type="button"
-            variant={pressed ? 'primary' : 'outline'}
             {...(count === undefined
               ? { 'aria-label': queue.label }
               : {
@@ -80,15 +84,18 @@ export function SubscriberQueueChips({
                 })}
             aria-pressed={pressed}
             onClick={() => onSelect(queue.value)}
-            className="min-h-11 shrink-0 rounded-full px-4"
+            className={cn(portalFilterChipClassName(pressed), 'min-h-11 shrink-0 md:min-h-8')}
           >
             <span>{queue.label}</span>
             {count !== undefined ? (
-              <span className="tabular-nums" aria-hidden="true">
+              <span
+                className={cn(portalFilterChipCountClassName, 'tabular-nums')}
+                aria-hidden="true"
+              >
                 {count}
               </span>
             ) : null}
-          </Button>
+          </button>
         );
       })}
     </div>
@@ -129,7 +136,7 @@ export function SubscriberQueueChips({
               {SUBSCRIBER_QUEUE_OPTIONS.map((queue) => (
                 <PortalSkeletonBlock
                   key={queue.value}
-                  className="h-11 w-36 shrink-0 rounded-full"
+                  className="h-11 w-36 shrink-0 rounded-full md:h-8"
                 />
               ))}
             </div>

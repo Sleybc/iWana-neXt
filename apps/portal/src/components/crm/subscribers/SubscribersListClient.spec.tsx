@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   CustomerSegment,
@@ -9,7 +9,7 @@ import {
   type ListMeta,
   type SubscriberListItem,
 } from '@iwana/shared';
-import { ApiError, subscribersApi, tenantSelfApi } from '@/lib/api-client';
+import { subscribersApi, tenantSelfApi } from '@/lib/api-client';
 import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { SubscribersListClient } from './SubscribersListClient';
 
@@ -22,6 +22,10 @@ let mockAuthRole = 'ADMIN';
 jest.mock('@/components/auth/AuthProvider', () => ({
   // ctx-inestable-intencional: el valor depende de estado mutable que cambia por prueba.
   useAuth: () => ({ user: { role: mockAuthRole, tenantId: 'tenant-synthetic' } }),
+}));
+
+jest.mock('@/components/access-control/permissions-context', () => ({
+  usePermissions: () => ({ hasPermission: () => true }),
 }));
 
 jest.mock('next/link', () => ({
@@ -193,7 +197,7 @@ describe('SubscribersListClient ADR-065', () => {
       'tel:+573001234567',
     );
     expect(screen.getByRole('table', { name: 'Listado de suscriptores' })).toBeInTheDocument();
-    expect(screen.getByRole('radiogroup', { name: 'Buscar por' })).toHaveClass('grid-cols-2');
+    expect(screen.getAllByRole('searchbox', { name: 'Buscar suscriptor' })).toHaveLength(1);
     expect(listMock).toHaveBeenCalledTimes(1);
 
     await act(async () => {
@@ -579,7 +583,6 @@ describe('SubscribersListClient ADR-065', () => {
       expectTextPresent('Ana Pérez');
     });
 
-    await user.click(screen.getByRole('button', { name: 'Más filtros' }));
     await user.click(screen.getByRole('combobox', { name: 'Estado' }));
     await user.click(await screen.findByRole('option', { name: /Activo/i }));
 
@@ -602,14 +605,20 @@ describe('SubscribersListClient ADR-065', () => {
     listMock.mockResolvedValue({
       data: [subscriberFixture('sub-1', { firstName: 'Ana', lastName: 'Pérez' })],
       total: 1,
-      meta: pageMeta({ page: 1, total: 1, totalPages: 1 }),
+      meta: pageMeta({ page: 3, total: 30, totalPages: 3 }),
     });
     searchParamsMock = new URLSearchParams('page=3&size=10&status=ACTIVE');
     const user = userEvent.setup();
     const { rerender } = render(<SubscribersListClient />);
     await user.type(screen.getByRole('searchbox'), 'FIBRA');
+    await waitFor(() => expect(replaceMock).toHaveBeenCalled());
+    expect(listMock).not.toHaveBeenCalledWith(expect.objectContaining({ search: 'FIBRA' }));
+    expect(searchParamsMock.get('page')).toBeNull();
+    rerender(<SubscribersListClient />);
     await waitFor(() =>
-      expect(listMock).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'FIBRA' })),
+      expect(listMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'FIBRA', page: 1 }),
+      ),
     );
 
     await user.click(
@@ -635,6 +644,18 @@ describe('SubscribersListClient ADR-065', () => {
         }),
       );
     });
+  });
+
+  it.each(['LEAD', 'PROSPECT'])('retira de la URL el estado comercial %s', async (status) => {
+    searchParamsMock = new URLSearchParams({ status, size: '10', page: '3' });
+    listMock.mockResolvedValue({ data: [], meta: pageMeta({ total: 0 }) });
+    render(<SubscribersListClient />);
+    await waitFor(() =>
+      expect(replaceMock).toHaveBeenCalledWith('/dashboard/crm/subscribers?size=10', {
+        scroll: false,
+      }),
+    );
+    expect(listMock).not.toHaveBeenCalledWith(expect.objectContaining({ status }));
   });
 
   it('elimina una búsqueda heredada de URL sin perder filtros no personales', async () => {
@@ -828,10 +849,10 @@ describe('SubscribersListClient ADR-065', () => {
 
     const pageTitle = screen.getByRole('heading', { name: 'Suscriptores' });
     expect(pageTitle.parentElement?.parentElement?.querySelector('button')).toBeNull();
-    expect(screen.queryByRole('heading', { name: 'Nuevo suscriptor' })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Nuevo suscriptor' })).toHaveAttribute(
+    expect(screen.queryByRole('heading', { name: 'Nueva oportunidad' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Nueva oportunidad' })).toHaveAttribute(
       'href',
-      '/dashboard/crm/subscribers/new',
+      '/dashboard/crm/expedientes#nueva-oportunidad',
     );
   });
 
@@ -845,12 +866,11 @@ describe('SubscribersListClient ADR-065', () => {
     render(<SubscribersListClient />);
 
     expect(await screen.findByText('Aún no hay suscriptores')).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: 'Nuevo suscriptor' })).toHaveLength(1);
+    expect(screen.getAllByRole('link', { name: 'Nueva oportunidad' })).toHaveLength(1);
   });
 });
 
-// QW1: fixtures sintéticas; ninguna consulta exacta se escribe en la URL.
-describe('SubscribersListClient QW1', () => {
+describe('Búsqueda unificada de suscriptores', () => {
   const searchMock = subscribersApi.search as jest.Mock;
   beforeEach(() => {
     jest.clearAllMocks();
@@ -858,215 +878,209 @@ describe('SubscribersListClient QW1', () => {
     searchParamsMock = new URLSearchParams();
     queueCountsMock.mockImplementation(() => new Promise(() => undefined));
     replaceMock.mockImplementation((href: string) => {
-      searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
+      searchParamsMock = new URLSearchParams(href.split('?')[1] ?? '');
     });
     listMock.mockResolvedValue({ data: [], meta: pageMeta({ total: 0 }) });
-    searchMock.mockResolvedValue({
-      data: [subscriberFixture('synthetic-1', { firstName: 'Prueba', lastName: 'Sintética' })],
-    });
-  });
-
-  it('R1.2 Texto mantiene debounce y búsqueda libre sin prometer cédula', async () => {
-    const user = userEvent.setup();
-    const { rerender } = render(<SubscribersListClient />);
-    expect(screen.getByRole('searchbox')).toHaveAttribute(
-      'placeholder',
-      'Nombre, razón social o NIT',
-    );
-    await user.type(screen.getByRole('searchbox'), 'SYNTHETIC');
-    expect(replaceMock).not.toHaveBeenCalled();
-    await waitFor(() =>
-      expect(listMock).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'SYNTHETIC' })),
-    );
-    expect(replaceMock).not.toHaveBeenCalled();
-    rerender(<SubscribersListClient />);
-    expect(searchParamsMock.has('search')).toBe(false);
-    expect(searchMock).not.toHaveBeenCalled();
-  });
-
-  it('R1.5 restaura el modo desde URL sin consultas hasta enviar y limpia al navegar', async () => {
-    searchParamsMock = new URLSearchParams('mode=document');
-    const user = userEvent.setup();
-    const { rerender } = render(<SubscribersListClient />);
-    expect(screen.getByRole('radio', { name: 'Documento' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-    expect(listMock).not.toHaveBeenCalled();
-    await user.type(screen.getByRole('searchbox'), 'DOC-SYNTHETIC');
-    searchParamsMock = new URLSearchParams('mode=phone');
-    rerender(<SubscribersListClient />);
-    expect(screen.getByRole('searchbox')).toHaveValue('');
-    expect(searchMock).not.toHaveBeenCalled();
-  });
-
-  it('R1.5 conserva la entrada mientras una navegación diferida confirma el modo', async () => {
-    let pendingHref = '';
-    replaceMock.mockImplementation((href: string) => {
-      pendingHref = href;
-    });
-    const user = userEvent.setup();
-    const { rerender } = render(<SubscribersListClient />);
-    await user.click(screen.getByRole('radio', { name: 'Documento' }));
-    await user.type(screen.getByRole('searchbox'), 'DOC-SYNTHETIC');
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    expect(searchMock).not.toHaveBeenCalled();
-    expect(pendingHref).toContain('mode=document');
-    expect(pendingHref).not.toContain('DOC-SYNTHETIC');
-    searchParamsMock = new URLSearchParams(pendingHref.split('?')[1]);
-    rerender(<SubscribersListClient />);
-    expect(screen.getByRole('searchbox')).toHaveValue('DOC-SYNTHETIC');
-    expect(screen.getByRole('radio', { name: 'Documento' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-    await user.click(screen.getByRole('button', { name: 'Buscar' }));
-    await waitFor(() =>
-      expect(searchMock).toHaveBeenCalledWith({ documentNumber: 'DOC-SYNTHETIC' }),
-    );
-    searchParamsMock = new URLSearchParams('mode=phone');
-    rerender(<SubscribersListClient />);
-    expect(screen.getByRole('searchbox')).toHaveValue('');
-    expect(screen.getByRole('radio', { name: 'Teléfono' })).toHaveAttribute('aria-checked', 'true');
-    searchParamsMock = new URLSearchParams('mode=document');
-    rerender(<SubscribersListClient />);
-    expect(screen.getByRole('searchbox')).toHaveValue('');
-  });
-
-  it('R1.3 ignora una respuesta tardía al cambiar modo y evita envíos duplicados', async () => {
-    let resolveSearch!: (value: Awaited<ReturnType<typeof subscribersApi.search>>) => void;
-    searchMock.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveSearch = resolve;
-        }),
-    );
-    const user = userEvent.setup();
-    render(<SubscribersListClient />);
-    await user.click(screen.getByRole('radio', { name: 'Documento' }));
-    await user.type(screen.getByRole('searchbox'), 'DOC-SYNTHETIC');
-    await user.keyboard('{Enter}{Enter}');
-    expect(searchMock).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('button', { name: 'Buscar' })).toHaveAttribute('aria-busy', 'true');
-    await user.click(screen.getByRole('radio', { name: 'Correo' }));
-    await act(async () => {
-      resolveSearch({
-        data: [
-          subscriberFixture('late-synthetic', { firstName: 'Respuesta', lastName: 'Antigua' }),
-        ],
-      });
-    });
-    expect(screen.queryByText('Respuesta Antigua')).not.toBeInTheDocument();
-    expect(screen.getByRole('searchbox')).toHaveValue('');
   });
 
   it.each([
-    ['Documento', 'CC-SYNTHETIC-001', { documentNumber: 'CC-SYNTHETIC-001' }, 'document'],
-    ['Documento', '900000001', { nit: '900000001' }, 'document'],
-    ['Documento', '900000001-1', { nit: '900000001' }, 'document'],
-    ['Documento', '1000000001', { documentNumber: '1000000001' }, 'document'],
-    ['Teléfono', '5550000001', { phone: '5550000001' }, 'phone'],
-    ['Correo', 'synthetic@example.invalid', { email: 'synthetic@example.invalid' }, 'email'],
-  ])(
-    'CA1/CA2 %s envía %s solo al confirmar y conserva privacidad',
-    async (label, value, payload, mode) => {
-      const user = userEvent.setup();
-      render(<SubscribersListClient />);
-      await user.click(screen.getByRole('radio', { name: label }));
-      const field = screen.getByRole('searchbox', { name: 'Buscar suscriptor' });
-      await user.type(field, value);
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      expect(searchMock).not.toHaveBeenCalled();
-      expect(screen.queryByRole('combobox', { name: 'Estado' })).not.toBeInTheDocument();
-      await user.keyboard('{Enter}');
-      await waitFor(() => expect(searchMock).toHaveBeenCalledWith(payload));
-      expect(await findText('Prueba Sintética')).toBeInTheDocument();
-      expect(screen.getByText('Coincidencia exacta · 1 resultado')).toBeInTheDocument();
-      expect(screen.queryByRole('navigation', { name: /Paginación/ })).not.toBeInTheDocument();
-      expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining(`mode=${mode}`), {
-        scroll: false,
-      });
-      for (const [url] of replaceMock.mock.calls) {
-        expect(decodeURIComponent(String(url))).not.toContain(value);
-        expect(String(url)).not.toContain('search=');
-      }
-    },
-  );
-
-  it('R1.1 selector con flechas, Home y End; R1.5 limpia al cambiar de modo', async () => {
+    'Nombre Sintético',
+    'Razón Sintética',
+    'DOC-SYNTHETIC',
+    '900000001-1',
+    '5550000001',
+    'synthetic@example.invalid',
+  ])('envía %s por el listado paginado desde una sola barra y fuera de la URL', async (term) => {
     const user = userEvent.setup();
     render(<SubscribersListClient />);
-    expect(screen.getByRole('radiogroup', { name: 'Buscar por' })).toBeInTheDocument();
-    const text = screen.getByRole('radio', { name: 'Texto' });
-    text.focus();
-    await user.keyboard('{ArrowRight}');
-    expect(screen.getByRole('radio', { name: 'Documento' })).toHaveFocus();
-    await user.type(screen.getByRole('searchbox'), 'SYNTHETIC');
-    await user.click(screen.getByRole('button', { name: 'Buscar' }));
-    expect(await findText('Prueba Sintética')).toBeInTheDocument();
-    screen.getByRole('radio', { name: 'Documento' }).focus();
-    await user.keyboard('{End}');
-    expect(screen.getByRole('radio', { name: 'Correo' })).toHaveFocus();
-    expect(screen.getByRole('searchbox')).toHaveValue('');
-    expect(screen.queryByText('Prueba Sintética')).not.toBeInTheDocument();
-    await user.keyboard('{Home}');
-    expect(text).toHaveFocus();
-    expect(text).toHaveAttribute('aria-checked', 'true');
-  });
+    const field = screen.getByRole('searchbox', { name: 'Buscar suscriptor' });
+    expect(field).toHaveAttribute('maxlength', '500');
+    expect(screen.queryByRole('radiogroup', { name: 'Buscar por' })).not.toBeInTheDocument();
+    await user.type(field, term);
 
-  it('R1.4 vacío exacto ofrece Buscar como texto sin trasladar el documento', async () => {
-    searchMock.mockResolvedValue({ data: [] });
-    const user = userEvent.setup();
-    render(<SubscribersListClient />);
-    await user.click(screen.getByRole('radio', { name: 'Documento' }));
-    await user.type(screen.getByRole('searchbox'), 'DOC-SYNTHETIC');
-    await user.click(screen.getByRole('button', { name: 'Buscar' }));
-    expect(await screen.findByText('No hay suscriptores con ese documento')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Buscar como texto' }));
-    expect(screen.getByRole('radio', { name: 'Texto' })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByRole('searchbox')).toHaveValue('');
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    for (const [url] of replaceMock.mock.calls) {
-      expect(decodeURIComponent(String(url))).not.toContain('DOC-SYNTHETIC');
-    }
-  });
-
-  it('R1.6 valida el correo y el largo mínimo antes de consultar', async () => {
-    const user = userEvent.setup();
-    render(<SubscribersListClient />);
-    await user.click(screen.getByRole('radio', { name: 'Correo' }));
-    await user.type(screen.getByRole('searchbox'), 'incorrecto');
-    await user.click(screen.getByRole('button', { name: 'Buscar' }));
-    expect(await screen.findByText('Escribe un correo válido.')).toBeInTheDocument();
-    const invalidField = screen.getByRole('searchbox');
-    expect(invalidField).toHaveAttribute('aria-invalid', 'true');
-    expect(invalidField).toHaveAccessibleDescription('Escribe un correo válido.');
-    expect(screen.getByText('Escribe un correo válido.')).toHaveClass('dark:text-error-400');
-    await user.click(screen.getByRole('radio', { name: 'Teléfono' }));
-    await user.type(screen.getByRole('searchbox'), '12');
-    await user.click(screen.getByRole('button', { name: 'Buscar' }));
-    expect(await screen.findByText('Escribe entre 3 y 50 caracteres.')).toBeInTheDocument();
-    await user.clear(screen.getByRole('searchbox'));
-    await user.type(screen.getByRole('searchbox'), '1'.repeat(51));
-    await user.click(screen.getByRole('button', { name: 'Buscar' }));
-    expect(screen.getByText('Escribe entre 3 y 50 caracteres.')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(listMock).toHaveBeenLastCalledWith({ search: term, page: 1, limit: 20 }),
+    );
+    expect(replaceMock).not.toHaveBeenCalled();
     expect(searchMock).not.toHaveBeenCalled();
   });
 
-  it('R1.7 presenta el error de API y conserva la redacción de resultados restringidos', async () => {
-    const { ApiError } = jest.requireActual('@/lib/api-client');
-    searchMock.mockRejectedValueOnce(
-      new ApiError(503, 'SEARCH_UNAVAILABLE', 'Consulta no disponible'),
+  it('descarta el modo y la búsqueda de enlaces antiguos y conserva los demás filtros', async () => {
+    searchParamsMock = new URLSearchParams('mode=document&search=DOC-SYNTHETIC&status=ACTIVE');
+    render(<SubscribersListClient />);
+    await waitFor(() =>
+      expect(replaceMock).toHaveBeenCalledWith('/dashboard/crm/subscribers?status=ACTIVE', {
+        scroll: false,
+      }),
+    );
+    expect(screen.getByRole('searchbox')).toHaveValue('');
+    expect(listMock).toHaveBeenLastCalledWith({
+      page: 1,
+      limit: 20,
+      status: SubscriberStatus.ACTIVE,
+    });
+  });
+
+  it('conserva el documento consultado al filtrar y permite limpiar ambos criterios', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<SubscribersListClient />);
+    const field = screen.getByRole('searchbox', { name: 'Buscar suscriptor' });
+    await user.type(field, 'DOC-SYNTHETIC');
+    await waitFor(() =>
+      expect(listMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'DOC-SYNTHETIC' }),
+      ),
+    );
+    await user.click(screen.getByRole('combobox', { name: 'Estado' }));
+    await user.click(screen.getByRole('option', { name: 'Suspendido' }));
+    rerender(<SubscribersListClient />);
+
+    await waitFor(() =>
+      expect(listMock).toHaveBeenLastCalledWith({
+        search: 'DOC-SYNTHETIC',
+        status: SubscriberStatus.SUSPENDED,
+        page: 1,
+        limit: 20,
+      }),
+    );
+    expect(field).toHaveValue('DOC-SYNTHETIC');
+    expect(searchParamsMock.toString()).toBe('status=SUSPENDED');
+    expect(await screen.findByText('No se encontraron resultados')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Limpiar filtros' }));
+    rerender(<SubscribersListClient />);
+    expect(field).toHaveValue('');
+    await waitFor(() => expect(listMock).toHaveBeenLastCalledWith({ page: 1, limit: 20 }));
+  });
+
+  it('espera la pausa de escritura antes de consultar un identificador', async () => {
+    jest.useFakeTimers();
+    try {
+      render(<SubscribersListClient />);
+      const field = screen.getByRole('searchbox');
+      fireEvent.change(field, { target: { value: 'DOC-FIRST' } });
+      await act(async () => {
+        jest.advanceTimersByTime(300);
+      });
+      fireEvent.change(field, { target: { value: 'DOC-FINAL' } });
+      await act(async () => {
+        jest.advanceTimersByTime(349);
+      });
+      expect(listMock).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        jest.advanceTimersByTime(1);
+      });
+      expect(listMock).toHaveBeenLastCalledWith({ search: 'DOC-FINAL', page: 1, limit: 20 });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('ignora espacios al consultar y restablece el listado cuando se borra el término', async () => {
+    const user = userEvent.setup();
+    render(<SubscribersListClient />);
+    const field = screen.getByRole('searchbox');
+    await user.type(field, '  DOC-SYNTHETIC  ');
+    await waitFor(() =>
+      expect(listMock).toHaveBeenLastCalledWith({ search: 'DOC-SYNTHETIC', page: 1, limit: 20 }),
+    );
+    await user.clear(field);
+    await waitFor(() => expect(listMock).toHaveBeenLastCalledWith({ page: 1, limit: 20 }));
+    expect(screen.queryByRole('button', { name: 'Limpiar filtros' })).not.toBeInTheDocument();
+  });
+
+  it('mantiene la búsqueda exacta al paginar', async () => {
+    const user = userEvent.setup();
+    pushMock.mockImplementation((href: string) => {
+      searchParamsMock = new URLSearchParams(href.split('?')[1] ?? '');
+    });
+    listMock.mockImplementation(({ search, page }) =>
+      Promise.resolve({
+        data: search
+          ? [subscriberFixture('synthetic-1', { firstName: 'Titular', lastName: 'Sintético' })]
+          : [],
+        meta: pageMeta({ page, total: search ? 21 : 0 }),
+      }),
+    );
+    const { rerender } = render(<SubscribersListClient />);
+    await user.type(screen.getByRole('searchbox'), '0000051001');
+    await user.click(await screen.findByRole('button', { name: 'Siguiente' }));
+    rerender(<SubscribersListClient />);
+    await waitFor(() =>
+      expect(listMock).toHaveBeenLastCalledWith({ search: '0000051001', page: 2, limit: 20 }),
+    );
+    expect(searchParamsMock.toString()).toBe('page=2');
+  });
+
+  it('combina el término exacto con el filtro confirmado en el panel móvil', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<SubscribersListClient />);
+    await user.type(screen.getByRole('searchbox'), 'synthetic@example.invalid');
+    await waitFor(() =>
+      expect(listMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'synthetic@example.invalid' }),
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: 'Más filtros' }));
+    const panel = screen.getByRole('dialog', { name: 'Más filtros' });
+    await user.click(within(panel).getByRole('combobox', { name: 'Estado' }));
+    await user.click(screen.getByRole('option', { name: 'Suspendido' }));
+    expect(replaceMock).not.toHaveBeenCalled();
+    await user.click(within(panel).getByRole('button', { name: 'Aplicar' }));
+    rerender(<SubscribersListClient />);
+    await waitFor(() =>
+      expect(listMock).toHaveBeenLastCalledWith({
+        search: 'synthetic@example.invalid',
+        status: SubscriberStatus.SUSPENDED,
+        page: 1,
+        limit: 20,
+      }),
+    );
+    expect(searchParamsMock.toString()).toBe('status=SUSPENDED');
+  });
+
+  it('ignora una respuesta anterior cuando ya aplicó una nueva búsqueda', async () => {
+    const initial = { data: [], meta: pageMeta({ total: 0 }) };
+    let resolvePrevious!: (value: Awaited<ReturnType<typeof subscribersApi.list>>) => void;
+    listMock.mockImplementation(({ search }) =>
+      search === 'DOC-PREVIOUS'
+        ? new Promise((resolve) => {
+            resolvePrevious = resolve;
+          })
+        : Promise.resolve(initial),
     );
     const user = userEvent.setup();
     render(<SubscribersListClient />);
-    await user.click(screen.getByRole('radio', { name: 'Documento' }));
+    const field = screen.getByRole('searchbox');
+    await user.type(field, 'DOC-PREVIOUS');
+    await waitFor(() => expect(resolvePrevious).toBeDefined());
+    await user.clear(field);
+    await user.type(field, 'DOC-NEXT');
+    await waitFor(() =>
+      expect(listMock).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'DOC-NEXT' })),
+    );
+    await act(async () =>
+      resolvePrevious({
+        data: [subscriberFixture('old', { firstName: 'Resultado', lastName: 'anterior' })],
+        total: 1,
+        meta: pageMeta({ total: 1 }),
+      }),
+    );
+    expect(screen.queryByText('Resultado anterior')).not.toBeInTheDocument();
+  });
+
+  it('permite reintentar una búsqueda fallida y conserva la redacción de resultados restringidos', async () => {
+    const { ApiError } = jest.requireActual('@/lib/api-client');
+    const user = userEvent.setup();
+    render(<SubscribersListClient />);
+    await screen.findByText('Aún no hay suscriptores');
+    listMock.mockRejectedValueOnce(
+      new ApiError(503, 'SEARCH_UNAVAILABLE', 'Consulta no disponible'),
+    );
     await user.type(screen.getByRole('searchbox'), 'DOC-SYNTHETIC');
-    await user.click(screen.getByRole('button', { name: 'Buscar' }));
     expect(
       await screen.findByText('No fue posible cargar los suscriptores. Intenta de nuevo.'),
     ).toBeInTheDocument();
-    searchMock.mockResolvedValue({
+    listMock.mockResolvedValue({
       data: [
         subscriberFixture(
           'synthetic-1',
@@ -1074,8 +1088,9 @@ describe('SubscribersListClient QW1', () => {
           { privacyRestricted: true },
         ),
       ],
+      meta: pageMeta({ total: 1 }),
     });
-    await user.click(screen.getByRole('button', { name: 'Buscar' }));
+    await user.click(screen.getByRole('button', { name: 'Reintentar' }));
     expect(await screen.findByRole('row', { name: /Datos bloqueados/ })).toBeInTheDocument();
     expect(screen.queryByText('SENTINEL PERSONAL')).not.toBeInTheDocument();
   });

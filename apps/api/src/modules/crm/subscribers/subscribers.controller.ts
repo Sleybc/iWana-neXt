@@ -14,6 +14,7 @@ import {
   Optional,
   Param,
   ParseBoolPipe,
+  ParseEnumPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -37,7 +38,9 @@ import {
 import type { SchemaObject } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
 import {
   AccessPermissionKey,
+  ACTIVATED_SUBSCRIBER_STATUSES,
   SearchSubscribersInput,
+  MAX_SUBSCRIBER_SEARCH_LENGTH,
   SearchSubscribersSchema,
   PlatformRole,
   PersonType,
@@ -359,7 +362,7 @@ export class SubscribersController {
   @Get()
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SALES, UserRole.SUPPORT, UserRole.ACCOUNTANT)
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
-  @ApiOperation({ summary: 'Listar suscriptores con filtros' })
+  @ApiOperation({ summary: 'Listar suscriptores con primera activación y filtros' })
   @ApiExtraModels(CrmListPaginationDto, ListMetaDto)
   @ApiResponse({
     status: 200,
@@ -378,7 +381,7 @@ export class SubscribersController {
   })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, maximum: 100 })
-  @ApiQuery({ name: 'status', required: false, enum: SubscriberStatus })
+  @ApiQuery({ name: 'status', required: false, enum: [...ACTIVATED_SUBSCRIBER_STATUSES] })
   @ApiQuery({ name: 'personType', required: false, enum: PersonType })
   @ApiQuery({ name: 'customerSegment', required: false, enum: CustomerSegment })
   @ApiQuery({ name: 'stratum', required: false, type: Number })
@@ -390,7 +393,8 @@ export class SubscribersController {
   @ApiQuery({ name: 'tagId', required: false, type: String, format: 'uuid' })
   async findAll(
     @CurrentUser() user: JwtPayload,
-    @Query('status') status?: SubscriberStatus,
+    @Query('status', new ParseEnumPipe(SubscriberStatus, { optional: true }))
+    status?: SubscriberStatus,
     @Query('personType') personType?: PersonType,
     @Query('customerSegment') customerSegment?: CustomerSegment,
     @Query('stratum') stratum?: number,
@@ -463,7 +467,7 @@ export class SubscribersController {
   @Get('queue-counts')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SALES, UserRole.SUPPORT, UserRole.ACCOUNTANT)
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
-  @ApiOperation({ summary: 'Consultar conteos globales de la cola de suscriptores' })
+  @ApiOperation({ summary: 'Consultar conteos globales de suscriptores con primera activación' })
   @ApiResponse({
     status: 200,
     schema: {
@@ -507,7 +511,11 @@ export class SubscribersController {
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SALES, UserRole.SUPPORT, UserRole.ACCOUNTANT)
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Buscar suscriptores para listado y lookup exacto' })
+  @ApiOperation({
+    summary: 'Buscar suscriptores',
+    description:
+      'Devuelve suscriptores con primera activación. El campo search admite coincidencias parciales por nombre o razón social y coincidencias exactas por documento, NIT, teléfono o correo. Admite filtros y paginación. Los criterios exactos explícitos se mantienen para consultas sin filtros ni paginación.',
+  })
   @ApiExtraModels(ListMetaDto)
   @ApiBody({
     schema: {
@@ -515,7 +523,9 @@ export class SubscribersController {
         {
           type: 'object',
           required: ['search'],
-          properties: { search: { type: 'string', minLength: 1, maxLength: 200 } },
+          properties: {
+            search: { type: 'string', minLength: 1, maxLength: MAX_SUBSCRIBER_SEARCH_LENGTH },
+          },
           additionalProperties: false,
         },
         {
@@ -549,7 +559,7 @@ export class SubscribersController {
   })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, maximum: 100 })
-  @ApiQuery({ name: 'status', required: false, enum: SubscriberStatus })
+  @ApiQuery({ name: 'status', required: false, enum: [...ACTIVATED_SUBSCRIBER_STATUSES] })
   @ApiQuery({ name: 'personType', required: false, enum: PersonType })
   @ApiQuery({ name: 'customerSegment', required: false, enum: CustomerSegment })
   @ApiQuery({ name: 'stratum', required: false, type: Number })
@@ -562,7 +572,8 @@ export class SubscribersController {
   async search(
     @Body(new ZodBodyValidationPipe(SearchSubscribersSchema)) body: SearchSubscribersInput,
     @CurrentUser() user: JwtPayload,
-    @Query('status') status?: SubscriberStatus,
+    @Query('status', new ParseEnumPipe(SubscriberStatus, { optional: true }))
+    status?: SubscriberStatus,
     @Query('personType') personType?: PersonType,
     @Query('customerSegment') customerSegment?: CustomerSegment,
     @Query('stratum') stratum?: number,

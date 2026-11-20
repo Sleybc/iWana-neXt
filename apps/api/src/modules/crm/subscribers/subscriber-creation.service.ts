@@ -114,7 +114,14 @@ export class SubscriberCreationService {
 
     const existing = await this.subscribersService.findByExpedienteId(expedienteId);
     if (existing) {
-      if (existing.status === SubscriberStatus.CANCELLED) {
+      if (existing.status === SubscriberStatus.LEAD) {
+        await this.subscribersService.transitionStatus(
+          existing.id,
+          SubscriberStatus.PROSPECT,
+          null,
+          actorId,
+        );
+      } else if (existing.status === SubscriberStatus.CANCELLED) {
         await this.subscribersService.reactivateProspectFromExpediente(expedienteId, actorId);
       }
       this.logger.log(

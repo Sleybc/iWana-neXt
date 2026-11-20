@@ -72,6 +72,8 @@ export const nitVerificationDigitSchema = z
   .string()
   .regex(/^\d$/u, 'El dígito de verificación debe ser un número');
 
+export const MAX_SUBSCRIBER_SEARCH_LENGTH = 500;
+
 /**
  * C-API-1 v1.1 body contract for POST /crm/subscribers/search.
  * Personal identifiers and free-text search are accepted only in the JSON body,
@@ -83,7 +85,7 @@ export const SearchSubscribersSchema = z
     nit: z.string().min(1).max(20).optional(),
     email: z.string().min(1).email().max(500).optional(),
     phone: z.string().min(1).max(100).optional(),
-    search: z.string().trim().min(1).max(200).optional(),
+    search: z.string().trim().min(1).max(MAX_SUBSCRIBER_SEARCH_LENGTH).optional(),
   })
   .strict()
   .superRefine((filters, context) => {

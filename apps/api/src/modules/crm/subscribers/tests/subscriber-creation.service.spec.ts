@@ -33,6 +33,7 @@ describe('SubscriberCreationService', () => {
   let subscribersServiceMock: {
     createFromExpediente: jest.Mock;
     findByExpedienteId: jest.Mock;
+    transitionStatus: jest.Mock;
     reactivateProspectFromExpediente: jest.Mock;
   };
 
@@ -107,6 +108,7 @@ describe('SubscriberCreationService', () => {
     subscribersServiceMock = {
       createFromExpediente: jest.fn(),
       findByExpedienteId: jest.fn().mockResolvedValue(null),
+      transitionStatus: jest.fn(),
       reactivateProspectFromExpediente: jest.fn().mockResolvedValue(null),
     };
 
@@ -570,6 +572,23 @@ describe('SubscriberCreationService', () => {
       const subscriberId = await service.createFromExpediente('exp-existing', 'actor-1');
 
       expect(subscriberId).toBe('sub-existing-001');
+      expect(subscribersServiceMock.createFromExpediente).not.toHaveBeenCalled();
+    });
+
+    it('califica el contacto histórico vinculado sin crear otro suscriptor', async () => {
+      subscribersServiceMock.findByExpedienteId.mockResolvedValue({
+        id: 'sub-historical',
+        status: SubscriberStatus.LEAD,
+      });
+      await expect(service.createFromExpediente('exp-historical', 'actor-1')).resolves.toBe(
+        'sub-historical',
+      );
+      expect(subscribersServiceMock.transitionStatus).toHaveBeenCalledWith(
+        'sub-historical',
+        SubscriberStatus.PROSPECT,
+        null,
+        'actor-1',
+      );
       expect(subscribersServiceMock.createFromExpediente).not.toHaveBeenCalled();
     });
 

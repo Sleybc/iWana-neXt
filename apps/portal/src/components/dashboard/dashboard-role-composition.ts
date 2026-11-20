@@ -23,7 +23,6 @@ import {
 } from 'lucide-react';
 
 export type DashboardActionId =
-  | 'register-subscriber'
   | 'schedule-visit'
   | 'view-today-agenda'
   | 'register-case'
@@ -214,7 +213,6 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
     moduleHealthIds: [],
     blockIds: ['today-agenda', 'field-attention', 'commercial-attention', 'change-history'],
     actionIds: [
-      'register-subscriber',
       'schedule-visit',
       'view-today-agenda',
       'register-case',
@@ -256,7 +254,7 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
     trendIds: ['cases'],
     moduleHealthIds: [],
     blockIds: ['field-attention'],
-    actionIds: ['register-case', 'register-subscriber', 'view-profile'],
+    actionIds: ['register-case', 'new-opportunity', 'view-profile'],
   },
   // CTO 2026-11-17: el Ejecutivo comercial también ve dinero (N1 admite SALES).
   [UserRole.SALES]: {
@@ -266,7 +264,7 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
     trendIds: ['subscribers', 'collections'],
     moduleHealthIds: [],
     blockIds: ['commercial-attention'],
-    actionIds: ['register-subscriber', 'new-opportunity', 'view-profile'],
+    actionIds: ['new-opportunity', 'view-profile'],
   },
   [UserRole.ACCOUNTANT]: {
     metricIds: ['P-1', 'P-2', 'P-3', 'I-5'],
@@ -344,11 +342,6 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
 };
 
 export const DASHBOARD_ACTION_REGISTRY: Record<DashboardActionId, DashboardActionDefinition> = {
-  'register-subscriber': {
-    id: 'register-subscriber',
-    label: 'Registrar suscriptor',
-    href: '/dashboard/crm/subscribers/new',
-  },
   'schedule-visit': {
     id: 'schedule-visit',
     label: 'Programar visita',
@@ -367,7 +360,7 @@ export const DASHBOARD_ACTION_REGISTRY: Record<DashboardActionId, DashboardActio
   'new-opportunity': {
     id: 'new-opportunity',
     label: 'Nueva oportunidad',
-    href: '/dashboard/crm/expedientes',
+    href: '/dashboard/crm/expedientes#nueva-oportunidad',
   },
   'review-plans-without-price': {
     id: 'review-plans-without-price',
@@ -649,7 +642,7 @@ export const DASHBOARD_MODULE_HEALTH_OVERFLOW_IDS: readonly DashboardModuleHealt
 
 export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleComposition> = {
   [UserRole.ADMIN]: {
-    primaryActionId: 'register-subscriber',
+    primaryActionId: 'new-opportunity',
     secondaryActionId: 'schedule-visit',
     metricIds: ['P-1', 'P-2', 'P-3', 'I-3', 'I-1'],
     attentionIds: [
@@ -698,7 +691,7 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
   },
   [UserRole.SUPPORT]: {
     primaryActionId: 'register-case',
-    secondaryActionId: 'register-subscriber',
+    secondaryActionId: 'new-opportunity',
     metricIds: ['I-3', 'I-4', 'I-1', 'I-2'],
     attentionIds: [
       'cases-breached',
@@ -716,8 +709,8 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     showOperationalTenantCard: false,
   },
   [UserRole.SALES]: {
-    primaryActionId: 'register-subscriber',
-    secondaryActionId: 'new-opportunity',
+    primaryActionId: 'new-opportunity',
+    secondaryActionId: null,
     // Tope de 5 celdas: «Planes sin precio» (I-5) cede su lugar a Recaudo y Cartera y sigue en
     // la cola de atención (`plans-without-price`).
     metricIds: ['I-7', 'P-1', 'P-2', 'P-3', 'I-6'],

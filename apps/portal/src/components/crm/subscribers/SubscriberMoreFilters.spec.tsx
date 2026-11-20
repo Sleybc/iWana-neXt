@@ -4,8 +4,7 @@ import { CustomerSegment, PersonType, SubscriberStatus } from '@iwana/shared';
 import { SubscriberMoreFilters } from './SubscriberMoreFilters';
 
 const baseProps = {
-  expanded: false,
-  onExpandedChange: jest.fn(),
+  hasActiveFilters: false,
   status: '',
   personType: '',
   segment: '',
@@ -34,15 +33,12 @@ describe('SubscriberMoreFilters', () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 });
   });
 
-  it('expone divulgación progresiva asociada a Estado, Tipo, Segmento y Estrato', async () => {
-    const user = userEvent.setup();
-    const onExpandedChange = jest.fn();
-    render(<SubscriberMoreFilters {...baseProps} onExpandedChange={onExpandedChange} />);
-
-    const toggle = screen.getByRole('button', { name: 'Más filtros' });
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await user.click(toggle);
-    expect(onExpandedChange).toHaveBeenCalledWith(true);
+  it('muestra los desplegables de escritorio desde el inicio y reserva el botón para móvil', () => {
+    render(<SubscriberMoreFilters {...baseProps} />);
+    for (const name of ['Estado', 'Tipo de persona', 'Segmento', 'Estrato']) {
+      expect(screen.getByRole('combobox', { name })).toBeInTheDocument();
+    }
+    expect(screen.getByRole('button', { name: 'Más filtros' })).toHaveClass('md:hidden');
   });
 
   it('muestra los filtros seleccionados y permite retirar uno o limpiar varios', () => {
@@ -51,7 +47,7 @@ describe('SubscriberMoreFilters', () => {
     render(
       <SubscriberMoreFilters
         {...baseProps}
-        expanded
+        hasActiveFilters
         status={SubscriberStatus.ACTIVE}
         personType={PersonType.NATURAL}
         segment={CustomerSegment.RESIDENTIAL}
@@ -75,19 +71,24 @@ describe('SubscriberMoreFilters', () => {
     expect(onClearFilters).toHaveBeenCalledTimes(1);
   });
 
-  it('envía el valor elegido en cada filtro expandido', async () => {
+  it('ofrece solamente Activo, Suspendido y Cancelado en Estado', async () => {
+    const user = userEvent.setup();
+    render(<SubscriberMoreFilters {...baseProps} />);
+    await user.click(screen.getByRole('combobox', { name: 'Estado' }));
+    const options = screen.getAllByRole('option').map((option) => option.textContent);
+    expect(options).toEqual(['Todos los estados', 'Activo', 'Suspendido', 'Cancelado']);
+  });
+
+  it('envía el valor elegido en cada filtro de escritorio', async () => {
     const user = userEvent.setup();
     const onStatusChange = jest.fn();
     const onPersonTypeChange = jest.fn();
     const onSegmentChange = jest.fn();
     const onStratumChange = jest.fn();
-    const onExpandedChange = jest.fn();
 
     render(
       <SubscriberMoreFilters
         {...baseProps}
-        expanded
-        onExpandedChange={onExpandedChange}
         onStatusChange={onStatusChange}
         onPersonTypeChange={onPersonTypeChange}
         onSegmentChange={onSegmentChange}
@@ -108,23 +109,21 @@ describe('SubscriberMoreFilters', () => {
     expect(onPersonTypeChange).toHaveBeenCalledWith(PersonType.JURIDICA);
     expect(onSegmentChange).toHaveBeenCalledWith(CustomerSegment.PYME);
     expect(onStratumChange).toHaveBeenCalledWith('4');
-
-    await user.click(screen.getByRole('button', { name: 'Más filtros' }));
-    expect(onExpandedChange).toHaveBeenCalledWith(false);
   });
 
-  it('permite retirar un filtro activo sin ofrecer limpiar varios', async () => {
+  it('permite retirar un filtro activo y limpiar todos incluso con uno solo', async () => {
     const user = userEvent.setup();
     const onRemoveFilter = jest.fn();
     render(
       <SubscriberMoreFilters
         {...baseProps}
+        hasActiveFilters
         activeFilters={[{ key: 'status', label: 'Estado', value: 'Activo' }]}
         onRemoveFilter={onRemoveFilter}
       />,
     );
 
-    expect(screen.queryByRole('button', { name: 'Limpiar filtros' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Limpiar filtros' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Quitar filtro: Estado: Activo' }));
     expect(onRemoveFilter).toHaveBeenCalledWith('status');
   });
@@ -155,14 +154,8 @@ describe('SubscriberMoreFilters', () => {
     const user = userEvent.setup();
     const onApply = jest.fn();
     const onStatusChange = jest.fn();
-    const onExpandedChange = jest.fn();
     render(
-      <SubscriberMoreFilters
-        {...baseProps}
-        onApply={onApply}
-        onStatusChange={onStatusChange}
-        onExpandedChange={onExpandedChange}
-      />,
+      <SubscriberMoreFilters {...baseProps} onApply={onApply} onStatusChange={onStatusChange} />,
     );
 
     await user.click(screen.getByRole('button', { name: 'Más filtros' }));
@@ -184,7 +177,6 @@ describe('SubscriberMoreFilters', () => {
       stratum: '',
       sortValue: 'name:desc',
     });
-    expect(onExpandedChange).toHaveBeenLastCalledWith(false);
   });
 
   it('limpia únicamente el borrador móvil y espera Aplicar para confirmarlo', async () => {
@@ -248,8 +240,21 @@ describe('SubscriberMoreFilters', () => {
     ];
 
     it('sin catálogo no muestra el filtro', () => {
-      render(<SubscriberMoreFilters {...baseProps} expanded onTagChange={jest.fn()} />);
+      render(<SubscriberMoreFilters {...baseProps} onTagChange={jest.fn()} />);
       expect(screen.queryByRole('combobox', { name: 'Etiqueta' })).not.toBeInTheDocument();
+    });
+
+    it('permite quitar una etiqueta de un enlace antiguo aunque ya no exista en el catálogo', async () => {
+      const onTagChange = jest.fn();
+      const user = userEvent.setup();
+      render(
+        <SubscriberMoreFilters {...baseProps} tag="etiqueta-anterior" onTagChange={onTagChange} />,
+      );
+      const select = screen.getByRole('combobox', { name: 'Etiqueta' });
+      expect(select).toHaveTextContent('Etiqueta eliminada');
+      await user.click(select);
+      await user.click(screen.getByRole('option', { name: 'Todas las etiquetas' }));
+      expect(onTagChange).toHaveBeenCalledWith('');
     });
 
     it('lista el catálogo y avisa la etiqueta elegida', async () => {
@@ -257,7 +262,6 @@ describe('SubscriberMoreFilters', () => {
       render(
         <SubscriberMoreFilters
           {...baseProps}
-          expanded
           tag=""
           tagOptions={tagOptions}
           onTagChange={onTagChange}

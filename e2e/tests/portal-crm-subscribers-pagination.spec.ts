@@ -247,6 +247,20 @@ async function setupMocks(page: Page) {
       return;
     }
 
+    if (new URL(url).pathname.endsWith('/crm/subscribers/queue-counts') && method === 'GET') {
+      await assertTenantHeader(route);
+      await route.fulfill({
+        json: {
+          active: 45,
+          suspended: 0,
+          contactPending: 0,
+          fiscalIncomplete: 0,
+          withoutLiveServices: 45,
+        },
+      });
+      return;
+    }
+
     // Matcher tolerante a querystring (page/size/status) — no usar url === exacto.
     if (
       url.includes('/crm/subscribers') &&
@@ -372,7 +386,6 @@ test.describe('ADR-065 Ola 4 — Suscriptores paginación numerada', () => {
     await expect(pageSizeSelect).toHaveText('10');
     await expect(visiblePagerCount(page, 'Mostrando 1–10 de 45 suscriptores')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Más filtros' }).click();
     await page.getByRole('combobox', { name: 'Estado' }).click();
     await page.getByRole('option', { name: /Suspendido/i }).click();
     await expect(page).toHaveURL(/status=SUSPENDED/);

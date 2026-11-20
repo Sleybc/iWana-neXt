@@ -395,7 +395,7 @@ describe('DashboardClient', () => {
     expect(within(titleBlock!).queryByRole('button')).not.toBeInTheDocument();
 
     expect(screen.queryByRole('toolbar', { name: 'Acciones del inicio' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /Registrar suscriptor/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Nueva oportunidad/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Actualizar$/ })).toBeEnabled();
     const periods = within(screen.getByRole('group', { name: 'Periodo de tendencia' }));
     expect(periods.getByRole('button', { name: 'Este mes' })).toHaveAttribute(

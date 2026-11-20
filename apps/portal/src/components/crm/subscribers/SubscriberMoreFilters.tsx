@@ -1,13 +1,14 @@
 'use client';
 
 import { useId, useState } from 'react';
+import { ACTIVATED_SUBSCRIBER_STATUSES } from '@iwana/shared';
 import { Button, Dialog, DialogContent, DialogTitle, Select } from '@iwana/ui';
 import { ChevronDown, X } from 'lucide-react';
 import {
   CUSTOMER_SEGMENT_OPTIONS,
   PERSON_TYPE_OPTIONS,
   STRATUM_OPTIONS,
-  SUBSCRIBER_STATUS_OPTIONS,
+  SUBSCRIBER_STATUS_META,
 } from './subscriber-ui';
 
 export interface SubscriberActiveFilter {
@@ -32,7 +33,6 @@ export interface SubscriberMoreFiltersSortOption {
 }
 
 interface SubscriberFilterFieldsProps {
-  visibleLabels?: boolean;
   status: string;
   personType: string;
   segment: string;
@@ -48,8 +48,7 @@ interface SubscriberFilterFieldsProps {
 }
 
 interface SubscriberMoreFiltersProps extends SubscriberFilterFieldsProps {
-  expanded: boolean;
-  onExpandedChange: (expanded: boolean) => void;
+  hasActiveFilters: boolean;
   activeFilters: SubscriberActiveFilter[];
   onRemoveFilter: (key: string) => void;
   onClearFilters: () => void;
@@ -61,7 +60,6 @@ interface SubscriberMoreFiltersProps extends SubscriberFilterFieldsProps {
 }
 
 function SubscriberFilterFields({
-  visibleLabels = false,
   status,
   personType,
   segment,
@@ -74,54 +72,58 @@ function SubscriberFilterFields({
   tagOptions = [],
   onTagChange,
 }: SubscriberFilterFieldsProps) {
-  const showTag = tagOptions.length > 0 && Boolean(onTagChange);
+  const id = useId();
+  const showTag = Boolean(onTagChange && (tag || tagOptions.length > 0));
+  const missingTag = tag && !tagOptions.some(({ value }) => value === tag);
   return (
-    <div className={`grid gap-3 sm:grid-cols-2 ${showTag ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`}>
+    <div
+      className={`grid min-w-0 gap-2 sm:grid-cols-2 ${showTag ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`}
+    >
       <Select
-        id="subscriber-status-filter"
-        {...(visibleLabels ? { label: 'Estado' } : {})}
-        aria-label="Estado"
-        className="h-12 min-w-0"
+        id={`${id}-status`}
+        label="Estado"
         value={status}
         onChange={(event) => onStatusChange(event.target.value)}
-        options={[{ value: '', label: 'Todos los estados' }, ...SUBSCRIBER_STATUS_OPTIONS]}
+        options={[
+          { value: '', label: 'Todos los estados' },
+          ...ACTIVATED_SUBSCRIBER_STATUSES.map((value) => ({
+            value,
+            label: SUBSCRIBER_STATUS_META[value].label,
+          })),
+        ]}
       />
       <Select
-        id="subscriber-person-type-filter"
-        {...(visibleLabels ? { label: 'Tipo de persona' } : {})}
-        aria-label="Tipo de persona"
-        className="h-12 min-w-0"
+        id={`${id}-person-type`}
+        label="Tipo de persona"
         value={personType}
         onChange={(event) => onPersonTypeChange(event.target.value)}
         options={[{ value: '', label: 'Todos los tipos' }, ...PERSON_TYPE_OPTIONS]}
       />
       <Select
-        id="subscriber-segment-filter"
-        {...(visibleLabels ? { label: 'Segmento' } : {})}
-        aria-label="Segmento"
-        className="h-12 min-w-0"
+        id={`${id}-segment`}
+        label="Segmento"
         value={segment}
         onChange={(event) => onSegmentChange(event.target.value)}
         options={[{ value: '', label: 'Todos los segmentos' }, ...CUSTOMER_SEGMENT_OPTIONS]}
       />
       <Select
-        id="subscriber-stratum-filter"
-        {...(visibleLabels ? { label: 'Estrato' } : {})}
-        aria-label="Estrato"
-        className="h-12 min-w-0"
+        id={`${id}-stratum`}
+        label="Estrato"
         value={stratum}
         onChange={(event) => onStratumChange(event.target.value)}
         options={[{ value: '', label: 'Todos los estratos' }, ...STRATUM_OPTIONS]}
       />
       {showTag ? (
         <Select
-          id="subscriber-tag-filter"
-          {...(visibleLabels ? { label: 'Etiqueta' } : {})}
-          aria-label="Etiqueta"
-          className="h-12 min-w-0"
+          id={`${id}-tag`}
+          label="Etiqueta"
           value={tag}
           onChange={(event) => onTagChange?.(event.target.value)}
-          options={[{ value: '', label: 'Todas las etiquetas' }, ...tagOptions]}
+          options={[
+            { value: '', label: 'Todas las etiquetas' },
+            ...tagOptions,
+            ...(missingTag ? [{ value: tag, label: 'Etiqueta eliminada' }] : []),
+          ]}
         />
       ) : null}
     </div>
@@ -129,8 +131,7 @@ function SubscriberFilterFields({
 }
 
 export function SubscriberMoreFilters({
-  expanded,
-  onExpandedChange,
+  hasActiveFilters,
   status,
   personType,
   segment,
@@ -173,23 +174,9 @@ export function SubscriberMoreFilters({
     };
   }
 
-  function changeOpen(next: boolean) {
-    setMobileOpen(next);
-    onExpandedChange(next);
-  }
-
-  function handleToggle() {
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      if (mobileOpen) {
-        changeOpen(false);
-        return;
-      }
-      setDraft(getCurrentDraft());
-      changeOpen(true);
-      return;
-    }
-
-    onExpandedChange(!expanded);
+  function openMobileFilters() {
+    setDraft(getCurrentDraft());
+    setMobileOpen(true);
   }
 
   function updateDraft(patch: Partial<SubscriberMoreFiltersDraft>) {
@@ -209,7 +196,7 @@ export function SubscriberMoreFilters({
 
   function applyDraft() {
     onApply(draft);
-    changeOpen(false);
+    setMobileOpen(false);
   }
 
   const fieldCallbacks = {
@@ -222,26 +209,8 @@ export function SubscriberMoreFilters({
 
   return (
     <div className="space-y-3">
-      <Button
-        type="button"
-        variant="outline"
-        aria-expanded={mobileOpen || expanded}
-        aria-controls={panelId}
-        onClick={handleToggle}
-        className="min-h-11 w-full justify-between gap-2 md:w-auto"
-      >
-        Más filtros
-        <ChevronDown
-          aria-hidden="true"
-          className={`h-4 w-4 transition-transform ${mobileOpen || expanded ? 'rotate-180' : ''}`}
-        />
-      </Button>
-
-      {expanded && !mobileOpen ? (
-        <div
-          id={panelId}
-          className="hidden rounded-xl border border-gray-200 p-4 md:block dark:border-dark-border"
-        >
+      <div className="flex flex-wrap items-end gap-2 md:grid md:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="hidden min-w-0 md:block">
           <SubscriberFilterFields
             status={status}
             personType={personType}
@@ -252,9 +221,33 @@ export function SubscriberMoreFilters({
             {...fieldCallbacks}
           />
         </div>
-      ) : null}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-haspopup="dialog"
+          aria-expanded={mobileOpen}
+          aria-controls={mobileOpen ? panelId : undefined}
+          onClick={openMobileFilters}
+          className="min-h-11 gap-2 md:hidden"
+        >
+          Más filtros
+          <ChevronDown aria-hidden="true" className="h-4 w-4" />
+        </Button>
+        {hasActiveFilters ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onClearFilters}
+            className="min-h-11"
+          >
+            Limpiar filtros
+          </Button>
+        ) : null}
+      </div>
 
-      <Dialog open={mobileOpen} onOpenChange={changeOpen}>
+      <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
         <DialogContent
           id={panelId}
           className="max-md:fixed max-md:inset-0 max-md:flex max-md:h-dvh max-md:max-h-none max-md:w-screen max-md:max-w-none max-md:flex-col max-md:overflow-hidden max-md:rounded-none max-md:p-0 max-md:animate-in max-md:slide-in-from-bottom max-md:duration-300"
@@ -265,7 +258,7 @@ export function SubscriberMoreFilters({
               type="button"
               variant="ghost"
               aria-label="Cerrar filtros"
-              onClick={() => changeOpen(false)}
+              onClick={() => setMobileOpen(false)}
               className="min-h-11 min-w-11 rounded-full p-0"
             >
               <X className="h-5 w-5" aria-hidden="true" />
@@ -278,7 +271,6 @@ export function SubscriberMoreFilters({
               personType={draft.personType}
               segment={draft.segment}
               stratum={draft.stratum}
-              visibleLabels
               onStatusChange={(value) => updateDraft({ status: value })}
               onPersonTypeChange={(value) => updateDraft({ personType: value })}
               onSegmentChange={(value) => updateDraft({ segment: value })}
@@ -324,7 +316,7 @@ export function SubscriberMoreFilters({
       </Dialog>
 
       {activeFilters.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2" aria-label="Filtros activos">
+        <div className="flex flex-wrap items-center gap-2 md:hidden" aria-label="Filtros activos">
           {activeFilters.map((filter) => (
             <span
               key={filter.key}
@@ -345,11 +337,6 @@ export function SubscriberMoreFilters({
               </Button>
             </span>
           ))}
-          {activeFilters.length > 1 ? (
-            <Button type="button" variant="ghost" onClick={onClearFilters} className="min-h-11">
-              Limpiar filtros
-            </Button>
-          ) : null}
         </div>
       ) : null}
     </div>

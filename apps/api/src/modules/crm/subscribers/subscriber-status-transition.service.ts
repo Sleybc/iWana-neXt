@@ -8,7 +8,7 @@ import {
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, IsNull } from 'typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
-import { AuditAction, SubscriberStatus } from '@iwana/shared';
+import { AuditAction, PersonType, SubscriberStatus } from '@iwana/shared';
 import { AuditService } from '../../audit/audit.service';
 import { Subscriber } from './entities/subscriber.entity';
 import { hasRealContact } from './subscriber-contact.util';
@@ -100,7 +100,13 @@ export class SubscriberStatusTransitionService {
     }
 
     const errors: string[] = [];
-    for (const field of requirement.fields) {
+    const fields =
+      subscriber.status === SubscriberStatus.LEAD &&
+      targetStatus === SubscriberStatus.PROSPECT &&
+      subscriber.personType === PersonType.JURIDICA
+        ? ['nit', 'businessName']
+        : requirement.fields;
+    for (const field of fields) {
       const value = (subscriber as unknown as Record<string, unknown>)[field];
       if (value === null || value === undefined || value === '') {
         errors.push(`Campo obligatorio faltante: ${field}`);
@@ -171,7 +177,24 @@ export class SubscriberStatusTransitionService {
           `Se requiere motivo para la transición ${fromStatus} → ${targetStatus}`,
         );
       }
-      await qr.manager.update(Subscriber, { id: subscriberId, tenantId }, { status: targetStatus });
+      await qr.manager.update(
+        Subscriber,
+        { id: subscriberId, tenantId },
+        {
+          status: targetStatus,
+          ...(fromStatus === SubscriberStatus.LEAD &&
+          targetStatus === SubscriberStatus.PROSPECT &&
+          subscriber.expedienteId &&
+          subscriber.convertedAt == null
+            ? { convertedAt: new Date() }
+            : {}),
+          ...(fromStatus === SubscriberStatus.PROSPECT &&
+          targetStatus === SubscriberStatus.ACTIVE &&
+          subscriber.activatedAt == null
+            ? { activatedAt: new Date() }
+            : {}),
+        },
+      );
       return { fromStatus, changed: true };
     });
     const { fromStatus } = transition;

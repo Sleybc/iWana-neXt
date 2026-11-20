@@ -256,7 +256,7 @@ function buildSubscriber360(subscriber: SubscriberFixture, contracts: ContractFi
   };
 }
 
-test('la búsqueda exacta refleja hasLiveContracts y el portal bloquea la cancelación con servicios vivos', async ({
+test('la ficha previa a la instalación sigue accesible y el portal bloquea cancelar con servicios vivos', async ({
   page,
 }) => {
   const prospect = buildSubscriber(
@@ -282,7 +282,7 @@ test('la búsqueda exacta refleja hasLiveContracts y el portal bloquea la cancel
     const method = route.request().method();
     if (pathname.endsWith('/crm/subscribers/search') && method === 'POST') {
       exactSearchPayload = route.request().postDataJSON();
-      await fulfill(route, [prospect]);
+      await fulfill(route, [], 0);
       return;
     }
     if (pathname.endsWith('/crm/subscribers/qa-prospect/360')) {
@@ -304,22 +304,11 @@ test('la búsqueda exacta refleja hasLiveContracts y el portal bloquea la cancel
     await fulfill(route, []);
   });
 
-  await page.goto('/dashboard/crm/subscribers?mode=document');
-  const documentMode = page.getByRole('radio', { name: 'Documento', exact: true });
-  await expect(documentMode).toBeVisible();
-  await documentMode.click();
-  await page.getByRole('searchbox').fill('0000000001');
-  await page.getByRole('button', { name: 'Buscar', exact: true }).click();
-
-  await expect(page.getByText('Coincidencia exacta · 1 resultado', { exact: true })).toBeVisible();
-  await expect(
-    page
-      .getByRole('table', { name: 'Listado de suscriptores' })
-      .getByText('Sin servicios vigentes', { exact: true }),
-  ).toBeVisible();
-  expect(exactSearchPayload).toEqual({ documentNumber: '0000000001' });
-
-  await page.getByRole('link', { name: /Prospecto Sintético/u }).click();
+  await page.goto('/dashboard/crm/subscribers');
+  await page.getByRole('searchbox', { name: 'Buscar suscriptor' }).fill('0000000001');
+  await expect.poll(() => exactSearchPayload).toEqual({ search: '0000000001' });
+  await expect(page.getByText('No se encontraron resultados', { exact: true })).toBeVisible();
+  await page.goto('/dashboard/crm/subscribers/qa-prospect');
   await expect(page.getByRole('heading', { name: 'Prospecto Sintético' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Suspender servicios', exact: true })).toHaveCount(
     0,

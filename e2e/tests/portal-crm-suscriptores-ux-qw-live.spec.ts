@@ -129,19 +129,18 @@ async function createConvertedSubscriber(page: Page): Promise<string> {
     await apiJson(page, `/crm/expedientes/${expediente.id}/status`, 'PATCH', { targetStatus });
   }
   const findSubscriber = async (): Promise<string | null> => {
-    const response = await page.request.post('/api/v1/crm/subscribers/search', {
-      headers: { 'X-Tenant-Slug': tenantSlug!, 'X-Requested-With': 'XMLHttpRequest' },
-      data: { email },
-    });
-    if (!response.ok()) return null;
-    const body = (await response.json()) as { data?: Array<{ id: string }> };
-    return body.data?.[0]?.id ?? null;
+    const data = await apiJson<{ subscriberSummary: { id: string } | null }>(
+      page,
+      `/crm/expedientes/${expediente.id}/bootstrap`,
+      'GET',
+    );
+    return data.subscriberSummary?.id ?? null;
   };
   await expect.poll(findSubscriber, { timeout: 20_000 }).not.toBeNull();
   return (await findSubscriber())!;
 }
 
-test('V1 real: búsqueda exacta, tabs, teclado, facturación y móvil', async ({ page }) => {
+test('V1 real: un prospecto queda fuera de la búsqueda y conserva su ficha', async ({ page }) => {
   test.setTimeout(180_000);
   test.skip(
     missingLiveEnvironment.length > 0,
@@ -169,28 +168,37 @@ test('V1 real: búsqueda exacta, tabs, teclado, facturación y móvil', async ({
     }),
   );
   await page.goto('/dashboard/crm/subscribers');
-  await expect(page.getByRole('radio', { name: 'Documento', exact: true })).toBeVisible();
-  await page.getByRole('radio', { name: 'Documento', exact: true }).click();
-  await expect(page.getByRole('radio', { name: 'Documento', exact: true })).toHaveAttribute(
-    'aria-checked',
-    'true',
-  );
-  await expect(page.getByRole('searchbox')).toHaveAttribute(
-    'placeholder',
-    'Cédula, NIT o pasaporte',
-  );
-  await expect(page).toHaveURL(/mode=document/u);
+  const search = page.getByRole('searchbox', { name: 'Buscar suscriptor' });
+  await expect(search).toBeVisible();
   const documentValue = detail.subscriber.documentNumber ?? '';
   expect(Boolean(documentValue)).toBe(true);
-  await page.getByRole('searchbox').fill(documentValue);
   const searched = page.waitForResponse(
-    (r) => r.url().endsWith('/crm/subscribers/search') && r.request().method() === 'POST',
+    (response) =>
+      new URL(response.url()).pathname.endsWith('/crm/subscribers/search') &&
+      response.request().method() === 'POST',
   );
-  await page.getByRole('button', { name: 'Buscar', exact: true }).click();
-  expect((await searched).status()).toBe(200);
-  await expect(page.getByText('Coincidencia exacta · 1 resultado', { exact: true })).toBeVisible();
+  await search.fill(documentValue);
+  const response = await searched;
+  expect(response.status()).toBe(200);
+  const result = (await response.json()) as { data: Array<{ id: string }> };
+  expect(detail.subscriber.status).toBe('PROSPECT');
+  expect(result.data.map(({ id }) => id)).not.toContain(target.id);
+  await page.getByRole('combobox', { name: 'Estado', exact: true }).click();
+  const filterResponse = page.waitForResponse((candidate) => {
+    const url = new URL(candidate.url());
+    return (
+      url.pathname.endsWith('/crm/subscribers/search') &&
+      url.searchParams.get('status') === 'SUSPENDED' &&
+      candidate.request().method() === 'POST'
+    );
+  });
+  await page.getByRole('option', { name: 'Suspendido', exact: true }).click();
+  const filtered = await filterResponse;
+  expect(filtered.status()).toBe(200);
+  const filteredResult = (await filtered.json()) as { data: Array<{ id: string }> };
+  expect(filteredResult.data.map(({ id }) => id)).not.toContain(target.id);
+  await expect(search).toHaveValue(documentValue);
   expect(page.url().includes(documentValue)).toBe(false);
-  console.info('V1 CA1/CA2: lookup real 200 y resultado único sin valor en URL');
   await page.goto(`/dashboard/crm/subscribers/${target.id}?tab=datos`);
   await expect(page.getByRole('tab', { name: 'Datos', exact: true })).toHaveAttribute(
     'aria-selected',
@@ -235,8 +243,9 @@ test('V1 real: búsqueda exacta, tabs, teclado, facturación y móvil', async ({
       document: document.documentElement.scrollWidth,
     })),
   );
-  await page.goto('/dashboard/crm/subscribers?mode=document');
+  await page.goto('/dashboard/crm/subscribers');
   await expect(page.getByRole('searchbox')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Más filtros' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   console.info(
     'V1 mobile list widths',
@@ -303,8 +312,10 @@ test('V1 controlado: búsqueda exacta, tabs, facturación y móvil', async ({ pa
   };
   let searches = 0;
   await page.route('**/api/v1/**', async (route) => {
-    const path = new URL(route.request().url()).pathname;
+    const url = new URL(route.request().url());
+    const path = url.pathname;
     let data: unknown = [];
+    let total = 1;
     if (path.endsWith('/auth/me')) data = me;
     else if (path.includes('/users/qa-user'))
       data = {
@@ -335,19 +346,21 @@ test('V1 controlado: búsqueda exacta, tabs, facturación y móvil', async ({ pa
     else if (path.endsWith('/crm/subscribers/qa-subscriber/360')) data = envelope;
     else if (path.endsWith('/crm/subscribers/search')) {
       searches++;
-      expect(route.request().postDataJSON()).toEqual({ documentNumber: '1000000001' });
-      data = [subscriber];
-    } else if (path.endsWith('/crm/subscribers')) data = [subscriber];
+      expect(route.request().postDataJSON()).toEqual({ search: '1000000001' });
+      const matches = url.searchParams.get('status') !== 'SUSPENDED';
+      data = matches ? [subscriber] : [];
+      total = matches ? 1 : 0;
+    } else if (path.endsWith('/crm/subscribers')) total = 0;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
         data,
         meta: {
-          total: 1,
+          total,
           page: 1,
           limit: 20,
-          totalPages: 1,
+          totalPages: total,
           nextCursor: null,
           capabilities: { randomAccess: true, sortableFields: [] },
         },
@@ -366,14 +379,20 @@ test('V1 controlado: búsqueda exacta, tabs, facturación y móvil', async ({ pa
   ]);
   await page.addInitScript(() => localStorage.setItem('iwana.portal.tenant-slug', 'qa-tenant'));
   await page.goto('/dashboard/crm/subscribers');
-  await page.getByRole('radio', { name: 'Documento', exact: true }).click();
-  await expect(page).toHaveURL(/mode=document/u);
-  await page.getByRole('searchbox').fill('1000000001');
-  await expect(page.getByRole('searchbox')).toHaveValue('1000000001');
-  expect(searches).toBe(0);
-  await page.getByRole('button', { name: 'Buscar', exact: true }).click();
-  await expect(page.getByText('Coincidencia exacta · 1 resultado', { exact: true })).toBeVisible();
-  expect(searches).toBe(1);
+  const search = page.getByRole('searchbox', { name: 'Buscar suscriptor' });
+  await search.fill('1000000001');
+  await expect.poll(() => searches).toBe(1);
+  await expect(
+    page
+      .getByRole('table', { name: 'Listado de suscriptores' })
+      .getByRole('row', { name: /Titular Sintético/u }),
+  ).toBeVisible();
+  await page.getByRole('combobox', { name: 'Estado', exact: true }).click();
+  await page.getByRole('option', { name: 'Suspendido', exact: true }).click();
+  await expect(page.getByText('No se encontraron resultados', { exact: true })).toBeVisible();
+  await expect.poll(() => searches).toBe(2);
+  await expect(search).toHaveValue('1000000001');
+  await expect(page).toHaveURL(/status=SUSPENDED/u);
   expect(page.url()).not.toContain('1000000001');
   await page.goto('/dashboard/crm/subscribers/qa-subscriber?tab=datos');
   await expect(page.getByRole('tab', { name: 'Datos', exact: true })).toHaveAttribute(
@@ -415,8 +434,9 @@ test('V1 controlado: búsqueda exacta, tabs, facturación y móvil', async ({ pa
       document: document.documentElement.scrollWidth,
     })),
   );
-  await page.goto('/dashboard/crm/subscribers?mode=document');
+  await page.goto('/dashboard/crm/subscribers');
   await expect(page.getByRole('searchbox')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Más filtros' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   console.info(
     'V1 controlado mobile list widths',

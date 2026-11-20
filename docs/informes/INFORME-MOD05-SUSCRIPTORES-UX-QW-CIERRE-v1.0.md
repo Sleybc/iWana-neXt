@@ -171,3 +171,35 @@ Condiciones del CTO cumplidas: 0 críticas en `pnpm audit --prod --audit-level c
 - **Launchers:** la v1.0 conserva el lanzamiento de las Olas 1 y 2; la v1.1 es la reanudación del cierre tras el NO-GO de G5.
 - **Deuda abierta:** P3 de pruebas para `sr-qa` (`ContractCard`, `ContractDetailDrawer`, `ConvertExpedienteToContractDialog` y `CreateContractDialog` por debajo de 80 % de líneas) y P3 de advertencias `act()` en los tests del listado.
 - **Siguiente fase recomendada** (plan §6): E4, el addendum al PRD sobre la relación entre el estado del suscriptor y el de sus contratos, con la suspensión unificada.
+
+## Actualización del listado (2026-11-20)
+
+La [actualización de QW1](../specs/2026-10-18-mod05-suscriptores-ux-rediseno-spec.md#qw1--búsqueda-y-filtros-del-listado) reemplaza los cuatro modos por una barra. Las colas usan el estilo de Mesa de ayuda, los desplegables quedan visibles en escritorio y el panel móvil conserva «Aplicar». El [contrato de búsqueda](../specs/2026-10-12-mod05-c-api-1-v1.1-addendum.md#2-request) documenta la combinación de coincidencias por nombre e identificadores con filtros y paginación.
+
+Base de las pruebas focalizadas en `b20117ac`.
+
+| Verificación focalizada | Resultado |
+| --- | --- |
+| API y contrato compartido | API: 2 suites y 160 pruebas, igual a la base. Shared: 1 suite y 20 pruebas frente a 19 en la base. |
+| Portal | 51 pruebas en las 2 suites de la base y 4 pruebas de colas. Las pruebas de modos se actualizaron para cubrir la barra, filtros, pausa de escritura, privacidad y paginación. |
+| PostgreSQL de desarrollo | 1 suite y 5 pruebas. Incluye coincidencia de documento y teléfono con el mismo término, correo, nombres, razón social, NIT con dígito y legado sin dígito, filtro y paginación. |
+| Playwright local | 5 pruebas. Incluye un documento en la API real que deja de aparecer con estado incompatible, paginación, filtros y vista móvil. |
+| Análisis estático | Typecheck de API, portal y shared, ESLint de archivos modificados y auditoría UI del listado. |
+
+Alcance de verificación focalizado. La cobertura global y la corrida de CI para el cambio quedan pendientes.
+
+## Separación entre Oportunidades y Suscriptores (2026-11-20)
+
+El [alcance del listado](../specs/2026-10-18-mod05-suscriptores-ux-rediseno-spec.md#qw1--búsqueda-y-filtros-del-listado) aplica a listado, búsqueda libre y estructurada, paginación y conteos. La fecha de primera activación se escribe junto con la transición de Prospecto a Activo. El ingreso comercial del portal dirige a Oportunidades y la ficha vinculada sigue disponible para completar la instalación.
+
+La base local tenía 26 registros en estado comercial sin expediente vinculado y 4 activos o suspendidos sin primera activación registrada. Estos registros requieren conciliación histórica. La importación UISP necesita una ruta de regularización para los titulares preliminares que antes llegaban a la cola fiscal de Suscriptores.
+
+Pruebas focalizadas: 208 de API, 117 del portal y 22 de integración en PostgreSQL y 6 de Playwright. Los recorridos reales comprobaron la exclusión del prospecto y la aparición tras completar su primera activación. Pasaron typecheck de API, portal y shared, ESLint focalizado y la revisión estática del listado.
+
+## Conciliación histórica local (2026-11-20)
+
+Se concilió el conjunto detectado en la base local de pruebas. La transacción deja 24 expedientes en «Nuevo potencial», vinculados a 24 suscriptores históricos con identidades canónicas distintas. Los cuatro activos recuperaron la fecha de su transición auditada de Prospecto a Activo. Una lectura posterior confirmó los vínculos, su unicidad y la igualdad exacta de las cuatro fechas con sus eventos fuente. Correlación de auditoría `3fc48ace-b741-4278-919f-e12f9d4252de`.
+
+Al quedar lista para instalación, la oportunidad reutiliza el contacto histórico vinculado y registra su conversión. La calificación de persona jurídica usa NIT, razón social y canal de contacto en la ficha existente.
+
+Dos contactos de otra empresa de pruebas conservan documentos diferentes bajo el mismo titular canónico. Ninguno coincide con su documento canónico. Quedan sin expediente hasta verificar ambas identidades. La conciliación se limitó a la base local.

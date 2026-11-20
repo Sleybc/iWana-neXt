@@ -864,7 +864,7 @@ test.describe('Dashboard empresarial — baseline CA (selectores semánticos D-6
     await expect(page.getByLabel('Indicadores núcleo')).toBeVisible();
     await expect(page.getByRole('link', { name: /Visitas de hoy/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /Casos abiertos/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Registrar suscriptor/i })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /Nueva oportunidad/i })).toHaveCount(0);
   });
 
   test('CA-03: navegación a configuración no produce 404 de documento', async ({
@@ -1135,7 +1135,7 @@ test.describe('D-5 / D-7 · Primer viewport, responsive y firmas', () => {
       expect(headingBox!.y + headingBox!.height).toBeLessThanOrEqual(width === 375 ? 812 : 900);
 
       await expect(page.getByRole('toolbar', { name: 'Acciones del inicio' })).toHaveCount(0);
-      await expect(page.getByRole('link', { name: /Registrar suscriptor/i })).toHaveCount(0);
+      await expect(page.getByRole('link', { name: /Nueva oportunidad/i })).toHaveCount(0);
 
       const visits = page.getByRole('link', { name: /Visitas de hoy/i });
       const cases = page.getByRole('link', { name: /Casos abiertos/i });

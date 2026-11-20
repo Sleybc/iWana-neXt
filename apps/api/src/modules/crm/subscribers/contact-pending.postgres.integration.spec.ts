@@ -16,6 +16,9 @@ import {
   UserRole,
 } from '@iwana/shared';
 import { encryptAes256Gcm, parseEncryptionKeyHex } from '../../../common/crypto/aes-gcm.util';
+import { hashDocumentNumber } from '../../../common/crypto/hash-document.util';
+import { hashEmail } from '../../../common/crypto/hash-email.util';
+import { hmacPii } from '../../../common/crypto/pii-hash-key.util';
 import { AuditService } from '../../audit/audit.service';
 import { PlatformAuditService } from '../../audit/platform-audit.service';
 import { DataAuthorizationEntity } from '../../privacy/entities/data-authorization.entity';
@@ -259,6 +262,11 @@ describeWithDb('Contacto pendiente de subscriber — PostgreSQL real', () => {
       subscribersService.findById(subscriberId),
     );
     expect(subscriber.status).toBe(SubscriberStatus.PROSPECT);
+    const searchListed = () =>
+      TenantContext.run(context(), () =>
+        subscribersService.findAll({ search: 'Persona Sintética E3' }),
+      );
+    expect((await searchListed()).data.map(({ id }) => id)).not.toContain(subscriberId);
     expect(projectSubscriberForList(subscriber, UserRole.ADMIN).contactPending).toBe(true);
     expect(subscriber.emailEncrypted).toBeNull();
     expect(subscriber.phoneEncrypted).toBeNull();
@@ -331,6 +339,8 @@ describeWithDb('Contacto pendiente de subscriber — PostgreSQL real', () => {
       subscribersService.transitionStatus(subscriberId, SubscriberStatus.ACTIVE, null, actorId),
     );
     expect(activated.status).toBe(SubscriberStatus.ACTIVE);
+    expect(activated.activatedAt).toBeInstanceOf(Date);
+    expect((await searchListed()).data.map(({ id }) => id)).toContain(subscriberId);
     expect(projectSubscriberForList(activated, UserRole.ADMIN).contactPending).toBe(false);
 
     const visibleBeforeBlock = await TenantContext.run(context(), () =>
@@ -424,7 +434,7 @@ describeWithDb('Contacto pendiente de subscriber — PostgreSQL real', () => {
              nit, nit_verification_digit, business_name, email_encrypted, phone_encrypted,
              vat_treatment, tax_regime, address, created_by, status,
              vat_responsibility, rut_responsibilities, anonymized_at,
-             anonymized_request_id
+             anonymized_request_id, activated_at
            ) VALUES (
              $1, $2, $3, $4,
              CASE WHEN $17 = 'NATURAL' THEN 'CC' ELSE NULL END,
@@ -435,7 +445,7 @@ describeWithDb('Contacto pendiente de subscriber — PostgreSQL real', () => {
              $6, $7,
              CASE WHEN $17 = 'JURIDICA' THEN 'Empresa sintética' ELSE NULL END,
              $8, $9, $10, $11, 'Dirección sintética', $12, $13,
-             $14, $15, CASE WHEN $16 THEN now() ELSE NULL END, $18
+             $14, $15, CASE WHEN $16 THEN now() ELSE NULL END, $18, now()
            )`,
           [
             row.id,
@@ -624,11 +634,11 @@ describeWithDb('Contacto pendiente de subscriber — PostgreSQL real', () => {
              id, tenant_id, party_id, legal_representative_party_id,
              person_type, customer_segment, document_type, document_number_encrypted,
              first_name, last_name, stratum, vat_treatment, tax_regime, address,
-             created_by, status, vat_responsibility, rut_responsibilities
+             created_by, status, vat_responsibility, rut_responsibilities, activated_at
            )
            SELECT gen_random_uuid(), $1, $2, $2, 'NATURAL', 'RESIDENTIAL', 'CC', $3,
                   'Persona', 'Fila operativa', 2, 'EXCLUDED', 'SIMPLIFIED',
-                  'Dirección sintética', $4, 'ACTIVE', 'RESPONSABLE', ARRAY['O-13']::text[]
+                  'Dirección sintética', $4, 'ACTIVE', 'RESPONSABLE', ARRAY['O-13']::text[], now()
              FROM generate_series(1, 100)
            RETURNING id
          )
@@ -734,5 +744,100 @@ describeWithDb('Contacto pendiente de subscriber — PostgreSQL real', () => {
       subscribersService.findAll({ tagId }),
     );
     expect(afterDelete.total).toBe(0);
+  });
+
+  it('combina nombre e identificadores exactos con filtros y paginación', async () => {
+    const service = makeSubscribersService(makeAuditService());
+    const activeId = randomUUID();
+    const suspendedId = randomUUID();
+    const companyId = randomUUID();
+    const number = '0000051001';
+    const email = 'search-synthetic@example.invalid';
+    const key = Buffer.from(hashKeyHex, 'hex');
+    const queueCounts = () => TenantContext.run(context(), () => service.getQueueCounts());
+    await runInTenantSchema(dataSource, schemaName, async (qr) => {
+      await qr.query(
+        `INSERT INTO subscribers
+           (id, tenant_id, person_type, customer_segment, document_type, document_number_encrypted,
+            document_number_hmac, first_name, last_name, stratum, email_hmac, phone_hmac,
+            vat_treatment, vat_responsibility, address, created_by, status, activated_at)
+         VALUES
+           ($1, $3, 'NATURAL', 'RESIDENTIAL', 'CC', $4, $6, 'Búsqueda', 'Sintética', 2, $7, NULL,
+            'EXCLUDED', 'RESPONSABLE', 'Dirección sintética', $8, 'ACTIVE', now()),
+           ($2, $3, 'NATURAL', 'RESIDENTIAL', 'CC', $5, NULL, 'Otra', 'Sintética', 2, NULL, $9,
+            'EXCLUDED', 'RESPONSABLE', 'Dirección sintética', $8, 'SUSPENDED', now())`,
+        [
+          activeId,
+          suspendedId,
+          tenantId,
+          encryptAes256Gcm(number, encryptionKey),
+          encryptAes256Gcm('0000051002', encryptionKey),
+          hashDocumentNumber(number, key),
+          hashEmail(email, key),
+          actorId,
+          hmacPii(number, key),
+        ],
+      );
+    });
+    const countsBefore = await queueCounts();
+    await runInTenantSchema(dataSource, schemaName, (qr) =>
+      qr.query(
+        `INSERT INTO subscribers
+           (id, tenant_id, person_type, customer_segment, nit, nit_verification_digit, business_name,
+            vat_treatment, address, created_by, status)
+         VALUES ($1, $2, 'JURIDICA', 'PYME', '900000001', '1', 'Empresa de búsqueda sintética',
+                 'EXCLUDED', 'Dirección sintética', $3, 'PROSPECT')`,
+        [companyId, tenantId, actorId],
+      ),
+    );
+    expect(await queueCounts()).toEqual(countsBefore);
+
+    const search = (term: string, status?: SubscriberStatus, page = 1, limit = 20) =>
+      TenantContext.run(context(), () => service.findAll({ search: term, status, page, limit }));
+
+    const ambiguous = await search(number);
+    expect(ambiguous.total).toBe(2);
+    expect(ambiguous.data.map(({ id }) => id).sort()).toEqual([activeId, suspendedId].sort());
+    const page = await search(number, undefined, 2, 1);
+    expect(page.meta).toMatchObject({ page: 2, total: 2, totalPages: 2 });
+    expect(page.data).toHaveLength(1);
+
+    const filtered = await search(number, SubscriberStatus.SUSPENDED);
+    expect(filtered.data.map(({ id }) => id)).toEqual([suspendedId]);
+    const emailMatch = await search(email.toUpperCase(), SubscriberStatus.ACTIVE);
+    expect(emailMatch.data.map(({ id }) => id)).toEqual([activeId]);
+    expect((await search(email, SubscriberStatus.SUSPENDED)).total).toBe(0);
+    expect(
+      (await search('Búsqueda Sinté', SubscriberStatus.ACTIVE)).data.map(({ id }) => id),
+    ).toEqual([activeId]);
+    const searchByNit = () =>
+      TenantContext.run(context(), () => service.search({ nit: '900000001' }));
+    expect((await search('Empresa de búsqueda', SubscriberStatus.PROSPECT)).total).toBe(0);
+    expect(await searchByNit()).toEqual([]);
+    await runInTenantSchema(dataSource, schemaName, (qr) =>
+      qr.query("UPDATE subscribers SET status = 'LEAD' WHERE id = $1", [companyId]),
+    );
+    expect((await search('Empresa de búsqueda', SubscriberStatus.LEAD)).total).toBe(0);
+    await runInTenantSchema(dataSource, schemaName, (qr) =>
+      qr.query("UPDATE subscribers SET status = 'CANCELLED' WHERE id = $1", [companyId]),
+    );
+    expect((await search('900.000.001-1', SubscriberStatus.CANCELLED)).total).toBe(0);
+    expect(await searchByNit()).toEqual([]);
+    expect(await queueCounts()).toEqual(countsBefore);
+
+    await runInTenantSchema(dataSource, schemaName, (qr) =>
+      qr.query('UPDATE subscribers SET activated_at = now() WHERE id = $1', [companyId]),
+    );
+    expect((await search('Empresa de búsqueda')).data.map(({ id }) => id)).toEqual([companyId]);
+    expect(
+      (await search('900.000.001-1', SubscriberStatus.CANCELLED)).data.map(({ id }) => id),
+    ).toEqual([companyId]);
+    expect((await search('900.000.001-2')).total).toBe(0);
+    expect((await searchByNit()).map(({ id }) => id)).toEqual([companyId]);
+    expect((await queueCounts()).withoutLiveServices).toBe(countsBefore.withoutLiveServices + 1);
+    await runInTenantSchema(dataSource, schemaName, (qr) =>
+      qr.query('UPDATE subscribers SET nit_verification_digit = NULL WHERE id = $1', [companyId]),
+    );
+    expect((await search('900.000.001-1')).data.map(({ id }) => id)).toEqual([companyId]);
   });
 });

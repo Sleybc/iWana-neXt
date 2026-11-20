@@ -478,6 +478,13 @@ describe('subscriber shared schemas · MOD05 deuda · alta, autorizaciones y edi
     expect(SearchSubscribersSchema.safeParse({ search: 'sintético' }).success).toBe(true);
   });
 
+  it('admite el mismo largo de correo en la búsqueda unificada y acota el término', () => {
+    const email = 's'.repeat(230) + '@example.invalid';
+    expect(SearchSubscribersSchema.safeParse({ email }).success).toBe(true);
+    expect(SearchSubscribersSchema.safeParse({ search: email }).success).toBe(true);
+    expect(SearchSubscribersSchema.safeParse({ search: 'x'.repeat(501) }).success).toBe(false);
+  });
+
   it('fija la transición de estado del catálogo compartido', () => {
     expect(
       TransitionSubscriberStatusSchema.safeParse({ targetStatus: SubscriberStatus.ACTIVE }).success,

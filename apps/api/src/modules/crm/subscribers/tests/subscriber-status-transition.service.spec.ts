@@ -42,7 +42,10 @@ describe('SubscriberStatusTransitionService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockTenantContextGetOrThrow.mockReturnValue({ schemaName: 'tenant_test' });
+    mockTenantContextGetOrThrow.mockReturnValue({
+      schemaName: 'tenant_test',
+      tenantId: 'tenant-001',
+    });
     auditService = { log: jest.fn().mockResolvedValue(undefined) };
     loggerLog = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
@@ -176,6 +179,28 @@ describe('SubscriberStatusTransitionService', () => {
 
       const errors = service.validateTransitionRequirements(subscriber, SubscriberStatus.PROSPECT);
       expect(errors).toHaveLength(0);
+    });
+
+    it('califica un contacto empresarial por NIT, razón social y canal de contacto', () => {
+      const company = buildSubscriber({
+        status: SubscriberStatus.LEAD,
+        personType: PersonType.JURIDICA,
+        nit: '900000001',
+        businessName: 'Empresa sintética',
+        documentType: null,
+        documentNumberEncrypted: null,
+        firstName: null,
+        lastName: null,
+      });
+      expect(service.validateTransitionRequirements(company, SubscriberStatus.PROSPECT)).toEqual(
+        [],
+      );
+      expect(
+        service.validateTransitionRequirements(
+          { ...company, nit: null },
+          SubscriberStatus.PROSPECT,
+        ),
+      ).toEqual(['Campo obligatorio faltante: nit']);
     });
 
     it('PROSPECT → ACTIVE: sin requisitos de campos', () => {
@@ -347,14 +372,18 @@ describe('SubscriberStatusTransitionService', () => {
     );
 
     it('permite SUSPENDED → ACTIVE con motivo', async () => {
-      const subscriber = buildSubscriber({ status: SubscriberStatus.SUSPENDED });
+      const subscriber = buildSubscriber({
+        status: SubscriberStatus.SUSPENDED,
+        activatedAt: new Date('2026-09-01T10:00:00Z'),
+      });
+      const update = jest.fn().mockResolvedValue({ affected: 1 });
       // Primera llamada: findOne devuelve el subscriber SUSPENDED
       // Segunda llamada: update persiste el cambio
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
         callback({
           manager: {
             findOne: async () => subscriber,
-            update: async () => ({ affected: 1 }),
+            update,
           },
         }),
       );
@@ -368,11 +397,39 @@ describe('SubscriberStatusTransitionService', () => {
 
       expect(result.fromStatus).toBe(SubscriberStatus.SUSPENDED);
       expect(result.toStatus).toBe(SubscriberStatus.ACTIVE);
+      expect(update).toHaveBeenCalledWith(
+        Subscriber,
+        { id: 'sub-1', tenantId: 'tenant-001' },
+        { status: SubscriberStatus.ACTIVE },
+      );
+    });
+
+    it('registra la conversión al calificar un contacto histórico vinculado', async () => {
+      const subscriber = buildSubscriber({
+        status: SubscriberStatus.LEAD,
+        expedienteId: 'exp-legacy',
+        convertedAt: null,
+      });
+      const update = jest.fn().mockResolvedValue({ affected: 1 });
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({ manager: { findOne: async () => subscriber, update } }),
+      );
+
+      await service.transition(subscriber.id, SubscriberStatus.PROSPECT, null, 'actor-1');
+
+      expect(update).toHaveBeenCalledWith(
+        Subscriber,
+        { id: subscriber.id, tenantId: 'tenant-001' },
+        { status: SubscriberStatus.PROSPECT, convertedAt: expect.any(Date) },
+      );
     });
 
     it('permite PROSPECT → ACTIVE sin motivo y conserva un audit diff sin PII', async () => {
-      const subscriber = buildSubscriber({ status: SubscriberStatus.PROSPECT });
-      mockSubscriber(subscriber);
+      const subscriber = buildSubscriber({ status: SubscriberStatus.PROSPECT, activatedAt: null });
+      const update = jest.fn().mockResolvedValue({ affected: 1 });
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({ manager: { findOne: async () => subscriber, update } }),
+      );
 
       await expect(
         service.transition(subscriber.id, SubscriberStatus.ACTIVE, null, 'actor-1'),
@@ -381,6 +438,11 @@ describe('SubscriberStatusTransitionService', () => {
         toStatus: SubscriberStatus.ACTIVE,
         reason: null,
       });
+      expect(update).toHaveBeenCalledWith(
+        Subscriber,
+        { id: subscriber.id, tenantId: 'tenant-001' },
+        { status: SubscriberStatus.ACTIVE, activatedAt: expect.any(Date) },
+      );
       expect(auditService.log).toHaveBeenCalledWith(
         expect.objectContaining({
           entityId: subscriber.id,
@@ -547,6 +609,7 @@ describe('SubscriberStatusTransitionService', () => {
         Subscriber,
         {
           id: subscriber.id,
+          tenantId: 'tenant-001',
           expedienteId: 'exp-1',
           status: SubscriberStatus.CANCELLED,
           activatedAt: expect.anything(),

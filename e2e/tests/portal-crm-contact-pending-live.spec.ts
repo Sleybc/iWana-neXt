@@ -487,33 +487,11 @@ test.describe('MOD05 E3 — contacto pendiente contra Portal y API reales', () =
     // Primer caso: conversión HTTP real con expediente sin canal principal.
     const noContact = await seedExpediente(false, true, page);
 
-    // CA-E3-02: con los campos de identidad y autorización completos, la falta
-    // de ambos canales se bloquea en el formulario antes de llamar al API.
+    // El ingreso comercial abre el formulario de Oportunidades.
     await page.goto('/dashboard/crm/subscribers/new');
-    await expect(page.getByRole('heading', { name: 'Crear suscriptor' })).toBeVisible();
-    await expect(page.getByText('Texto vigente · versión', { exact: false })).toBeVisible();
-    await chooseOption(page, 'Tipo de documento', 'Cédula de ciudadanía');
-    await page.getByLabel('Número de documento').fill(`QA-${RUN_ID.slice(0, 8)}`);
-    await page.getByLabel('Nombre', { exact: true }).fill('Persona sintética');
-    await page.getByLabel('Apellido', { exact: true }).fill(`QA ${RUN_ID.slice(0, 8)}`);
-    await chooseOption(page, 'Estrato', 'Estrato 2');
-    await chooseOption(page, 'Segmento', 'Residencial');
-    await page.getByLabel('Dirección', { exact: true }).fill('Dirección sintética 101');
-    await chooseOption(page, 'Medio por el que la persona otorgó la autorización', 'Teléfono');
-    await page
-      .getByText(
-        'Autorizo el uso de mis datos para prestar, facturar y dar soporte al servicio. Es necesaria para crear el suscriptor.',
-        { exact: true },
-      )
-      .locator('..')
-      .getByRole('checkbox')
-      .check();
-    await page.getByRole('button', { name: 'Crear suscriptor' }).click();
-    await expect(
-      page.getByText('Registra al menos un teléfono o un correo.', { exact: true }),
-    ).toHaveCount(2);
+    await expect(page).toHaveURL(/\/dashboard\/crm\/expedientes#nueva-oportunidad$/);
+    await expect(page.getByRole('heading', { name: 'Nueva oportunidad' })).toBeVisible();
     expect(createRequests).toHaveLength(0);
-    await assertNoPlaceholderOrRawEnum(page);
 
     await page.goto(`/dashboard/crm/subscribers/${noContact.subscriberId}`);
     await expect(page.getByRole('heading', { name: noContact.fullName })).toBeVisible();
@@ -699,6 +677,16 @@ test.describe('MOD05 E3 — contacto pendiente contra Portal y API reales', () =
       headers: apiHeaders(tenantAdminToken!, TENANT_SLUG),
     });
     expect(completedLegacySubscriber).toMatchObject({ contactPending: false, email: legacyEmail });
+    await expectJson(
+      api!,
+      `/crm/subscribers/${legacy.subscriberId}/section/identification`,
+      'PATCH',
+      200,
+      {
+        headers: apiHeaders(tenantAdminToken!, TENANT_SLUG),
+        data: { vatResponsibility: 'NO_RESPONSABLE' },
+      },
+    );
     await assertNoPlaceholderOrRawEnum(page);
 
     await page.goto(`/dashboard/crm/expedientes/${legacy.id}`);
@@ -720,6 +708,18 @@ test.describe('MOD05 E3 — contacto pendiente contra Portal y API reales', () =
       { headers: apiHeaders(tenantAdminToken!, TENANT_SLUG) },
     );
     expect(finalLegacyExpediente.status).toBe('CLIENTE_ACTIVO');
+    const listed = await expectJson<Array<{ id: string; status: string }>>(
+      api!,
+      '/crm/subscribers/search?status=ACTIVE',
+      'POST',
+      200,
+      { headers: apiHeaders(tenantAdminToken!, TENANT_SLUG), data: { search: legacyEmail } },
+    );
+    expect(listed).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: legacy.subscriberId, status: 'ACTIVE' }),
+      ]),
+    );
     await assertNoPlaceholderOrRawEnum(page);
   });
 });

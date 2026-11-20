@@ -887,7 +887,7 @@ describe('SubscribersService', () => {
 
       expect(chainable.andWhere).toHaveBeenCalledWith(
         expect.stringContaining("ILIKE :search ESCAPE E'\\\\'"),
-        { search: '%a\\%\\_\\\\b%' },
+        expect.objectContaining({ search: '%a\\%\\_\\\\b%' }),
       );
     });
 
@@ -915,7 +915,10 @@ describe('SubscribersService', () => {
         search: 'suscriptor sintético',
       });
 
-      expect(query.andWhere).toHaveBeenCalledTimes(7);
+      expect(query.andWhere).toHaveBeenCalledTimes(8);
+      expect(query.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('s.activated_at IS NOT NULL'),
+      );
       expect(query.andWhere).toHaveBeenCalledWith('s.status = :status', {
         status: SubscriberStatus.ACTIVE,
       });
@@ -929,7 +932,7 @@ describe('SubscribersService', () => {
       expect(query.andWhere).toHaveBeenCalledWith('s.stratum = :stratum', { stratum: 3 });
       expect(query.andWhere).toHaveBeenCalledWith(
         expect.stringContaining('s.firstName ILIKE :search'),
-        { search: '%suscriptor sintético%' },
+        expect.objectContaining({ search: '%suscriptor sintético%' }),
       );
     });
 
@@ -1001,6 +1004,7 @@ describe('SubscribersService', () => {
       expect(query).toHaveBeenCalledTimes(1);
       expect(query.mock.calls[0]?.[0]).toContain('COUNT(*) FILTER');
       expect(query.mock.calls[0]?.[0]).toContain('s.anonymized_at IS NULL');
+      expect(query.mock.calls[0]?.[0]).toContain('s.activated_at IS NOT NULL');
       expect(privacyMarksReadPortMock.activeMarks).not.toHaveBeenCalled();
       expect(privacyMarksReadPortMock.partyIdsWithActiveMark).not.toHaveBeenCalled();
     });
@@ -2150,7 +2154,7 @@ describe('SubscribersService', () => {
   });
 
   describe('transiciones desde el expediente', () => {
-    it('activa un prospecto y marca activatedAt', async () => {
+    it('activa un prospecto por la transición atómica y devuelve la primera activación', async () => {
       const prospect = buildSubscriber({
         id: 'sub-activate',
         expedienteId: 'exp-activate',
@@ -2170,11 +2174,6 @@ describe('SubscribersService', () => {
         toStatus: SubscriberStatus.ACTIVE,
         reason: 'Activación automática desde expediente exp-activate',
       });
-      const update = jest.fn().mockResolvedValue({ affected: 1 });
-      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
-        callback({ manager: { findOne: async () => prospect, update } }),
-      );
-
       await expect(service.activateFromExpediente('exp-activate', 'actor-1')).resolves.toBe(active);
 
       expect(transition).toHaveBeenCalledWith(
@@ -2182,11 +2181,6 @@ describe('SubscribersService', () => {
         SubscriberStatus.ACTIVE,
         'Activación automática desde expediente exp-activate',
         'actor-1',
-      );
-      expect(update).toHaveBeenCalledWith(
-        Subscriber,
-        { id: prospect.id, tenantId: 'tenant-001' },
-        { activatedAt: expect.any(Date) },
       );
     });
 

@@ -24,9 +24,9 @@ const FIRST_OPERATION_ACTIONS = [
     href: '/dashboard/commercial?tab=plans',
   },
   {
-    title: 'Registra tu primer suscriptor',
-    meta: 'Añade el primer registro de tu base.',
-    href: '/dashboard/crm/subscribers/new',
+    title: 'Crea tu primera oportunidad',
+    meta: 'Inicia el seguimiento comercial de un cliente.',
+    href: '/dashboard/crm/expedientes#nueva-oportunidad',
   },
   {
     title: 'Programa tu primera visita',

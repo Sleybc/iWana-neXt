@@ -1034,8 +1034,13 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
     const expediente = await createExpediente({
       documentNumberEncrypted: encryptAes256Gcm('83000004', encryptionKey),
     });
-    await TenantContext.run(context(), () =>
+    const subscriberId = await TenantContext.run(context(), () =>
       conversion.createFromExpediente(expediente.id, actorId),
+    );
+    await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query("UPDATE subscribers SET status = 'CANCELLED', activated_at = now() WHERE id = $1", [
+        subscriberId,
+      ]),
     );
 
     const page = await TenantContext.run(context(), () =>
