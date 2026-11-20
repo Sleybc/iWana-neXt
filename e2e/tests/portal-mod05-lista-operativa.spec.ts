@@ -408,6 +408,8 @@ test.describe('MOD05 Fase 06 · lista operativa de suscriptores', () => {
     await expect(secondRow).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(new RegExp(`peek=${SUBSCRIBER_IDS[1]}`));
+    // Escape se escucha solo con el panel montado: esperarlo evita perder la tecla en CI lento.
+    await expect(page.getByRole('dialog')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page).not.toHaveURL(/peek=/);
     await expect(secondRow).toBeFocused();
