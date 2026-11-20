@@ -80,6 +80,23 @@ Script de gate: `node .agents/skills/iwana-identity-ui-review/scripts/audit-ui.m
 | R7 | Mover textos rompe E2E | Regla de §1 y `test-change-reviewer` |
 | R8 | H10 resulta ser un defecto que amplía el alcance | Se documenta y se pregunta al usuario antes de corregir algo fuera de la bandeja |
 
+## 6-bis. Paso 3 — próximas visitas (spec v1.1, 2026-11-20)
+
+Se ejecuta después de publicar los pasos 1 y 2. Rigen las reglas de §1 y los revisores de §4.
+
+| Ola | Bloque | Superficie | Dueño |
+|---|---|---|---|
+| 7 | **API-V** | Pasada regla → dato de spec §4: visitas activas por suscriptor con las de sus tickets (H13), por puerto entre `wfm` y `assurance`; contrato en `packages/shared`; OpenAPI. Si exige migración, se detiene y avisa | `sr-backend` (consulta `sec-eng`); `boundary-reviewer`, `contract-drift-reviewer` |
+| 8 | **P3** | Franja «Próximas visitas» en `SubscriberSupportTab.tsx`; retiro de la sección de `SubscriberVisitsSection.tsx` conservando sus datos y acciones en la franja; contador con todas las visitas | `fe-platform`; `test-change-reviewer` |
+| 8 | **P3-J** | Lista densa (spec v1.2, bloque J) en `SubscriberTicketsSection.tsx`: fila de tres líneas como máximo, primer ticket de la lista al entrar y selección siempre visible. Se construye junto con la franja, porque ambas compiten por el alto | `fe-platform`; `test-change-reviewer` |
+| 9 | **QA3** | CA-13 a CA-18; inventario de W0 actualizado (la sección retirada pasa a la franja, ningún dato se pierde); regresión de QA1 y QA2; anexo al informe | `sr-qa` |
+
+| # | Riesgo | Mitigación |
+|---|---|---|
+| R9 | Retirar la sección pierde un dato o una acción de las visitas sin ticket | Inventario antes y después; CA-14 y CA-16 |
+| R10 | La consulta cruza módulos por tablas ajenas | Puerto del módulo dueño y `boundary-reviewer` |
+| R11 | La franja revela visitas de otro suscriptor | CA-15, prueba de integración y `sec-eng` |
+
 ## 7. Cierre
 
 Informe `docs/informes/INFORME-MOD05-SOPORTE-VISTA-DIVIDIDA-v1.0.md` con conteos, mediciones antes y después, explicación de H10 y deudas.

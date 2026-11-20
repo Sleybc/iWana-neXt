@@ -74,7 +74,54 @@ No es un defecto del filtro sino del rótulo, así que no se corrigió (R8).
 | D6 | El script de retiro del seed falla con `iwana_app` porque no tiene permiso de tablas temporales; se retiró con una variante. El seed está retirado y verificado | `sr-qa` |
 | D7 | `portal-mod05-ficha-uisp-live.spec.ts` falla en el login (`/auth/login`) antes de Soporte. Se atribuye al entorno y no está clasificado en CI | `sr-qa` |
 | D8 | CA-9 y CA-10 por rol técnico solo se prueban en la integración; no hay credenciales de técnico de prueba para el navegador | `sr-qa` |
+| D9 | Paso 3: `GET /wfm/subscribers/:id/upcoming-visits` devuelve `address` sin regla de titular bloqueado (`subscriber-upcoming-visits.service.ts`). No es una fuga nueva (la sección anterior y la agenda ya la mostraban; el portal no llama al endpoint con `privacyRestricted`), pero el endpoint nace sin la regla. Atada al G0 de la spec de bloqueo en proyecciones operativas (2026-11-05, F-3 y D-BLQ-5), como F-4 de la bandeja de órdenes. **Bloquea G7** | `sr-backend` · `sec-eng` |
+| D10 | Paso 3: el endpoint admite solo ADMIN, NOC y SUPPORT (`wfm-subscriber-visits.controller.ts:34`), mientras la pestaña Soporte se abre por permiso. Hoy, otro rol con `wfm.schedule.read` ve la pestaña **sin la franja**: no se llama al endpoint ni se muestra error (`SubscriberSupportTab.tsx:154-157`, prueba de rol en `SubscriberSupportTab.proximas-visitas.spec.tsx`); su historial plegable sigue cargando con el cargador anterior. Decisión de producto pendiente: ampliar los roles o mantenerlo | Producto (`prod-ux`) |
 
 ## 6. Datos de prueba
 
 El suscriptor `[SEED-SOPORTE]`, sus 10 tickets, 2 comentarios y 24 eventos de historial se crearon en el tenant de pruebas y se retiraron al cierre. No quedan rastros. No se usaron datos reales en docs, pruebas ni capturas.
+
+## Anexo — Paso 3: próximas visitas y lista densa (olas 7–9, spec v1.2)
+
+**Estado:** G6 ✅ en local, sin commit. CA-13 a CA-18 cumplen.
+
+**Decisiones del usuario (2026-11-20):** historial de visitas plegable en la pestaña, porque la agenda no filtra por suscriptor (D5); franja de una sola línea con «+N más» (CA-17).
+
+| Bloque | Qué quedó |
+|---|---|
+| API-V | `GET /api/v1/wfm/subscribers/:id/upcoming-visits`: visitas activas de cualquier origen (directa, oportunidad, contrato, ticket). La relación ticket → suscriptor (H13) se resuelve por `AssuranceSubscriberTicketsReadPort`, sin leer tablas ajenas. La regla de pertenencia de ticket es única (`subscriber-ticket-link.predicate.ts`) y la comparte con `TicketsService.list`. Consultas con `ORDER BY` y `LIMIT 51`, con `total` exacto y tope de 50. Solo ADMIN, NOC y SUPPORT con `wfm.schedule.read`. Sin migración |
+| P3 | Franja «Próximas visitas» en una línea: fecha, tipo, estado y origen sin recorte. La dirección va en el nombre accesible y en «Ver detalle». «+N más» despliega el resto. La visita de ticket abre el ticket al lado; la de oportunidad o contrato, la agenda. El contador cuenta todas. Si la respuesta no cumple el contrato, se avisa con «Reintentar». No se llama con `privacyRestricted` |
+| P3 | «Historial de visitas» plegable: reutiliza el cargador anterior, no repite lo que está en la franja y su error se ve sin desplegar |
+| P3-J | Fila de tres líneas (≈61 px). Cabecera de la lista compactada. Al entrar se abre el primer ticket de la lista ordenada (D3 sustituido). La fila seleccionada se desplaza a la vista |
+
+**Evidencia (jest directo, sin caché):**
+
+| Alcance | Resultado |
+|---|---|
+| Portal: `crm/subscribers` y `assurance` | 78 / 1227 |
+| Portal completo, sin carga en paralelo | 453 / 5118 que pasan y 1 omitido (última corrida completa; después se añadieron 9 pruebas de franja) |
+| API, integración de wfm y assurance | 12 / 115 |
+| API, unidad completa | 8250 / 8251; falla `app.config.production-urls.spec.ts`, que es ajeno a este frente y pasa cuando se corre solo |
+| Contratos de shared | 799 / 799 |
+| E2E (puerto 3002, `--workers=1`) | 14 / 14 |
+
+Revisiones: `boundary-reviewer`, `contract-drift-reviewer` y `sec-eng` dieron GO a API-V; `test-change-reviewer` revisó dos veces los specs ajustados, con hallazgos cerrados.
+
+**Medición a 1440×900, suscriptor sintético con tres visitas:**
+
+| Medida | Antes (H14) | Después |
+|---|---|---|
+| Alto de fila | 116 px | ≈61 px |
+| Filas visibles | 3 | 6 (la quinta acaba en px 834, a 66 px del borde) |
+| Franja | — | Una línea entre px 368 y 418 |
+| Ticket pedido por URL en la última fila | Fuera de la vista | Visible sin desplazar |
+
+A 1280 y 375 px no hay desplazamiento lateral ni regresión. El seed se retiró y se verificó.
+
+**Deudas del paso 3**
+
+| # | Deuda | Dueño |
+|---|---|---|
+| D11 | Al cargar, la franja muestra dos visitas durante unos 2 s y luego pasa a una, porque mide el ancho después del primer render | `fe-platform` |
+| D12 | Con la franja desplegada, la quinta fila queda hacia px 903, calculado y no medido. Plegada, que es el estado por defecto, cumple con margen | `fe-platform` |
+| D13 | El mock de la E2E `portal-mod05-lista-operativa.spec.ts` abre el panel de otro suscriptor distinto del de la URL; se corrigió la carrera de CA-LO-07, pero no el mock | `sr-qa` |

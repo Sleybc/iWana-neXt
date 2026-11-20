@@ -1,8 +1,10 @@
 # Spec UX — MOD05 Suscriptores · Soporte en vista dividida
 
-**Versión:** 1.0
+**Versión:** 1.2
 **Estado:** Aprobado (G0) por el usuario en sesión el 2026-11-20 · D1–D4 resueltas con la recomendación · Plan: [2026-11-20-mod05-soporte-vista-dividida](../plans/2026-11-20-mod05-soporte-vista-dividida.md)
 **Fecha:** 2026-11-20
+**Cambios v1.1 (2026-11-20, pedido del usuario tras publicar los pasos 1 y 2):** paso 3, franja única de próximas visitas (bloque I, H11–H13, CA-13 a CA-16, D5). Sustituye al bloque E.
+**Cambios v1.2 (2026-11-20, pedido del usuario):** densidad de la lista en vista dividida (bloque J, H14, CA-17 y CA-18). Ajusta el bloque C.
 **Emisor:** Claude Code, con criterio de AI-PROD-UX
 **Alcance de pantalla:** `/dashboard/crm/subscribers/[id]?tab=soporte` (paso 1) y `/dashboard/assurance` (paso 2, bloque G)
 **Relacionado:** [rediseño de la pestaña Soporte](2026-11-17-mod05-pestana-soporte-rediseno-ux.md), [detalle del ticket](2026-11-16-mod10-detalle-ticket-ux.md) y [bandeja con colas](2026-11-18-mod10-bandeja-colas-de-trabajo-ux.md) (vigentes; esta spec las complementa y no las reemplaza) · [ficha estilo UISP](2026-11-10-mod05-ficha-suscriptor-estilo-uisp-ux.md)
@@ -28,6 +30,10 @@ Medido en el Chrome del usuario (1464×788, administrador) sobre un suscriptor c
 | H7 | La lista ya recibe la descripción del ticket (la usa la búsqueda) | `SubscriberTicketsSection.tsx:121` |
 | H8 | En los tickets importados la descripción está vacía y el relato vive en el primer comentario; el detalle muestra «Sin descripción adicional registrada para este caso» sobre ese relato | `AssuranceTicketDetail.tsx:1211`; medido |
 | H9 | El panel del ticket tiene lo que UISP no: personas, área, visita y orden, adjuntos y registro | Medido |
+| H11 | La sección «Visitas» de la pestaña excluye las visitas que tienen ticket: solo muestra las que nacen de una oportunidad o un contrato | `SubscriberVisitsSection.tsx:179-184`; RF-SO-06 de la spec del 2026-10-20 |
+| H12 | La visita de un ticket se ve dentro del ticket, en «Visita y orden de trabajo» | `AssuranceTicketDetail.tsx`; medido |
+| H13 | La solicitud de visita creada desde un ticket no guarda el suscriptor: el filtro de visitas por suscriptor no la trae | `visit-request-origin-orchestration.ts:441-451` |
+| H14 | Tras el paso 1, a 1440×900: filas de 116 px (antes 60), 3 visibles (antes 5), primera fila en el píxel 542 (antes 478); el ticket abierto al entrar era el quinto de la lista y quedaba fuera de la vista | Medido con el suscriptor sintético |
 | H10 | La bandeja de Mesa de ayuda mostraba «3 tickets» en «Todos» mientras este suscriptor tenía 11 | Medido; **causa sin investigar** |
 
 ## 2. Problema
@@ -55,6 +61,14 @@ Para leer la historia de soporte de un cliente hay que abrir y cerrar un panel p
 | **G · Mesa de ayuda** | Anterior y siguiente dentro del ticket, según la lista filtrada; la línea de relato bajo el asunto en la tabla | La tabla, sus columnas, colas, filtros y el panel; **no pasa a vista dividida** |
 | **H · Importados en la bandeja** | Se investiga H10 y se documenta; se corrige solo si es un defecto | — |
 
+### Paso 3 — una sola respuesta a «¿tiene una visita pendiente?»
+
+| Bloque | Qué cambia | Se conserva |
+|---|---|---|
+| **I · Próximas visitas** | Una franja sobre la lista con las visitas pendientes del suscriptor, de cualquier origen: fecha o «por agendar», tipo de trabajo y origen. La de un ticket abre ese ticket en la vista dividida; la de una oportunidad o contrato abre su visita en la agenda. Sin pendientes, la franja es una línea. La sección «Visitas» del fondo se retira como bloque; su historial queda a un clic, como «Historial de visitas» plegable en la misma pestaña (D5) | Cada dato y acción que hoy tiene una visita sin ticket («Abrir en Agendamiento» incluido); la visita de un ticket sigue en su ticket; el contador «Visitas próximas» pasa a contar todas |
+
+| **J · Lista densa** | La fila en vista dividida ocupa como máximo tres líneas: número y asunto; estado, prioridad e indicador de visita; relato. Tipo, responsable, adjuntos y fecha van en esas líneas o en una secundaria compacta, sin añadir una cuarta. El ticket abierto al entrar es el primero de la lista tal como está ordenada (ajusta el bloque C) y la fila seleccionada siempre queda a la vista | Los ocho datos de H5, visibles o con nombre accesible; el orden de la lista; un ticket pedido por URL se respeta y la lista se desplaza hasta él |
+
 **Fuera de alcance:** rediseñar el detalle del ticket, responder desde la lista, etiquetas de ticket, tareas enlazadas al estilo UISP, selección múltiple y cualquier dato del titular que la lista no muestre hoy.
 
 ## 4. Contrato de datos del paso 2 (dueño `sr-backend`)
@@ -65,6 +79,7 @@ Regla → dato; antes de congelar se cruza cada fila con DTO y origen.
 |---|---|---|
 | Mostrar cuántos comentarios tiene | Cantidad de comentarios visibles para quien consulta | Agregado en SQL, no una consulta por ticket |
 | Mostrar el relato de un importado | Extracto del primer comentario visible, truncado en servidor | Solo cuando la descripción está vacía; sin datos de terceros añadidos |
+| Listar las visitas pendientes del suscriptor | Visitas activas por suscriptor, incluidas las que nacen de un ticket suyo (H13) | La relación ticket → suscriptor se resuelve por puerto del módulo dueño; sin migración salvo que `sr-backend` demuestre que hace falta, y entonces se detiene y avisa |
 | Anterior y siguiente | Ninguno nuevo: sale de la lista ya cargada | Al llegar al borde de la página, se desactiva |
 
 ## 5. Criterios de aceptación
@@ -83,6 +98,12 @@ Regla → dato; antes de congelar se cruza cada fila con DTO y origen.
 | CA-10 | 2 | El extracto nunca muestra un comentario que el detalle no mostraría a ese usuario |
 | CA-11 | 2 | En Mesa de ayuda, anterior y siguiente recorren la lista filtrada sin cerrar el panel; la tabla conserva sus columnas |
 | CA-12 | 2 | H10 queda explicado en el informe, con evidencia |
+| CA-13 | 3 | La franja muestra toda visita pendiente del suscriptor, nazca de un ticket, una oportunidad o un contrato, con una prueba de integración por origen |
+| CA-14 | 3 | Cada visita lleva a su origen con un clic; ninguna aparece dos veces en la pestaña |
+| CA-15 | 3 | La franja no muestra visitas de otro suscriptor ni de otro tenant, y respeta el permiso de lectura de Programación |
+| CA-16 | 3 | A 1440×900 la franja se ve sin desplazar; el historial de visitas sin ticket sigue a un clic |
+| CA-17 | 3 | A 1440×900, en vista dividida, se ven al menos 5 filas de la lista con la franja de visitas presente, medido en navegador |
+| CA-18 | 3 | Al entrar y al abrir un ticket por URL, la fila seleccionada está visible en la lista sin desplazar a mano |
 
 ## 6. Decisiones
 
@@ -92,8 +113,9 @@ Resueltas el 2026-11-20 por el usuario, con la recomendación.
 |---|---|---|---|
 | D1 | Ancho de corte y reparto de la vista dividida, y dónde va el lateral del ticket cuando no cabe | Lo dictamina `ds-owner` antes de construir; punto de partida: dividir desde 1280 px, lista de unos 400 px | Usuario |
 | D2 | Mesa de ayuda en vista dividida | No: tabla con anterior y siguiente (bloque G) | Usuario |
-| D3 | Qué ticket se abre al entrar | El abierto más reciente; sin abiertos, el más reciente | Usuario |
+| D3 | Qué ticket se abre al entrar | El abierto más reciente; sin abiertos, el más reciente. Sustituido en v1.2 por el bloque J: el primero de la lista tal como está ordenada | Usuario |
 | D4 | Dónde vive la enmienda | Spec nueva que complementa las tres vigentes, sin editarlas | Usuario |
+| D5 | Si la sección «Visitas» del fondo se retira o se renombra | Se retira y se reemplaza por la franja única (pedido del usuario, 2026-11-20). El historial queda plegable en la pestaña, cerrado por defecto, porque la agenda no filtra por suscriptor (decisión del usuario, 2026-11-20) | Usuario |
 
 ## 7. Orden sugerido
 
