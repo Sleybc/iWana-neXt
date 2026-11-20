@@ -1241,7 +1241,8 @@ export class TicketsService {
         priority: TicketPriority.NORMAL,
         source: TicketSource.INTERNAL,
         subject: `Instalación — ${dto.expedienteFullName}`.slice(0, 200),
-        description: `Ticket operativo de instalación generado automáticamente para el expediente ${dto.expedienteId}.`,
+        // Sin el identificador del expediente: no se puede leer y ya está en «Relacionado con».
+        description: 'Ticket creado automáticamente al programar la visita de instalación.',
         createdByUserId: actorUserId,
       });
 
