@@ -648,9 +648,16 @@ export function AssuranceTicketDetail({
 
   const closedNotice =
     showClosedNotice && ticket ? (
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="mr-auto text-sm text-gray-700 dark:text-gray-200">
-          Este ticket está cerrado. Si el caso continúa, crea uno nuevo
+      // Aviso en la cabecera, visible sin desplazar en los tres contenedores (ajuste del usuario
+      // 2026-11-20); `role="status"` para que el lector de pantalla lo anuncie.
+      <div
+        role="status"
+        className="flex flex-wrap items-center gap-2 rounded-md bg-gray-50 px-3 py-2 dark:bg-dark-surface-2"
+      >
+        <p className="mr-auto min-w-0 text-sm text-gray-700 dark:text-gray-200">
+          {ticket.status === TicketStatus.CANCELLED
+            ? 'Este ticket está cancelado. Si el caso continúa, crea uno nuevo'
+            : 'Este ticket está cerrado. Si el caso continúa, crea uno nuevo'}
         </p>
         {onCreateFollowUpTicket ? (
           <Button
@@ -738,9 +745,7 @@ export function AssuranceTicketDetail({
         </Button>
       </div>
     </div>
-  ) : (
-    closedNotice
-  );
+  ) : undefined;
 
   // CA-5: solo la ficha pasa su titular; Mesa de ayuda y la página propia lo muestran siempre.
   const relatedIsContext =
@@ -787,6 +792,7 @@ export function AssuranceTicketDetail({
 
         {/* B · Cabecera: insignias y control Estado en una fila (spec §3 J; ajuste CA-10). */}
         <div className="space-y-2">
+          {closedNotice}
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="primary">{getAssuranceTicketTypeLabel(current.type)}</Badge>
             {/* El estado actual se muestra en el riel, junto a su control (spec 2026-11-20 §3 B). */}

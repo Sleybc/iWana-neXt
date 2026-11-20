@@ -184,3 +184,12 @@ Un usuario lo vio en un ticket cerrado real: el botón seguía activo, aunque la
 - Una expectativa cambia por esta regla, solo en CLOSED, en `AssuranceTicketDrawer.p1.spec.tsx`; OPEN conserva la suya. También cambian las filas de vínculo de `AssuranceTicketDrawer.inventory.spec.tsx`.
 - Portal: **81/1289** en verde.
 - La captura del aviso «Este ticket está cerrado…» sigue pendiente: el tenant de pruebas no tiene tickets cerrados y en el real no se toman capturas.
+
+### B.6 Aviso en la cabecera
+
+Ajuste del usuario del 2026-11-20: «Pasa que suba el aviso a la cabecera». En un ticket cerrado real, en la vista dividida, el aviso quedaba en el píxel 989, bajo el lateral apilado.
+
+- El aviso y «Crear ticket» pasan a la cabecera del detalle, antes de las insignias y del hilo, con `role="status"`. En los cancelados dice «cancelado».
+- Ya no se repite donde iba el redactor.
+- Portal: **81/1289** en verde; typecheck y eslint en exit 0. La prueba fija que el aviso aparece una sola vez, como estado y antes del hilo.
+- Pendiente: medirlo en el navegador a 375 px. El tenant de pruebas no tiene tickets cerrados.

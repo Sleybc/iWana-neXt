@@ -411,6 +411,9 @@ describe.each(CONTAINERS)('Inventario del lateral — contenedor %s', (container
 
 describe('Ticket cerrado en solo lectura (spec 2026-11-20 ticket cerrado §2, CA-4)', () => {
   const CLOSED_LINE = 'Este ticket está cerrado. Si el caso continúa, crea uno nuevo';
+  const CANCELLED_LINE = 'Este ticket está cancelado. Si el caso continúa, crea uno nuevo';
+  const lineFor = (status: TicketStatus) =>
+    status === TicketStatus.CANCELLED ? CANCELLED_LINE : CLOSED_LINE;
 
   it.each([TicketStatus.CLOSED, TicketStatus.CANCELLED])(
     '%s: sin redactor ni controles de asignación; línea y «Crear ticket»',
@@ -427,7 +430,16 @@ describe('Ticket cerrado en solo lectura (spec 2026-11-20 ticket cerrado §2, CA
       const scope = screen.getByRole('region', { name: 'Ticket abierto' });
       expect(within(scope).queryByLabelText('Nuevo comentario')).toBeNull();
       expect(within(scope).queryByRole('button', { name: 'Agregar comentario' })).toBeNull();
-      expect(within(scope).getByText(CLOSED_LINE)).toBeVisible();
+      // Aviso en la cabecera (ajuste del usuario 2026-11-20): una sola vez, anunciado como estado
+      // y antes del hilo, para que se vea sin desplazar.
+      const notice = within(scope).getByText(lineFor(status));
+      expect(notice).toBeVisible();
+      expect(within(scope).getAllByText(lineFor(status))).toHaveLength(1);
+      expect(notice.closest('[role="status"]')).not.toBeNull();
+      const thread = within(scope).getByRole('tab', { name: /Comentarios/ });
+      expect(
+        notice.compareDocumentPosition(thread) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
       expect(within(scope).queryByRole('combobox', { name: 'Responsable' })).toBeNull();
       expect(within(scope).queryByRole('combobox', { name: 'Área' })).toBeNull();
       expect(within(scope).queryByRole('button', { name: 'Guardar asignación' })).toBeNull();
