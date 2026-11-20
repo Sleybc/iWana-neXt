@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Plus } from 'lucide-react';
 import { WfmWorkType, WorkOrderSourceContext, TaskOriginContext } from '@iwana/shared';
 import { Badge, Button } from '@iwana/ui';
 import type {
@@ -26,7 +26,11 @@ import {
   canScheduleInstallation,
 } from '@/components/crm/expedientes/expediente-scheduling';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalSkeletonBlock,
+  portalInlineTextLinkClassName,
+} from '@/components/shared/portal-ui';
 import { ScheduleCalendar } from './ScheduleCalendar';
 import type { PendingVisitDropPayload, ScheduleCalendarSlotSelection } from './ScheduleCalendar';
 import { SchedulingDashboard } from './SchedulingDashboard';
@@ -67,8 +71,11 @@ import {
   type DailyDraftEvent,
 } from './daily-schedule-draft';
 import { useDailyDisplayOperatingWindow } from './useOperatingWindow';
+import { AGENDA_EVENT_PARAM, isAgendaEventId, removeAgendaEventParam } from './agenda-event-link';
+import { getPendingShortcutLabel, useSchedulingPendingCounts } from './scheduling-pending-counts';
 import {
   buildSchedulingRangeForView,
+  buildSchedulingSearchParams,
   buildDefaultSchedulingFilters,
   getTechnicianDisplayName,
   canManageScheduling,
@@ -76,8 +83,10 @@ import {
   filterRecommendationCandidateUsers,
   filterOperationalTechnicians,
   formatSchedulingExpedienteLabel,
+  formatSchedulingRangeLabel,
   formatWfmDayLabel,
   getDefaultSchedulingViewForRole,
+  getSchedulingQueryKeyWithoutViewState,
   getRecommendedSchedulingViewForDensity,
   hydrateSchedulingFiltersFromSearchParams,
   isHighDensityScheduleDay,
@@ -198,6 +207,7 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
   const [pendingVisitResponse, setPendingVisitResponse] =
     useState<ListWfmVisitRequestsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -237,6 +247,8 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
   const [dailyDraft, setDailyDraft] = useState<DailyDraftEvent | null>(null);
 
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [eventLinkNotice, setEventLinkNotice] = useState<string | null>(null);
+  const handledEventLinkRef = useRef<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<WfmScheduleEvent | null>(null);
   const [selectedExecutionOrder, setSelectedExecutionOrder] =
     useState<ExecutionOrderDetailResponse | null>(null);
@@ -252,6 +264,10 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
     useState(false);
 
   const loadSequenceRef = useRef(0);
+  // Conteos del encabezado (§3 H): se recargan con cada recarga de la agenda (Actualizar,
+  // agendar, confirmar borrador, devolver a pendientes); la primera carga no los repite.
+  const [pendingCountsRefreshKey, setPendingCountsRefreshKey] = useState(0);
+  const hasLoadedDataRef = useRef(false);
   const handledCreateQueryRef = useRef<string | null>(null);
   const handledPendingVisitQueryRef = useRef<string | null>(null);
   const appliedRoleDefaultViewRef = useRef(false);
@@ -262,6 +278,10 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
   const agendaPath = '/dashboard/scheduling/agenda';
   const currentQuery = searchParams.toString();
   const isExecutionRole = user?.role === UserRole.TECHNICIAN || user?.role === UserRole.CONTRACTOR;
+  const pendingCounts = useSchedulingPendingCounts(
+    isAgendaSurface && !authLoading && Boolean(user) && canView && !isExecutionRole,
+    pendingCountsRefreshKey,
+  );
   const hasAgendaQueryContext =
     searchParams.get('open') === 'create' ||
     Boolean(readPendingVisitSchedulingHandoff(searchParams));
@@ -528,59 +548,77 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
     [clearCreateQueryParams],
   );
 
-  const loadEventDetails = useCallback(async (eventId: string) => {
-    setSelectedEventId(eventId);
-    setIsDrawerOpen(true);
-    setIsDrawerLoading(true);
-    setDrawerError(null);
-    setWorkOrderWarning(null);
-    setExecutionOrderError(null);
-
-    try {
-      const eventDetail = await wfmApi.events.get(eventId);
-      let workOrderDetail: WfmWorkOrder | null = null;
-      let executionOrderDetail: ExecutionOrderDetailResponse | null = null;
-      if (eventDetail.workOrderId) {
-        try {
-          workOrderDetail = await wfmApi.workOrders.get(eventDetail.workOrderId);
-        } catch (workOrderError) {
-          setWorkOrderWarning(
-            `La orden de trabajo vinculada no está disponible en este momento. ${mapSchedulingError(workOrderError)}`,
-          );
-        }
-      }
-
-      if (eventDetail.executionOrderId) {
-        try {
-          executionOrderDetail = await tasksApi.executionOrders.get(eventDetail.executionOrderId);
-        } catch (executionOrderError) {
-          setExecutionOrderError(
-            `La OT vinculada no está disponible en este momento. ${mapSchedulingError(executionOrderError)}`,
-          );
-        }
-      }
-
-      const enrichedEvent = await enrichScheduleEventWithCrmCoordinates(
-        eventDetail,
-        workOrderDetail,
-        crmApi.getExpediente,
-      );
-      setSelectedEvent(enrichedEvent);
-      setSelectedExecutionOrder(executionOrderDetail);
-    } catch (detailError) {
-      setSelectedEvent(null);
-      setSelectedExecutionOrder(null);
+  const loadEventDetails = useCallback(
+    async (eventId: string, options?: { fromLink?: boolean }) => {
+      setSelectedEventId(eventId);
+      setIsDrawerOpen(true);
+      setIsDrawerLoading(true);
+      setDrawerError(null);
       setWorkOrderWarning(null);
       setExecutionOrderError(null);
-      setDrawerError(mapSchedulingError(detailError));
-    } finally {
-      setIsDrawerLoading(false);
-    }
-  }, []);
+
+      try {
+        const eventDetail = await wfmApi.events.get(eventId);
+        let workOrderDetail: WfmWorkOrder | null = null;
+        let executionOrderDetail: ExecutionOrderDetailResponse | null = null;
+        if (eventDetail.workOrderId) {
+          try {
+            workOrderDetail = await wfmApi.workOrders.get(eventDetail.workOrderId);
+          } catch (workOrderError) {
+            setWorkOrderWarning(
+              `La orden de trabajo vinculada no está disponible en este momento. ${mapSchedulingError(workOrderError)}`,
+            );
+          }
+        }
+
+        if (eventDetail.executionOrderId) {
+          try {
+            executionOrderDetail = await tasksApi.executionOrders.get(eventDetail.executionOrderId);
+          } catch (executionOrderError) {
+            setExecutionOrderError(
+              `La OT vinculada no está disponible en este momento. ${mapSchedulingError(executionOrderError)}`,
+            );
+          }
+        }
+
+        const enrichedEvent = await enrichScheduleEventWithCrmCoordinates(
+          eventDetail,
+          workOrderDetail,
+          crmApi.getExpediente,
+        );
+        setSelectedEvent(enrichedEvent);
+        setSelectedExecutionOrder(executionOrderDetail);
+        return enrichedEvent;
+      } catch (detailError) {
+        if (options?.fromLink && detailError instanceof ApiError && detailError.status === 404) {
+          // Inexistente o ajeno: la API no los distingue y la agenda tampoco (CA-9).
+          setSelectedEventId(null);
+          setSelectedEvent(null);
+          setSelectedExecutionOrder(null);
+          setIsDrawerOpen(false);
+          setEventLinkNotice('El evento del enlace no está disponible. Se muestra la agenda.');
+          return null;
+        }
+        setSelectedEvent(null);
+        setSelectedExecutionOrder(null);
+        setWorkOrderWarning(null);
+        setExecutionOrderError(null);
+        setDrawerError(mapSchedulingError(detailError));
+        return null;
+      } finally {
+        setIsDrawerLoading(false);
+      }
+    },
+    [],
+  );
 
   const loadData = useCallback(async () => {
     const requestId = loadSequenceRef.current + 1;
     loadSequenceRef.current = requestId;
+    if (hasLoadedDataRef.current) {
+      setPendingCountsRefreshKey((key) => key + 1);
+    }
+    hasLoadedDataRef.current = true;
     setIsLoading(true);
     setError(null);
     setInfoMessage(null);
@@ -701,6 +739,7 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
     }
 
     setInfoMessage(warnings.length > 0 ? warnings.join(' ') : null);
+    setHasLoadedOnce(true);
     setIsLoading(false);
   }, [canManage, filters, isAgendaSurface, isDashboardSurface, surface]);
 
@@ -906,7 +945,7 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
     const open = searchParams.get('open');
     const type = searchParams.get('type');
     const expedienteId = searchParams.get('expedienteId');
-    const queryKey = searchParams.toString();
+    const queryKey = getSchedulingQueryKeyWithoutViewState(searchParams);
 
     if (open !== 'create') {
       return;
@@ -957,7 +996,7 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
     }
 
     const handoff = readPendingVisitSchedulingHandoff(searchParams);
-    const queryKey = searchParams.toString();
+    const queryKey = getSchedulingQueryKeyWithoutViewState(searchParams);
 
     if (!handoff) {
       return;
@@ -998,14 +1037,79 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
     [canManage],
   );
 
-  const openAgendaDay = useCallback((dayKey: string) => {
-    setFeedback(null);
-    setFilters((current) => ({
-      ...current,
-      ...buildSchedulingRangeForView('day', dayKey),
-      view: 'day',
-    }));
-  }, []);
+  // Spec MOD09 agenda §3 E: vista, fecha base y filtros viajan en la dirección sin recargar.
+  const applyAgendaFilters = useCallback(
+    (next: SchedulingFilters) => {
+      setFeedback(null);
+      setFilters(next);
+
+      if (!isAgendaSurface || !pathname) {
+        return;
+      }
+
+      const currentQueryString = searchParams.toString();
+      const nextQuery = buildSchedulingSearchParams(
+        new URLSearchParams(currentQueryString),
+        next,
+      ).toString();
+      if (nextQuery !== currentQueryString) {
+        router.replace(`${pathname}?${nextQuery}`, { scroll: false });
+      }
+    },
+    [isAgendaSurface, pathname, router, searchParams],
+  );
+
+  const openAgendaDay = useCallback(
+    (dayKey: string) => {
+      applyAgendaFilters({
+        ...filters,
+        ...buildSchedulingRangeForView('day', dayKey),
+        view: 'day',
+      });
+    },
+    [applyAgendaFilters, filters],
+  );
+  const linkedEventId = isAgendaSurface ? searchParams.get(AGENDA_EVENT_PARAM) : null;
+
+  const clearEventLinkParam = useCallback(() => {
+    if (!pathname || !searchParams.has(AGENDA_EVENT_PARAM)) {
+      return;
+    }
+    const nextQuery = removeAgendaEventParam(
+      new URLSearchParams(searchParams.toString()),
+    ).toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  // Enlace a un evento (spec MOD09 agenda §3 G): abre su panel sobre el día del evento.
+  useEffect(() => {
+    if (!linkedEventId) {
+      handledEventLinkRef.current = null;
+      return;
+    }
+    if (authLoading || !user || !canView || handledEventLinkRef.current === linkedEventId) {
+      return;
+    }
+    handledEventLinkRef.current = linkedEventId;
+    if (!isAgendaEventId(linkedEventId)) {
+      setEventLinkNotice('El evento del enlace no está disponible. Se muestra la agenda.');
+      clearEventLinkParam();
+      return;
+    }
+    setEventLinkNotice(null);
+    void loadEventDetails(linkedEventId, { fromLink: true }).then((linkedEvent) => {
+      if (!linkedEvent) {
+        clearEventLinkParam();
+        return;
+      }
+      const dayKey = toLocalDateValue(linkedEvent.scheduledStartAt);
+      if (dayKey && (filters.view !== 'day' || filters.fromDate !== dayKey)) {
+        openAgendaDay(dayKey);
+      }
+    });
+    // Solo reacciona a un id nuevo; filtros y día los toma del render en que llega el enlace.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, canView, linkedEventId, user]);
 
   const renderPendingDispatchPanel = (compactRail = false) => {
     if (!selectedPendingVisitRequest) {
@@ -1158,17 +1262,106 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
     );
   }
 
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title={pageTitle}
-        subtitle={pageSubtitle}
-        actions={
-          <Badge variant="primary" className="px-3 py-1 text-[11px] uppercase tracking-tight">
-            {formatWfmDayLabel(new Date())}
-          </Badge>
+  const openCreateDialog = () => {
+    if (hasPendingCreateQueryContext && !createInitialValues) {
+      const pendingExpedienteId = searchParams.get('expedienteId');
+
+      if (pendingExpedienteId) {
+        void hydrateCreateFromExpediente(pendingExpedienteId, {
+          clearQueryOnFinish: true,
+        });
+        return;
+      }
+    }
+
+    if (!createInitialValues && !expedienteContextId && !hasPendingCreateQueryContext) {
+      clearCreateContext();
+    }
+    setIsCreateOpen(true);
+  };
+  const agendaEventCount = events.length;
+  const isInitialLoad = isLoading && !hasLoadedOnce;
+  const loadErrorAlert =
+    error && events.length === 0 && !isLoading ? (
+      <PortalAlert
+        variant="error"
+        title="No fue posible cargar la programación"
+        description={error}
+        action={
+          <Button type="button" variant="secondary" onClick={() => void loadData()}>
+            Reintentar carga
+          </Button>
         }
+        icon={AlertTriangle}
       />
+    ) : null;
+
+  return (
+    <div className={isAgendaSurface ? 'space-y-4' : 'space-y-6'}>
+      {isAgendaSurface ? (
+        <PageHeader
+          title={pageTitle}
+          subtitle={
+            <span className="tabular-nums">
+              {formatSchedulingRangeLabel(filters)} · {agendaEventCount}{' '}
+              {agendaEventCount === 1 ? 'evento' : 'eventos'}
+            </span>
+          }
+          className="py-4"
+          actions={
+            <>
+              <Link
+                href="/dashboard/scheduling/pending-visits"
+                className={`${portalInlineTextLinkClassName} inline-flex items-center gap-1.5`}
+                aria-label={getPendingShortcutLabel('Pendientes', pendingCounts.toSchedule)}
+              >
+                Pendientes
+                {pendingCounts.toSchedule !== null ? (
+                  <Badge variant="neutral" className="tabular-nums" aria-hidden="true">
+                    {pendingCounts.toSchedule}
+                  </Badge>
+                ) : null}
+              </Link>
+              <Link
+                href="/dashboard/scheduling/unrealized-visits"
+                className={`${portalInlineTextLinkClassName} inline-flex items-center gap-1.5`}
+                aria-label={getPendingShortcutLabel(
+                  'Visitas sin realizar',
+                  pendingCounts.unrealized,
+                )}
+              >
+                Visitas sin realizar
+                {pendingCounts.unrealized !== null ? (
+                  <Badge variant="neutral" className="tabular-nums" aria-hidden="true">
+                    {pendingCounts.unrealized}
+                  </Badge>
+                ) : null}
+              </Link>
+              {canManage ? (
+                <Button
+                  type="button"
+                  className="h-11 min-h-11 px-4"
+                  onClick={openCreateDialog}
+                  aria-label="Crear solicitud manual"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  Nueva solicitud
+                </Button>
+              ) : null}
+            </>
+          }
+        />
+      ) : (
+        <PageHeader
+          title={pageTitle}
+          subtitle={pageSubtitle}
+          actions={
+            <Badge variant="primary" className="px-3 py-1 text-[11px] uppercase tracking-tight">
+              {formatWfmDayLabel(new Date())}
+            </Badge>
+          }
+        />
+      )}
 
       {isDemoMode && (
         <PortalAlert
@@ -1187,78 +1380,51 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
         />
       )}
 
+      {eventLinkNotice ? (
+        <PortalAlert variant="info" title="Evento no disponible" description={eventLinkNotice} />
+      ) : null}
       {infoMessage && (
         <PortalAlert variant="info" title="Cobertura parcial" description={infoMessage} />
       )}
 
-      {error && events.length === 0 && !isLoading ? (
-        <PortalAlert
-          variant="error"
-          title="No fue posible cargar la programación"
-          description={error}
-          action={
-            <Button type="button" variant="secondary" onClick={() => void loadData()}>
-              Reintentar carga
-            </Button>
-          }
-          icon={AlertTriangle}
-        />
+      {isDashboardSurface ? (
+        (loadErrorAlert ??
+        (isInitialLoad ? (
+          <SchedulingSkeleton />
+        ) : (
+          <SchedulingDashboard
+            summary={summary}
+            events={events}
+            techniciansById={techniciansById}
+            selectedDayKey={calendarDays[0]?.key ?? filters.fromDate}
+            isLoading={isLoading}
+            onSelectEvent={(event) => void loadEventDetails(event.id)}
+            onFilterTechnician={(technicianId) => {
+              setFeedback(null);
+              setFilters((current) => ({ ...current, technicianId }));
+            }}
+          />
+        )))
       ) : (
         <>
-          {isLoading && events.length === 0 ? (
-            <SchedulingSkeleton />
-          ) : isDashboardSurface ? (
-            <SchedulingDashboard
-              summary={summary}
-              events={events}
-              techniciansById={techniciansById}
-              selectedDayKey={calendarDays[0]?.key ?? filters.fromDate}
-              isLoading={isLoading}
-              onSelectEvent={(event) => void loadEventDetails(event.id)}
-              onFilterTechnician={(technicianId) => {
-                setFeedback(null);
-                setFilters((current) => ({ ...current, technicianId }));
-              }}
-            />
-          ) : (
-            <>
-              <SchedulingToolbar
-                filters={filters}
-                assigneeOptions={assigneeOptions}
-                visibleDayTaskCount={visibleDayTaskCount}
-                onFiltersChange={(next) => {
-                  setFeedback(null);
-                  setFilters(next);
-                }}
-                onRefresh={() => {
-                  setFeedback(null);
-                  void loadData();
-                }}
-                onOpenCreate={() => {
-                  if (hasPendingCreateQueryContext && !createInitialValues) {
-                    const pendingExpedienteId = searchParams.get('expedienteId');
+          {/* La barra no se desmonta al recargar (hallazgo W0): solo el contenido espera. */}
+          <SchedulingToolbar
+            filters={filters}
+            assigneeOptions={assigneeOptions}
+            onFiltersChange={applyAgendaFilters}
+            onRefresh={() => {
+              setFeedback(null);
+              void loadData();
+            }}
+            isRefreshing={isLoading}
+          />
 
-                    if (pendingExpedienteId) {
-                      void hydrateCreateFromExpediente(pendingExpedienteId, {
-                        clearQueryOnFinish: true,
-                      });
-                      return;
-                    }
-                  }
-
-                  if (
-                    !createInitialValues &&
-                    !expedienteContextId &&
-                    !hasPendingCreateQueryContext
-                  ) {
-                    clearCreateContext();
-                  }
-                  setIsCreateOpen(true);
-                }}
-                isRefreshing={isLoading}
-                canManage={canManage}
-              />
-
+          {loadErrorAlert ??
+            (isInitialLoad ? (
+              <div aria-busy="true">
+                <PortalSkeletonBlock className="h-[520px]" />
+              </div>
+            ) : (
               <div
                 className={
                   showPendingPanelBesideCalendar
@@ -1335,8 +1501,7 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
 
                 {showPendingPanelBesideCalendar ? renderPendingDispatchPanel(false) : null}
               </div>
-            </>
-          )}
+            ))}
         </>
       )}
 
@@ -1498,6 +1663,7 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
         onOpenChange={(open) => {
           setIsDrawerOpen(open);
           if (!open) {
+            clearEventLinkParam();
             setSelectedEventId(null);
             setSelectedEvent(null);
             setSelectedExecutionOrder(null);
@@ -1517,8 +1683,12 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
         error={drawerError}
         {...(selectedEventId
           ? {
-              onRetry: () => loadEventDetails(selectedEventId),
-              onRefreshDetail: () => loadEventDetails(selectedEventId),
+              onRetry: async () => {
+                await loadEventDetails(selectedEventId);
+              },
+              onRefreshDetail: async () => {
+                await loadEventDetails(selectedEventId);
+              },
             }
           : {})}
         executionOrder={selectedExecutionOrder}

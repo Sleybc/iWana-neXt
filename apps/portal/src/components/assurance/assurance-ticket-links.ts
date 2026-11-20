@@ -1,5 +1,6 @@
 import { AccessPermissionKey, type TicketPartyProfileKind } from '@iwana/shared';
 import { buildPendingVisitInboxHref } from '@/components/scheduling/pending-visit-scheduling-handoff';
+import { buildAgendaEventHref } from '@/components/scheduling/agenda-event-link';
 
 /**
  * Enlaces del detalle del ticket (spec MOD10 §3 L, CA-12). Cada enlace exige el permiso de lectura
@@ -40,12 +41,18 @@ export function getTicketPartyProfileHref(
   return `${base}/${encodeURIComponent(profile.id)}`;
 }
 
-/** Visita activa en la bandeja de visitas (Programación); exige `wfm.schedule.read`. */
+/**
+ * Visita activa; exige `wfm.schedule.read`. Con evento agendado abre su panel en la agenda
+ * (spec MOD09 agenda §3 G); sin evento, la solicitud en la bandeja de visitas.
+ */
 export function getTicketVisitHref(
   visitId: string | null | undefined,
   hasPermission: HasPermission,
+  scheduleEventId?: string | null,
 ): string | null {
-  if (!isUuid(visitId) || !hasPermission(AccessPermissionKey.WFM_SCHEDULE_READ)) return null;
+  if (!hasPermission(AccessPermissionKey.WFM_SCHEDULE_READ)) return null;
+  if (isUuid(scheduleEventId)) return buildAgendaEventHref(scheduleEventId);
+  if (!isUuid(visitId)) return null;
   return buildPendingVisitInboxHref(visitId);
 }
 

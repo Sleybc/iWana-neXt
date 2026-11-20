@@ -52,6 +52,16 @@ jest.mock('./useOperatingWindow', () => ({
   },
 }));
 
+// Los conteos del encabezado (§3 H) se prueban en scheduling-pending-counts.spec.ts; aquí se
+// aíslan para no alterar los conteos de llamadas a los listados que verifican estas pruebas.
+const usePendingCountsMock = jest.fn<{ toSchedule: number | null; unrealized: number | null }, []>(
+  () => ({ toSchedule: null, unrealized: null }),
+);
+jest.mock('./scheduling-pending-counts', () => ({
+  ...jest.requireActual('./scheduling-pending-counts'),
+  useSchedulingPendingCounts: () => usePendingCountsMock(),
+}));
+
 jest.mock('next/navigation', () => ({
   usePathname: () => pathnameMock,
   useRouter: (() => {
@@ -323,6 +333,7 @@ describe('SchedulingClient', () => {
     jest.clearAllMocks();
     replaceMock.mockReset();
     pushMock.mockReset();
+    usePendingCountsMock.mockReturnValue({ toSchedule: null, unrealized: null });
     searchParamsMock = new URLSearchParams();
     pathnameMock = '/dashboard/scheduling/agenda';
     useOperatingWindowMock.mockReturnValue({
@@ -648,6 +659,34 @@ describe('SchedulingClient', () => {
     });
     expect(screen.queryByText('Carga por recurso')).not.toBeInTheDocument();
     expect(screen.queryByText('Capacidad operativa')).not.toBeInTheDocument();
+  });
+
+  it('el enlace entrante de CRM con `type` no filtra los eventos por tipo de trabajo', async () => {
+    searchParamsMock = new URLSearchParams('open=create&type=INSTALLATION&expedienteId=x');
+    wfmApiMock.events.list.mockResolvedValue({
+      data: [],
+      meta: {
+        nextCursor: null,
+        total: 0,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 100,
+        totalPages: 0,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
+
+    render(<SchedulingClient surface="agenda" />);
+
+    await waitFor(() => {
+      expect(wfmApiMock.events.list).toHaveBeenCalled();
+    });
+    wfmApiMock.events.list.mock.calls.forEach(([args]) => {
+      expect((args as { type?: string }).type ?? '').toBe('');
+    });
   });
 
   it('mapea tipo, estado y técnico al renderizar eventos cargados', async () => {
@@ -995,6 +1034,95 @@ describe('SchedulingClient', () => {
     expect(`${listArgs.from} ${listArgs.to}`).toMatch(/2026-08-10/);
   });
 
+  describe('enlace a un evento y conteos del encabezado (spec MOD09 agenda §3 G–H)', () => {
+    const LINKED_EVENT_ID = '3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d';
+
+    it('eventId abre el panel del evento y lleva la agenda a su día', async () => {
+      searchParamsMock = new URLSearchParams(`eventId=${LINKED_EVENT_ID}`);
+      wfmApiMock.events.get.mockResolvedValue({ ...buildEvent(), id: LINKED_EVENT_ID });
+
+      render(<SchedulingClient surface="agenda" />);
+
+      await waitFor(() => expect(wfmApiMock.events.get).toHaveBeenCalledWith(LINKED_EVENT_ID));
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText('Instalación GPON barrio norte')).toBeInTheDocument();
+      await waitFor(() =>
+        expect(replaceMock).toHaveBeenCalledWith(
+          expect.stringMatching(/view=day&fromDate=2026-05-07/u),
+          { scroll: false },
+        ),
+      );
+      const dayCall = replaceMock.mock.calls.find(([url]) => String(url).includes('fromDate'));
+      expect(String(dayCall?.[0])).toContain(`eventId=${LINKED_EVENT_ID}`);
+    });
+
+    it('404 (inexistente o ajeno): sin panel, con aviso y sin el parámetro', async () => {
+      searchParamsMock = new URLSearchParams(
+        `view=day&fromDate=2026-05-07&eventId=${LINKED_EVENT_ID}`,
+      );
+      wfmApiMock.events.get.mockRejectedValue(
+        new ApiError(404, 'NOT_FOUND', 'Evento no encontrado'),
+      );
+
+      render(<SchedulingClient surface="agenda" />);
+
+      expect(
+        await screen.findByText('El evento del enlace no está disponible. Se muestra la agenda.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.queryByText('Evento no encontrado')).not.toBeInTheDocument();
+      expect(replaceMock).toHaveBeenCalledWith(
+        '/dashboard/scheduling/agenda?view=day&fromDate=2026-05-07',
+        { scroll: false },
+      );
+    });
+
+    it('cerrar el panel quita el parámetro con router.replace', async () => {
+      searchParamsMock = new URLSearchParams(
+        `view=day&fromDate=2026-05-07&eventId=${LINKED_EVENT_ID}`,
+      );
+      wfmApiMock.events.get.mockResolvedValue({ ...buildEvent(), id: LINKED_EVENT_ID });
+
+      render(<SchedulingClient surface="agenda" />);
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('Instalación GPON barrio norte');
+      replaceMock.mockClear();
+
+      fireEvent.keyDown(dialog, { key: 'Escape' });
+
+      await waitFor(() =>
+        expect(replaceMock).toHaveBeenCalledWith(
+          '/dashboard/scheduling/agenda?view=day&fromDate=2026-05-07',
+          { scroll: false },
+        ),
+      );
+    });
+
+    it('muestra los conteos junto a sus accesos con el número en el nombre accesible', async () => {
+      usePendingCountsMock.mockReturnValue({ toSchedule: 3, unrealized: 5 });
+
+      render(<SchedulingClient surface="agenda" />);
+
+      expect(await screen.findByRole('link', { name: 'Pendientes: 3' })).toHaveAttribute(
+        'href',
+        '/dashboard/scheduling/pending-visits',
+      );
+      expect(screen.getByRole('link', { name: 'Visitas sin realizar: 5' })).toHaveAttribute(
+        'href',
+        '/dashboard/scheduling/unrealized-visits',
+      );
+    });
+
+    it('sin conteo (403 o fallo) los accesos quedan sin número', async () => {
+      usePendingCountsMock.mockReturnValue({ toSchedule: null, unrealized: null });
+
+      render(<SchedulingClient surface="agenda" />);
+
+      expect(await screen.findByRole('link', { name: 'Pendientes' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Visitas sin realizar' })).toBeInTheDocument();
+    });
+  });
+
   it('oculta el rail de pendientes para roles sin permiso de despacho', async () => {
     useAuthMock.mockReturnValue({
       user: buildAuthUser(UserRole.TECHNICIAN),
@@ -1019,5 +1147,85 @@ describe('SchedulingClient', () => {
 
     expect(await screen.findByText('Despacho diario')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Pendientes por programar' })).toBeInTheDocument();
+  });
+
+  describe('estado en la dirección y barra estable (spec MOD09 agenda §3 E)', () => {
+    it('escribe vista y fecha base al cambiar de vista y conserva los demás parámetros', async () => {
+      searchParamsMock = new URLSearchParams({
+        view: 'day',
+        fromDate: '2026-08-10',
+        technicianId: TECHNICIAN_ID,
+      });
+
+      render(<SchedulingClient surface="agenda" />);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Semana' }));
+
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith(
+          `/dashboard/scheduling/agenda?view=week&fromDate=2026-08-10&technicianId=${TECHNICIAN_ID}`,
+          { scroll: false },
+        );
+      });
+    });
+
+    it('no escribe la dirección solo por entrar a la agenda', async () => {
+      render(<SchedulingClient surface="agenda" />);
+
+      expect(
+        await screen.findByRole('button', { name: /Crear evento para Luisa Campos a las 07:00/i }),
+      ).toBeInTheDocument();
+      expect(replaceMock).not.toHaveBeenCalled();
+    });
+
+    it('conserva el borrador y la misma barra al cambiar de vista y volver a Día', async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-06-23T06:00:00'));
+
+      try {
+        wfmApiMock.visitRequests.list.mockResolvedValue({
+          items: [buildPendingVisitRequest()],
+          meta: { total: 1, page: 1, limit: 8, totalPages: 1 },
+        });
+
+        render(<SchedulingClient surface="agenda" />);
+
+        const dropTarget = await screen.findByRole('button', {
+          name: /Crear evento para Luisa Campos a las 14:00/i,
+        });
+        const dragPayload = serializePendingVisitDragPayload({
+          visitRequestId: 'vr-1',
+          organizationSiteId: '77777777-7777-4777-8777-777777777777',
+          workType: WfmWorkType.INSTALLATION,
+          durationMinutes: 60,
+          customerDisplayName: 'María Gómez',
+          title: 'Instalación GPON barrio norte',
+        });
+        const dataTransfer = {
+          getData: jest.fn((type: string) => (type === PENDING_VISIT_DRAG_MIME ? dragPayload : '')),
+          dropEffect: 'copy',
+        };
+        fireEvent.dragOver(dropTarget, { dataTransfer });
+        fireEvent.drop(dropTarget, { dataTransfer });
+        expect(await screen.findByRole('button', { name: 'Confirmar agenda' })).toBeInTheDocument();
+
+        const viewsGroup = screen.getByRole('group', { name: 'Vista de agenda' });
+        fireEvent.click(within(viewsGroup).getByRole('button', { name: 'Semana' }));
+        await waitFor(() => {
+          expect(within(viewsGroup).getByRole('button', { name: 'Semana' })).toHaveAttribute(
+            'aria-pressed',
+            'true',
+          );
+        });
+        expect(screen.getByRole('group', { name: 'Vista de agenda' })).toBe(viewsGroup);
+
+        fireEvent.click(within(viewsGroup).getByRole('button', { name: 'Día' }));
+
+        expect(await screen.findByRole('button', { name: 'Confirmar agenda' })).toBeInTheDocument();
+        expect(screen.getByRole('group', { name: 'Vista de agenda' })).toBe(viewsGroup);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 });

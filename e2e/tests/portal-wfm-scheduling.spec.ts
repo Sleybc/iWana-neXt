@@ -1730,7 +1730,7 @@ test('admin consulta agenda por rango diario, semanal y mensual', async ({ page 
   await expect(page.getByRole('button', { name: /Ver detalle de/i })).toBeVisible();
 
   await getAnalyticalViewButton(page, 'Mes').click();
-  await expect(page.getByText('Lee carga y días críticos del mes.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Mapa mensual' })).toBeAttached();
 });
 
 test('admin puede abrir detalle desde teclado en vista lista', async ({ page }) => {
@@ -1788,7 +1788,14 @@ async function shiftAgendaToMockEventDay(
   options: { mobile?: boolean } = {},
 ) {
   // Los fixtures de agenda programan eventos en dayOffset +1 respecto al día actual.
+  // «Actualizar» ya no se deshabilita durante la carga: se espera la respuesta de eventos.
+  const eventsResponse = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname.endsWith('/wfm/events') &&
+      response.request().method() === 'GET',
+  );
   await page.getByRole('button', { name: 'Ir al rango siguiente' }).click();
+  await eventsResponse;
   if (options.mobile) {
     await page.getByRole('button', { name: 'Ver filtros' }).click();
   }
@@ -1855,7 +1862,7 @@ test('admin arranca en vista Día al abrir control de agenda', async ({ page }) 
 
   await page.goto('/dashboard/scheduling/agenda');
 
-  await expect(page.getByRole('heading', { name: 'Control de agenda' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Control de agenda' })).toBeAttached();
   await expect(getOperationalViewButton(page, 'Día')).toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -1892,11 +1899,11 @@ test('admin cambia entre vistas sin auto-switch al refrescar la jornada densa', 
 
   await getAnalyticalViewButton(page, 'Semana').click();
   await expect(getAnalyticalViewButton(page, 'Semana')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByText('Lee capacidad, presión y huecos de la semana.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Capacidad semanal' })).toBeAttached();
 
   await getAnalyticalViewButton(page, 'Mes').click();
   await expect(getAnalyticalViewButton(page, 'Mes')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByText('Lee carga y días críticos del mes.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Mapa mensual' })).toBeAttached();
 
   await page.getByRole('button', { name: 'Actualizar' }).click();
   await expect(getAnalyticalViewButton(page, 'Mes')).toHaveAttribute('aria-pressed', 'true');

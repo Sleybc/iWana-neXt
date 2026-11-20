@@ -436,6 +436,22 @@ describe('P2b · L enlaces con y sin permiso (CA-12)', () => {
   });
 });
 
+describe('MOD09 agenda §3 G · visita con evento de agenda (CA-9)', () => {
+  it('con scheduleEventId la visita enlaza al evento en la agenda', () => {
+    const EVENT_ID = '9f6e1a7c-5b8d-4c0e-8f3a-4e5f60718293';
+    const { dialog } = renderDrawer({
+      ticket: makeTicket({
+        activeVisit: { ...makeTicket().activeVisit!, scheduleEventId: EVENT_ID },
+      }),
+    });
+    const field = card(dialog, 'Visita y orden de trabajo');
+    expect(within(field).getByRole('link', { name: 'Ver la visita técnica' })).toHaveAttribute(
+      'href',
+      `/dashboard/scheduling/agenda?eventId=${EVENT_ID}`,
+    );
+  });
+});
+
 describe('P2b · L visita y orden de trabajo', () => {
   it('visita: estado y ventana; orden: número, estado y resultado en español', () => {
     const { dialog } = renderDrawer();

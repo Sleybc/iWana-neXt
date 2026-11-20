@@ -1,6 +1,7 @@
 import type { ExecutionOrderDetailResponse } from '@/lib/api-client';
 import { getAssuranceTicketPath } from '@/components/assurance/assurance-routes';
 import { isUuid } from '@/components/assurance/assurance-ticket-links';
+import { buildAgendaEventHref } from '@/components/scheduling/agenda-event-link';
 
 /**
  * Enlaces de la cabecera de la consola (spec 2026-11-18 §3 G–H, contrato
@@ -32,9 +33,9 @@ function localDate(value: string): string | null {
 }
 
 /**
- * Visita en Programación. La agenda no abre un evento por parámetro, así que el
- * enlace lleva al día de la visita en la vista diaria (ruta existente); sin
- * ventana, a la agenda.
+ * Visita en Programación (spec MOD09 agenda §3 G, CA-10): un clic abre el panel del
+ * evento sobre su día (`eventId`); sin ventana, el evento sin día fijo (la agenda lo
+ * ubica). Sin evento no hay enlace.
  */
 export function executionOrderVisitHref(
   visit: ExecutionOrderDetailResponse['visit'],
@@ -42,7 +43,5 @@ export function executionOrderVisitHref(
 ): string | null {
   if (!visit || !isUuid(visit.scheduleEventId)) return null;
   const day = windowStartAt ? localDate(windowStartAt) : null;
-  return day
-    ? `/dashboard/scheduling/agenda?view=day&fromDate=${encodeURIComponent(day)}`
-    : '/dashboard/scheduling/agenda';
+  return buildAgendaEventHref(visit.scheduleEventId, day);
 }

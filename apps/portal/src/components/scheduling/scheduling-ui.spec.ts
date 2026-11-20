@@ -1,7 +1,8 @@
-import { WorkOrderSourceContext } from '@iwana/shared';
+import { ScheduleEventStatus, WfmWorkType, WorkOrderSourceContext } from '@iwana/shared';
 import {
   HIGH_DENSITY_DAY_THRESHOLD,
   buildSchedulingFiltersForViewSwitch,
+  buildSchedulingSearchParams,
   formatScheduleEventCoordinates,
   formatSchedulingExpedienteLabel,
   getEventReferenceLabel,
@@ -11,6 +12,7 @@ import {
   getWorkOrderSourceReferenceLabel,
   getDefaultSchedulingViewForRole,
   getSchedulingViewDescription,
+  getSchedulingQueryKeyWithoutViewState,
   hasScheduleEventCoordinates,
   hydrateSchedulingFiltersFromSearchParams,
   isHighDensityScheduleDay,
@@ -174,5 +176,95 @@ describe('scheduling-ui', () => {
         toDate: '2026-08-10',
       }),
     );
+  });
+
+  it('escribe vista, fecha base y filtros en la dirección sin tocar otros parámetros (§3 E)', () => {
+    const current = new URLSearchParams(
+      'source=pending-visits&visitRequestId=vr-1&technicianId=tech-viejo&status=SCHEDULED',
+    );
+    const next = buildSchedulingSearchParams(current, {
+      view: 'week',
+      fromDate: '2026-11-16',
+      toDate: '2026-11-22',
+      technicianId: '',
+      type: WfmWorkType.INSTALLATION,
+      status: '',
+    });
+
+    expect(next.get('source')).toBe('pending-visits');
+    expect(next.get('visitRequestId')).toBe('vr-1');
+    expect(next.get('view')).toBe('week');
+    expect(next.get('fromDate')).toBe('2026-11-16');
+    expect(next.get('workType')).toBe(WfmWorkType.INSTALLATION);
+    expect(next.has('type')).toBe(false);
+    expect(next.has('technicianId')).toBe(false);
+    expect(next.has('status')).toBe(false);
+    expect(current.get('technicianId')).toBe('tech-viejo');
+  });
+
+  it('reproduce desde la dirección lo que escribió: vista, rango y filtros válidos', () => {
+    const written = buildSchedulingSearchParams(new URLSearchParams(), {
+      view: 'month',
+      fromDate: '2026-11-01',
+      toDate: '2026-11-30',
+      technicianId: 'tech-1',
+      type: WfmWorkType.INSTALLATION,
+      status: ScheduleEventStatus.SCHEDULED,
+    });
+
+    expect(hydrateSchedulingFiltersFromSearchParams(written)).toEqual({
+      view: 'month',
+      fromDate: '2026-11-01',
+      toDate: '2026-11-30',
+      technicianId: 'tech-1',
+      type: WfmWorkType.INSTALLATION,
+      status: ScheduleEventStatus.SCHEDULED,
+    });
+    expect(written.get('workType')).toBe(WfmWorkType.INSTALLATION);
+    expect(written.has('type')).toBe(false);
+    expect(
+      hydrateSchedulingFiltersFromSearchParams(new URLSearchParams('workType=BOGUS&status=nada')),
+    ).toEqual(expect.objectContaining({ type: '', status: '' }));
+  });
+
+  it('el `type` del enlace entrante de CRM no se lee como filtro de tipo de trabajo', () => {
+    expect(
+      hydrateSchedulingFiltersFromSearchParams(
+        new URLSearchParams('open=create&type=INSTALLATION&expedienteId=x'),
+      ),
+    ).toEqual(expect.objectContaining({ type: '' }));
+  });
+
+  it('escribir filtros conserva `type` y `expedienteId` del enlace pendiente', () => {
+    const next = buildSchedulingSearchParams(
+      new URLSearchParams('open=create&type=INSTALLATION&expedienteId=x'),
+      {
+        view: 'day',
+        fromDate: '2026-11-19',
+        toDate: '2026-11-19',
+        technicianId: 'tech-1',
+        type: '',
+        status: '',
+      },
+    );
+    expect(next.get('open')).toBe('create');
+    expect(next.get('type')).toBe('INSTALLATION');
+    expect(next.get('expedienteId')).toBe('x');
+    expect(next.has('workType')).toBe(false);
+  });
+
+  it('la clave de enlaces entrantes ignora el estado de la agenda', () => {
+    expect(
+      getSchedulingQueryKeyWithoutViewState(
+        new URLSearchParams(
+          'source=pending-visits&visitRequestId=vr-1&view=week&fromDate=2026-11-16&workType=INSTALLATION',
+        ),
+      ),
+    ).toBe('source=pending-visits&visitRequestId=vr-1');
+    expect(
+      getSchedulingQueryKeyWithoutViewState(
+        new URLSearchParams('open=create&type=INSTALLATION&expedienteId=x&workType=REPAIR'),
+      ),
+    ).toBe('open=create&type=INSTALLATION&expedienteId=x');
   });
 });

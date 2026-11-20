@@ -466,4 +466,47 @@ describe('ScheduleCalendar', () => {
     expect(screen.getByRole('button', { name: 'Confirmar agenda' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Quitar borrador' })).toBeInTheDocument();
   });
+
+  it('en Semana un día sin carga ocupa una línea con Abrir día y sin detalle (§3 D)', () => {
+    const onOpenDay = jest.fn();
+
+    render(
+      <ScheduleCalendar
+        days={[{ ...day, events: [] } as any]}
+        technicians={[]}
+        view="week"
+        techniciansById={new Map()}
+        onSelectEvent={jest.fn()}
+        onOpenDay={onOpenDay}
+      />,
+    );
+
+    const emptyDay = screen.getByRole('region', { name: 'jueves 5 junio' });
+    expect(emptyDay).toHaveTextContent('Sin tareas');
+    expect(screen.queryByText('Responsables')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ventana operativa')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Abrir día jueves 5 junio/i }));
+    expect(onOpenDay).toHaveBeenCalledWith('2026-06-05');
+  });
+
+  it('en Mes un día sin carga muestra solo su número y Abrir día', () => {
+    render(
+      <ScheduleCalendar
+        days={[{ ...day, events: [] } as any]}
+        technicians={[]}
+        view="month"
+        techniciansById={new Map()}
+        onSelectEvent={jest.fn()}
+        onOpenDay={jest.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: /Abrir el detalle del jueves 5 junio/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Abrir día jueves 5 junio/i })).toBeInTheDocument();
+    expect(screen.queryByText('Responsables')).not.toBeInTheDocument();
+    expect(screen.getByText('1 días despejados')).toBeInTheDocument();
+  });
 });

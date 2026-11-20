@@ -440,10 +440,7 @@ function getWeekDayOperationalLabel(eventCount: number): string {
   if (eventCount >= 6) {
     return 'Carga estable';
   }
-  if (eventCount >= 1) {
-    return 'Capacidad disponible';
-  }
-  return 'Hueco disponible';
+  return 'Capacidad disponible';
 }
 
 function getWeekDayOperationalCopy(eventCount: number): string {
@@ -456,10 +453,7 @@ function getWeekDayOperationalCopy(eventCount: number): string {
   if (eventCount >= 6) {
     return 'La carga está repartida y todavía es legible como tablero de capacidad semanal.';
   }
-  if (eventCount >= 1) {
-    return 'Aún hay margen para incorporar tareas o reagendar sin perder control de la jornada.';
-  }
-  return 'La fecha está libre para sumar visitas, mantenimientos o reprogramaciones.';
+  return 'Aún hay margen para incorporar tareas o reagendar sin perder control de la jornada.';
 }
 
 function getMonthDayCountVariant(
@@ -598,100 +592,94 @@ function MonthAgenda({ days, onOpenDay }: Pick<ScheduleCalendarProps, 'days' | '
                     {day ? (
                       <section
                         aria-label={day.label}
-                        className={`flex min-h-[228px] flex-col border-b border-r border-gray-100 px-3 py-3 dark:border-dark-border ${dayIndex === 0 ? 'border-l' : ''} ${getMonthDaySurfaceClassName(day, today)}`}
+                        className={`flex flex-col border-b border-r border-gray-100 px-2 py-2 dark:border-dark-border ${dayIndex === 0 ? 'border-l' : ''} ${getMonthDaySurfaceClassName(day, today)}`}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            {onOpenDay ? (
-                              <button
-                                type="button"
-                                onClick={() => onOpenDay(day.key)}
-                                className={`inline-flex h-9 min-w-9 items-center justify-center rounded-full px-3 text-sm font-semibold transition-colors ${getMonthDayNumberClassName(day, today)}`}
-                                aria-label={`Abrir el detalle del ${day.label}`}
-                              >
-                                {day.date.getDate()}
-                              </button>
-                            ) : (
-                              <span
-                                className={`inline-flex h-9 min-w-9 items-center justify-center rounded-full px-3 text-sm font-semibold ${getMonthDayNumberClassName(day, today)}`}
-                              >
-                                {day.date.getDate()}
-                              </span>
-                            )}
-                            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                              {day.shortLabel}
-                            </p>
-                          </div>
-                          <Badge variant={getMonthDayCountVariant(day)}>{day.events.length}</Badge>
-                        </div>
-
-                        <div className="mt-3 flex items-center justify-between gap-2">
-                          <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
-                            {getMonthDayOperationalLabel(day, today)}
-                          </p>
-                          {onOpenDay && (
+                        <div className="flex items-center justify-between gap-2">
+                          {onOpenDay ? (
                             <button
                               type="button"
                               onClick={() => onOpenDay(day.key)}
-                              aria-label={`Abrir día ${day.label}`}
-                              className="text-xs font-medium text-iwana-primary underline-offset-4 hover:underline dark:text-iwana-primary-300"
+                              className={cn(
+                                'inline-flex h-9 min-w-9 items-center justify-center rounded-full px-3 text-sm font-semibold tabular-nums transition-colors',
+                                getMonthDayNumberClassName(day, today),
+                                interactiveFocusClassName,
+                              )}
+                              aria-label={`Abrir el detalle del ${day.label}`}
                             >
-                              Abrir día
+                              {day.date.getDate()}
                             </button>
+                          ) : (
+                            <span
+                              className={`inline-flex h-9 min-w-9 items-center justify-center rounded-full px-3 text-sm font-semibold tabular-nums ${getMonthDayNumberClassName(day, today)}`}
+                            >
+                              {day.date.getDate()}
+                            </span>
                           )}
+                          {day.events.length > 0 ? (
+                            <Badge variant={getMonthDayCountVariant(day)}>
+                              {day.events.length}
+                            </Badge>
+                          ) : onOpenDay ? (
+                            // Día sin carga: una sola línea con «Abrir día» (spec §3 D).
+                            <OpenDayButton day={day} onOpenDay={onOpenDay} />
+                          ) : null}
                         </div>
 
-                        <div className="mt-3">
-                          <div
-                            className="h-2 rounded-full bg-gray-200/80 dark:bg-dark-surface-4"
-                            aria-hidden="true"
-                          >
-                            <div
-                              className={`h-full rounded-full ${getMonthDayMeterClassName(day)}`}
-                              style={{ width: getMonthDayMeterWidth(day) }}
-                            />
-                          </div>
-                        </div>
-
-                        {day.events.length === 0 ? (
-                          <div className="mt-4 rounded-2xl border border-dashed border-gray-200 bg-iwana-surface-soft/80 px-3 py-3 text-xs text-gray-500 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-400">
-                            {day.date.getDay() === 0 || day.date.getDay() === 6
-                              ? 'Sin carga activa en esta fecha.'
-                              : 'La jornada mantiene espacio para sumar tareas o resolver reprogramaciones.'}
-                          </div>
-                        ) : (
-                          <div className="mt-4 grid gap-2">
-                            <div className="grid grid-cols-2 gap-2">
-                              <div className="rounded-xl bg-iwana-surface-soft/90 px-3 py-2 dark:bg-dark-surface-3/90">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                                  Responsables
-                                </p>
-                                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                                  {getDayAssignedCount(day)}
-                                </p>
-                              </div>
-                              <div className="rounded-xl bg-iwana-surface-soft/90 px-3 py-2 dark:bg-dark-surface-3/90">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                                  Ventana operativa
-                                </p>
-                                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                                  {getDayTimeCoverageLabel(day)}
-                                </p>
-                              </div>
+                        {day.events.length > 0 ? (
+                          <>
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                              {day.shortLabel}
+                            </p>
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                              <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                                {getMonthDayOperationalLabel(day, today)}
+                              </p>
+                              {onOpenDay ? <OpenDayButton day={day} onOpenDay={onOpenDay} /> : null}
                             </div>
 
-                            <p className="text-xs text-gray-600 dark:text-gray-300">
-                              {getDayUnassignedCount(day) > 0
-                                ? `${getDayUnassignedCount(day)} tarea${getDayUnassignedCount(day) === 1 ? '' : 's'} por asignar en esta fecha.`
-                                : 'La carga se lee por conteo, cobertura y presión del día.'}
-                            </p>
-                          </div>
-                        )}
+                            <div
+                              className="mt-2 h-2 rounded-full bg-gray-200/80 dark:bg-dark-surface-4"
+                              aria-hidden="true"
+                            >
+                              <div
+                                className={`h-full rounded-full ${getMonthDayMeterClassName(day)}`}
+                                style={{ width: getMonthDayMeterWidth(day) }}
+                              />
+                            </div>
+
+                            <div className="mt-3 grid gap-2">
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="rounded-xl bg-iwana-surface-soft/90 px-3 py-2 dark:bg-dark-surface-3/90">
+                                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+                                    Responsables
+                                  </p>
+                                  <p className="mt-1 text-sm font-semibold tabular-nums text-gray-900 dark:text-white">
+                                    {getDayAssignedCount(day)}
+                                  </p>
+                                </div>
+                                <div className="rounded-xl bg-iwana-surface-soft/90 px-3 py-2 dark:bg-dark-surface-3/90">
+                                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+                                    Ventana operativa
+                                  </p>
+                                  <p className="mt-1 text-sm font-semibold tabular-nums text-gray-900 dark:text-white">
+                                    {getDayTimeCoverageLabel(day)}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <p className="text-xs text-gray-600 dark:text-gray-300">
+                                {getDayUnassignedCount(day) > 0
+                                  ? `${getDayUnassignedCount(day)} tarea${getDayUnassignedCount(day) === 1 ? '' : 's'} por asignar en esta fecha.`
+                                  : 'La carga se lee por conteo, cobertura y presión del día.'}
+                              </p>
+                            </div>
+                          </>
+                        ) : null}
                       </section>
                     ) : (
                       <div
                         aria-hidden="true"
-                        className={`min-h-[228px] border-b border-r border-gray-100 bg-transparent dark:border-dark-border ${dayIndex === 0 ? 'border-l' : ''}`}
+                        className={`h-full min-h-13 border-b border-r border-gray-100 bg-transparent dark:border-dark-border ${dayIndex === 0 ? 'border-l' : ''}`}
                       />
                     )}
                   </td>
@@ -705,97 +693,125 @@ function MonthAgenda({ days, onOpenDay }: Pick<ScheduleCalendarProps, 'days' | '
   );
 }
 
+const openDayButtonClassName = cn(
+  'inline-flex min-h-11 shrink-0 items-center rounded-lg px-2 text-sm font-semibold text-iwana-primary underline-offset-4 hover:underline dark:text-iwana-primary-300',
+  interactiveFocusClassName,
+);
+
+function OpenDayButton({
+  day,
+  onOpenDay,
+}: {
+  day: SchedulingCalendarDay;
+  onOpenDay: (dayKey: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onOpenDay(day.key)}
+      aria-label={`Abrir día ${day.label}`}
+      className={openDayButtonClassName}
+    >
+      Abrir día
+    </button>
+  );
+}
+
+/** Semana compacta (spec MOD09 agenda §3 D): un día sin carga ocupa una línea. */
 function WeekAgenda({ days, onOpenDay }: Pick<ScheduleCalendarProps, 'days' | 'onOpenDay'>) {
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <ul className="space-y-2">
       {days.map((day) => {
         const assignedCount = getDayAssignedCount(day);
         const unassignedCount = getDayUnassignedCount(day);
         const eventCount = day.events.length;
 
-        return (
-          <section
-            key={day.key}
-            className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-2"
-            aria-label={day.label}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                  {day.shortLabel}
-                </p>
-                <p className="mt-1 text-base font-semibold text-gray-900 dark:text-white">
-                  {day.label}
-                </p>
-              </div>
-              <Badge variant={getOperationalLoadVariant(eventCount)}>
-                {eventCount} tarea{eventCount === 1 ? '' : 's'}
-              </Badge>
-            </div>
-
-            <div className="mt-4 rounded-xl bg-iwana-surface-soft/90 px-3 py-3 dark:bg-dark-surface-3/90">
-              <p className="text-sm font-medium text-gray-900 dark:text-white">
-                {getWeekDayOperationalLabel(eventCount)}
-              </p>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {getWeekDayOperationalCopy(eventCount)}
-              </p>
-            </div>
-
-            <div className="mt-4">
-              <div
-                className="h-2 rounded-full bg-gray-200/80 dark:bg-dark-surface-4"
-                aria-hidden="true"
+        if (eventCount === 0) {
+          return (
+            <li key={day.key}>
+              <section
+                aria-label={day.label}
+                className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white pl-4 pr-2 dark:border-dark-border dark:bg-dark-surface-2"
               >
+                <p className="min-w-0 truncate text-sm">
+                  <span className="font-semibold text-gray-900 dark:text-white">{day.label}</span>
+                  <span className="text-gray-500 dark:text-gray-400"> · Sin tareas</span>
+                </p>
+                {onOpenDay ? <OpenDayButton day={day} onOpenDay={onOpenDay} /> : null}
+              </section>
+            </li>
+          );
+        }
+
+        return (
+          <li key={day.key}>
+            <section
+              className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-2"
+              aria-label={day.label}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="portal-eyebrow">{day.shortLabel}</p>
+                  <p className="mt-1 text-base font-semibold text-gray-900 dark:text-white">
+                    {day.label}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant={getOperationalLoadVariant(eventCount)}>
+                    {eventCount} tarea{eventCount === 1 ? '' : 's'}
+                  </Badge>
+                  {onOpenDay ? <OpenDayButton day={day} onOpenDay={onOpenDay} /> : null}
+                </div>
+              </div>
+
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-xl bg-iwana-surface-soft/90 px-3 py-2 sm:col-span-2 dark:bg-dark-surface-3/90">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">
+                    {getWeekDayOperationalLabel(eventCount)}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {getWeekDayOperationalCopy(eventCount)}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-iwana-surface-soft/90 px-3 py-2 dark:bg-dark-surface-3/90">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+                    Responsables
+                  </p>
+                  <p className="mt-1 text-sm font-semibold tabular-nums text-gray-900 dark:text-white">
+                    {assignedCount}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-iwana-surface-soft/90 px-3 py-2 dark:bg-dark-surface-3/90">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+                    Ventana operativa
+                  </p>
+                  <p className="mt-1 text-sm font-semibold tabular-nums text-gray-900 dark:text-white">
+                    {getDayTimeCoverageLabel(day)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center gap-3">
                 <div
-                  className={`h-full rounded-full ${getMonthDayMeterClassName(day)}`}
-                  style={{ width: getMonthDayMeterWidth(day) }}
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              <div className="rounded-xl bg-iwana-surface-soft/90 px-3 py-2 dark:bg-dark-surface-3/90">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                  Responsables
-                </p>
-                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                  {assignedCount}
-                </p>
-              </div>
-              <div className="rounded-xl bg-iwana-surface-soft/90 px-3 py-2 dark:bg-dark-surface-3/90">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                  Ventana operativa
-                </p>
-                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                  {getDayTimeCoverageLabel(day)}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {unassignedCount > 0
-                  ? `${unassignedCount} tarea${unassignedCount === 1 ? '' : 's'} por asignar`
-                  : eventCount === 0
-                    ? 'Sin tareas pendientes'
-                    : 'Listo para bajar al detalle'}
-              </p>
-              {onOpenDay && (
-                <button
-                  type="button"
-                  onClick={() => onOpenDay(day.key)}
-                  aria-label={`Abrir día ${day.label}`}
-                  className="text-sm font-semibold text-iwana-primary underline-offset-4 hover:underline dark:text-iwana-primary-300"
+                  className="h-2 flex-1 rounded-full bg-gray-200/80 dark:bg-dark-surface-4"
+                  aria-hidden="true"
                 >
-                  Abrir día
-                </button>
-              )}
-            </div>
-          </section>
+                  <div
+                    className={`h-full rounded-full ${getMonthDayMeterClassName(day)}`}
+                    style={{ width: getMonthDayMeterWidth(day) }}
+                  />
+                </div>
+                <p className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
+                  {unassignedCount > 0
+                    ? `${unassignedCount} tarea${unassignedCount === 1 ? '' : 's'} por asignar`
+                    : 'Listo para bajar al detalle'}
+                </p>
+              </div>
+            </section>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 }
 
@@ -1249,21 +1265,6 @@ function DailyAgenda({
             showPendingVisitsRail && 'border-b xl:border-b-0 xl:border-r',
           )}
         >
-          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 px-5 py-4 dark:border-dark-border">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                Vista diaria
-              </p>
-              <h3 className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                {formatWfmDayLabel(selectedDay.date)}
-              </h3>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Arrastra pendientes a la grilla, ajusta el borrador y confirma cuando esté listo.
-              </p>
-            </div>
-            <Badge variant="neutral">{selectedDay.events.length} eventos visibles</Badge>
-          </div>
-
           {technicianRows.length === 0 ? (
             <div className="flex h-[520px] items-center justify-center px-6 py-6">
               <div className="max-w-[320px] text-center">
@@ -1526,6 +1527,12 @@ function DailyAgenda({
               </table>
             </div>
           )}
+          {technicianRows.length > 0 && (onPendingVisitDrop || onCreateEventSlot) ? (
+            <p className="border-t border-gray-200 px-4 py-2 text-xs text-gray-500 dark:border-dark-border dark:text-gray-400">
+              Arrastra un pendiente a una franja o haz clic en una franja libre; ajusta el borrador
+              y confírmalo.
+            </p>
+          ) : null}
         </section>
 
         {showPendingVisitsRail ? (
@@ -1563,27 +1570,13 @@ export function ScheduleCalendar({
   onDailyDraftDiscard,
   onOpenDay,
 }: ScheduleCalendarProps) {
-  const totalEvents = days.reduce((total, day) => total + day.events.length, 0);
   const title =
     view === 'day' ? 'Despacho diario' : view === 'week' ? 'Capacidad semanal' : 'Mapa mensual';
-  const description =
-    view === 'day'
-      ? 'Centro operativo para asignar, abrir detalle y convertir vacíos de agenda en acción inmediata.'
-      : view === 'week'
-        ? 'Lee presión, cobertura y huecos por día antes de bajar al despacho fino.'
-        : 'Revisa conteos, saturación y señales del mes; abre un día cuando necesites operar el detalle.';
 
-  return (
-    <PortalPanel
-      eyebrow="Agenda"
-      title={title}
-      description={description}
-      actions={
-        <Badge variant="neutral" className="px-3 py-1 text-[11px] uppercase tracking-[0.18em]">
-          {totalEvents} eventos
-        </Badge>
-      }
-    >
+  // Sin encabezado visible (spec MOD09 agenda §3 A): fecha y total viven en el de la página.
+  const content = (
+    <>
+      <h2 className="sr-only">{title}</h2>
       {days.length === 0 ? (
         <PortalEmptyState
           title="No hay días visibles"
@@ -1615,6 +1608,12 @@ export function ScheduleCalendar({
           onDailyDraftDiscard={onDailyDraftDiscard}
         />
       )}
-    </PortalPanel>
+    </>
+  );
+
+  return view === 'day' && days.length > 0 ? (
+    <section>{content}</section>
+  ) : (
+    <PortalPanel compact>{content}</PortalPanel>
   );
 }

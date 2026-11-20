@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -267,8 +266,10 @@ export class ScheduleEventsService {
         throw new NotFoundException(`Evento ${id} no encontrado`);
       }
 
+      // Fuera del alcance de quien consulta responde igual que inexistente:
+      // 404 sin revelar que el evento existe (spec agenda 2026-11-19 CA-9).
       if (RESTRICTED_ROLES.includes(actor.role as UserRole) && event.assignedUserId !== actor.sub) {
-        throw new ForbiddenException('No tienes acceso a este evento');
+        throw new NotFoundException(`Evento ${id} no encontrado`);
       }
 
       return event;
@@ -579,7 +580,8 @@ export class ScheduleEventsService {
       }
 
       if (RESTRICTED_ROLES.includes(actor.role as UserRole) && event.assignedUserId !== actor.sub) {
-        throw new ForbiddenException('No tienes permiso para cambiar este evento');
+        // Mismo 404 que un id inexistente: no revela que el evento existe (CA-9).
+        throw new NotFoundException(`Evento ${id} no encontrado`);
       }
 
       if (TERMINAL_STATUSES.includes(event.status as ScheduleEventStatus)) {

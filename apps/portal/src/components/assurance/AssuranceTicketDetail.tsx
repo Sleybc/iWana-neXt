@@ -891,7 +891,7 @@ export function AssuranceTicketDetail({
                       label="Visita técnica"
                       action={
                         <RowLink
-                          href={getTicketVisitHref(visit.id, hasPermission)}
+                          href={getTicketVisitHref(visit.id, hasPermission, visit.scheduleEventId)}
                           label="Ver la visita técnica"
                         />
                       }

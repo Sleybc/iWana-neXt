@@ -114,6 +114,23 @@ describe('QA2 CA-12 · visita técnica', () => {
     );
   });
 
+  it('con evento agendado: abre el evento en la agenda (spec MOD09 agenda §3 G)', () => {
+    expect(
+      getTicketVisitHref(VISIT_ID, only(AccessPermissionKey.WFM_SCHEDULE_READ), ORDER_ID),
+    ).toBe(`/dashboard/scheduling/agenda?eventId=${ORDER_ID}`);
+  });
+
+  it('con evento nulo o no válido: conserva el enlace a la bandeja de visitas', () => {
+    const allowed = only(AccessPermissionKey.WFM_SCHEDULE_READ);
+    const inbox = `/dashboard/scheduling/pending-visits?selectedVisitRequestId=${VISIT_ID}`;
+    expect(getTicketVisitHref(VISIT_ID, allowed, null)).toBe(inbox);
+    expect(getTicketVisitHref(VISIT_ID, allowed, '../../settings')).toBe(inbox);
+  });
+
+  it('con evento pero sin wfm.schedule.read: no enlaza', () => {
+    expect(getTicketVisitHref(VISIT_ID, none, ORDER_ID)).toBeNull();
+  });
+
   it('sin wfm.schedule.read: no enlaza aunque tenga los demás permisos', () => {
     expect(
       getTicketVisitHref(

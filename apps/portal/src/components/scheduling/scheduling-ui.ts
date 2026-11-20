@@ -631,10 +631,21 @@ export function hydrateSchedulingFiltersFromSearchParams(
   const view = parseSchedulingView(params.get('view'));
   const fromDate = parseLocalDayKey(params.get('fromDate'));
   const technicianId = params.get('technicianId')?.trim() ?? '';
+  // `type` pertenece al enlace entrante de CRM (`?open=create&type=…`); el filtro usa `workType`.
+  const type = WFM_WORK_TYPE_OPTIONS.find((option) => option.value === params.get('workType'));
+  const status = SCHEDULE_EVENT_STATUS_OPTIONS.find(
+    (option) => option.value === params.get('status'),
+  );
 
   let next: SchedulingFilters = { ...base };
   if (technicianId) {
     next = { ...next, technicianId };
+  }
+  if (type) {
+    next = { ...next, type: type.value };
+  }
+  if (status) {
+    next = { ...next, status: status.value };
   }
   if (view) {
     next = {
@@ -649,6 +660,43 @@ export function hydrateSchedulingFiltersFromSearchParams(
     };
   }
   return next;
+}
+
+/** Filtro → parámetro de la dirección. `type` queda libre para el enlace entrante de CRM. */
+const SCHEDULING_URL_OPTIONAL_KEYS = [
+  ['technicianId', 'technicianId'],
+  ['type', 'workType'],
+  ['status', 'status'],
+] as const;
+
+/**
+ * Escribe vista, fecha base y filtros en la dirección (spec MOD09 agenda §3 E),
+ * conservando los demás parámetros (enlaces entrantes, pendientes, crear).
+ */
+export function buildSchedulingSearchParams(
+  current: URLSearchParams,
+  filters: SchedulingFilters,
+): URLSearchParams {
+  const next = new URLSearchParams(current);
+  next.set('view', filters.view);
+  next.set('fromDate', filters.fromDate);
+  SCHEDULING_URL_OPTIONAL_KEYS.forEach(([field, param]) => {
+    if (filters[field]) {
+      next.set(param, filters[field]);
+    } else {
+      next.delete(param);
+    }
+  });
+  return next;
+}
+
+/** Clave de la dirección sin el estado de la agenda: escribirlo no re-dispara enlaces entrantes. */
+export function getSchedulingQueryKeyWithoutViewState(params: URLSearchParams): string {
+  const next = new URLSearchParams(params);
+  ['view', 'fromDate', ...SCHEDULING_URL_OPTIONAL_KEYS.map(([, param]) => param)].forEach((key) =>
+    next.delete(key),
+  );
+  return next.toString();
 }
 
 export function buildSchedulingFiltersForViewSwitch(

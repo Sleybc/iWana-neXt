@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
 import { ScheduleEventStatus, UserRole, VisitRequestStatus, WorkOrderStatus } from '@iwana/shared';
@@ -632,8 +632,35 @@ describe('ScheduleEventsService', () => {
     });
   });
 
+  describe('transitionStatus — ownership rule for TECHNICIAN', () => {
+    it('should throw NotFoundException (not 403) when TECHNICIAN transitions event of another user', async () => {
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const mockQr = {
+          manager: {
+            findOne: jest.fn().mockResolvedValue({
+              id: 'evt-009',
+              tenantId: 'tenant-001',
+              assignedUserId: 'another-tech-999',
+              status: ScheduleEventStatus.SCHEDULED,
+            }),
+            update: jest.fn(),
+          },
+        };
+        return fn(mockQr as any);
+      });
+
+      await expect(
+        service.transitionStatus(
+          'evt-009',
+          { status: ScheduleEventStatus.IN_PROGRESS } as any,
+          technicianActor as any,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('getById — ownership rule for TECHNICIAN', () => {
-    it('should throw ForbiddenException when TECHNICIAN requests event of another user', async () => {
+    it('should throw NotFoundException (not 403) when TECHNICIAN requests event of another user', async () => {
       const eventBelongingToOther = {
         id: 'evt-003',
         tenantId: 'tenant-001',
@@ -651,7 +678,7 @@ describe('ScheduleEventsService', () => {
       });
 
       await expect(service.getById('evt-003', technicianActor as any)).rejects.toThrow(
-        ForbiddenException,
+        NotFoundException,
       );
     });
 
@@ -676,7 +703,7 @@ describe('ScheduleEventsService', () => {
   });
 
   describe('getById — ownership rule for CONTRACTOR', () => {
-    it('should throw ForbiddenException when CONTRACTOR requests event of another user', async () => {
+    it('should throw NotFoundException (not 403) when CONTRACTOR requests event of another user', async () => {
       const eventBelongingToOther = {
         id: 'evt-005',
         tenantId: 'tenant-001',
@@ -694,7 +721,7 @@ describe('ScheduleEventsService', () => {
       });
 
       await expect(service.getById('evt-005', contractorActor as any)).rejects.toThrow(
-        ForbiddenException,
+        NotFoundException,
       );
     });
   });

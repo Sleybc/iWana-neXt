@@ -63,7 +63,8 @@ describe('Cabecera de la consola — cliente y enlaces (P2)', () => {
     );
     expect(within(header).getByRole('link', { name: 'Ver visita en la agenda' })).toHaveAttribute(
       'href',
-      '/dashboard/scheduling/agenda?view=day&fromDate=2026-11-18',
+      // Spec MOD09 agenda §3 G, CA-10: un clic abre el evento sobre su día.
+      `/dashboard/scheduling/agenda?view=day&fromDate=2026-11-18&eventId=${EVENT_ID}`,
     );
     // El número de la orden no se repite en la cabecera (CA-6).
     expect(within(header).queryByText('OTE-P2-001')).toBeNull();
