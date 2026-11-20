@@ -4428,4 +4428,10 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
     k: 'EXCLUIDA',
     d: 'CODIGO: SIN_CORREO|TITULAR_RESTRINGIDO|FALLO_DE_ENVIO con CHECK; nunca el mensaje del servidor de correo (migración 208)',
   },
+  {
+    t: 'migration_215_restored_ticket_links',
+    c: 'table_name',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: visit_requests|schedule_events|execution_orders, bitácora técnica de la migración 215; nunca texto de usuario',
+  },
 ];
