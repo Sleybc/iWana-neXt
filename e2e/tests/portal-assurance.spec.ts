@@ -747,10 +747,10 @@ test('support can create, comment, escalate to field service and resolve a ticke
   await page.getByRole('button', { name: 'Guardar estado' }).click();
   await expect(page.getByText('Estado actualizado.')).toBeVisible();
 
-  // MOD10 paso 2 (§3 J): las acciones de visita y orden viven en la tarjeta «Visita y orden de
-  // trabajo» del riel «Datos del caso»; Estado sigue en la cabecera, fuera del riel.
+  // MOD10 lateral en un panel (spec 2026-11-20 §3 A–B): Estado entra al riel «Datos del caso», en su
+  // sección «Estado y asignación»; visita y orden siguen en su sección «Visita y orden de trabajo».
   const caseData = page.getByRole('region', { name: 'Datos del caso' });
-  await expect(caseData.getByRole('combobox', { name: 'Nuevo estado' })).toHaveCount(0);
+  await expect(caseData.getByRole('combobox', { name: 'Nuevo estado' })).toHaveCount(1);
   const fieldCard = caseData.getByRole('region', { name: 'Visita y orden de trabajo' });
 
   // §3 E: «Solicitar visita» despliega su formulario en línea; §4: nota para el equipo de campo.

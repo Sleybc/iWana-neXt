@@ -440,10 +440,10 @@ describe('Sección «Adjuntos (N)» del detalle (criterio 4)', () => {
     expect(getAttachmentLink).not.toHaveBeenCalled();
   });
 
-  it('sin adjuntos dice «Adjuntos (0)» y lo explica', () => {
+  // Spec 2026-11-20 §3 F y CA-6 (D2): sin adjuntos no hay bloque; ya no se anuncia «Adjuntos (0)».
+  it('sin adjuntos no muestra el bloque de adjuntos (CA-6)', () => {
     renderDrawer({ comments: [comment('c1', [])] });
-    const section = screen.getByTestId('ticket-attachments-section');
-    expect(within(section).getByRole('heading', { name: 'Adjuntos (0)' })).toBeInTheDocument();
-    expect(section).toHaveTextContent('Este caso no tiene archivos adjuntos.');
+    expect(screen.queryByTestId('ticket-attachments-section')).toBeNull();
+    expect(screen.queryByRole('heading', { name: /^Adjuntos \(/ })).toBeNull();
   });
 });

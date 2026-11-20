@@ -28,6 +28,7 @@ import {
   SlaBreachStatus,
   TicketFieldDecision,
   TicketStatus,
+  TicketSubjectType,
   TicketTimelineEventType,
   type ExecutionOrderLookupResponse,
   type LinkExecutionOrderBody,
@@ -59,6 +60,7 @@ import {
   PortalTimeline,
   portalFieldEmptyValueClassName,
   portalPanelDenseActionClassName,
+  portalPanelDenseClassName,
   portalPanelDenseTitleClassName,
   type PortalTimelineItem,
 } from '@/components/shared/portal-ui';
@@ -134,13 +136,15 @@ export interface AssuranceTicketDetailProps {
   onRequestFieldService: (payload: RequestAssuranceFieldServiceDto) => Promise<unknown>;
   /** Vínculo de la orden de trabajo (de ejecución) encontrada por número (spec §3 L, D4). */
   onLinkWorkOrder: (payload: LinkExecutionOrderBody) => Promise<unknown>;
+  /**
+   * Titular de la ficha desde la que se abre el ticket (solo la ficha del suscriptor). Si el caso
+   * está relacionado con ese mismo titular, «Relacionado con» no se repite (spec 2026-11-20 CA-5).
+   */
+  contextSubscriberId?: string | undefined;
 }
 
 /** Control que disparó la última acción: su mensaje se pinta a su lado (spec MOD10 §3 H). */
 type ActionSource = 'status' | 'assignment' | 'fieldService' | 'workOrder' | 'comment';
-
-/** Tarjeta del riel donde se guardó la asignación: su mensaje se pinta allí. */
-type AssignmentCard = 'people' | 'attention';
 
 /** Búsqueda de la orden por número (spec §3 L). */
 type OrderLookup =
@@ -153,12 +157,24 @@ type OrderLookup =
 /** Botón de la fila de acciones: 44 px de alto bajo `sm` (spec MOD05 §8.4). */
 const actionRowButtonClassName = 'min-h-11 sm:min-h-0';
 
+/** Acciones de la sección Visita y orden: densas desde `sm` para caber en el riel (CA-2). */
+const railActionButtonClassName = 'min-h-11 sm:h-7 sm:min-h-0 sm:px-2.5 sm:text-xs';
+
 const inlineFormClassName =
   'space-y-3 rounded-xl border border-gray-200 p-3 dark:border-dark-border';
 
 const fieldLabelClassName = 'text-sm font-medium text-gray-700 dark:text-gray-300';
 
 const supportTextClassName = 'text-xs text-gray-600 dark:text-gray-300';
+
+/** Sección del riel en un panel: el separador es el `divide-y` del cuerpo (dictamen D3 §2). */
+const railSectionClassName = 'space-y-1.5 px-4 py-2';
+
+/** Filas de dato del riel con menos aire vertical (CA-2: lateral ≤ 700 px). */
+const railFieldRowClassName = 'py-1';
+
+/** Selects del riel con el mismo alto denso desde `sm`; bajo `sm` conservan 44 px. */
+const railSelectClassName = 'sm:h-8 sm:py-1';
 
 /** Cuerpo con riel (spec MOD05 §8.6, D5): con contenedor < 48rem el riel se apila antes del hilo. */
 const detailBodyClassName =
@@ -223,9 +239,16 @@ function TicketPanelSkeleton() {
         <SkeletonBlock className="h-8 w-56 rounded-xl sm:ml-auto" />
       </div>
       <div aria-hidden="true" className={detailBodyClassName}>
-        <div className="space-y-3 @3xl:col-start-2 @3xl:row-start-1">
-          {Array.from({ length: 3 }, (_, index) => (
-            <SkeletonBlock key={index} className="h-24 rounded-xl" />
+        <div
+          className={cn(
+            portalPanelDenseClassName,
+            'divide-y divide-gray-100 dark:divide-dark-border @3xl:col-start-2 @3xl:row-start-1',
+          )}
+        >
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className={railSectionClassName}>
+              <SkeletonBlock className="h-16 rounded-lg" />
+            </div>
           ))}
         </div>
         <div className="space-y-3 @3xl:col-start-1 @3xl:row-start-1">
@@ -255,7 +278,7 @@ function TicketPartyValue({
   if (!name) return <>{typeLabel}</>;
   const href = getTicketPartyProfileHref(party?.profile, hasPermission);
   return (
-    <span className="flex min-w-0 flex-col">
+    <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
       {href ? (
         <Link href={href} className={cn('self-start', portalPanelDenseActionClassName)}>
           {name}
@@ -265,6 +288,31 @@ function TicketPartyValue({
       )}
       <span className={supportTextClassName}>{typeLabel}</span>
     </span>
+  );
+}
+
+/** Fecha de la línea compacta (dictamen D3 §5); sin valor muestra su texto de vacío. */
+function TicketDate({
+  label,
+  emptyLabel,
+  children,
+}: {
+  label: string;
+  emptyLabel?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="mr-3 inline-block whitespace-nowrap">
+      <dt className="mr-1 inline text-gray-500 dark:text-gray-400">{label}</dt>
+      <dd
+        className={cn(
+          'inline tabular-nums',
+          children ? 'text-gray-900 dark:text-white' : portalFieldEmptyValueClassName,
+        )}
+      >
+        {children ?? emptyLabel}
+      </dd>
+    </div>
   );
 }
 
@@ -309,6 +357,7 @@ export function AssuranceTicketDetail({
   onAssign,
   onRequestFieldService,
   onLinkWorkOrder,
+  contextSubscriberId,
 }: AssuranceTicketDetailProps) {
   const { hasPermission } = usePermissions();
   const [commentBody, setCommentBody] = useState('');
@@ -319,7 +368,6 @@ export function AssuranceTicketDetail({
   const [statusNotes, setStatusNotes] = useState('');
   const [assignedUserId, setAssignedUserId] = useState('');
   const [queueName, setQueueName] = useState('');
-  const [assignmentCard, setAssignmentCard] = useState<AssignmentCard>('attention');
   const [fieldServiceNotes, setFieldServiceNotes] = useState('');
   const [orderNumber, setOrderNumber] = useState('');
   const [orderLookup, setOrderLookup] = useState<OrderLookup>({ kind: 'idle' });
@@ -337,6 +385,10 @@ export function AssuranceTicketDetail({
   const visitHintId = `${idPrefix}-visit-hint`;
   const workOrderHintId = `${idPrefix}-work-order-hint`;
   const commentBodyId = `${idPrefix}-comment-body`;
+  const statusSectionTitleId = `${idPrefix}-rail-status`;
+  const visitSectionTitleId = `${idPrefix}-rail-visit`;
+  const caseSectionTitleId = `${idPrefix}-rail-case`;
+  const datesSectionTitleId = `${idPrefix}-rail-dates`;
 
   const usersById = useMemo(() => new Map(assignees.map((user) => [user.id, user])), [assignees]);
   // «Adjuntos (N)»: los de los comentarios que esta persona puede ver (la API ya filtra los
@@ -409,7 +461,7 @@ export function AssuranceTicketDetail({
       }.`
     : null;
 
-  // Motivo visible bajo la fila de la cabecera; describe el control Estado (sin rótulo visible).
+  // Motivo visible bajo el control Estado del riel; lo describe (spec 2026-11-20 §3 B).
   const statusHint = !canOperate
     ? null
     : (blockedTransitionHint ??
@@ -426,8 +478,8 @@ export function AssuranceTicketDetail({
   const terminal = ticket ? isTerminalTicket(ticket) : false;
   const fieldServiceAllowed = canRequestFieldService(ticket?.status);
   const showComposer = canOperate && !isLoading && !error && Boolean(ticket);
-  // «Guardar asignación» aparece junto al control que cambió (ajuste CA-2; riel, §3 J). Guarda
-  // responsable y área juntos; si cambiaron los dos, aparece una vez, en Atención.
+  // «Guardar asignación» aparece una sola vez bajo la fila Responsable/Área (spec 2026-11-20 §3 B)
+  // y guarda los dos juntos.
   const assigneeChanged = assignedUserId !== (ticket?.assignedUserId ?? '');
   const queueChanged = queueName !== (ticket?.queueName ?? '');
   // Formularios en línea: no se abren sin el permiso de su acción (spec §4 nota v1.1).
@@ -636,7 +688,13 @@ export function AssuranceTicketDetail({
     </div>
   ) : undefined;
 
-  const renderAssignmentSave = (cardName: AssignmentCard) => (
+  // CA-5: solo la ficha pasa su titular; Mesa de ayuda y la página propia lo muestran siempre.
+  const relatedIsContext =
+    Boolean(contextSubscriberId) &&
+    ticket?.subjectType === TicketSubjectType.SUBSCRIBER &&
+    ticket.subjectRefId === contextSubscriberId;
+
+  const assignmentSave = (
     <Button
       type="button"
       variant="secondary"
@@ -646,7 +704,6 @@ export function AssuranceTicketDetail({
       disabled={!canManage}
       onClick={async () => {
         setActionSource('assignment');
-        setAssignmentCard(cardName);
         await onAssign({
           assignedUserId: assignedUserId || undefined,
           queueName: (queueName || undefined) as AssignAssuranceTicketDto['queueName'],
@@ -656,9 +713,6 @@ export function AssuranceTicketDetail({
       Guardar asignación
     </Button>
   );
-
-  const assignmentMessagesFor = (cardName: AssignmentCard) =>
-    assignmentCard === cardName ? messagesFor('assignment') : null;
 
   const renderDetail = (current: AssuranceTicket) => {
     const visit = current.activeVisit ?? null;
@@ -675,9 +729,7 @@ export function AssuranceTicketDetail({
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="primary">{getAssuranceTicketTypeLabel(current.type)}</Badge>
-            <Badge variant={getAssuranceTicketStatusVariant(current.status)}>
-              {getAssuranceTicketStatusLabel(current.status)}
-            </Badge>
+            {/* El estado actual se muestra en el riel, junto a su control (spec 2026-11-20 §3 B). */}
             <Badge variant={getAssuranceTicketPriorityVariant(current.priority)}>
               {getAssuranceTicketPriorityLabel(current.priority)}
             </Badge>
@@ -686,30 +738,6 @@ export function AssuranceTicketDetail({
               <Badge variant={getAssuranceSlaStatusVariant(current.slaBreachStatus)}>
                 {getAssuranceSlaStatusLabel(current.slaBreachStatus)}
               </Badge>
-            ) : null}
-            {/* En estado terminal el estado es solo su insignia: sin control (§3 B). El rótulo
-                «Nuevo estado» no se ve, pero nombra el control y su lista (ajuste CA-10). */}
-            {!terminal ? (
-              <div
-                role="group"
-                aria-label="Cambiar estado"
-                className="min-w-48 flex-1 sm:ml-auto sm:w-56 sm:flex-none"
-              >
-                <span id={statusLabelId} className="sr-only">
-                  Nuevo estado
-                </span>
-                <Select
-                  id={`${idPrefix}-transition-status`}
-                  aria-labelledby={statusLabelId}
-                  aria-describedby={statusHintId}
-                  className="sm:h-8 sm:py-1"
-                  value={nextStatus}
-                  placeholder="Selecciona un estado"
-                  options={transitionOptions}
-                  onChange={(event) => setNextStatus(event.target.value)}
-                  disabled={!canOperate || terminal || noTransitions}
-                />
-              </div>
             ) : null}
             {openInPageHref ? (
               <Link
@@ -720,481 +748,527 @@ export function AssuranceTicketDetail({
               </Link>
             ) : null}
           </div>
-
-          {current.slaBreachStatus !== SlaBreachStatus.OK ? (
-            <PortalAlert
-              variant="warning"
-              density="compact"
-              title="Plazo de atención en seguimiento"
-              description={`Estado actual: ${getAssuranceSlaStatusLabel(current.slaBreachStatus)}.`}
-            />
-          ) : null}
-
-          {!canOperate ? (
-            <PortalAlert
-              variant="warning"
-              density="compact"
-              title="Acciones restringidas"
-              description="Tu rol solo tiene acceso de lectura sobre este caso."
-            />
-          ) : null}
-
-          {/* Bajo la fila: motivos, nota, «Guardar estado» y mensajes del control Estado. */}
-          {!terminal && (statusHint || nextStatus || statusMessages) ? (
-            <div className="space-y-2 sm:max-w-sm">
-              {statusHint ? (
-                <p id={statusHintId} className={supportTextClassName}>
-                  {statusHint}
-                </p>
-              ) : null}
-              {nextStatus ? (
-                <>
-                  <Input
-                    id={`${idPrefix}-transition-notes`}
-                    label="Nota"
-                    value={statusNotes}
-                    onChange={(event) => setStatusNotes(event.target.value)}
-                    placeholder="Opcional salvo al resolver"
-                    helperText={
-                      noteRequired
-                        ? nextStatus === TicketStatus.RESOLVED
-                          ? 'Para resolver el caso la nota es obligatoria.'
-                          : 'Para este cambio la nota es obligatoria.'
-                        : undefined
-                    }
-                  />
-                  <Button
-                    type="button"
-                    className="w-full"
-                    loading={isTransitionSubmitting}
-                    disabled={
-                      !canOperate ||
-                      !nextStatus ||
-                      terminal ||
-                      Boolean(selectedTransition?.requiresNote && !statusNotes.trim())
-                    }
-                    onClick={async () => {
-                      setActionSource('status');
-                      await onTransitionStatus({
-                        status: nextStatus as TransitionAssuranceTicketDto['status'],
-                        notes: statusNotes.trim() || undefined,
-                      });
-                      setNextStatus('');
-                      setStatusNotes('');
-                    }}
-                  >
-                    Guardar estado
-                  </Button>
-                </>
-              ) : null}
-              {statusMessages}
-            </div>
-          ) : null}
         </div>
 
-        {/* J · Dos columnas: el riel va antes del hilo en el DOM y desde `@3xl` pasa a la derecha. */}
+        {/* J · Dos columnas: el riel va antes del hilo en el DOM y desde `@3xl` pasa a la derecha.
+            Riel en un solo panel con cuatro secciones (spec 2026-11-20 §3 A; dictamen D3). */}
         <div data-testid="ticket-detail-body" className={detailBodyClassName}>
           <section
             aria-label="Datos del caso"
-            className="min-w-0 space-y-4 @3xl:col-start-2 @3xl:row-start-1"
+            className="min-w-0 @3xl:col-start-2 @3xl:row-start-1"
           >
-            <PortalPanel density="dense" as="section" labelled title="Personas">
-              <div className="space-y-3">
+            <PortalPanel
+              density="dense"
+              as="div"
+              contentClassName="divide-y divide-gray-100 p-0 dark:divide-dark-border"
+            >
+              {/* 1 · Estado y asignación (§3 B). */}
+              <section aria-labelledby={statusSectionTitleId} className={railSectionClassName}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 id={statusSectionTitleId} className={portalPanelDenseTitleClassName}>
+                    Estado y asignación
+                  </h3>
+                  <Badge variant={getAssuranceTicketStatusVariant(current.status)}>
+                    {getAssuranceTicketStatusLabel(current.status)}
+                  </Badge>
+                </div>
+
+                {/* En estado terminal el estado es solo su insignia: sin control (§3 B). */}
+                {!terminal ? (
+                  <div role="group" aria-label="Cambiar estado" className="space-y-1">
+                    <span id={statusLabelId} className={cn('block', fieldLabelClassName)}>
+                      Nuevo estado
+                    </span>
+                    <Select
+                      id={`${idPrefix}-transition-status`}
+                      aria-labelledby={statusLabelId}
+                      aria-describedby={statusHintId}
+                      className={railSelectClassName}
+                      value={nextStatus}
+                      placeholder="Selecciona un estado"
+                      options={transitionOptions}
+                      onChange={(event) => setNextStatus(event.target.value)}
+                      disabled={!canOperate || terminal || noTransitions}
+                    />
+                    {statusHint ? (
+                      <p id={statusHintId} className={supportTextClassName}>
+                        {statusHint}
+                      </p>
+                    ) : null}
+                    {nextStatus ? (
+                      <>
+                        <Input
+                          id={`${idPrefix}-transition-notes`}
+                          label="Nota"
+                          value={statusNotes}
+                          onChange={(event) => setStatusNotes(event.target.value)}
+                          placeholder="Opcional salvo al resolver"
+                          helperText={
+                            noteRequired
+                              ? nextStatus === TicketStatus.RESOLVED
+                                ? 'Para resolver el caso la nota es obligatoria.'
+                                : 'Para este cambio la nota es obligatoria.'
+                              : undefined
+                          }
+                        />
+                        <Button
+                          type="button"
+                          className="w-full"
+                          loading={isTransitionSubmitting}
+                          disabled={
+                            !canOperate ||
+                            !nextStatus ||
+                            terminal ||
+                            Boolean(selectedTransition?.requiresNote && !statusNotes.trim())
+                          }
+                          onClick={async () => {
+                            setActionSource('status');
+                            await onTransitionStatus({
+                              status: nextStatus as TransitionAssuranceTicketDto['status'],
+                              notes: statusNotes.trim() || undefined,
+                            });
+                            setNextStatus('');
+                            setStatusNotes('');
+                          }}
+                        >
+                          Guardar estado
+                        </Button>
+                      </>
+                    ) : null}
+                    {statusMessages}
+                  </div>
+                ) : null}
+
+                {current.slaBreachStatus !== SlaBreachStatus.OK ? (
+                  <PortalAlert
+                    variant="warning"
+                    density="compact"
+                    title="Plazo de atención en seguimiento"
+                    description={`Estado actual: ${getAssuranceSlaStatusLabel(current.slaBreachStatus)}.`}
+                  />
+                ) : null}
+
+                {!canOperate ? (
+                  <PortalAlert
+                    variant="warning"
+                    density="compact"
+                    title="Acciones restringidas"
+                    description="Tu rol solo tiene acceso de lectura sobre este caso."
+                  />
+                ) : null}
+
+                {/* Responsable y Área en una fila con su guardado único. La fila se apila bajo
+                    29rem: «Monitoreo operativo», la etiqueta más larga de Área, no cabe en 2/5 del
+                    riel de 20rem ni a 375 px (dictamen D3 §3). */}
+                <div className="@container">
+                  <div className="grid grid-cols-1 gap-1.5 @[29rem]:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                    <Select
+                      id={`${idPrefix}-assign-user`}
+                      label="Responsable"
+                      className={railSelectClassName}
+                      value={assignedUserId}
+                      placeholder={
+                        assignedUserId
+                          ? ASSURANCE_UNAVAILABLE_ASSIGNEE_LABEL
+                          : ASSURANCE_UNASSIGNED_LABEL
+                      }
+                      options={assigneeOptions}
+                      onChange={(event) => setAssignedUserId(event.target.value)}
+                      disabled={!canManage}
+                    />
+                    <Select
+                      id={`${idPrefix}-assign-queue`}
+                      label="Área"
+                      className={railSelectClassName}
+                      value={queueName}
+                      placeholder={ASSURANCE_EMPTY_QUEUE_LABEL}
+                      options={ASSURANCE_QUEUE_OPTIONS}
+                      onChange={(event) => setQueueName(event.target.value)}
+                      disabled={!canManage}
+                    />
+                  </div>
+                </div>
+                {assigneeChanged || queueChanged ? (
+                  <div className="flex justify-end">{assignmentSave}</div>
+                ) : null}
+                {messagesFor('assignment')}
+              </section>
+
+              {/* 2 · Visita y orden: datos, fila de acciones y formularios en línea (§3 C). */}
+              <section aria-labelledby={visitSectionTitleId} className={railSectionClassName}>
+                <h3 id={visitSectionTitleId} className={portalPanelDenseTitleClassName}>
+                  Visita y orden de trabajo
+                </h3>
+                <div className="space-y-2">
+                  <PortalFieldList>
+                    {visit ? (
+                      <PortalFieldRow
+                        className={railFieldRowClassName}
+                        label="Visita técnica"
+                        action={
+                          <RowLink
+                            href={getTicketVisitHref(
+                              visit.id,
+                              hasPermission,
+                              visit.scheduleEventId,
+                            )}
+                            label="Ver la visita técnica"
+                          />
+                        }
+                      >
+                        <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
+                          <span>{getVisitRequestStatusLabel(visit.status)}</span>
+                          {visitWindow ? (
+                            <span className={supportTextClassName}>{visitWindow}</span>
+                          ) : null}
+                        </span>
+                      </PortalFieldRow>
+                    ) : (
+                      <PortalFieldRow
+                        className={railFieldRowClassName}
+                        label="Visita técnica"
+                        empty={current.fieldDecision === TicketFieldDecision.NOT_REQUIRED}
+                        emptyLabel={getAssuranceFieldDecisionLabel(
+                          TicketFieldDecision.NOT_REQUIRED,
+                        )}
+                      >
+                        {getAssuranceFieldDecisionLabel(current.fieldDecision)}
+                      </PortalFieldRow>
+                    )}
+                    {order ? (
+                      <PortalFieldRow
+                        className={railFieldRowClassName}
+                        label="Orden de trabajo"
+                        action={
+                          <RowLink
+                            href={getTicketExecutionOrderHref(order.id, hasPermission)}
+                            label={`Ver la orden de trabajo ${order.number}`}
+                          />
+                        }
+                      >
+                        <span className="flex min-w-0 flex-col">
+                          <span className="font-mono">{order.number}</span>
+                          <span className={supportTextClassName}>
+                            {EXECUTION_ORDER_STATUS_LABELS[order.status] ?? 'Estado no disponible'}
+                            {order.result
+                              ? ` · ${EXECUTION_ORDER_RESULT_LABELS[order.result] ?? 'Sin resultado'}`
+                              : ''}
+                          </span>
+                          {orderCount > 1 ? (
+                            <span className={supportTextClassName}>
+                              {`Hay ${orderCount} órdenes en este caso; se muestra la más reciente.`}
+                            </span>
+                          ) : null}
+                        </span>
+                      </PortalFieldRow>
+                    ) : (
+                      <PortalFieldRow
+                        className={railFieldRowClassName}
+                        label="Orden de trabajo"
+                        mono
+                        empty={!current.workOrderId}
+                        emptyLabel={ASSURANCE_UNLINKED_WORK_ORDER_LABEL}
+                      >
+                        {formatAssuranceReference(current.workOrderId)}
+                      </PortalFieldRow>
+                    )}
+                  </PortalFieldList>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {/* Sin permiso de la acción el botón queda deshabilitado y no abre su formulario. */}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className={railActionButtonClassName}
+                      aria-expanded={visitFormVisible}
+                      aria-controls={visitFormId}
+                      aria-describedby={
+                        canOperate && !fieldServiceAllowed ? visitHintId : undefined
+                      }
+                      disabled={fieldServiceBlocked}
+                      onClick={() => setVisitFormOpen((open) => !open)}
+                    >
+                      Solicitar visita
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className={railActionButtonClassName}
+                      aria-expanded={workOrderFormVisible}
+                      aria-controls={workOrderFormId}
+                      aria-describedby={canManage && !canLookupOrders ? workOrderHintId : undefined}
+                      disabled={workOrderBlocked}
+                      onClick={() => setWorkOrderFormOpen((open) => !open)}
+                    >
+                      Vincular orden de trabajo
+                    </Button>
+                    {canOperate && !terminal && onCreateLinkedTask ? (
+                      <>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className={railActionButtonClassName}
+                          aria-describedby={linkedTaskHintId}
+                          onClick={onCreateLinkedTask}
+                        >
+                          Crear tarea vinculada
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
+                  {/* Ayudas bajo la fila, en un bloque compacto (CA-2): siguen visibles y describen
+                      su botón. La de la visita explica por qué no abre en ese estado. */}
+                  {(canOperate && !terminal && onCreateLinkedTask) ||
+                  (canOperate && !fieldServiceAllowed) ||
+                  (canManage && !canLookupOrders) ? (
+                    <p className={supportTextClassName}>
+                      {canOperate && !terminal && onCreateLinkedTask ? (
+                        <span id={linkedTaskHintId} className="mr-1">
+                          No crea una visita automática.
+                        </span>
+                      ) : null}
+                      {canOperate && !fieldServiceAllowed ? (
+                        <span id={visitHintId} className="mr-1">
+                          Disponible solo cuando el ticket está en progreso o en espera interna.
+                        </span>
+                      ) : null}
+                      {canManage && !canLookupOrders ? (
+                        <span id={workOrderHintId} className="mr-1">
+                          Para vincular una orden necesitas acceso a las órdenes de trabajo.
+                        </span>
+                      ) : null}
+                    </p>
+                  ) : null}
+
+                  {visitFormVisible ? (
+                    <div id={visitFormId} className={inlineFormClassName}>
+                      <div>
+                        <label
+                          htmlFor={`${idPrefix}-field-service-notes`}
+                          className={fieldLabelClassName}
+                        >
+                          Nota para el equipo de campo
+                        </label>
+                        <textarea
+                          id={`${idPrefix}-field-service-notes`}
+                          value={fieldServiceNotes}
+                          onChange={(event) => setFieldServiceNotes(event.target.value)}
+                          className={cn(assuranceTextareaClassName, 'min-h-20')}
+                          placeholder="Describe qué debe validar el equipo de campo."
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        loading={isFieldServiceSubmitting}
+                        disabled={fieldServiceBlocked}
+                        onClick={async () => {
+                          setActionSource('fieldService');
+                          await onRequestFieldService({
+                            notes: fieldServiceNotes.trim() || undefined,
+                          });
+                          setFieldServiceNotes('');
+                        }}
+                      >
+                        Confirmar solicitud
+                      </Button>
+                    </div>
+                  ) : null}
+
+                  {workOrderFormVisible ? (
+                    <div id={workOrderFormId} className={inlineFormClassName}>
+                      <div className="flex flex-wrap items-end gap-2">
+                        <Input
+                          id={`${idPrefix}-work-order-number`}
+                          label="Orden de trabajo"
+                          value={orderNumber}
+                          containerClassName="min-w-0 flex-1"
+                          autoComplete="off"
+                          spellCheck={false}
+                          placeholder={ORDER_NUMBER_EXAMPLE}
+                          onChange={(event) => {
+                            setOrderNumber(event.target.value);
+                            lookupRequestRef.current += 1;
+                            setOrderLookup({ kind: 'idle' });
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              void searchOrder();
+                            }
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className={actionRowButtonClassName}
+                          loading={orderLookup.kind === 'searching'}
+                          disabled={!orderNumber.trim()}
+                          onClick={() => void searchOrder()}
+                        >
+                          Buscar orden
+                        </Button>
+                      </div>
+                      {orderLookup.kind === 'invalid' ? (
+                        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+                          {`Escribe el número completo, por ejemplo ${ORDER_NUMBER_EXAMPLE}.`}
+                        </p>
+                      ) : null}
+                      {orderLookup.kind === 'error' ? (
+                        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+                          {orderLookup.message}
+                        </p>
+                      ) : null}
+                      {lookupOrder ? (
+                        <div
+                          role="status"
+                          aria-label="Orden encontrada"
+                          className="space-y-1 text-sm text-gray-700 dark:text-gray-200"
+                        >
+                          <p>
+                            <span className="font-mono">{lookupOrder.number}</span>
+                            {` · ${EXECUTION_ORDER_STATUS_LABELS[lookupOrder.status] ?? 'Estado no disponible'}`}
+                            {lookupOrder.result
+                              ? ` · ${EXECUTION_ORDER_RESULT_LABELS[lookupOrder.result] ?? 'Sin resultado'}`
+                              : ''}
+                          </p>
+                          {lookupOrder.linkedTicket === 'THIS' ? (
+                            <p className={supportTextClassName}>
+                              Esta orden ya está vinculada a este caso.
+                            </p>
+                          ) : null}
+                          {lookupOrder.linkedTicket === 'OTHER' ? (
+                            <p className={supportTextClassName}>
+                              Esta orden ya está vinculada a otro caso.
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      <div>
+                        <label
+                          htmlFor={`${idPrefix}-link-wo-notes`}
+                          className={fieldLabelClassName}
+                        >
+                          Nota de vínculo
+                        </label>
+                        <textarea
+                          id={`${idPrefix}-link-wo-notes`}
+                          value={workOrderNotes}
+                          onChange={(event) => setWorkOrderNotes(event.target.value)}
+                          className={cn(assuranceTextareaClassName, 'min-h-20')}
+                          placeholder="Opcional: agrega contexto del vínculo."
+                        />
+                      </div>
+                      {/* Solo una orden encontrada y libre se puede vincular (spec §3 L). */}
+                      {lookupOrder?.linkedTicket === 'NONE' ? (
+                        <Button
+                          type="button"
+                          loading={isLinkingWorkOrder}
+                          disabled={workOrderBlocked}
+                          onClick={async () => {
+                            setActionSource('workOrder');
+                            await onLinkWorkOrder({
+                              executionOrderId: lookupOrder.id,
+                              notes: workOrderNotes.trim() || undefined,
+                            });
+                            setWorkOrderNotes('');
+                          }}
+                        >
+                          Confirmar vínculo
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {/* Fuera de los formularios: tras confirmar, el estado puede cerrar el formulario y
+                    el mensaje debe seguir a la vista junto a la fila de acciones. */}
+                  {messagesFor('fieldService')}
+                  {messagesFor('workOrder')}
+                </div>
+              </section>
+
+              {/* 3 · Datos del caso (§3 D). Grupo, no región: la región externa ya se llama así. */}
+              <div
+                role="group"
+                aria-labelledby={caseSectionTitleId}
+                className={railSectionClassName}
+              >
+                <h3 id={caseSectionTitleId} className={portalPanelDenseTitleClassName}>
+                  Datos del caso
+                </h3>
                 <PortalFieldList>
-                  <PortalFieldRow label="Solicitante">
+                  <PortalFieldRow className={railFieldRowClassName} label="Solicitante">
                     <TicketPartyValue
                       party={current.requester}
                       typeLabel={getAssuranceRequesterTypeLabel(current.requesterType)}
                       hasPermission={hasPermission}
                     />
                   </PortalFieldRow>
-                  <PortalFieldRow
-                    label="Relacionado con"
-                    empty={!current.subjectType}
-                    emptyLabel="No disponible"
-                  >
-                    {current.subjectType ? (
-                      <TicketPartyValue
-                        party={current.relatedTo}
-                        typeLabel={getAssuranceSubjectTypeLabel(current.subjectType)}
-                        hasPermission={hasPermission}
-                      />
-                    ) : null}
-                  </PortalFieldRow>
-                </PortalFieldList>
-                <Select
-                  id={`${idPrefix}-assign-user`}
-                  label="Responsable"
-                  value={assignedUserId}
-                  placeholder={
-                    assignedUserId
-                      ? ASSURANCE_UNAVAILABLE_ASSIGNEE_LABEL
-                      : ASSURANCE_UNASSIGNED_LABEL
-                  }
-                  options={assigneeOptions}
-                  onChange={(event) => setAssignedUserId(event.target.value)}
-                  disabled={!canManage}
-                />
-                {assigneeChanged && !queueChanged ? (
-                  <div className="flex justify-end">{renderAssignmentSave('people')}</div>
-                ) : null}
-                {assignmentMessagesFor('people')}
-              </div>
-            </PortalPanel>
-
-            <PortalPanel density="dense" as="section" labelled title="Atención">
-              <div className="space-y-3">
-                {/* Área vive solo aquí (spec §4 nota v1.1): comparte el guardado con Responsable. */}
-                <Select
-                  id={`${idPrefix}-assign-queue`}
-                  label="Área"
-                  value={queueName}
-                  placeholder={ASSURANCE_EMPTY_QUEUE_LABEL}
-                  options={ASSURANCE_QUEUE_OPTIONS}
-                  onChange={(event) => setQueueName(event.target.value)}
-                  disabled={!canManage}
-                />
-                {queueChanged ? (
-                  <div className="flex justify-end">{renderAssignmentSave('attention')}</div>
-                ) : null}
-                {assignmentMessagesFor('attention')}
-                <PortalFieldList>
-                  <PortalFieldRow label="Origen">
+                  {/* CA-5: en la ficha no se repite el titular que ya está en pantalla. */}
+                  {!relatedIsContext && current.subjectType ? (
+                    <PortalFieldRow
+                      className={railFieldRowClassName}
+                      label="Relacionado con"
+                      empty={!current.subjectType}
+                      emptyLabel="No disponible"
+                    >
+                      {current.subjectType ? (
+                        <TicketPartyValue
+                          party={current.relatedTo}
+                          typeLabel={getAssuranceSubjectTypeLabel(current.subjectType)}
+                          hasPermission={hasPermission}
+                        />
+                      ) : null}
+                    </PortalFieldRow>
+                  ) : null}
+                  <PortalFieldRow className={railFieldRowClassName} label="Origen">
                     {getAssuranceSourceLabel(current.source)}
                   </PortalFieldRow>
-                  <PortalFieldRow label="Abierto">
-                    {formatAssuranceDateTime(current.createdAt)}
-                  </PortalFieldRow>
-                  <PortalFieldRow label="Actualizado">
-                    {formatAssuranceDateTime(current.updatedAt)}
-                  </PortalFieldRow>
-                  {current.slaPolicyId ? (
-                    <>
-                      <PortalFieldRow label="Responder antes de">
-                        {formatAssuranceDateTime(current.slaFirstResponseAt)}
-                      </PortalFieldRow>
-                      <PortalFieldRow label="Resolver antes de">
-                        {formatAssuranceDateTime(current.slaResolveByAt)}
-                      </PortalFieldRow>
-                    </>
-                  ) : null}
                 </PortalFieldList>
               </div>
-            </PortalPanel>
 
-            {/* E · Visita y orden: datos, fila de acciones y formularios en línea. */}
-            <PortalPanel density="dense" as="section" labelled title="Visita y orden de trabajo">
-              <div className="space-y-3">
-                <PortalFieldList>
-                  {visit ? (
-                    <PortalFieldRow
-                      label="Visita técnica"
-                      action={
-                        <RowLink
-                          href={getTicketVisitHref(visit.id, hasPermission, visit.scheduleEventId)}
-                          label="Ver la visita técnica"
-                        />
-                      }
-                    >
-                      <span className="flex min-w-0 flex-col">
-                        <span>{getVisitRequestStatusLabel(visit.status)}</span>
-                        {visitWindow ? (
-                          <span className={supportTextClassName}>{visitWindow}</span>
-                        ) : null}
-                      </span>
-                    </PortalFieldRow>
-                  ) : (
-                    <PortalFieldRow
-                      label="Visita técnica"
-                      empty={current.fieldDecision === TicketFieldDecision.NOT_REQUIRED}
-                      emptyLabel={getAssuranceFieldDecisionLabel(TicketFieldDecision.NOT_REQUIRED)}
-                    >
-                      {getAssuranceFieldDecisionLabel(current.fieldDecision)}
-                    </PortalFieldRow>
-                  )}
-                  {order ? (
-                    <PortalFieldRow
-                      label="Orden de trabajo"
-                      action={
-                        <RowLink
-                          href={getTicketExecutionOrderHref(order.id, hasPermission)}
-                          label={`Ver la orden de trabajo ${order.number}`}
-                        />
-                      }
-                    >
-                      <span className="flex min-w-0 flex-col">
-                        <span className="font-mono">{order.number}</span>
-                        <span className={supportTextClassName}>
-                          {EXECUTION_ORDER_STATUS_LABELS[order.status] ?? 'Estado no disponible'}
-                          {order.result
-                            ? ` · ${EXECUTION_ORDER_RESULT_LABELS[order.result] ?? 'Sin resultado'}`
-                            : ''}
-                        </span>
-                        {orderCount > 1 ? (
-                          <span className={supportTextClassName}>
-                            {`Hay ${orderCount} órdenes en este caso; se muestra la más reciente.`}
-                          </span>
-                        ) : null}
-                      </span>
-                    </PortalFieldRow>
-                  ) : (
-                    <PortalFieldRow
-                      label="Orden de trabajo"
-                      mono
-                      empty={!current.workOrderId}
-                      emptyLabel={ASSURANCE_UNLINKED_WORK_ORDER_LABEL}
-                    >
-                      {formatAssuranceReference(current.workOrderId)}
-                    </PortalFieldRow>
-                  )}
-                </PortalFieldList>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Sin permiso de la acción el botón queda deshabilitado y no abre su formulario. */}
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className={actionRowButtonClassName}
-                    aria-expanded={visitFormVisible}
-                    aria-controls={visitFormId}
-                    aria-describedby={canOperate && !fieldServiceAllowed ? visitHintId : undefined}
-                    disabled={fieldServiceBlocked}
-                    onClick={() => setVisitFormOpen((open) => !open)}
+              {/* 4 · Fechas en una línea compacta (§3 E). «Actualizado» se retira (D1). */}
+              <section aria-labelledby={datesSectionTitleId} className={railSectionClassName}>
+                {/* Rótulo en línea con las fechas: una sola línea que se parte (CA-2). */}
+                <div className="text-xs leading-5">
+                  <h3
+                    id={datesSectionTitleId}
+                    className={cn('mr-3 inline', portalPanelDenseTitleClassName)}
                   >
-                    Solicitar visita
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className={actionRowButtonClassName}
-                    aria-expanded={workOrderFormVisible}
-                    aria-controls={workOrderFormId}
-                    aria-describedby={canManage && !canLookupOrders ? workOrderHintId : undefined}
-                    disabled={workOrderBlocked}
-                    onClick={() => setWorkOrderFormOpen((open) => !open)}
-                  >
-                    Vincular orden de trabajo
-                  </Button>
-                  {canOperate && !terminal && onCreateLinkedTask ? (
-                    <>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className={actionRowButtonClassName}
-                        aria-describedby={linkedTaskHintId}
-                        onClick={onCreateLinkedTask}
-                      >
-                        Crear tarea vinculada
-                      </Button>
-                      <span id={linkedTaskHintId} className={supportTextClassName}>
-                        No crea una visita automática.
-                      </span>
-                    </>
-                  ) : null}
-                  {/* La ayuda de la visita se ve junto a la fila: el formulario no abre en ese estado. */}
-                  {canOperate && !fieldServiceAllowed ? (
-                    <span id={visitHintId} className={supportTextClassName}>
-                      Disponible solo cuando el ticket está en progreso o en espera interna.
-                    </span>
-                  ) : null}
-                  {canManage && !canLookupOrders ? (
-                    <span id={workOrderHintId} className={supportTextClassName}>
-                      Para vincular una orden necesitas acceso a las órdenes de trabajo.
-                    </span>
-                  ) : null}
+                    Fechas
+                  </h3>
+                  <dl className="inline">
+                    <TicketDate label="Abierto">
+                      {formatAssuranceDateTime(current.createdAt)}
+                    </TicketDate>
+                    <TicketDate label="Primera respuesta" emptyLabel="Sin respuesta">
+                      {current.firstRespondedAt
+                        ? formatAssuranceDateTime(current.firstRespondedAt)
+                        : null}
+                    </TicketDate>
+                    <TicketDate label="Resuelto" emptyLabel="Sin resolver">
+                      {current.resolvedAt ? formatAssuranceDateTime(current.resolvedAt) : null}
+                    </TicketDate>
+                    {/* Los importados de UISP no traen fecha real de cierre: coincide con la apertura. */}
+                    {current.closedAt && current.closedAt !== current.createdAt ? (
+                      <TicketDate label="Cerrado">
+                        {formatAssuranceDateTime(current.closedAt)}
+                      </TicketDate>
+                    ) : null}
+                    {current.slaPolicyId ? (
+                      <>
+                        <TicketDate label="Responder antes de">
+                          {formatAssuranceDateTime(current.slaFirstResponseAt)}
+                        </TicketDate>
+                        <TicketDate label="Resolver antes de">
+                          {formatAssuranceDateTime(current.slaResolveByAt)}
+                        </TicketDate>
+                      </>
+                    ) : null}
+                  </dl>
                 </div>
-
-                {visitFormVisible ? (
-                  <div id={visitFormId} className={inlineFormClassName}>
-                    <div>
-                      <label
-                        htmlFor={`${idPrefix}-field-service-notes`}
-                        className={fieldLabelClassName}
-                      >
-                        Nota para el equipo de campo
-                      </label>
-                      <textarea
-                        id={`${idPrefix}-field-service-notes`}
-                        value={fieldServiceNotes}
-                        onChange={(event) => setFieldServiceNotes(event.target.value)}
-                        className={cn(assuranceTextareaClassName, 'min-h-20')}
-                        placeholder="Describe qué debe validar el equipo de campo."
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      loading={isFieldServiceSubmitting}
-                      disabled={fieldServiceBlocked}
-                      onClick={async () => {
-                        setActionSource('fieldService');
-                        await onRequestFieldService({
-                          notes: fieldServiceNotes.trim() || undefined,
-                        });
-                        setFieldServiceNotes('');
-                      }}
-                    >
-                      Confirmar solicitud
-                    </Button>
-                  </div>
-                ) : null}
-
-                {workOrderFormVisible ? (
-                  <div id={workOrderFormId} className={inlineFormClassName}>
-                    <div className="flex flex-wrap items-end gap-2">
-                      <Input
-                        id={`${idPrefix}-work-order-number`}
-                        label="Orden de trabajo"
-                        value={orderNumber}
-                        containerClassName="min-w-0 flex-1"
-                        autoComplete="off"
-                        spellCheck={false}
-                        placeholder={ORDER_NUMBER_EXAMPLE}
-                        onChange={(event) => {
-                          setOrderNumber(event.target.value);
-                          lookupRequestRef.current += 1;
-                          setOrderLookup({ kind: 'idle' });
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.preventDefault();
-                            void searchOrder();
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className={actionRowButtonClassName}
-                        loading={orderLookup.kind === 'searching'}
-                        disabled={!orderNumber.trim()}
-                        onClick={() => void searchOrder()}
-                      >
-                        Buscar orden
-                      </Button>
-                    </div>
-                    {orderLookup.kind === 'invalid' ? (
-                      <p role="alert" className="text-sm text-red-600 dark:text-red-400">
-                        {`Escribe el número completo, por ejemplo ${ORDER_NUMBER_EXAMPLE}.`}
-                      </p>
-                    ) : null}
-                    {orderLookup.kind === 'error' ? (
-                      <p role="alert" className="text-sm text-red-600 dark:text-red-400">
-                        {orderLookup.message}
-                      </p>
-                    ) : null}
-                    {lookupOrder ? (
-                      <div
-                        role="status"
-                        aria-label="Orden encontrada"
-                        className="space-y-1 text-sm text-gray-700 dark:text-gray-200"
-                      >
-                        <p>
-                          <span className="font-mono">{lookupOrder.number}</span>
-                          {` · ${EXECUTION_ORDER_STATUS_LABELS[lookupOrder.status] ?? 'Estado no disponible'}`}
-                          {lookupOrder.result
-                            ? ` · ${EXECUTION_ORDER_RESULT_LABELS[lookupOrder.result] ?? 'Sin resultado'}`
-                            : ''}
-                        </p>
-                        {lookupOrder.linkedTicket === 'THIS' ? (
-                          <p className={supportTextClassName}>
-                            Esta orden ya está vinculada a este caso.
-                          </p>
-                        ) : null}
-                        {lookupOrder.linkedTicket === 'OTHER' ? (
-                          <p className={supportTextClassName}>
-                            Esta orden ya está vinculada a otro caso.
-                          </p>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    <div>
-                      <label htmlFor={`${idPrefix}-link-wo-notes`} className={fieldLabelClassName}>
-                        Nota de vínculo
-                      </label>
-                      <textarea
-                        id={`${idPrefix}-link-wo-notes`}
-                        value={workOrderNotes}
-                        onChange={(event) => setWorkOrderNotes(event.target.value)}
-                        className={cn(assuranceTextareaClassName, 'min-h-20')}
-                        placeholder="Opcional: agrega contexto del vínculo."
-                      />
-                    </div>
-                    {/* Solo una orden encontrada y libre se puede vincular (spec §3 L). */}
-                    {lookupOrder?.linkedTicket === 'NONE' ? (
-                      <Button
-                        type="button"
-                        loading={isLinkingWorkOrder}
-                        disabled={workOrderBlocked}
-                        onClick={async () => {
-                          setActionSource('workOrder');
-                          await onLinkWorkOrder({
-                            executionOrderId: lookupOrder.id,
-                            notes: workOrderNotes.trim() || undefined,
-                          });
-                          setWorkOrderNotes('');
-                        }}
-                      >
-                        Confirmar vínculo
-                      </Button>
-                    ) : null}
-                  </div>
-                ) : null}
-                {/* Fuera de los formularios: tras confirmar, el estado puede cerrar el formulario y
-                    el mensaje debe seguir a la vista junto a la fila de acciones. */}
-                {messagesFor('fieldService')}
-                {messagesFor('workOrder')}
-              </div>
-            </PortalPanel>
-
-            {/* D · Adjuntos del caso, con su conteo y `data-testid` estable. */}
-            <div data-testid="ticket-attachments-section">
-              <PortalPanel
-                density="dense"
-                as="section"
-                labelled
-                title={`Adjuntos (${ticketAttachments.length})`}
-              >
-                {ticketAttachments.length === 0 ? (
-                  <p className={cn('text-sm', portalFieldEmptyValueClassName)}>
-                    Este caso no tiene archivos adjuntos.
-                  </p>
-                ) : (
-                  <TicketAttachmentList
-                    ticketId={current.id}
-                    attachments={ticketAttachments}
-                    variant="compact"
-                    label={`Adjuntos del caso: ${formatTicketAttachmentCount(ticketAttachments.length)}`}
-                  />
-                )}
-              </PortalPanel>
-            </div>
-
-            <PortalPanel density="dense" as="section" labelled title="Registro">
-              <PortalFieldList>
-                <PortalFieldRow
-                  label="Primera respuesta"
-                  empty={!current.firstRespondedAt}
-                  emptyLabel="Sin respuesta registrada"
-                >
-                  {formatAssuranceDateTime(current.firstRespondedAt)}
-                </PortalFieldRow>
-                <PortalFieldRow
-                  label="Resuelto"
-                  empty={!current.resolvedAt}
-                  emptyLabel="Sin resolver"
-                >
-                  {formatAssuranceDateTime(current.resolvedAt)}
-                </PortalFieldRow>
-                {/* Los importados de UISP no traen fecha real de cierre: coincide con la apertura. */}
-                {current.closedAt && current.closedAt !== current.createdAt ? (
-                  <PortalFieldRow label="Cerrado">
-                    {formatAssuranceDateTime(current.closedAt)}
-                  </PortalFieldRow>
-                ) : null}
-              </PortalFieldList>
+              </section>
             </PortalPanel>
           </section>
 
@@ -1213,6 +1287,25 @@ export function AssuranceTicketDetail({
                     Sin descripción adicional registrada para este caso.
                   </p>
                 )}
+              </div>
+            ) : null}
+
+            {/* Adjuntos del caso en el hilo, sobre los comentarios y solo si hay (§3 F, D2). */}
+            {ticketAttachments.length > 0 ? (
+              <div data-testid="ticket-attachments-section">
+                <PortalPanel
+                  density="dense"
+                  as="section"
+                  labelled
+                  title={`Adjuntos (${ticketAttachments.length})`}
+                >
+                  <TicketAttachmentList
+                    ticketId={current.id}
+                    attachments={ticketAttachments}
+                    variant="compact"
+                    label={`Adjuntos del caso: ${formatTicketAttachmentCount(ticketAttachments.length)}`}
+                  />
+                </PortalPanel>
               </div>
             ) : null}
 

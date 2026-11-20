@@ -200,22 +200,20 @@ describe('AssuranceTicketDrawer P1 — propiedades y vocabulario (§3 C, §4)', 
     expect(area.className).toContain('text-gray-500');
   });
 
-  // P2b §3 J: las propiedades pasan de la lista a dos columnas a las tarjetas del riel (Personas,
-  // Atención, Visita y orden de trabajo, Registro); Registro añade la primera respuesta y la
-  // resolución. Ninguna propiedad de §3 C se pierde.
-  it('las propiedades siguen el orden de las tarjetas del riel (§3 J)', () => {
+  // Spec 2026-11-20 §3 A: un panel con Estado y asignación, Visita y orden de trabajo, Datos del
+  // caso y Fechas. «Actualizado» se retira (D1: lo cubre el historial); ninguna otra se pierde.
+  it('las propiedades siguen el orden de las secciones del riel (2026-11-20 §3 A)', () => {
     render(<AssuranceTicketDrawer {...drawerProps()} />);
     const terms = within(screen.getByRole('dialog'))
       .getAllByRole('term')
       .map((term) => term.textContent);
     expect(terms).toEqual([
+      'Visita técnica',
+      'Orden de trabajo',
       'Solicitante',
       'Relacionado con',
       'Origen',
       'Abierto',
-      'Actualizado',
-      'Visita técnica',
-      'Orden de trabajo',
       'Primera respuesta',
       'Resuelto',
     ]);
@@ -307,8 +305,8 @@ describe('AssuranceTicketDrawer P1 — redactor y mensajes (§3 G, H)', () => {
         actionFeedback="Asignación actualizada."
       />,
     );
-    // P2b §3 J: Área se edita en la tarjeta Atención del riel; el aviso queda en ella.
-    const assignment = screen.getByRole('region', { name: 'Atención' });
+    // 2026-11-20 §3 B: Área se edita en «Estado y asignación»; el aviso queda en esa sección.
+    const assignment = screen.getByRole('region', { name: 'Estado y asignación' });
     expect(within(assignment).getByText('Asignación actualizada.')).toBeInTheDocument();
     expect(
       within(screen.getByRole('group', { name: 'Cambiar estado' })).queryByText(

@@ -282,6 +282,8 @@ const PROPERTY_INVENTORY: Record<PropertyKey, PropertySpec> = {
   requester: { value: (t) => getAssuranceRequesterTypeLabel(t.requesterType) },
   relatedTo: {
     value: (t) => (t.subjectType ? getAssuranceSubjectTypeLabel(t.subjectType) : 'No disponible'),
+    // Spec 2026-11-20 §0 (corrección CA-2): sin parte relacionada la fila no se muestra.
+    when: (t) => Boolean(t.subjectType),
   },
   area: { value: (t) => getAssuranceQueueLabel(t.queueName) },
   // Spec §4 nota v1.1: «Sin asignar» sin referencia; con referencia y sin el usuario en la
@@ -306,7 +308,8 @@ const PROPERTY_INVENTORY: Record<PropertyKey, PropertySpec> = {
     value: (t) => formatAssuranceDateTime(t.slaResolveByAt),
     when: (t) => Boolean(t.slaPolicyId),
   },
-  updated: { value: (t) => formatAssuranceDateTime(t.updatedAt) },
+  // Spec 2026-11-20 §3 E, D1: «Actualizado» se retira (lo cubre el historial): nunca visible.
+  updated: { value: (t) => formatAssuranceDateTime(t.updatedAt), when: () => false },
   // F0 (spec 2026-11-20 §3): sin descripción pero con comentarios, el bloque no se muestra.
   description: {
     value: (t) => t.description?.trim() || 'Sin descripción adicional registrada para este caso.',
@@ -354,11 +357,22 @@ function findHeaderControlValue(panel: HTMLElement, label: string, value: string
   return control?.textContent?.trim() === value ? control : null;
 }
 
-function propertyMismatches(panel: HTMLElement, ticket: AssuranceTicket, users: InternalUser[]) {
+function propertyMismatches(
+  panel: HTMLElement,
+  ticket: AssuranceTicket,
+  users: InternalUser[],
+  contextSubscriberId: string | null = null,
+) {
   const mismatches: string[] = [];
   (Object.keys(PROPERTY_INVENTORY) as PropertyKey[]).forEach((key) => {
     const spec = PROPERTY_INVENTORY[key];
-    const expected = spec.when ? spec.when(ticket) : true;
+    // Spec 2026-11-20 CA-5: en la ficha, «Relacionado con» no repite al titular de la ficha.
+    const relatedIsContext =
+      key === 'relatedTo' &&
+      contextSubscriberId !== null &&
+      ticket.subjectType === TicketSubjectType.SUBSCRIBER &&
+      ticket.subjectRefId === contextSubscriberId;
+    const expected = !relatedIsContext && (spec.when ? spec.when(ticket) : true);
     const locate = HEADER_CONTROL_PROPERTIES.has(key) ? findHeaderControlValue : findProperty;
     const found = locate(panel, PROPERTY_LABELS[key], spec.value(ticket, users)) !== null;
     if (found !== expected) {
@@ -373,10 +387,12 @@ function propertyMismatches(panel: HTMLElement, ticket: AssuranceTicket, users: 
       mismatches.push(`insignia ${key}: se esperaba ${expected ? 'visible' : 'ausente'}`);
     }
   });
-  // Adjuntos del caso (spec §3 D): sección con su conteo y `data-testid` estable.
+  // Adjuntos del caso: conteo y `data-testid` estables; sin adjuntos no hay bloque (2026-11-20 CA-6).
   const section = within(panel).queryByTestId('ticket-attachments-section');
   const total = COMMENTS_IN_PANEL.current.flatMap((comment) => comment.attachments ?? []).length;
-  if (!section || !within(section).queryByRole('heading', { name: `Adjuntos (${total})` })) {
+  if (total === 0) {
+    if (section) mismatches.push('propiedad attachments: se esperaba sin bloque');
+  } else if (!section || !within(section).queryByRole('heading', { name: `Adjuntos (${total})` })) {
     mismatches.push(`propiedad attachments: se esperaba «Adjuntos (${total})»`);
   }
   return mismatches;
@@ -1018,7 +1034,9 @@ describe('Consumidor pestaña Soporte (SubscriberSupportTab) — inventario CA-1
 
       // Soporte carga los responsables solo con gestión.
       const users = profile.canManage ? [AGENT] : [];
-      await waitFor(() => expect(propertyMismatches(panel, ticket, users)).toEqual([]));
+      await waitFor(() =>
+        expect(propertyMismatches(panel, ticket, users, SUBSCRIBER_ID)).toEqual([]),
+      );
       expect(await actionMismatches(user, panel, ctxFor(profile, ticket))).toEqual([]);
       // H6: la pestaña Soporte no pasa «Crear tarea vinculada».
       expect(ACTION_INVENTORY.createLinkedTask!.locate(panel)).toBeNull();

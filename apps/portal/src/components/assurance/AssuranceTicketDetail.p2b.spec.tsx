@@ -176,8 +176,12 @@ function rail(dialog: HTMLElement): HTMLElement {
   return within(dialog).getByRole('region', { name: 'Datos del caso' });
 }
 
+/**
+ * Sección del riel en un panel (spec 2026-11-20 §3 A). «Datos del caso» es un grupo, no una región,
+ * porque la región externa ya lleva ese nombre.
+ */
 function card(dialog: HTMLElement, name: string): HTMLElement {
-  return within(rail(dialog)).getByRole('region', { name });
+  return within(rail(dialog)).getByRole(name === 'Datos del caso' ? 'group' : 'region', { name });
 }
 
 /** Fila de propiedad: el contenedor del rótulo (`dt`) dentro de su tarjeta. */
@@ -208,13 +212,10 @@ describe('P2b · J dos columnas con riel', () => {
       .getAllByRole('region')
       .map((region) => region.getAttribute('aria-labelledby'))
       .map((id) => document.getElementById(id ?? '')?.textContent);
-    expect(cards).toEqual([
-      'Personas',
-      'Atención',
-      'Visita y orden de trabajo',
-      'Adjuntos (0)',
-      'Registro',
-    ]);
+    // Spec 2026-11-20 §3 A: un panel con cuatro secciones; «Datos del caso» es grupo (la región
+    // externa ya se llama así) y los adjuntos pasan al hilo (§3 F).
+    expect(cards).toEqual(['Estado y asignación', 'Visita y orden de trabajo', 'Fechas']);
+    expect(within(aside).getByRole('group', { name: 'Datos del caso' })).toBeInTheDocument();
 
     // Orden del DOM = orden de lectura: el riel va antes del hilo; desde lg pasa a la derecha.
     const thread = within(dialog).getByRole('tablist', { name: 'Filtrar el hilo del caso' });
@@ -229,20 +230,20 @@ describe('P2b · J dos columnas con riel', () => {
     expect(dialog.className).toContain('lg:max-w-4xl');
   });
 
-  it('Responsable se edita en Personas y Área en Atención; Estado sigue en la cabecera', async () => {
+  it('Estado, Responsable y Área van en «Estado y asignación» con un solo guardado (2026-11-20 §3 B)', async () => {
     const user = userEvent.setup();
     const { dialog, props } = renderDrawer();
-    const people = card(dialog, 'Personas');
-    const attention = card(dialog, 'Atención');
-    expect(within(people).getByRole('combobox', { name: 'Responsable' })).toBeEnabled();
+    const attention = card(dialog, 'Estado y asignación');
+    expect(within(attention).getByRole('combobox', { name: 'Responsable' })).toBeEnabled();
     expect(within(attention).getByRole('combobox', { name: 'Área' })).toBeEnabled();
-    expect(within(rail(dialog)).queryByRole('combobox', { name: 'Nuevo estado' })).toBeNull();
-    expect(within(dialog).getByRole('group', { name: 'Cambiar estado' })).toBeInTheDocument();
+    expect(within(attention).getByRole('combobox', { name: 'Nuevo estado' })).toBeInTheDocument();
+    expect(within(attention).getByRole('group', { name: 'Cambiar estado' })).toBeInTheDocument();
 
     await user.click(within(attention).getByRole('combobox', { name: 'Área' }));
     await user.click(
       within(await screen.findByRole('listbox', { name: 'Área' })).getAllByRole('option')[0]!,
     );
+    expect(within(dialog).getAllByRole('button', { name: 'Guardar asignación' })).toHaveLength(1);
     const save = within(attention).getByRole('button', { name: 'Guardar asignación' });
     await user.click(save);
     expect(props.onAssign).toHaveBeenCalledWith(
@@ -250,19 +251,16 @@ describe('P2b · J dos columnas con riel', () => {
     );
   });
 
-  it('ajuste CA-10: Estado va en la fila de las insignias, sin rótulo visible; la nota debajo', async () => {
+  it('2026-11-20 §3 B: Estado entra al riel con rótulo visible y el estado actual; la nota debajo', async () => {
     const user = userEvent.setup();
     const { dialog } = renderDrawer();
-    const control = within(dialog).getByRole('combobox', { name: 'Nuevo estado' });
-    const group = within(dialog).getByRole('group', { name: 'Cambiar estado' });
-    const headerRow = group.parentElement as HTMLElement;
-    // Misma fila que las insignias; bajo sm ocupa su propia línea sin desbordar.
+    const section = card(dialog, 'Estado y asignación');
+    const control = within(section).getByRole('combobox', { name: 'Nuevo estado' });
+    const headerRow = within(section).getByRole('heading', { name: 'Estado y asignación' })
+      .parentElement as HTMLElement;
+    // El estado actual va junto al rótulo de la sección; el rótulo del control se ve.
     expect(within(headerRow).getByText('En progreso')).toBeInTheDocument();
-    expect(headerRow.className).toContain('flex-wrap');
-    expect(group.className).toContain('min-w-48 flex-1');
-    // El nombre «Nuevo estado» solo lo leen los lectores de pantalla.
-    expect(within(dialog).getByText('Nuevo estado')).toHaveClass('sr-only');
-    expect(within(dialog).queryByText('Nuevo estado', { selector: 'label' })).toBeNull();
+    expect(within(dialog).getByText('Nuevo estado')).not.toHaveClass('sr-only');
 
     await user.click(control);
     await user.click(
@@ -270,9 +268,8 @@ describe('P2b · J dos columnas con riel', () => {
         'option',
       )[0]!,
     );
-    const note = within(dialog).getByRole('textbox', { name: 'Nota' });
-    expect(headerRow.contains(note)).toBe(false);
-    expect(headerRow.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const note = within(section).getByRole('textbox', { name: 'Nota' });
+    expect(control.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(dialog).getByRole('button', { name: 'Guardar estado' })).toBeInTheDocument();
   });
 
@@ -283,7 +280,7 @@ describe('P2b · J dos columnas con riel', () => {
     ).toHaveAccessibleDescription('No tienes cambios de estado disponibles para este caso.');
   });
 
-  it('Atención lleva Origen, Abierto, Actualizado y los plazos; Registro, el cierre', () => {
+  it('Datos del caso lleva Origen; Fechas, apertura, plazos y cierre, sin «Actualizado» (2026-11-20 §3 D–E)', () => {
     const { dialog } = renderDrawer({
       ticket: makeTicket({
         slaPolicyId: 'sla-1',
@@ -294,27 +291,27 @@ describe('P2b · J dos columnas con riel', () => {
         closedAt: '2026-11-03T10:00:00.000Z',
       }),
     });
-    const attention = card(dialog, 'Atención');
+    const caseData = card(dialog, 'Datos del caso');
+    expect(within(caseData).getByText('Origen', { selector: 'dt' })).toBeInTheDocument();
+    const dates = card(dialog, 'Fechas');
     for (const label of [
-      'Origen',
       'Abierto',
-      'Actualizado',
+      'Primera respuesta',
+      'Resuelto',
+      'Cerrado',
       'Responder antes de',
       'Resolver antes de',
     ]) {
-      expect(within(attention).getByText(label, { selector: 'dt' })).toBeInTheDocument();
+      expect(within(dates).getByText(label, { selector: 'dt' })).toBeInTheDocument();
     }
-    const record = card(dialog, 'Registro');
-    for (const label of ['Primera respuesta', 'Resuelto', 'Cerrado']) {
-      expect(within(record).getByText(label, { selector: 'dt' })).toBeInTheDocument();
-    }
+    expect(within(dialog).queryByText('Actualizado')).toBeNull();
   });
 });
 
 describe('P2b · L nombres con y sin dato', () => {
   it('con nombre: lo muestra y deja el tipo como texto de apoyo', () => {
     const { dialog } = renderDrawer();
-    const people = card(dialog, 'Personas');
+    const people = card(dialog, 'Datos del caso');
     const requester = row(people, 'Solicitante');
     expect(requester).toHaveTextContent('Titular Sintético');
     expect(requester).toHaveTextContent('Suscriptor');
@@ -337,7 +334,7 @@ describe('P2b · L nombres con y sin dato', () => {
           },
         }),
       });
-      const requester = row(card(dialog, 'Personas'), 'Solicitante');
+      const requester = row(card(dialog, 'Datos del caso'), 'Solicitante');
       expect(requester).toHaveTextContent('Suscriptor');
       expect(requester).not.toHaveTextContent('Titular Sintético');
       expect(requester).not.toHaveTextContent(nameState);
@@ -350,7 +347,7 @@ describe('P2b · L nombres con y sin dato', () => {
     delete legacy.requester;
     delete legacy.relatedTo;
     const { dialog } = renderDrawer({ ticket: legacy });
-    const people = card(dialog, 'Personas');
+    const people = card(dialog, 'Datos del caso');
     expect(row(people, 'Solicitante')).toHaveTextContent('Suscriptor');
     expect(row(people, 'Relacionado con')).toHaveTextContent('Expediente');
     expect(within(people).queryByRole('link')).toBeNull();
@@ -368,7 +365,7 @@ describe('P2b · L nombres con y sin dato', () => {
         },
       }),
     });
-    const requester = row(card(dialog, 'Personas'), 'Solicitante');
+    const requester = row(card(dialog, 'Datos del caso'), 'Solicitante');
     expect(requester.querySelector('img')).toBeNull();
     expect(requester).toHaveTextContent('<img src=x onerror="alert(1)">');
   });
@@ -377,7 +374,7 @@ describe('P2b · L nombres con y sin dato', () => {
 describe('P2b · L enlaces con y sin permiso (CA-12)', () => {
   it('con permiso: cada dato enlaza a su pantalla', () => {
     const { dialog } = renderDrawer();
-    const people = card(dialog, 'Personas');
+    const people = card(dialog, 'Datos del caso');
     expect(within(people).getByRole('link', { name: 'Titular Sintético' })).toHaveAttribute(
       'href',
       `/dashboard/crm/subscribers/${SUBSCRIBER_ID}`,
@@ -431,7 +428,7 @@ describe('P2b · L enlaces con y sin permiso (CA-12)', () => {
         },
       }),
     });
-    const requester = row(card(dialog, 'Personas'), 'Solicitante');
+    const requester = row(card(dialog, 'Datos del caso'), 'Solicitante');
     expect(requester).toHaveTextContent('Titular Sintético');
     expect(within(requester).queryByRole('link')).toBeNull();
   });

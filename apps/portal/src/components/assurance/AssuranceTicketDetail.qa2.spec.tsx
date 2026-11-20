@@ -227,8 +227,12 @@ function rail(scope: HTMLElement): HTMLElement {
   return within(scope).getByRole('region', { name: 'Datos del caso' });
 }
 
+/**
+ * Sección del riel en un panel (spec 2026-11-20 §3 A). «Datos del caso» es un grupo, no una región,
+ * porque la región externa ya lleva ese nombre.
+ */
 function card(scope: HTMLElement, name: string): HTMLElement {
-  return within(rail(scope)).getByRole('region', { name });
+  return within(rail(scope)).getByRole(name === 'Datos del caso' ? 'group' : 'region', { name });
 }
 
 function row(scope: HTMLElement, label: string): HTMLElement {
@@ -281,13 +285,13 @@ describe('QA2 CA-12 · «Relacionado con» sin nombre', () => {
       const { dialog } = renderDrawer({
         ticket: makeTicket({ relatedTo: nullParty('relatedTo', nameState) }),
       });
-      const related = row(card(dialog, 'Personas'), 'Relacionado con');
+      const related = row(card(dialog, 'Datos del caso'), 'Relacionado con');
       expect(related).toHaveTextContent('Expediente');
       expect(related).not.toHaveTextContent(RELATED_NAME);
       expect(related).not.toHaveTextContent(nameState);
       expect(within(related).queryByRole('link')).toBeNull();
       // El solicitante con nombre no se ve afectado.
-      expect(row(card(dialog, 'Personas'), 'Solicitante')).toHaveTextContent(REQUESTER_NAME);
+      expect(row(card(dialog, 'Datos del caso'), 'Solicitante')).toHaveTextContent(REQUESTER_NAME);
     },
   );
 });
@@ -304,7 +308,7 @@ describe('QA2 CA-12 · defensa en profundidad: solo AVAILABLE pinta el nombre', 
       });
       expect(dialog).not.toHaveTextContent(REQUESTER_NAME);
       expect(dialog).not.toHaveTextContent(RELATED_NAME);
-      const people = card(dialog, 'Personas');
+      const people = card(dialog, 'Datos del caso');
       expect(row(people, 'Solicitante')).toHaveTextContent('Suscriptor');
       expect(row(people, 'Relacionado con')).toHaveTextContent('Expediente');
       expect(within(people).queryByRole('link')).toBeNull();
@@ -323,7 +327,7 @@ describe('QA2 CA-12 · defensa en profundidad: solo AVAILABLE pinta el nombre', 
         },
       }),
     });
-    const requester = row(card(dialog, 'Personas'), 'Solicitante');
+    const requester = row(card(dialog, 'Datos del caso'), 'Solicitante');
     expect(requester).toHaveTextContent('Suscriptor');
     expect(within(requester).queryByRole('link')).toBeNull();
   });
@@ -344,7 +348,7 @@ describe('QA2 CA-12 · un identificador que no es UUID no genera enlace', () => 
         },
       }),
     });
-    const related = row(card(dialog, 'Personas'), 'Relacionado con');
+    const related = row(card(dialog, 'Datos del caso'), 'Relacionado con');
     expect(related).toHaveTextContent(RELATED_NAME);
     expect(within(related).queryByRole('link')).toBeNull();
   });
@@ -402,7 +406,7 @@ describe('QA2 CA-12 · página propia', () => {
       makeTicket({ requester: nullParty('requester', 'PROTECTED') as never }),
     );
     expect(detail).not.toHaveTextContent(REQUESTER_NAME);
-    const requester = row(card(detail, 'Personas'), 'Solicitante');
+    const requester = row(card(detail, 'Datos del caso'), 'Solicitante');
     expect(requester).toHaveTextContent('Suscriptor');
     expect(within(requester).queryByRole('link')).toBeNull();
   });

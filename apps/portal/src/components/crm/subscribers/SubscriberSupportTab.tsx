@@ -532,6 +532,8 @@ export function SubscriberSupportTab({
   // Un solo origen de datos del ticket para el panel lateral y el panel fijo (§3 A, R2).
   const ticketDetailProps: AssuranceTicketSharedProps = {
     ticket: drawerTicket,
+    // CA-5 (spec 2026-11-20): el detalle no repite «Relacionado con» si es este titular.
+    contextSubscriberId: subscriber.id,
     comments,
     timeline,
     assignees,
