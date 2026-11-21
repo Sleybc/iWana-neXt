@@ -4,6 +4,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { AddSerializedAssetLot1290000000000 } from './129_add_serialized_asset_lot';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * Integración 129 contra PostgreSQL real (patrón 126/128): levanta el mínimo
@@ -15,7 +16,7 @@ import { AddSerializedAssetLot1290000000000 } from './129_add_serialized_asset_l
  * test:integration`. Sin PostgreSQL alcanzable se omite con banner — nunca en
  * silencio.
  */
-const SCHEMA = `it_129_serial_lot_${randomUUID().slice(0, 8)}`;
+const SCHEMA = ephemeralSchemaName('it_129_serial_lot_');
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;

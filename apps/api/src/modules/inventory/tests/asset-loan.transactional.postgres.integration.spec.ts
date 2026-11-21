@@ -47,6 +47,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 function loadWorkspaceEnv(): void {
   if (process.env.DB_HOST && process.env.DB_PASSWORD) {
@@ -95,7 +96,7 @@ loadWorkspaceEnv();
 const enabled = process.env.IWANA_DB_INTEGRATION_AVAILABLE === 'true';
 const syntheticTenantId = randomUUID();
 const syntheticTenantSlug = `ev1-asset-loan-${syntheticTenantId.slice(0, 8)}`;
-const syntheticSchemaName = `tenant_ev1_asset_loan_${randomUUID().replace(/-/g, '')}`;
+const syntheticSchemaName = ephemeralSchemaName('tenant_ev1_asset_loan_');
 
 const actor: JwtPayload = {
   sub: '00000000-0000-4000-8000-0000000000e2',

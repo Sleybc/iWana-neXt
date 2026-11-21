@@ -7,10 +7,11 @@ import {
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { InstalledEquipmentReadAdapter } from './installed-equipment-read.adapter';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
-const schemaName = `tenant_installed_equipment_${randomBytes(5).toString('hex')}`;
+const schemaName = ephemeralSchemaName('tenant_installed_equipment_');
 const allowedDatabaseName = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
 
 if (dbAvailable && !allowedDatabaseName.test(process.env['DB_NAME'] ?? '')) {

@@ -15,6 +15,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * Origen TASKS de WFM contra el schema creado por la cadena real de
@@ -31,7 +32,7 @@ function quoteIdentifier(value: string): string {
 }
 
 describeWithDb('WFM — origen TASKS sobre el schema tenant migrado', () => {
-  const schemaName = `tenant_wfm_tasks_origin_${randomBytes(5).toString('hex')}`;
+  const schemaName = ephemeralSchemaName('tenant_wfm_tasks_origin_');
   const q = quoteIdentifier(schemaName);
   const tenantId = randomUUID();
   const actorId = randomUUID();

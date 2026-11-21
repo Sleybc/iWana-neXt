@@ -3,10 +3,11 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { InventoryExecutionRequestReceipts1390000000000 } from './139_inventory_execution_request_receipts';
 import { InventoryExecutionRequestReversalReceipts1410000000000 } from './141_inventory_execution_request_reversal_receipts';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
-const schema = `it_inv_reversal_${randomBytes(8).toString('hex')}`;
+const schema = ephemeralSchemaName('it_inv_reversal_');
 
 describeWithDb('Migración 141 — recibos de reverso en PostgreSQL real', () => {
   let dataSource: DataSource;

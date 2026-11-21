@@ -8,10 +8,11 @@ import { CreateMediaAssetsTable1746000001000 } from './public/008_create_media_a
 import { CreatePublicSchema1741766400000 } from './public/001_create_public_schema';
 import { applyTenantMigrationsInOrder, createTenantDataSource } from './tenant/runner';
 import { ExecutionOrderServerScope0980000000000 } from './tenant/098_execution_order_server_scope';
+import { ephemeralSchemaName } from '../../test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
-const schemaName = `tenant_it_r4_r24_${Date.now().toString(36)}`;
+const schemaName = ephemeralSchemaName('tenant_it_r4_r24_');
 const tenantId = randomUUID();
 
 if (!dbAvailable) {

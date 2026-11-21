@@ -3,8 +3,9 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { ContractDocumentGenerations1860000000186 } from './186_contract_document_generations';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
-const SCHEMA = `tenant_contract_docs_186_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_contract_docs_186_');
 const TENANT_ID = randomUUID();
 const CONTRACT_ID = randomUUID();
 const ACTOR_ID = randomUUID();

@@ -20,6 +20,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -28,7 +29,7 @@ describeWithDb('Permanencia mínima (bloque H) con PostgreSQL real', () => {
   let dataSource: DataSource;
   const tenantId = randomUUID();
   const tenantSlug = `permanence-${tenantId.slice(0, 8)}`;
-  const schemaName = 'tenant_permanence_' + randomUUID().replace(/-/g, '');
+  const schemaName = ephemeralSchemaName('tenant_permanence_');
   const actorId = randomUUID();
   const audit = { logWithin: jest.fn().mockResolvedValue(undefined) };
   let plans: PlanPermanenceService;

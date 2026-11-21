@@ -8,8 +8,9 @@ import {
 import { ContractStatus } from '../modules/crm/enums/contract-status.enum';
 import { SubscriberStatus } from '@iwana/shared';
 import { reportLifecycleInconsistenciesInTenant } from './report-lifecycle-inconsistencies';
+import { ephemeralSchemaName } from '../../../../packages/database/test/ephemeral-schema';
 
-const schemaName = `tenant_lifecycle_report_${randomBytes(5).toString('hex')}`;
+const schemaName = ephemeralSchemaName('tenant_lifecycle_report_');
 const tenantId = randomUUID();
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;

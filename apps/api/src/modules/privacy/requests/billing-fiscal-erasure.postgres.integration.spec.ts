@@ -48,6 +48,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * Cierra el hueco de evidencia de V1 QA v1.7: la vista previa y la resolución
@@ -87,7 +88,7 @@ async function waitForSubscriberLockWait(dataSource: DataSource): Promise<void> 
 }
 
 describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL', () => {
-  const schemaName = `tenant_privacy_erasure_${randomBytes(5).toString('hex')}`;
+  const schemaName = ephemeralSchemaName('tenant_privacy_erasure_');
   const q = quoteIdentifier(schemaName);
   const tenantId = randomUUID();
   const actorId = randomUUID();

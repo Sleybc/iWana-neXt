@@ -7,8 +7,9 @@ import { EnableBtreeGist1784419216000 } from '../public/028_enable_btree_gist';
 import { CreateNetworkCatalog1600000000000 } from './160_network_catalog';
 import { CreateNetworkProvisioning1610000000000 } from './161_network_provisioning';
 import { SeedNetworkPermissions1620000000000 } from './162_seed_network_permissions';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
-const SCHEMA = `tenant_network_permissions_162_${randomBytes(4).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_network_permissions_162_');
 const TENANT_ID = randomUUID();
 const DB_AVAILABLE = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = DB_AVAILABLE ? describe : describe.skip;

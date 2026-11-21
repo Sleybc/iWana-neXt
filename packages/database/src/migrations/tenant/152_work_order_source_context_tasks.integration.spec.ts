@@ -4,6 +4,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { WorkOrderSourceContextTasks1520000000000 } from './152_work_order_source_context_tasks';
 import { applyTenantMigrationsInOrder, createTenantDataSource } from './runner';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -23,11 +24,11 @@ interface TenantFixture {
 const suffix = randomBytes(4).toString('hex');
 /** A conserva filas con TASKS; B no tiene ninguna (C6: dos schemas tenant). */
 const tenantA: TenantFixture = {
-  schema: `tenant_wo_origin_152_a_${suffix}`,
+  schema: ephemeralSchemaName('tenant_wo_origin_152_a_'),
   tenantId: randomUUID(),
 };
 const tenantB: TenantFixture = {
-  schema: `tenant_wo_origin_152_b_${suffix}`,
+  schema: ephemeralSchemaName('tenant_wo_origin_152_b_'),
   tenantId: randomUUID(),
 };
 

@@ -21,11 +21,12 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const tenantId = randomUUID();
-const schemaName = `tenant_mod05_lifecycle_${randomUUID().replace(/-/g, '')}`;
+const schemaName = ephemeralSchemaName('tenant_mod05_lifecycle_');
 const actorId = randomUUID();
 const contractIds = [randomUUID(), randomUUID()];
 const integrationCryptoKeyHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';

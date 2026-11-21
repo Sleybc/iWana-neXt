@@ -4,6 +4,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { RepairOrganizationCompanyBusinessHoursSeed1170000000000 } from './117_repair_organization_company_business_hours_seed';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -34,7 +35,7 @@ describeWithDb('117 repair company business hours seed - PostgreSQL real', () =>
     await dataSource.initialize();
 
     const suffix = randomBytes(6).toString('hex');
-    schemas = [`tenant_it117_${suffix}_a`, `tenant_it117_${suffix}_b`];
+    schemas = [ephemeralSchemaName('tenant_it117_a_'), ephemeralSchemaName('tenant_it117_b_')];
     tenantIds = [randomUUID(), randomUUID()];
 
     const bootstrap = dataSource.createQueryRunner();

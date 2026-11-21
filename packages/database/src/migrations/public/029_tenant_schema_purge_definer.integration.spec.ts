@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'crypto';
 import { Pool, PoolClient } from 'pg';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * Migración pública 029 (R7, ADR-108) contra PostgreSQL real.
@@ -29,7 +30,7 @@ const suffix = randomBytes(4).toString('hex');
 let sequence = 0;
 function nextSchemaName(): string {
   sequence += 1;
-  return `tenant_r7x_${suffix}_${sequence}`;
+  return ephemeralSchemaName(`tenant_r7x_${sequence}_`);
 }
 
 function pool(user: string, password: string, max = 2): Pool {

@@ -8,10 +8,11 @@ import {
 } from '../../../../../packages/database/src/migrations/tenant/runner';
 import { AuditService } from '../audit/audit.service';
 import { OrganizationService, type OrganizationSiteDetail } from './organization.service';
+import { ephemeralSchemaName } from '../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
-const schemaName = `tenant_orgcode_concurrency_${randomBytes(6).toString('hex')}`;
+const schemaName = ephemeralSchemaName('tenant_orgcode_concurrency_');
 const siteCount = 24;
 const sameInitialNames = [
   'Nodo Santandercito',

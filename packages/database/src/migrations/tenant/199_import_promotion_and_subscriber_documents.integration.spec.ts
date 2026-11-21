@@ -4,6 +4,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { ImportPromotionAndSubscriberDocuments1990000000199 } from './199_import_promotion_and_subscriber_documents';
 import { applyTenantMigrationsInOrder, createTenantDataSource } from './runner';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * Migración 199 — promoción de la importación UISP y soportes del suscriptor (ADR-110 D3,
@@ -13,7 +14,7 @@ import { applyTenantMigrationsInOrder, createTenantDataSource } from './runner';
  * de vida acoplado a su motivo, PDF externo solo en `IMPORTADO`, trigger que reserva a la
  * promoción las aplicaciones a documentos importados, y down/up con su guarda destructiva.
  */
-const SCHEMA = `tenant_uisp_199_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_uisp_199_');
 const TENANT_ID = randomUUID();
 const ACTOR_ID = randomUUID();
 const DESTRUCTIVE = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';

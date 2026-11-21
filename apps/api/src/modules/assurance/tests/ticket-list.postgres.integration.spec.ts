@@ -30,6 +30,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * Listado de tickets, paso 2 (spec MOD05 pestaña Soporte §16 B-1 a B-3) — PostgreSQL real con
@@ -40,10 +41,10 @@ const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const databaseName = process.env['DB_NAME'] ?? '';
 const allowedDatabaseName = /^(test|iwana_it_[a-z0-9_]+)$/u;
-const schemaName = `tenant_assurance_list_${randomBytes(5).toString('hex')}`;
+const schemaName = ephemeralSchemaName('tenant_assurance_list_');
 const q = `"${schemaName}"`;
 const tenantId = randomUUID();
-const otherSchemaName = `tenant_assurance_list_other_${randomBytes(5).toString('hex')}`;
+const otherSchemaName = ephemeralSchemaName('tenant_assurance_list_other_');
 const otherTenantId = randomUUID();
 const actorId = randomUUID();
 const subscriberId = randomUUID();

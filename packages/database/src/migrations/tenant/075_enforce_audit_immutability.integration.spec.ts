@@ -4,6 +4,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { EnforceAuditImmutability0750000000000 } from './075_enforce_audit_immutability';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * H-4 (SEC-P1) — ejercicio runtime del trigger `reject_audit_mutation` sobre
@@ -18,7 +19,7 @@ import { EnforceAuditImmutability0750000000000 } from './075_enforce_audit_immut
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const suffix = randomBytes(8).toString('hex');
-const SCHEMA = `it_075_audit_imm_${suffix}`;
+const SCHEMA = ephemeralSchemaName('it_075_audit_imm_');
 
 /** SQLSTATE de `USING ERRCODE = 'insufficient_privilege'` en 075/014. */
 const INSUFFICIENT_PRIVILEGE = '42501';

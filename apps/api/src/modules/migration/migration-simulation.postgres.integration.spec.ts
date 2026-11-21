@@ -17,6 +17,7 @@ import { MigrationMappingsService } from './migration-mappings.service';
 import { MigrationPurgeService } from './migration-purge.service';
 import { MigrationSimulationService } from './migration-simulation.service';
 import { SYNTHETIC_METHOD_ID, buildSyntheticUispZip } from './test/uisp-zip.fixture';
+import { ephemeralSchemaName } from '../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * Bloque B contra PostgreSQL real (ADR-110 D2, D4, D10, D11): la 194 real, la carga a
@@ -46,7 +47,7 @@ function redisConnection() {
 
 describeDb('Importación UISP — simulación sobre PostgreSQL real', () => {
   let ds: DataSource;
-  const schemaName = `tenant_migr_sim_${randomBytes(5).toString('hex')}`;
+  const schemaName = ephemeralSchemaName('tenant_migr_sim_');
   const tenantId = randomUUID();
   const actorId = randomUUID();
   const scope = { tenantId, schemaName };

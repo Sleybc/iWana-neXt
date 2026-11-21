@@ -16,6 +16,7 @@ import { ProductDetail } from '../entities/product-detail.entity';
 import { ServiceDetail } from '../entities/service-detail.entity';
 import { CommercialCatalogReadAdapter } from '../ports/commercial-catalog-read.adapter';
 import { CatalogService } from '../services/catalog.service';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -25,7 +26,7 @@ describeWithDb('Catálogo — IVA por ítem con PostgreSQL real (MOD14 R1/R2)', 
   let service: CatalogService;
   let reader: CommercialCatalogReadAdapter;
   const tenantId = randomUUID();
-  const schemaName = `tenant_mod14_item_vat_${randomUUID().replaceAll('-', '')}`;
+  const schemaName = ephemeralSchemaName('tenant_mod14_item_vat_');
   const slug = `mod14-item-vat-${tenantId.slice(0, 8)}`;
   const context = { tenantId, schemaName, tenantSlug: slug };
   const run = <T>(fn: () => Promise<T>) => TenantContext.run(context, fn);
@@ -58,7 +59,7 @@ describeWithDb('Catálogo — IVA por ítem con PostgreSQL real (MOD14 R1/R2)', 
 
   afterAll(async () => {
     if (!dataSource?.isInitialized) return;
-    if (!/^tenant_mod14_item_vat_[a-f0-9]{32}$/u.test(schemaName)) {
+    if (!/^tenant_mod14_item_vat_itx[0-9a-z]{8}[a-f0-9]{8}$/u.test(schemaName)) {
       throw new Error('Schema de limpieza inválido.');
     }
     await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);

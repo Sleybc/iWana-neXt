@@ -36,6 +36,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -45,7 +46,7 @@ describeWithDb('B2 — PATCH subscriber audit PII en PostgreSQL real', () => {
   let dataSource: DataSource;
   const tenantId = randomUUID();
   const tenantSlug = `b2-audit-${tenantId.slice(0, 8)}`;
-  const testSchemaName = `tenant_b2_audit_${randomUUID().replace(/-/g, '')}`;
+  const testSchemaName = ephemeralSchemaName('tenant_b2_audit_');
   const encryptionKey = parseEncryptionKeyHex(
     '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
   );

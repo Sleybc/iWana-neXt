@@ -16,6 +16,7 @@ import {
   createTenantDataSource,
 } from '../../../../../../../packages/database/src/migrations/tenant/runner';
 import { IMPORTED_TAG_DEFAULT_COLOR, SubscriberTagsService } from './subscriber-tags.service';
+import { ephemeralSchemaName } from '../../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -25,7 +26,7 @@ if (dbAvailable && !/^(test|iwana_it_[a-z0-9_]+)$/u.test(process.env['DB_NAME'] 
 jest.setTimeout(900_000);
 
 const tenantId = randomUUID();
-const schemaName = `tenant_tags_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+const schemaName = ephemeralSchemaName('tenant_tags_');
 const actorId = randomUUID();
 const KEYS: ErasureKeys = {
   hashKey: Buffer.alloc(32, 1),

@@ -6,11 +6,12 @@ import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { AnonymizeExecutionOrderTransitionRetention1340000000000 } from './134_anonymize_execution_order_transition_retention';
 import { ExecutionOrderOriginIdentity1350000000000 } from './135_execution_order_origin_identity';
 import { ExecutionOrderAnnulmentFlag1360000000000 } from './136_execution_order_annulment_flag';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const suffix = randomBytes(8).toString('hex');
-const schema = `it_t2_annul_${suffix}`;
+const schema = ephemeralSchemaName('it_t2_annul_');
 
 if (!dbAvailable) {
   console.warn(

@@ -36,6 +36,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * H-EXP B3 (sr-qa) contra PostgreSQL real: canarios sintéticos positivos y
@@ -56,7 +57,7 @@ const CLI_KEYS = {
 };
 
 describeWithDb('RetentionExpiry B3 — canarios, reloj, carreras y job (sr-qa)', () => {
-  const schemaName = `tenant_hexp_b3_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const schemaName = ephemeralSchemaName('tenant_hexp_b3_');
   const tenantId = randomUUID();
   const tenantSlug = `hexp-b3-${randomUUID().slice(0, 8)}`;
   const actorId = randomUUID();
@@ -535,7 +536,7 @@ describeWithDb('RetentionExpiry B3 — canarios, reloj, carreras y job (sr-qa)',
       return { partyId, subscriberId, requestId };
     }
 
-    const otherSchema = `tenant_hexp_b3b_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const otherSchema = ephemeralSchemaName('tenant_hexp_b3b_');
     const otherTenant = randomUUID();
     const otherSlug = `hexp-b3b-${randomUUID().slice(0, 8)}`;
     await baseDataSource!.query(`CREATE SCHEMA "${otherSchema}"`);
@@ -1015,7 +1016,7 @@ describeWithDb('RetentionExpiry B3 — canarios, reloj, carreras y job (sr-qa)',
     // Tenant inactivo: apunta a un schema sin provisionar; resolveTenant lo
     // rechaza antes de tocar tablas tenant.
     const inactiveId = randomUUID();
-    const inactiveSchema = `tenant_hexp_b3i_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const inactiveSchema = ephemeralSchemaName('tenant_hexp_b3i_');
     await baseDataSource.query(
       `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
        VALUES ($1, 'H-EXP B3 inactivo', $2, $3, 'INACTIVE', 'hexp-b3i@invalid.example')`,

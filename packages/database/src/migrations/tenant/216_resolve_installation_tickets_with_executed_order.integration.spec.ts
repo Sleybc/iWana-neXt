@@ -3,8 +3,9 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { ResolveInstallationTicketsWithExecutedOrder2160000000216 } from './216_resolve_installation_tickets_with_executed_order';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
-const SCHEMA = `tenant_mod10_resolve_216_${randomBytes(4).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_mod10_resolve_216_');
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const INTEGRATION_DATABASE_NAME = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;

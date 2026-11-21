@@ -37,6 +37,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * MOD10 detalle del ticket, paso 2 — PostgreSQL real con los adaptadores reales de CRM
@@ -49,7 +50,7 @@ const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const databaseName = process.env['DB_NAME'] ?? '';
 const allowedDatabaseName = /^(test|iwana_it_[a-z0-9_]+)$/u;
-const schemaName = `tenant_assurance_detail_${randomBytes(5).toString('hex')}`;
+const schemaName = ephemeralSchemaName('tenant_assurance_detail_');
 const q = `"${schemaName}"`;
 const tenantId = randomUUID();
 /** Otro tenant: su propio schema migrado y su propio id. */

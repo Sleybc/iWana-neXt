@@ -3,6 +3,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { ContractStratumEvidenceUnique1450000000000 } from './145_contract_stratum_evidence_unique';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * Ejercita la 145 sobre PostgreSQL real, en un schema de tenant efímero.
@@ -14,7 +15,7 @@ import { ContractStratumEvidenceUnique1450000000000 } from './145_contract_strat
  * `pnpm --filter @iwana/db test:integration` con `IWANA_DB_INTEGRATION_AVAILABLE=true`.
  */
 
-const SCHEMA = `tenant_mod05_stratum_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_mod05_stratum_');
 const INDEX_NAME = 'uq_contracts_stratum_evidence';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';

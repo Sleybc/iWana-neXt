@@ -31,6 +31,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * H-EXP B4-R2 contra PostgreSQL real: M-1 (el contrato abierto prevalece sobre
@@ -48,7 +49,7 @@ jest.setTimeout(300_000);
 const TODAY = '2026-11-08';
 
 describeWithDb('RetentionExpiry B4-R2 — M-1, M-2, B-1, B-3 y B-5 en PostgreSQL real', () => {
-  const schemaName = `tenant_hexp_b4r2_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const schemaName = ephemeralSchemaName('tenant_hexp_b4r2_');
   const tenantId = randomUUID();
   const tenantSlug = `hexp-b4r2-${randomUUID().slice(0, 8)}`;
   const actorId = randomUUID();
@@ -323,7 +324,7 @@ describeWithDb('RetentionExpiry B4-R2 — M-1, M-2, B-1, B-3 y B-5 en PostgreSQL
 
   afterAll(async () => {
     if (!dataSource?.isInitialized) return;
-    if (!/^tenant_hexp_b4r2_[a-f0-9]{12}$/u.test(schemaName)) {
+    if (!/^tenant_hexp_b4r2_itx[0-9a-z]{8}[a-f0-9]{8}$/u.test(schemaName)) {
       throw new Error('Schema de limpieza inválido.');
     }
     try {

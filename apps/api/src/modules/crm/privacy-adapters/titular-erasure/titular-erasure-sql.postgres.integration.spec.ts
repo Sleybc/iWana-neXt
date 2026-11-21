@@ -15,8 +15,9 @@ import {
   type FieldRule,
 } from './titular-erasure-sql';
 import { CrmTitularErasureParticipant } from './crm-titular-erasure.participant';
+import { ephemeralSchemaName } from '../../../../../../../packages/database/test/ephemeral-schema';
 
-const schema = `tenant_privacy_versions_${randomBytes(4).toString('hex')}`;
+const schema = ephemeralSchemaName('tenant_privacy_versions_');
 const schemaTenantId = randomUUID();
 const fixtureActorId = randomUUID();
 const databaseAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
@@ -347,7 +348,7 @@ describeWithDb('Supresión CRM — versiones PostgreSQL reales', () => {
 
   it('ancla la columna cifrada de historial al esquema migrado y detecta su renombre', async () => {
     if (!dataSource?.isInitialized) throw new Error('DataSource de integración no inicializado.');
-    const migratedSchema = `tenant_privacy_migration_${randomBytes(5).toString('hex')}`;
+    const migratedSchema = ephemeralSchemaName('tenant_privacy_migration_');
     const quotedSchema = `"${migratedSchema}"`;
     const tenantId = randomUUID();
     const subscriberId = randomUUID();

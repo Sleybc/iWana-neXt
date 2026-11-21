@@ -24,6 +24,7 @@ import { resolveMigrationDbCredentials } from '@iwana/db';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { TenantSchemaPurgeProcessor } from './tenant-schema-purge.processor';
 import { recordTestPurgeEvidence } from '../../test/tenant-purge-evidence-fixture';
+import { ephemeralSchemaName } from '../../../../packages/database/test/ephemeral-schema';
 
 function loadWorkspaceEnv(): void {
   if (process.env.DB_HOST && process.env.DB_PASSWORD) return;
@@ -53,7 +54,7 @@ const DB_NAME = process.env.DB_NAME ?? 'dbiw';
 
 describe('R7 — purga de tenants con el rol de producción (PostgreSQL real)', () => {
   const suffix = randomBytes(6).toString('hex');
-  const schemaName = `tenant_r7_${suffix}`;
+  const schemaName = ephemeralSchemaName('tenant_r7_');
   const tenantSlug = `r7-${suffix}`;
 
   let migratorPool: Pool | undefined;

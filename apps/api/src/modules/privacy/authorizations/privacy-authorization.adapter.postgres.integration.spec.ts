@@ -7,11 +7,12 @@ import {
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { DataAuthorizationEntity } from '../entities/data-authorization.entity';
 import { PrivacyAuthorizationAdapter } from './privacy-authorization.adapter';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const allowedDatabaseName = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
-const schemaName = `tenant_privacy_authorization_${randomBytes(5).toString('hex')}`;
+const schemaName = ephemeralSchemaName('tenant_privacy_authorization_');
 const tenantId = randomUUID();
 const partyId = randomUUID();
 const actorId = randomUUID();

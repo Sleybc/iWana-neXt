@@ -3,8 +3,9 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { OperatorContractProfile1840000000184 } from './184_operator_contract_profile';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
-const SCHEMA = `tenant_operator_profile_184_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_operator_profile_184_');
 const TENANT_ID = randomUUID();
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;

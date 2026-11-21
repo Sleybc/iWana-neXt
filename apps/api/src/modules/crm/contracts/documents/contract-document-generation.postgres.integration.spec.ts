@@ -11,6 +11,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../../packages/database/test/ephemeral-schema';
 
 const describeWithDb =
   process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true' ? describe : describe.skip;
@@ -26,7 +27,7 @@ describeWithDb('Generación del contrato: PostgreSQL en schema sintético', () =
   const tenantId = randomUUID();
   const actorId = randomUUID();
   const orderId = randomUUID();
-  const schemaName = 'tenant_contract_doc_' + randomUUID().replace(/-/g, '');
+  const schemaName = ephemeralSchemaName('tenant_contract_doc_');
   const quote = (identifier: string) => '"' + identifier.replace(/"/g, '""') + '"';
   const context = { tenantId, schemaName, tenantSlug: 'contract-doc-synthetic' };
   const inContext = <T>(callback: () => Promise<T>) => TenantContext.run(context, callback);
@@ -185,7 +186,8 @@ describeWithDb('Generación del contrato: PostgreSQL en schema sintético', () =
 
   afterAll(async () => {
     if (!dataSource?.isInitialized) return;
-    if (!/^tenant_contract_doc_[a-f0-9]{32}$/.test(schemaName)) throw new Error('Schema inválido.');
+    if (!/^tenant_contract_doc_itx[0-9a-z]{8}[a-f0-9]{8}$/.test(schemaName))
+      throw new Error('Schema inválido.');
     await dataSource.query('DROP SCHEMA IF EXISTS ' + quote(schemaName) + ' CASCADE');
     await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
     await dataSource.destroy();

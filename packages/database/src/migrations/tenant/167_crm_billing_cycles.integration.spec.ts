@@ -2,8 +2,9 @@ import { randomBytes } from 'node:crypto';
 import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { CreateCrmBillingCycles1670000000000 } from './167_crm_billing_cycles';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
-const schema = `tenant_billing_cycles_167_${randomBytes(4).toString('hex')}`;
+const schema = ephemeralSchemaName('tenant_billing_cycles_167_');
 const databaseAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = databaseAvailable ? describe : describe.skip;
 const safeDatabaseName = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;

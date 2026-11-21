@@ -3,8 +3,9 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { ContractPendingSignatureNotify1870000000187 } from './187_contract_pending_signature_notify';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
-const SCHEMA = `tenant_pending_sig_187_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_pending_sig_187_');
 const TENANT_ID = randomUUID();
 const PERMISSION = 'crm.contracts.pending_signature.notify';
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';

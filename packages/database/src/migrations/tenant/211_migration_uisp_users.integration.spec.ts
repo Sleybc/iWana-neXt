@@ -4,6 +4,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { MigrationUispUsers2110000000211 } from './211_migration_uisp_users';
 import { applyTenantMigrationsInOrder, createTenantDataSource } from './runner';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * Migración 211 en PostgreSQL real (spec 2026-11-15 «importación UISP: usuarios», §2.1–§2.5 y
@@ -13,7 +14,7 @@ import { applyTenantMigrationsInOrder, createTenantDataSource } from './runner';
  *
  * Los valores cifrados y hashes son marcadores sintéticos: aquí solo se prueban las reglas.
  */
-const SCHEMA = `tenant_m211_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_m211_');
 const TENANT_ID = randomUUID();
 const ACTOR_ID = randomUUID();
 const DESTRUCTIVE = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';

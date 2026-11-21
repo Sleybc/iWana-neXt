@@ -43,6 +43,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * Adjuntos de tickets contra PostgreSQL real (spec MOD09 adjuntos §5 y §6; gate de la ola 2).
@@ -53,7 +54,7 @@ import {
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const databaseName = process.env['DB_NAME'] ?? '';
-const schemaName = `tenant_ticket_att_${randomBytes(5).toString('hex')}`;
+const schemaName = ephemeralSchemaName('tenant_ticket_att_');
 const quotedSchema = `"${schemaName}"`;
 const tenantId = randomUUID();
 const subscriberId = randomUUID();

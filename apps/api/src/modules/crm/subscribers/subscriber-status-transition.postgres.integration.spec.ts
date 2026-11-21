@@ -12,6 +12,7 @@ import {
   createTenantDataSource,
   TENANT_MIGRATIONS,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const integrationEnabled = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const databaseName = process.env['DB_NAME'] ?? '';
@@ -29,7 +30,7 @@ jest.setTimeout(900_000);
 
 describeWithDb('B1c — transición de subscriber con auditoría PostgreSQL real', () => {
   const tenantId = randomUUID();
-  const schemaName = `tenant_b1c_status_${randomUUID().replaceAll('-', '').slice(0, 16)}`;
+  const schemaName = ephemeralSchemaName('tenant_b1c_status_');
   const tenantSlug = `b1c-status-${tenantId.slice(0, 8)}`;
   const actorId = randomUUID();
   let dataSource: DataSource | undefined;

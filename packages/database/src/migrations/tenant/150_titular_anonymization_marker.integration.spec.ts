@@ -3,9 +3,10 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { TitularAnonymizationMarker1500000000000 } from './150_titular_anonymization_marker';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
-const SCHEMA = `tenant_privacy_marker_150_${randomBytes(5).toString('hex')}`;
-const SECOND_SCHEMA = `tenant_privacy_marker_150_other_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_privacy_marker_150_');
+const SECOND_SCHEMA = ephemeralSchemaName('tenant_privacy_marker_150_other_');
 const DESTRUCTIVE_DOWN_ENV_VAR = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;

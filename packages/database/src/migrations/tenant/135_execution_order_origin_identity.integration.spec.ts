@@ -4,11 +4,12 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { ExecutionOrderOriginIdentity1350000000000 } from './135_execution_order_origin_identity';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const suffix = randomBytes(8).toString('hex');
-const schema = `it_e1_origin_${suffix}`;
+const schema = ephemeralSchemaName('it_e1_origin_');
 
 if (!dbAvailable) {
   console.warn(

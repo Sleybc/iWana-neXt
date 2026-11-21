@@ -12,8 +12,9 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
-const schemaName = `tenant_mod05_rotation_${randomBytes(5).toString('hex')}`;
+const schemaName = ephemeralSchemaName('tenant_mod05_rotation_');
 const tenantId = randomUUID();
 const actorId = randomUUID();
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';

@@ -20,6 +20,7 @@ import {
 } from '../../../../../../../packages/database/src/migrations/tenant/runner';
 import { SubscriberNotesService } from './subscriber-notes.service';
 import { TypeOrmReencryptDbAdapter } from '../../../../common/crypto/reencrypt-aes.db-adapter';
+import { ephemeralSchemaName } from '../../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -29,7 +30,7 @@ if (dbAvailable && !/^(test|iwana_it_[a-z0-9_]+)$/u.test(process.env['DB_NAME'] 
 jest.setTimeout(900_000);
 
 const tenantId = randomUUID();
-const schemaName = `tenant_mod05_notes_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+const schemaName = ephemeralSchemaName('tenant_mod05_notes_');
 const actorId = randomUUID();
 const actor = { id: actorId, role: 'ADMIN' };
 const KEYS: ErasureKeys = {

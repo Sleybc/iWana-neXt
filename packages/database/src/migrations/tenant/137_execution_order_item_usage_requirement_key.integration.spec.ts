@@ -4,10 +4,11 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { ExecutionOrderItemUsageRequirementKey1370000000000 } from './137_execution_order_item_usage_requirement_key';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
-const schema = `it_ote_req_${randomBytes(8).toString('hex')}`;
+const schema = ephemeralSchemaName('it_ote_req_');
 
 if (!dbAvailable) {
   console.warn(

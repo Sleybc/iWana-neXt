@@ -22,6 +22,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * H-EXP B2-R2: alcance explícito de prospecto en el puerto de supresión.
@@ -36,7 +37,7 @@ const allowedDatabaseName = /^(test|iwana_it_[a-z0-9_]+)$/u;
 jest.setTimeout(900_000);
 
 describeWithDb('CrmPersonalDataErasureAdapter — prospecto explícito (H-EXP B2-R2)', () => {
-  const schemaName = `tenant_hexp_b2r2_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const schemaName = ephemeralSchemaName('tenant_hexp_b2r2_');
   const tenantId = randomUUID();
   const tenantSlug = `hexp-b2r2-${randomUUID().slice(0, 8)}`;
   const actorId = randomUUID();

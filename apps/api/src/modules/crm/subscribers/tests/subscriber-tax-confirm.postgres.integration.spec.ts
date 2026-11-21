@@ -21,6 +21,7 @@ import { SubscriberTaxProfileService } from '../subscriber-tax-profile.service';
 import { SubscriberTaxProfile } from '../entities/subscriber-tax-profile.entity';
 import { SubscriberTaxAssignment } from '../entities/subscriber-tax-assignment.entity';
 import { Subscriber } from '../entities/subscriber.entity';
+import { ephemeralSchemaName } from '../../../../../../../packages/database/test/ephemeral-schema';
 
 const describeWithDb =
   process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true' ? describe : describe.skip;
@@ -28,7 +29,7 @@ describeWithDb('Confirmación tributaria atómica: PostgreSQL real', () => {
   let ds: DataSource;
   let audit: AuditService;
   let service: SubscriberTaxProfileService;
-  const schemaName = 'tenant_tax_confirm_' + randomUUID().replace(/-/g, '');
+  const schemaName = ephemeralSchemaName('tenant_tax_confirm_');
   const tenantId = randomUUID();
   const actorId = randomUUID();
   const quote = (value: string) => '"' + value.replace(/"/g, '""') + '"';

@@ -7,12 +7,13 @@ import { ContractDocumentGenerations1860000000186 } from './186_contract_documen
 import { ContractSignatures1880000000188 } from './188_contract_signatures';
 import { ContractSignatureCopyEmail1890000000189 } from './189_contract_signature_copy_email';
 import { ContractTemplateContentHash1900000000190 } from './190_contract_template_content_hash';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * up/down de las migraciones del cierre de venta sin integración propia (183, 188, 189, 190):
  * reversibles en vacío, bloqueadas con datos salvo la variable destructiva y reaplicables.
  */
-const SCHEMA = `tenant_contract_closing_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_contract_closing_');
 const TENANT_ID = randomUUID();
 const CONTRACT_ID = randomUUID();
 const ACTOR_ID = randomUUID();

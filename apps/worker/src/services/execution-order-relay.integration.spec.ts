@@ -14,6 +14,7 @@ import { ExecutionOrderContractReliability0900000000000 } from '../../../../pack
 import { ExtendVisitRequestStatusAndOutboxOccurredAt0930000000000 } from '../../../../packages/database/src/migrations/tenant/093_extend_visit_request_status_and_outbox_occurred_at';
 import { ExecutionOrderRelayService } from './execution-order-relay.service';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
+import { ephemeralSchemaName } from '../../../../packages/database/test/ephemeral-schema';
 
 function loadWorkspaceEnv(): void {
   if (process.env.DB_HOST && process.env.DB_PASSWORD) return;
@@ -41,7 +42,7 @@ describe('R0.3 relay outbox (PostgreSQL real)', () => {
   let migrationDataSource: DataSource | undefined;
   let relay: ExecutionOrderRelayService | undefined;
   let tenantId: string | undefined;
-  const schemaName = `tenant_r03_relay_${process.pid}_${Date.now()}`;
+  const schemaName = ephemeralSchemaName('tenant_r03_relay_');
   const eventId = '00000000-0000-4000-8000-0000000000f3';
   const aggregateId = '00000000-0000-4000-8000-0000000000f4';
   const correlationId = '00000000-0000-4000-8000-0000000000f5';

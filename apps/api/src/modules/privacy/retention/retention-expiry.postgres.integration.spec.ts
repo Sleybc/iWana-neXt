@@ -32,6 +32,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * H-EXP B1/B2 contra PostgreSQL real: motor con adaptadores reales sobre la
@@ -44,7 +45,7 @@ const allowedDatabaseName = /^(test|iwana_it_[a-z0-9_]+)$/u;
 jest.setTimeout(900_000);
 
 describeWithDb('RetentionExpiryService en PostgreSQL real (H-EXP B1/B2)', () => {
-  const schemaName = `tenant_hexp_b1_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const schemaName = ephemeralSchemaName('tenant_hexp_b1_');
   const tenantId = randomUUID();
   const tenantSlug = `hexp-b1-${randomUUID().slice(0, 8)}`;
   const actorId = randomUUID();

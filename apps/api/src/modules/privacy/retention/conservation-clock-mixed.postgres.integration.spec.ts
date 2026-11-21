@@ -10,6 +10,7 @@ import {
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { ConservationDutyService } from './conservation-duty.service';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * H-EXP B2-R4 (P1, D-EXP-1) contra PostgreSQL real: el reloj se declara sin
@@ -20,7 +21,7 @@ import { ConservationDutyService } from './conservation-duty.service';
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const allowedDatabaseName = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
-const schemaName = `tenant_clock_mixed_${randomBytes(5).toString('hex')}`;
+const schemaName = ephemeralSchemaName('tenant_clock_mixed_');
 const tenantId = randomUUID();
 const actorId = '70000000-0000-4000-8000-000000000001';
 
@@ -158,7 +159,7 @@ describeWithDb('Reloj de conservación mixto (B2-R4) en PostgreSQL real', () => 
 
   afterAll(async () => {
     if (!dataSource?.isInitialized) return;
-    if (!/^tenant_clock_mixed_[a-f0-9]{10}$/.test(schemaName)) {
+    if (!/^tenant_clock_mixed_itx[0-9a-z]{8}[a-f0-9]{8}$/.test(schemaName)) {
       throw new Error('Schema de limpieza inválido.');
     }
     await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);

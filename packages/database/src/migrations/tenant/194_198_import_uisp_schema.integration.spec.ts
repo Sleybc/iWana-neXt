@@ -8,6 +8,7 @@ import { ImportExternalIdsCrmSupport1960000000196 } from './196_import_external_
 import { BillingImportedDocuments1970000000197 } from './197_billing_imported_documents';
 import { SeedMigrationImportPermission1980000000198 } from './198_seed_migration_import_permission';
 import { applyTenantMigrationsInOrder, createTenantDataSource } from './runner';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * Migraciones 194–198 — esquema de la importación desde UISP (ADR-110 D1–D5, D8, D10) en
@@ -19,7 +20,7 @@ import { applyTenantMigrationsInOrder, createTenantDataSource } from './runner';
  * que impide emitirlo o anularlo, permiso `migration.import.manage`, y down/up de 198 a
  * 194 con sus guardas destructivas.
  */
-const SCHEMA = `tenant_uisp_import_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_uisp_import_');
 const TENANT_ID = randomUUID();
 const ACTOR_ID = randomUUID();
 const DESTRUCTIVE = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';

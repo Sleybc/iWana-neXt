@@ -28,6 +28,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../../packages/database/test/ephemeral-schema';
 
 const describeWithDb =
   process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true' ? describe : describe.skip;
@@ -46,7 +47,7 @@ describeWithDb('Cambio de plan: PostgreSQL y auditoría atómica en schema sint�
   let audit: AuditService;
   const tenantId = randomUUID();
   const actorId = randomUUID();
-  const schemaName = 'tenant_plan_change_' + randomUUID().replace(/-/g, '');
+  const schemaName = ephemeralSchemaName('tenant_plan_change_');
   const quote = (identifier: string) => '"' + identifier.replace(/"/g, '""') + '"';
   const context = { tenantId, schemaName, tenantSlug: 'plan-change-synthetic' };
   const inContext = <T>(callback: () => Promise<T>) => TenantContext.run(context, callback);
@@ -223,7 +224,7 @@ describeWithDb('Cambio de plan: PostgreSQL y auditoría atómica en schema sint�
   afterAll(async () => {
     if (!dataSource?.isInitialized) return;
     // La limpieza solo puede apuntar al schema aleatorio creado por esta suite.
-    if (!/^tenant_plan_change_[a-f0-9]{32}$/.test(schemaName))
+    if (!/^tenant_plan_change_itx[0-9a-z]{8}[a-f0-9]{8}$/.test(schemaName))
       throw new Error('Schema de limpieza inválido.');
     await dataSource.query('DROP SCHEMA IF EXISTS ' + quote(schemaName) + ' CASCADE');
     await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);

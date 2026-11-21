@@ -25,6 +25,7 @@ import { TenantProvisioningProcessor } from './tenant-provisioning.processor';
 import { TenantSchemaPurgeProcessor } from './tenant-schema-purge.processor';
 import { recordTestPurgeEvidence } from '../../test/tenant-purge-evidence-fixture';
 import type { TenantSeedService } from '../services/tenant-seed.service';
+import { ephemeralSchemaName } from '../../../../packages/database/test/ephemeral-schema';
 
 function loadWorkspaceEnv(): void {
   if (process.env.DB_HOST && process.env.DB_PASSWORD) return;
@@ -58,7 +59,7 @@ const DB_NAME = process.env.DB_NAME ?? 'dbiw';
 
 describe('DT-4 — aprovisionamiento de un tenant marcado (PostgreSQL real)', () => {
   const suffix = randomBytes(6).toString('hex');
-  const schemaName = `tenant_dt4_${suffix}`;
+  const schemaName = ephemeralSchemaName('tenant_dt4_');
   const tenantSlug = `dt4-${suffix}`;
 
   let database: Pool | undefined;
@@ -71,7 +72,7 @@ describe('DT-4 — aprovisionamiento de un tenant marcado (PostgreSQL real)', ()
   let cleanEvidence: (() => Promise<void>) | undefined;
   const seedCalls: string[] = [];
   // W1 (§8.2): segundo tenant propio, este sí se aprovisiona de verdad.
-  const w1Schema = `tenant_dt4w_${suffix}`;
+  const w1Schema = ephemeralSchemaName('tenant_dt4w_');
   const w1Slug = `dt4w-${suffix}`;
   let w1TenantId: string | undefined;
   let w1Processor: TenantProvisioningProcessor | undefined;

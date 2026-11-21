@@ -39,6 +39,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../packages/database/test/ephemeral-schema';
 
 // otplib@13 arrastra @scure/base (ESM-only) que Jest-CJS no puede cargar.
 // El mock es solo de carga: TOTP no interviene en login/changePassword
@@ -73,7 +74,7 @@ describeWithDb('AuthService bloqueo por intentos (PostgreSQL real)', () => {
   let dataSource: DataSource;
   let authService: AuthService;
   const tenantId = randomUUID();
-  const schemaName = `tenant_authlx_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+  const schemaName = ephemeralSchemaName('tenant_authlx_');
   const tenantContext = { tenantId, schemaName, tenantSlug: 'auth-lockout-test' };
 
   function qSchema(): string {

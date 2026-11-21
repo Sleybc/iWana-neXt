@@ -6,6 +6,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -14,9 +15,9 @@ describeWithDb('IpamService — PostgreSQL real', () => {
   let dataSource: DataSource;
   let service: IpamService;
   const tenantId = randomUUID();
-  const schemaName = `tenant_mod13_ipam_${randomUUID().replaceAll('-', '')}`;
+  const schemaName = ephemeralSchemaName('tenant_mod13_ipam_');
   const secondTenantId = randomUUID();
-  const secondSchemaName = `tenant_mod13_ipam_${randomUUID().replaceAll('-', '')}`;
+  const secondSchemaName = ephemeralSchemaName('tenant_mod13_ipam_');
   const networkId = randomUUID();
   const routerId = randomUUID();
   const inactiveRouterId = randomUUID();

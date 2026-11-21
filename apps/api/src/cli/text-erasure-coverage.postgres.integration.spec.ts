@@ -8,6 +8,7 @@ import {
 } from '../../../../packages/database/src/migrations/tenant/runner';
 import { listDeferredMigrations } from '../../../../packages/database/src/migrations/shared/deferred-migration.util';
 import { TEXT_ERASURE_MANIFEST, type TextErasureManifestEntry } from './text-erasure-manifest';
+import { ephemeralSchemaName } from '../../../../packages/database/test/ephemeral-schema';
 
 const integrationEnabled = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const databaseName = process.env['DB_NAME'] ?? '';
@@ -96,7 +97,7 @@ describe('D-BT-10 — manifiesto de columnas textuales (puro)', () => {
 });
 
 describeWithDb('D-BT-10 — manifiesto contra esquema migrado real', () => {
-  const schemaName = `tenant_b4_coverage_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const schemaName = ephemeralSchemaName('tenant_b4_coverage_');
   const tenantId = randomUUID();
   const tenantSlug = `b4-coverage-${randomUUID().slice(0, 8)}`;
   let baseDataSource: DataSource | undefined;

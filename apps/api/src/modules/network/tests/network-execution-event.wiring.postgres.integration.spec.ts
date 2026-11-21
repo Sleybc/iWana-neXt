@@ -61,6 +61,7 @@ import { EVIDENCE_ANALYSIS_QUEUE } from '../../media/evidence-asset.provider';
 import { PRIVACY_DUE_ALERTS_QUEUE } from '../../privacy/alerts/privacy-due-alerts.constants';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { Subscriber } from '../../crm/subscribers/entities/subscriber.entity';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -71,7 +72,7 @@ if (dbAvailable && !allowedDatabase.test(effectiveDatabase ?? '')) {
 }
 
 const tenantId = randomUUID();
-const schemaName = `tenant_mod13_wire_${randomUUID().replaceAll('-', '')}`;
+const schemaName = ephemeralSchemaName('tenant_mod13_wire_');
 const tenantSlug = `mod13-wire-${randomUUID().slice(0, 8)}`;
 const actorId = randomUUID();
 const technicianId = randomUUID();

@@ -4,8 +4,9 @@ import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { TENANT_MIGRATIONS } from './runner';
 import { PublishInstalacionV3163000000000 } from './163_publish_instalacion_estandar_v3';
 import { EnsureProvisioningRequirement1640000000000 } from './164_ensure_provisioning_requirement';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
-const SCHEMA = `tenant_it164_${randomBytes(4).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_it164_');
 const TENANT_ID = randomUUID();
 const TEMPLATE_KEY = 'INSTALACION_ESTANDAR';
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';

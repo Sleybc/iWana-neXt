@@ -4,6 +4,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { HardenPurchaseRequestLineAwards1280000000000 } from './128_harden_purchase_request_line_awards';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * Integración 128 contra PostgreSQL real (patrón r2_4/126): levanta el mínimo
@@ -15,7 +16,7 @@ import { HardenPurchaseRequestLineAwards1280000000000 } from './128_harden_purch
  * test:integration`. Sin PostgreSQL alcanzable se omite con banner — nunca en
  * silencio.
  */
-const SCHEMA = `it_128_pr_awards_${randomUUID().slice(0, 8)}`;
+const SCHEMA = ephemeralSchemaName('it_128_pr_awards_');
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;

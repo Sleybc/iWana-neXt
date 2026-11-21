@@ -19,6 +19,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -145,7 +146,7 @@ describeWithDb('G1 autorización y fallo de conversión contra PostgreSQL real',
     await dataSource.initialize();
     tenantId = randomUUID();
     testTenantSlug = `g1-${randomUUID().slice(0, 8)}`;
-    testSchemaName = `tenant_g1_${randomUUID().replace(/-/g, '')}`;
+    testSchemaName = ephemeralSchemaName('tenant_g1_');
     const target = quoteIdentifier(testSchemaName);
     await dataSource.query(`CREATE SCHEMA ${target}`);
     await dataSource.query(

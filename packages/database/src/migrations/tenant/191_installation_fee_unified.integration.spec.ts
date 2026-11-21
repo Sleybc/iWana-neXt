@@ -4,13 +4,14 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { ContractPermanence1830000000183 } from './183_contract_permanence';
 import { InstallationFeeUnified1910000000191 } from './191_installation_fee_unified';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * Migración 191 — cargo de instalación unificado (fase 2, C+E; CA-6 y CA-7) en PostgreSQL real:
  * respaldo de connection_fee con la marca de diferencia, relleno del valor congelado en
  * contratos en borrador, retiro de la columna, down con guarda destructiva y reaplicación.
  */
-const SCHEMA = `tenant_install_fee_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_install_fee_');
 const TENANT_ID = randomUUID();
 const PLAN_SAME = randomUUID();
 const PLAN_DIFF = randomUUID();

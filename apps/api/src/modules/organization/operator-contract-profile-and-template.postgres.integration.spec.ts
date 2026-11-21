@@ -10,6 +10,7 @@ import { LegalTextEntity } from '../privacy/entities/legal-text.entity';
 import { LegalTextsService } from '../privacy/legal-texts/legal-texts.service';
 import { OperatorContractProfileService } from './operator-contract-profile.service';
 import { OperatorIdentityReadPort } from './ports/operator-identity-read.port';
+import { ephemeralSchemaName } from '../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * Cierre de venta, bloques A0 y A, contra PostgreSQL real con la cadena tenant completa:
@@ -22,7 +23,7 @@ const describeWithDb = dbAvailable ? describe : describe.skip;
 describeWithDb('Datos del operador y plantilla de contrato (PostgreSQL real)', () => {
   const tenantId = randomUUID();
   const tenantSlug = `contract-tpl-${tenantId.slice(0, 8)}`;
-  const schemaName = `tenant_contract_tpl_${randomUUID().replace(/-/g, '').slice(0, 20)}`;
+  const schemaName = ephemeralSchemaName('tenant_contract_tpl_');
   const publisherId = randomUUID();
   const asTenant = <T>(operation: () => Promise<T>) =>
     TenantContext.run({ tenantId, schemaName, tenantSlug }, operation);

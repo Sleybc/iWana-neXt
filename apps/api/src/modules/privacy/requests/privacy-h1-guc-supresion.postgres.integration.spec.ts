@@ -39,6 +39,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * H-1 B2 (spec 2026-11-07-privacy-h1-guc-supresion, D-H1-1 y D-H1-2) sobre la
@@ -78,7 +79,7 @@ function quoteIdentifier(value: string): string {
 }
 
 describeWithDb('Privacy H-1 — rama monótona y bitácora con el borrado real (B2)', () => {
-  const schemaName = `tenant_privacy_h1_${randomBytes(5).toString('hex')}`;
+  const schemaName = ephemeralSchemaName('tenant_privacy_h1_');
   const q = quoteIdentifier(schemaName);
   const tenantId = randomUUID();
   const actorId = randomUUID();

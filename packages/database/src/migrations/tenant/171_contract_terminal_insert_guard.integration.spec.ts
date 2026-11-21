@@ -3,6 +3,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { TENANT_MIGRATIONS } from './runner';
 import { ContractTerminalInsertGuard1710000000171 } from './171_contract_terminal_insert_guard';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const enabled = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describePg = enabled ? describe : describe.skip;
@@ -12,7 +13,7 @@ if (enabled && !/^(dbiw|test|iwana_it_[a-z0-9_]+)$/u.test(process.env['DB_NAME']
 jest.setTimeout(900_000);
 
 describePg('171 — contratos terminales en INSERT contra PostgreSQL real', () => {
-  const schema = `tenant_it171_${randomUUID().replaceAll('-', '')}`;
+  const schema = ephemeralSchemaName('tenant_it171_');
   const tenantId = randomUUID();
   const subscriberId = randomUUID();
   const migration = new ContractTerminalInsertGuard1710000000171();

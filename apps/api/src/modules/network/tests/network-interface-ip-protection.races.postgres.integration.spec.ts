@@ -55,10 +55,11 @@ import type { SubscriberServiceContextReadPort } from '../../crm/ports/subscribe
 import type { InstalledEquipmentReadPort } from '../../inventory/ports/installed-equipment-read.port';
 import type { EffectivePermissionScopePort } from '../../access-control/ports/effective-permission-scope.port';
 import type { RouterProvisioningPort } from '../ports/router-provisioning.port';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const DB_AVAILABLE = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = DB_AVAILABLE ? describe : describe.skip;
-const SCHEMA = `tenant_mod13_races_${randomBytes(4).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_mod13_races_');
 const TENANT_SLUG = `mod13-races-${randomBytes(4).toString('hex')}`;
 const EVENT_SIGNING_KEY = randomBytes(32).toString('base64');
 const ALLOWED_DATABASE = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;

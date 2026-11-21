@@ -4,10 +4,11 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { ExecutionOrderInventoryRequestRecovery1380000000000 } from './138_execution_order_inventory_request_recovery';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
-const schema = `it_inv_recovery_${randomBytes(8).toString('hex')}`;
+const schema = ephemeralSchemaName('it_inv_recovery_');
 
 if (!dbAvailable) {
   console.warn(

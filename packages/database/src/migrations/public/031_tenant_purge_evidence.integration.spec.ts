@@ -4,6 +4,7 @@ import { DataSource, type QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { TenantPurgeEvidence1784419219000 } from './031_tenant_purge_evidence';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -73,7 +74,7 @@ describeWithDb('Migración 031 — constancia obligatoria para purgar (PostgreSQ
   });
 
   async function createMarkedTenant() {
-    const schemaName = `tenant_d2_${randomBytes(6).toString('hex')}`;
+    const schemaName = ephemeralSchemaName('tenant_d2_');
     const id = randomUUID();
     created.push({ id, schemaName });
     await migrator.query(`CREATE SCHEMA "${schemaName}"`);

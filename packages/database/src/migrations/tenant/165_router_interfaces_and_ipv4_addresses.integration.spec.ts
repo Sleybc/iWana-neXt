@@ -5,8 +5,9 @@ import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { EnableBtreeGist1784419216000 } from '../public/028_enable_btree_gist';
 import { CreateNetworkCatalog1600000000000 } from './160_network_catalog';
 import { CreateRouterInterfacesAndIpv4Addresses1650000000000 } from './165_router_interfaces_and_ipv4_addresses';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
-const SCHEMA = `tenant_mod13_interfaces_165_${randomBytes(4).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_mod13_interfaces_165_');
 const DB_AVAILABLE = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = DB_AVAILABLE ? describe : describe.skip;
 const INTEGRATION_DATABASE_NAME = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;

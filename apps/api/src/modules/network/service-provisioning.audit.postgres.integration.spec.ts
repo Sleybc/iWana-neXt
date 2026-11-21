@@ -31,12 +31,13 @@ import { ServiceProvisioningService } from './service-provisioning.service';
 import { NetworkAuthorizationFacade } from './authorization/network-authorization.facade';
 import { AuditService } from '../audit/audit.service';
 import { PlatformAuditService } from '../audit/platform-audit.service';
+import { ephemeralSchemaName } from '../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const allowedDatabase = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
 const tenantId = randomUUID();
-const schemaName = `tenant_mod13_b2_audit_${randomUUID().replaceAll('-', '')}`;
+const schemaName = ephemeralSchemaName('tenant_mod13_b2_audit_');
 const routerId = randomUUID();
 const networkId = randomUUID();
 const actorId = randomUUID();

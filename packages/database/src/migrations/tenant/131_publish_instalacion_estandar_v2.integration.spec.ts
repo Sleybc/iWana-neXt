@@ -4,6 +4,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { PublishInstalacionEstandarV2131000000000 } from './131_publish_instalacion_estandar_v2';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * Integración 131 contra PostgreSQL real (patrón 092/129): levanta el mínimo
@@ -16,7 +17,7 @@ import { PublishInstalacionEstandarV2131000000000 } from './131_publish_instalac
  * test:integration`. Sin PostgreSQL alcanzable se omite con banner — nunca en
  * silencio.
  */
-const SCHEMA = `tenant_it131_${randomBytes(4).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_it131_');
 const TENANT_ID = randomUUID();
 const TEMPLATE_ID = randomUUID();
 const V1_ID = randomUUID();

@@ -2,10 +2,11 @@ import { randomBytes } from 'node:crypto';
 import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { ExecutionOrderItemUsageReversals1400000000000 } from './140_execution_order_item_usage_reversals';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
-const schema = `it_ote_rev_${randomBytes(8).toString('hex')}`;
+const schema = ephemeralSchemaName('it_ote_rev_');
 
 if (!dbAvailable) {
   console.warn(

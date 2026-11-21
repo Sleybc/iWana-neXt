@@ -34,6 +34,7 @@ import {
   ContractPdfProcessor,
   contractPdfObjectKey,
 } from './contract-pdf.processor';
+import { ephemeralSchemaName } from '../../../../packages/database/test/ephemeral-schema';
 
 function loadWorkspaceEnv(): void {
   if (process.env['DB_HOST'] && process.env['DB_PASSWORD']) return;
@@ -95,7 +96,7 @@ interface GenerationRecord {
 describeWithDb('PDF del contrato: Postgres real + Chromium real', () => {
   jest.setTimeout(120_000);
   const tenantId = randomUUID();
-  const schemaName = 'tenant_contract_pdf_' + randomUUID().replace(/-/gu, '');
+  const schemaName = ephemeralSchemaName('tenant_contract_pdf_');
   const quote = (identifier: string) => '"' + identifier.replace(/"/gu, '""') + '"';
   const storageDir = mkdtempSync(join(tmpdir(), 'iwana-contract-pdf-'));
   let dataSource: DataSource;
@@ -147,7 +148,7 @@ describeWithDb('PDF del contrato: Postgres real + Chromium real', () => {
   afterAll(async () => {
     rmSync(storageDir, { recursive: true, force: true });
     if (!dataSource?.isInitialized) return;
-    if (!/^tenant_contract_pdf_[a-f0-9]{32}$/u.test(schemaName))
+    if (!/^tenant_contract_pdf_itx[0-9a-z]{8}[a-f0-9]{8}$/u.test(schemaName))
       throw new Error('Schema inválido.');
     await dataSource.query('DROP SCHEMA IF EXISTS ' + quote(schemaName) + ' CASCADE');
     await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);

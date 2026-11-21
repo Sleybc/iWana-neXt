@@ -50,6 +50,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const redisAvailable = process.env['IWANA_REDIS_INTEGRATION_AVAILABLE'] === 'true';
@@ -100,7 +101,7 @@ describeWithServices('Firma del contrato: PostgreSQL + Redis reales', () => {
   const billingOutcomes: unknown[] = [];
   const tenantId = randomUUID();
   const technician = randomUUID();
-  const schemaName = 'tenant_contract_sign_' + randomUUID().replace(/-/g, '');
+  const schemaName = ephemeralSchemaName('tenant_contract_sign_');
   const prefix = `crm-sign-${randomUUID().replace(/-/gu, '')}`;
   const quote = (identifier: string) => '"' + identifier.replace(/"/g, '""') + '"';
   const context = { tenantId, schemaName, tenantSlug: 'contract-sign-it' };
@@ -435,7 +436,7 @@ describeWithServices('Firma del contrato: PostgreSQL + Redis reales', () => {
       await queue.close();
     }
     if (dataSource?.isInitialized) {
-      if (!/^tenant_contract_sign_[a-f0-9]{32}$/.test(schemaName))
+      if (!/^tenant_contract_sign_itx[0-9a-z]{8}[a-f0-9]{8}$/.test(schemaName))
         throw new Error('Schema inválido.');
       await dataSource.query('DROP SCHEMA IF EXISTS ' + quote(schemaName) + ' CASCADE');
       await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);

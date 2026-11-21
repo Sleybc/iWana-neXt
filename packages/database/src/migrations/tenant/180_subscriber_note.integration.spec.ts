@@ -3,6 +3,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { TENANT_MIGRATIONS } from './runner';
 import { SubscriberNote1800000000180 } from './180_subscriber_note';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const enabled = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describePg = enabled ? describe : describe.skip;
@@ -12,7 +13,7 @@ if (enabled && !/^(test|iwana_it_[a-z0-9_]+)$/u.test(process.env['DB_NAME'] ?? '
 jest.setTimeout(900_000);
 
 describePg('180 — notas manuales del suscriptor (MOD05 D3)', () => {
-  const schema = `tenant_it180_${randomUUID().replaceAll('-', '').slice(0, 16)}`;
+  const schema = ephemeralSchemaName('tenant_it180_');
   const tenantId = randomUUID();
   const actorId = randomUUID();
   const migration = new SubscriberNote1800000000180();

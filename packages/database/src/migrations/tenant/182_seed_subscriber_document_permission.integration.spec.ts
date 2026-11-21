@@ -3,8 +3,9 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { SeedSubscriberDocumentPermission1820000000182 } from './182_seed_subscriber_document_permission';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
-const SCHEMA = `tenant_document_permission_182_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_document_permission_182_');
 const TENANT_ID = randomUUID();
 const PERMISSION = 'crm.subscribers.document.read';
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';

@@ -24,6 +24,7 @@ import {
 import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 import type { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { SubscribersController } from './subscribers.controller';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -34,7 +35,7 @@ jest.setTimeout(900_000);
 
 const PERMISSION = AccessPermissionKey.CRM_SUBSCRIBERS_DOCUMENT_READ;
 const tenantId = randomUUID();
-const schemaName = `tenant_mod05_docperm_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+const schemaName = ephemeralSchemaName('tenant_mod05_docperm_');
 
 /** Suscriptor ya descifrado que devuelve el servicio; el número es sintético. */
 const subscriber = {

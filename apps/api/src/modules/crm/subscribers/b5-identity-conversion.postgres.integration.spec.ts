@@ -59,6 +59,7 @@ import { CrmContractImpersonationAdapter } from '../privacy-adapters/crm-contrac
 import { CrmContractStandingReadAdapter } from '../privacy-adapters/crm-contract-standing-read.adapter';
 import { UnprocessableEntityException } from '@nestjs/common';
 import { ExpedienteReadyForInstallationEvent } from '../expedientes/events/expediente-pipeline.events';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const integrationTenantSlug = process.env['E2E_TENANT_SLUG'];
@@ -347,7 +348,7 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
     await dataSource.initialize();
 
     tenantId = randomUUID();
-    testSchemaName = `tenant_b5_${randomUUID().replace(/-/g, '')}`;
+    testSchemaName = ephemeralSchemaName('tenant_b5_');
     tenantSlug = `b5-${testSchemaName.slice(-16)}`;
     const target = quoteIdentifier(testSchemaName);
     await dataSource.query(`CREATE SCHEMA ${target}`);

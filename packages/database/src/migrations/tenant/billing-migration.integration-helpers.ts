@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const INTEGRATION_DATABASE_NAME = /^(?:test|iwana_it_[a-z0-9_]+)$/u;
 const integrationDatabaseName = process.env['DB_NAME'] ?? '';
@@ -51,7 +52,7 @@ export async function createBillingTenantFixture(
   dataSource: DataSource,
   prefix: 'tenant_billing173' | 'tenant_billing174' | 'tenant_billing175',
 ): Promise<BillingTenantFixture> {
-  const schemaName = `${prefix}_${randomUUID().replaceAll('-', '')}`;
+  const schemaName = ephemeralSchemaName(`${prefix}_`);
   const tenantId = randomUUID();
   const bootstrap = dataSource.createQueryRunner();
 

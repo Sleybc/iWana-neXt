@@ -41,6 +41,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -115,7 +116,7 @@ describeWithDb('CRM · marcas de privacidad dentro de la transacción (PostgreSQ
 
   const tenantId = randomUUID();
   const tenantSlug = `crm-marks-${tenantId.slice(0, 8)}`;
-  const schemaName = `tenant_crm_marks_${randomUUID().replace(/-/g, '').slice(0, 24)}`;
+  const schemaName = ephemeralSchemaName('tenant_crm_marks_');
 
   const tenantContext = () => ({ tenantId, schemaName, tenantSlug });
   const quoteIdentifier = (value: string) => '"' + value.replace(/"/g, '""') + '"';

@@ -2,8 +2,9 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { AddSubscriberPartyPiiHmac1430000000000 } from './143_subscriber_party_pii_hmac';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
-const SCHEMA = `tenant_mod05_143_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_mod05_143_');
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const TENANT_ID = randomUUID();

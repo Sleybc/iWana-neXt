@@ -3,12 +3,13 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { SubscriberContactNullable1480000000000 } from './148_subscriber_contact_nullable';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * La prueba crea su schema y tablas objetivo desde cero: `E2E_TENANT_SLUG=test` puede estar
  * definido durante la ejecución, pero el test no consulta ni depende del schema de ese tenant.
  */
-const SCHEMA = `tenant_mod05_contact_148_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_mod05_contact_148_');
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const INTEGRATION_DATABASE_NAME = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;

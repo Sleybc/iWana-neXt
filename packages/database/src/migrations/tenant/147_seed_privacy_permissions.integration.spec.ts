@@ -3,8 +3,9 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { SeedPrivacyPermissions1470000000000 } from './147_seed_privacy_permissions';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
-const SCHEMA = `tenant_privacy_147_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_privacy_147_');
 const TENANT_ID = randomUUID();
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;

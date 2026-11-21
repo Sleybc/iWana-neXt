@@ -49,6 +49,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../packages/database/test/ephemeral-schema';
 
 const databaseName = (process.env['DB_NAME'] ?? '').trim();
 const databaseHost = process.env['DB_HOST']?.trim() || undefined;
@@ -59,7 +60,7 @@ const k2Enabled = resolveK2ReencryptIntegrationEnabled({
   ciRunner: process.env['GITHUB_ACTIONS'] === 'true',
 });
 const describeWithDb = k2Enabled ? describe : describe.skip;
-const schemaName = `tenant_k2_reencrypt_${randomBytes(5).toString('hex')}`;
+const schemaName = ephemeralSchemaName('tenant_k2_reencrypt_');
 const tenantId = randomUUID();
 const actorId = randomUUID();
 const mfaKey = parseEncryptionKeyHex('0123456789abcdef'.repeat(4));
@@ -399,7 +400,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
   async function createErasureTenant(): Promise<ErasureTenant> {
     const tenant = {
       id: randomUUID(),
-      schema: `tenant_k2_erasure_${randomBytes(5).toString('hex')}`,
+      schema: ephemeralSchemaName('tenant_k2_erasure_'),
     };
     erasureTenants.push(tenant);
     await dataSource.query(

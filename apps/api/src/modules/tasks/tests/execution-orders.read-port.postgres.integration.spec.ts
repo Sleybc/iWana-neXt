@@ -6,6 +6,7 @@ import {
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { ExecutionOrdersService } from '../services/execution-orders.service';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -26,7 +27,7 @@ describeWithDb('ExecutionOrderReadPort — PostgreSQL real', () => {
   });
 
   const createSchema = async (tenant: string): Promise<string> => {
-    const schema = `tenant_b5_${randomUUID().replace(/-/g, '')}`;
+    const schema = ephemeralSchemaName('tenant_b5_');
     // La migración 092 exige un tenant canónico en public.tenants para su esquema.
     await dataSource.query(
       `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)

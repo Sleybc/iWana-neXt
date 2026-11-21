@@ -121,6 +121,13 @@ module.exports = async function globalSetup() {
     await client.query('SELECT 1');
     await assertWorkerDatabasesExist(client, connection.database);
     process.env[AVAILABILITY_FLAG] = 'true';
+    // Higiene: restos de corridas cortadas (ver ephemeral-schema.js). Nunca tumba la corrida.
+    try {
+      await require('./ephemeral-schema').sweepStaleEphemeralSchemas(client);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(`[integration-sweep] barrido omitido: ${reason}`);
+    }
     console.log(
       `\n[089-integration] PostgreSQL alcanzable en ${target}. La suite de integración se ejecutará.\n`,
     );
@@ -153,3 +160,6 @@ module.exports = async function globalSetup() {
     }
   }
 };
+
+module.exports.loadWorkspaceEnv = loadWorkspaceEnv;
+module.exports.resolveConnection = resolveConnection;

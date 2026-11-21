@@ -5,14 +5,15 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { LinkExecutionOrderEvidenceIdempotency1000000000000 } from './100_link_execution_order_evidence_idempotency';
 import { AlignExecutionOrderEvidenceIntentRetention1010000000000 } from './101_align_execution_order_evidence_intent_retention';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const destructiveFlag = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
 const suffix = randomBytes(8).toString('hex');
 const schemas = {
-  retention: `it_100_retention_${suffix}`,
-  isolation: `it_100_isolation_${suffix}`,
+  retention: ephemeralSchemaName('it_100_retention_'),
+  isolation: ephemeralSchemaName('it_100_isolation_'),
 } as const;
 
 type SchemaKey = keyof typeof schemas;

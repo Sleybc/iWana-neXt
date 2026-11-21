@@ -4,8 +4,9 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { EnableBtreeGist1784419216000 } from '../public/028_enable_btree_gist';
 import { CreateNetworkCatalog1600000000000 } from './160_network_catalog';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
-const SCHEMA = `tenant_network_catalog_160_${randomBytes(4).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_network_catalog_160_');
 const DB_AVAILABLE = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = DB_AVAILABLE ? describe : describe.skip;
 const INTEGRATION_DATABASE_NAME = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;

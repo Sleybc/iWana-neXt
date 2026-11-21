@@ -10,6 +10,7 @@ import { SeedExecutionOrderPermissions0920000000000 } from './092_seed_execution
 import { ExtendVisitRequestStatusAndOutboxOccurredAt0930000000000 } from './093_extend_visit_request_status_and_outbox_occurred_at';
 import { TemplateVersioningAndClosureGate0940000000000 } from './094_template_versioning_and_closure_gate';
 import { CreateExecutionOrderEvidenceUploadIntents0950000000000 } from './095_create_execution_order_evidence_upload_intents';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 let schemas: [string, string];
 let tenantIds: [string, string];
@@ -86,7 +87,7 @@ describeWithDb('092 execution-order permission seed — PostgreSQL real', () => 
     await bootstrap.connect();
     try {
       const suffix = randomBytes(8).toString('hex');
-      schemas = [`it_092_${suffix}_a`, `it_092_${suffix}_b`];
+      schemas = [ephemeralSchemaName('it_092_a_'), ephemeralSchemaName('it_092_b_')];
       tenantIds = [randomUUID(), randomUUID()];
       for (const [index, schema] of schemas.entries()) {
         await bootstrap.query(`CREATE SCHEMA "${schema}"`);

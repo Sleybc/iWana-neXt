@@ -3,12 +3,13 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { BillingLineKindInstallation1930000000193 } from './193_billing_line_kind_installation';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * Migración 193 — tipo de línea INSTALACION en PostgreSQL real: up admite el tipo, down restaura
  * el CHECK de 173 con guarda destructiva si hay líneas de instalación, y reaplicación.
  */
-const SCHEMA = `tenant_line_kind_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_line_kind_');
 const DESTRUCTIVE = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;

@@ -5,6 +5,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials, type DbCredentials } from '../../db-credentials';
 import { EnforceAuditImmutability0750000000000 } from './075_enforce_audit_immutability';
 import { HardenAuditMaintenanceGuard1110000000000 } from './111_harden_audit_maintenance_guard';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * S-6 (SEC-P1): la escotilla `iwana.audit_maintenance = 'on'` deja de depender
@@ -34,7 +35,7 @@ import { HardenAuditMaintenanceGuard1110000000000 } from './111_harden_audit_mai
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const suffix = randomBytes(8).toString('hex');
-const SCHEMA = `it_111_audit_guard_${suffix}`;
+const SCHEMA = ephemeralSchemaName('it_111_audit_guard_');
 
 /** SQLSTATE de `USING ERRCODE = 'insufficient_privilege'` en 075/014/111. */
 const INSUFFICIENT_PRIVILEGE = '42501';

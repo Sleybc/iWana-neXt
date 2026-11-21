@@ -3,13 +3,14 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { CatalogItemVatTreatment2010000000201 } from './201_catalog_item_vat_treatment';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * Migración 201 — IVA por ítem del catálogo (spec MOD14 2026-11-12 R1/R2) en PostgreSQL real:
  * relleno del catálogo, del plan y de los contratos (sin tocar titulares anonimizados),
  * restricciones, down con guarda destructiva y reaplicación.
  */
-const SCHEMA = `tenant_item_vat_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_item_vat_');
 const TENANT_ID = randomUUID();
 const PLAN = randomUUID();
 const PRODUCT = randomUUID();

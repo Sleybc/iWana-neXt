@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { applyTenantMigrationsInOrder, createTenantDataSource } from './runner';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * Paridad contrato ↔ base: los valores de `WorkOrderSourceContext` deben ser
@@ -21,7 +22,7 @@ if (dbAvailable && !INTEGRATION_DATABASE_NAME.test(process.env['DB_NAME'] ?? '')
   );
 }
 
-const schema = `tenant_wo_origin_parity_${randomBytes(4).toString('hex')}`;
+const schema = ephemeralSchemaName('tenant_wo_origin_parity_');
 const tenantId = randomUUID();
 const quoted = `"${schema.replaceAll('"', '""')}"`;
 

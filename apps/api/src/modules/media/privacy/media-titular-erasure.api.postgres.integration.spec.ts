@@ -18,11 +18,12 @@ import { WfmTitularErasureParticipant } from '../../wfm/privacy/wfm-titular-eras
 import { UserAccountErasureParticipant } from '../../users/privacy/user-account-erasure.participant';
 import { PartyTitularErasureParticipant } from '../../parties/privacy/party-titular-erasure.participant';
 import { MediaTitularErasureParticipant } from './media-titular-erasure.participant';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const allowedDatabaseName = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
-const schema = `tenant_media_privacy_${randomBytes(5).toString('hex')}`;
+const schema = ephemeralSchemaName('tenant_media_privacy_');
 const tenantId = randomUUID();
 
 function quoteIdentifier(value: string): string {

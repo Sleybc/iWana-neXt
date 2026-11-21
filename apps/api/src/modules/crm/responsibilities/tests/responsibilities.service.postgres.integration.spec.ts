@@ -7,6 +7,7 @@ import {
   createTenantDataSource,
 } from '../../../../../../../packages/database/src/migrations/tenant/runner';
 import { ResponsibilitiesService } from '../responsibilities.service';
+import { ephemeralSchemaName } from '../../../../../../../packages/database/test/ephemeral-schema';
 
 const describeWithDb =
   process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true' ? describe : describe.skip;
@@ -14,7 +15,7 @@ const describeWithDb =
 describeWithDb('ResponsibilitiesService — DT-3 con PostgreSQL real', () => {
   const tenantId = randomUUID();
   const tenantSlug = `dt3-responsibility-${tenantId.slice(0, 8)}`;
-  const schemaName = `tenant_dt3_responsibility_${randomUUID().replace(/-/g, '')}`;
+  const schemaName = ephemeralSchemaName('tenant_dt3_responsibility_');
   const actorId = randomUUID();
   let dataSource: DataSource;
   let service: ResponsibilitiesService;

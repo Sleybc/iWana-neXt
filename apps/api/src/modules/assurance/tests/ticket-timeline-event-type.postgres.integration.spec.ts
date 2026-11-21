@@ -15,12 +15,13 @@ import {
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { AddExecutionOrderClosedTimelineEvent2140000000214 } from '../../../../../../packages/database/src/migrations/tenant/214_add_execution_order_closed_timeline_event';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const databaseName = process.env['DB_NAME'] ?? '';
 const allowedDatabaseName = /^(test|iwana_it_[a-z0-9_]+)$/u;
-const schemaName = `tenant_assurance_timeline_${randomBytes(5).toString('hex')}`;
+const schemaName = ephemeralSchemaName('tenant_assurance_timeline_');
 const quotedSchema = `"${schemaName}"`;
 const tenantId = randomUUID();
 

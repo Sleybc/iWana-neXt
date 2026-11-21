@@ -9,6 +9,7 @@ import { SubscriberLegalRepresentativeParty1540000000000 } from './154_subscribe
 import { FiscalDocumentEncryption1550000000000 } from './155_fiscal_document_encryption';
 import { SubscriberExpedienteForeignKey1560000000000 } from './156_subscriber_expediente_fk';
 import { SubscriberFiscalCompleteness1570000000000 } from './157_subscriber_fiscal_completeness';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 jest.setTimeout(600_000);
 
@@ -22,7 +23,10 @@ if (dbAvailable && !allowedDatabase.test(process.env['DB_NAME'] ?? '')) {
 }
 
 const suffix = randomBytes(5).toString('hex');
-const schemaNames = [`tenant_mod05_deuda_a_${suffix}`, `tenant_mod05_deuda_b_${suffix}`] as const;
+const schemaNames = [
+  ephemeralSchemaName('tenant_mod05_deuda_a_'),
+  ephemeralSchemaName('tenant_mod05_deuda_b_'),
+] as const;
 const schemaCases = schemaNames.map((schema, index) => [schema, index] as const);
 const tenantIds = [randomUUID(), randomUUID()] as const;
 const quotedSchemas = schemaNames.map((schema) => `"${schema.replaceAll('"', '""')}"`);

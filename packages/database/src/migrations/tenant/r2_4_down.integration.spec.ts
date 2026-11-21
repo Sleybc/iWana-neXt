@@ -7,16 +7,17 @@ import { ExecutionOrderScheduleUnique0910000000000 } from './091_execution_order
 import { ExtendVisitRequestStatusAndOutboxOccurredAt0930000000000 } from './093_extend_visit_request_status_and_outbox_occurred_at';
 import { TemplateVersioningAndClosureGate0940000000000 } from './094_template_versioning_and_closure_gate';
 import { AddExecutionOrderEvidenceCapturedAt0960000000000 } from './096_add_execution_order_evidence_captured_at';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const destructiveFlag = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
 const suffix = randomBytes(8).toString('hex');
 const schemas = {
-  schedule: `it_r24_schedule_${suffix}`,
-  status: `it_r24_status_${suffix}`,
-  templates: `it_r24_templates_${suffix}`,
-  evidence: `it_r24_evidence_${suffix}`,
+  schedule: ephemeralSchemaName('it_r24_schedule_'),
+  status: ephemeralSchemaName('it_r24_status_'),
+  templates: ephemeralSchemaName('it_r24_templates_'),
+  evidence: ephemeralSchemaName('it_r24_evidence_'),
 } as const;
 
 type SchemaKey = keyof typeof schemas;

@@ -6,8 +6,9 @@ import {
   createTenantDataSource,
 } from '../../../../packages/database/src/migrations/tenant/runner';
 import { runBackfillInTenantSchema } from './backfill-party-pii';
+import { ephemeralSchemaName } from '../../../../packages/database/test/ephemeral-schema';
 
-const SCHEMA = `tenant_mod05_backfill_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_mod05_backfill_');
 const TENANT_ID = randomUUID();
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;

@@ -76,6 +76,7 @@ import {
   TENANT_MIGRATIONS,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { PreventAnonymizedCrmMutations1690000000000 } from '../../../../../../packages/database/src/migrations/tenant/169_prevent_anonymized_crm_mutations';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const describeWithDb =
   process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true' ? describe : describe.skip;
@@ -502,7 +503,7 @@ describeWithDb('DT-3 RER: concurrencia de titular anonimizado contra PostgreSQL 
     await migrationDataSource.initialize();
     tenantId = randomUUID();
     tenantSlug = `dt3-rer-${tenantId.slice(0, 8)}`;
-    schemaName = `tenant_dt3_rer_${randomUUID().replaceAll('-', '')}`;
+    schemaName = ephemeralSchemaName('tenant_dt3_rer_');
     actorId = randomUUID();
     await migrationDataSource.query(
       `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)

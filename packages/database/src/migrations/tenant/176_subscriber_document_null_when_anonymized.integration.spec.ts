@@ -3,6 +3,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { TENANT_MIGRATIONS } from './runner';
 import { SubscriberDocumentNullWhenAnonymized1760000000176 } from './176_subscriber_document_null_when_anonymized';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const enabled = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describePg = enabled ? describe : describe.skip;
@@ -25,7 +26,7 @@ interface ConstraintState {
 }
 
 describePg('176 — CHECK de documento condicionado contra PostgreSQL real', () => {
-  const schema = `tenant_it176_${randomUUID().replaceAll('-', '')}`;
+  const schema = ephemeralSchemaName('tenant_it176_');
   const tenantId = randomUUID();
   const migration = new SubscriberDocumentNullWhenAnonymized1760000000176();
   let ds: DataSource;

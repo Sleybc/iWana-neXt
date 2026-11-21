@@ -16,6 +16,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -52,7 +53,7 @@ async function createFixture(
   dataSource: DataSource,
   options: { authorizationEvidenceMediaId?: string } = {},
 ): Promise<Fixture> {
-  const schema = `tenant_anonymize_${randomBytes(5).toString('hex')}`;
+  const schema = ephemeralSchemaName('tenant_anonymize_');
   const tenantId = randomUUID();
   const requestId = randomUUID();
   const partyId = randomUUID();
@@ -273,7 +274,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
       runK2: (mode: MfaToPiiMode) => ReturnType<typeof runMfaToPii>;
     }) => Promise<void>,
   ): Promise<void> {
-    const schema = `tenant_anonymize_k2_${randomBytes(5).toString('hex')}`;
+    const schema = ephemeralSchemaName('tenant_anonymize_k2_');
     const q = quoteIdentifier(schema);
     const tenantId = randomUUID();
     const partyId = randomUUID();
@@ -375,7 +376,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
   }
 
   it('remedia notas previas en una solicitud resuelta usando las migraciones reales', async () => {
-    const schema = `tenant_anonymize_cli_${randomBytes(5).toString('hex')}`;
+    const schema = ephemeralSchemaName('tenant_anonymize_cli_');
     const q = quoteIdentifier(schema);
     const tenantId = randomUUID();
     const partyId = randomUUID();
@@ -790,7 +791,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
   });
 
   it('CA-BT-26: verify-only detecta estratos 1 previos y apply los corrige', async () => {
-    const schema = `tenant_anonymize_cli_${randomBytes(5).toString('hex')}`;
+    const schema = ephemeralSchemaName('tenant_anonymize_cli_');
     const q = quoteIdentifier(schema);
     const tenantId = randomUUID();
     const partyId = randomUUID();

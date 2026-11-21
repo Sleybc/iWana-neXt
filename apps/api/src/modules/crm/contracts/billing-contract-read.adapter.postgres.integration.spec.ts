@@ -9,6 +9,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const databaseName = dataSourceOptions.database;
@@ -33,7 +34,7 @@ describeWithDb('BillingContractReadAdapter contra PostgreSQL real', () => {
   let dataSource: DataSource;
   let adapter: BillingContractReadAdapter;
   const tenantId = randomUUID();
-  const schemaName = `tenant_billing_it_${randomUUID().replace(/-/gu, '')}`;
+  const schemaName = ephemeralSchemaName('tenant_billing_it_');
   const tenantContext = {
     tenantId,
     schemaName,

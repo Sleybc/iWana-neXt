@@ -21,6 +21,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 function loadWorkspaceEnv(): void {
   if (process.env.DB_HOST && process.env.DB_PASSWORD) {
@@ -69,7 +70,7 @@ loadWorkspaceEnv();
 const enabled = process.env.IWANA_DB_INTEGRATION_AVAILABLE === 'true';
 const syntheticTenantId = randomUUID();
 const syntheticTenantSlug = `ev1-useful-life-${syntheticTenantId.slice(0, 8)}`;
-const syntheticSchemaName = `tenant_ev1_useful_life_${randomUUID().replace(/-/g, '')}`;
+const syntheticSchemaName = ephemeralSchemaName('tenant_ev1_useful_life_');
 
 const SERIAL_PREFIX = 'EV1-H6-UL-';
 const REF_DATE = '2026-07-21';

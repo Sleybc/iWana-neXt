@@ -58,6 +58,7 @@ import { TenantLifecycleReadAdapter } from '../tenant/ports/tenant-lifecycle-rea
 import { ServiceProvisioningService } from './service-provisioning.service';
 import { NetworkAuthorizationFacade } from './authorization/network-authorization.facade';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { ephemeralSchemaName } from '../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const redisAvailable = process.env['IWANA_REDIS_INTEGRATION_AVAILABLE'] === 'true';
@@ -67,7 +68,7 @@ if (dbAvailable && !allowedDatabase.test(process.env['DB_NAME'] ?? 'dbiw')) {
   throw new Error('MOD13 B3 solo permite fixtures sintéticas en dbiw, test o iwana_it_*');
 }
 const tenantId = randomUUID();
-const schemaName = `tenant_mod13_b3_${randomUUID().replaceAll('-', '')}`;
+const schemaName = ephemeralSchemaName('tenant_mod13_b3_');
 const tenantSlug = `mod13-b3-${randomUUID().slice(0, 8)}`;
 const routerId = randomUUID();
 const networkId = randomUUID();

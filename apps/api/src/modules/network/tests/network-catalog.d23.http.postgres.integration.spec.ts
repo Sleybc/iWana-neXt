@@ -42,6 +42,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -173,7 +174,7 @@ describeWithDb('Network catalog D23 — HTTP real con permisos efectivos en Post
   };
 
   beforeAll(async () => {
-    schemaName = `tenant_mod13_d23_http_${randomUUID().replaceAll('-', '')}`;
+    schemaName = ephemeralSchemaName('tenant_mod13_d23_http_');
     actorId = randomUUID();
     readOnlyActorId = randomUUID();
     emptyScopeActorId = randomUUID();
@@ -408,7 +409,7 @@ describeWithDb('Network catalog D23 — HTTP real con permisos efectivos en Post
   it('rechaza claims de tenant B con contexto A antes de consultar o escribir en schema A', async () => {
     const claimsForTenantB = {
       tenantId: randomUUID(),
-      schemaName: `tenant_mod13_d23_other_${randomUUID().replaceAll('-', '')}`,
+      schemaName: ephemeralSchemaName('tenant_mod13_d23_other_'),
     };
     const beforeRows = await dataSource.query(
       `SELECT id, tenant_id, name, version FROM "${schemaName}".network_routers ORDER BY id`,

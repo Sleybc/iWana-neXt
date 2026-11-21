@@ -17,6 +17,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -25,7 +26,7 @@ describeWithDb('NetworkCatalogService — atomicidad de auditoría con PostgreSQ
   let dataSource: DataSource;
   let service: NetworkCatalogService;
   const tenantId = randomUUID();
-  const schemaName = `tenant_mod13_catalog_${randomUUID().replaceAll('-', '')}`;
+  const schemaName = ephemeralSchemaName('tenant_mod13_catalog_');
   const actorId = randomUUID();
   const context = { tenantId, schemaName, tenantSlug: 'mod13-catalog-it' };
 

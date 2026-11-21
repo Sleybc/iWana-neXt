@@ -71,6 +71,7 @@ import {
   toVerificationOutput,
   verifyAnonymizedTenant,
 } from '../../../cli/anonymize-titular';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * B4 — barrido de texto libre como integración normal (D-BT-10/12/13, CA-BT-01 a 14).
@@ -142,7 +143,7 @@ interface FixtureIds {
 }
 
 describeWithDb('B4 — barrido de texto libre por la API sobre migraciones reales', () => {
-  const schemaName = `tenant_b4_sweep_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const schemaName = ephemeralSchemaName('tenant_b4_sweep_');
   const q = quoteIdentifier(schemaName);
   const tenantSlug = `b4-sweep-${randomUUID().slice(0, 8)}`;
   const ids = {} as FixtureIds;

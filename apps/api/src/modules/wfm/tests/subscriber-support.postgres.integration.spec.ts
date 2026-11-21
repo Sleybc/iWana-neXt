@@ -21,11 +21,12 @@ import {
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { VisitRequestsService } from '../services/visit-requests.service';
 import { ScheduleEventsService } from '../services/schedule-events.service';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const allowedDatabaseName = /^(test|iwana_it_[a-z0-9_]+)$/u;
-const schemaName = `tenant_wfm_subscriber_support_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+const schemaName = ephemeralSchemaName('tenant_wfm_subscriber_support_');
 const tenantId = randomUUID();
 
 function quoteIdentifier(value: string): string {

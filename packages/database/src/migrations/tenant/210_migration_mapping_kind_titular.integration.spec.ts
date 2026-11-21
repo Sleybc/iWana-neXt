@@ -4,6 +4,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { MigrationMappingKindTitular2100000000210 } from './210_migration_mapping_kind_titular';
 import { applyTenantMigrationsInOrder, createTenantDataSource } from './runner';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * Migración 210 en PostgreSQL real (spec 2026-11-15 «complementar titular», §3; ADR-110 D11):
@@ -11,7 +12,7 @@ import { applyTenantMigrationsInOrder, createTenantDataSource } from './runner';
  * down bloquea si hay equivalencias `TITULAR` (salvo la variable destructiva, que las borra) y
  * up vuelve a aplicar.
  */
-const SCHEMA = `tenant_m210_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_m210_');
 const TENANT_ID = randomUUID();
 const ACTOR_ID = randomUUID();
 const DESTRUCTIVE = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';

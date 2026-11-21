@@ -26,6 +26,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * O-1 (retención del suscriptor) contra PostgreSQL real.
@@ -41,7 +42,7 @@ import {
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const allowedDatabaseName = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
-const schemaName = `tenant_retention_clock_${randomBytes(5).toString('hex')}`;
+const schemaName = ephemeralSchemaName('tenant_retention_clock_');
 const tenantId = randomUUID();
 const actorId = '70000000-0000-4000-8000-000000000001';
 const keyHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
@@ -284,7 +285,7 @@ describeWithDb('Retención del suscriptor (O-1) en PostgreSQL real', () => {
   afterAll(async () => {
     if (!dataSource?.isInitialized) return;
     // La limpieza solo puede apuntar al schema aleatorio creado por esta suite.
-    if (!/^tenant_retention_clock_[a-f0-9]{10}$/.test(schemaName))
+    if (!/^tenant_retention_clock_itx[0-9a-z]{8}[a-f0-9]{8}$/.test(schemaName))
       throw new Error('Schema de limpieza inválido.');
     await dataSource.query(`DROP SCHEMA IF EXISTS ${quote(schemaName)} CASCADE`);
     await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);

@@ -3,13 +3,14 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { ContractAutoCreationFromExpediente1920000000192 } from './192_contract_auto_creation_from_expediente';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * Migración 192 — contrato automático desde la oportunidad (fase 2, A+B) en PostgreSQL real:
  * columnas, índice único parcial por expediente de origen, CHECK del aviso y down con guarda
  * destructiva y reaplicación.
  */
-const SCHEMA = `tenant_auto_contract_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_auto_contract_');
 const TENANT_ID = randomUUID();
 const SUBSCRIBER = randomUUID();
 const EXPEDIENTE = randomUUID();

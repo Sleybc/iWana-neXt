@@ -42,6 +42,7 @@ import { MigrationSourceConnectionService } from './migration-source-connection.
 import { MigrationUispUsersService } from './migration-uisp-users.service';
 import { FAKE_UISP_APP_KEY, startFakeUisp, type FakeUispServer } from './test/fake-uisp-server';
 import { UISP_ADMINS_PATH, UISP_VERSION_PATH, UispApiClient } from './uisp-api/uisp-api.client';
+import { ephemeralSchemaName } from '../../../../../packages/database/test/ephemeral-schema';
 
 // otplib@13 arrastra @scure/base (ESM-only) que Jest-CJS no puede cargar al importar AuthService.
 // Mock solo de carga: TOTP no interviene en restablecer la contraseña ni en el login sin MFA.
@@ -66,7 +67,7 @@ const describeDb = enabled ? describe : describe.skip;
 describeDb('Usuarios de UISP — conexión y lectura sobre PostgreSQL real', () => {
   let ds: DataSource;
   let uisp: FakeUispServer;
-  const schemaName = `tenant_migr_uisp_${randomBytes(5).toString('hex')}`;
+  const schemaName = ephemeralSchemaName('tenant_migr_uisp_');
   const tenantId = randomUUID();
   const actorId = randomUUID();
   const matchedUserId = randomUUID();

@@ -17,17 +17,13 @@ import { IPersonalDataErasurePort } from '../ports/personal-data-erasure.port';
 import { PrivacyRequestsService } from './requests.service';
 import { IContractStandingReadPort } from './ports/contract-standing-read.port';
 import { PrivacyRequestsReadAdapter } from './ports/privacy-requests-read.adapter';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const allowedDatabaseName = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
 const SCHEMA_PREFIX = 'tenant_privacy_requests_';
-const SLUG_PREFIX = 'privacy-requests-';
-const schemaName = `${SCHEMA_PREFIX}${randomBytes(5).toString('hex')}`;
-/** Una corrida viva termina en minutos; lo que pase de esto es un resto de una corrida cortada. */
-const STALE_LEFTOVER_INTERVAL = '2 hours';
-/** Patrón LIKE del prefijo, con `_` escapado para que no actúe de comodín. */
-const SCHEMA_LIKE = `${SCHEMA_PREFIX.replaceAll('_', '\\_')}%`;
+const schemaName = ephemeralSchemaName(SCHEMA_PREFIX);
 const actorId = '60000000-0000-4000-8000-000000000001';
 const partyId = '60000000-0000-4000-8000-000000000002';
 const suspendedContractId = '60000000-0000-4000-8000-000000000003';
@@ -39,51 +35,6 @@ if (dbAvailable && !allowedDatabaseName.test(process.env['DB_NAME'] ?? '')) {
   throw new Error(
     'Integración privacy requests: DB_NAME debe ser dbiw, test o iwana_it_*; solo se crea y elimina un schema efímero.',
   );
-}
-
-/**
- * Si una corrida se corta (timeout, Ctrl+C, worker matado), afterAll no se ejecuta y quedan el
- * schema y la fila de public.tenants, que además inflan los conteos del dashboard. Al arrancar se
- * barren solo los restos de esta misma prueba, sin tocar corridas concurrentes:
- * - filas `privacy-requests-*` (y su schema) con más de STALE_LEFTOVER_INTERVAL;
- * - schemas `tenant_privacy_requests_*` sin fila en public.tenants. La prueba inserta la fila antes
- *   de crear el schema, así que un schema sin fila nunca pertenece a una corrida viva.
- */
-async function sweepLeftoversFromInterruptedRuns(dataSource: DataSource): Promise<void> {
-  const staleRows: Array<{ id: string; schema_name: string }> = await dataSource.query(
-    `SELECT id, schema_name FROM public.tenants
-      WHERE slug LIKE $1 AND schema_name LIKE $2
-        AND created_at < now() - $3::interval`,
-    [`${SLUG_PREFIX}%`, SCHEMA_LIKE, STALE_LEFTOVER_INTERVAL],
-  );
-  for (const row of staleRows) {
-    await bestEffort(`DROP SCHEMA IF EXISTS "${row.schema_name}" CASCADE`, () =>
-      dataSource.query(`DROP SCHEMA IF EXISTS "${row.schema_name}" CASCADE`),
-    );
-    await bestEffort(`DELETE tenant ${row.id}`, () =>
-      dataSource.query('DELETE FROM public.tenants WHERE id = $1', [row.id]),
-    );
-  }
-  const orphanSchemas: Array<{ nspname: string }> = await dataSource.query(
-    `SELECT n.nspname FROM pg_namespace n
-      WHERE n.nspname LIKE $1
-        AND NOT EXISTS (SELECT 1 FROM public.tenants t WHERE t.schema_name = n.nspname)`,
-    [SCHEMA_LIKE],
-  );
-  for (const { nspname } of orphanSchemas) {
-    await bestEffort(`DROP SCHEMA IF EXISTS "${nspname}" CASCADE`, () =>
-      dataSource.query(`DROP SCHEMA IF EXISTS "${nspname}" CASCADE`),
-    );
-  }
-}
-
-/** El barrido es higiene: si un resto no se puede borrar (otro dueño, bloqueo), avisa y sigue. */
-async function bestEffort(label: string, action: () => Promise<unknown>): Promise<void> {
-  try {
-    await action();
-  } catch (error) {
-    console.warn(`[privacy requests] no se pudo limpiar un resto (${label}):`, error);
-  }
 }
 
 function todayInBogota(): string {
@@ -186,7 +137,6 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
       extra: { max: 3, min: 1, connectionTimeoutMillis: 5_000 },
     });
     await dataSource.initialize();
-    await sweepLeftoversFromInterruptedRuns(dataSource);
     // El esquema lo instala la cadena de migraciones tenant (P3-5), no un DDL escrito a mano:
     // data_subject_requests y sus eventos, tareas, marcas, retention_policies (sembrada con
     // IDENTIFICACION_DIRECCION_CONTRATO_SUSCRIPTOR = 5 años) y data_authorizations vienen de la
@@ -197,7 +147,7 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
       [
         tenantId,
         'Privacy requests sintético',
-        `${SLUG_PREFIX}${tenantId.slice(0, 8)}`,
+        `privacy-requests-${tenantId.slice(0, 8)}`,
         schemaName,
         'privacy-requests@example.invalid',
       ],

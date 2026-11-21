@@ -25,6 +25,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const databaseName = dataSourceOptions.database;
@@ -46,7 +47,7 @@ describeWithDb('Contrato firmado en Documentos y copia por correo: PostgreSQL re
   let processor: ContractSignedCopyProcessor;
   const tenantId = randomUUID();
   const reader = randomUUID();
-  const schemaName = 'tenant_signed_docs_' + randomUUID().replace(/-/g, '');
+  const schemaName = ephemeralSchemaName('tenant_signed_docs_');
   const quote = (identifier: string) => '"' + identifier.replace(/"/g, '""') + '"';
   const context = { tenantId, schemaName, tenantSlug: 'signed-docs-it' };
   const inContext = <T>(callback: () => Promise<T>) => TenantContext.run(context, callback);
@@ -247,7 +248,7 @@ describeWithDb('Contrato firmado en Documentos y copia por correo: PostgreSQL re
 
   afterAll(async () => {
     if (dataSource?.isInitialized) {
-      if (!/^tenant_signed_docs_[a-f0-9]{32}$/.test(schemaName))
+      if (!/^tenant_signed_docs_itx[0-9a-z]{8}[a-f0-9]{8}$/.test(schemaName))
         throw new Error('Schema inválido.');
       await dataSource.query('DROP SCHEMA IF EXISTS ' + quote(schemaName) + ' CASCADE');
       await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);

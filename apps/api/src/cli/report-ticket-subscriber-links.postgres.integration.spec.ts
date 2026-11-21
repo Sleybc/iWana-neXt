@@ -8,8 +8,9 @@ import {
 import { AssuranceSubscriberTicketLinksReadAdapter } from '../modules/assurance/ports/assurance-subscriber-ticket-links-read.adapter';
 import { SubscribersService } from '../modules/crm/subscribers/subscribers.service';
 import { analyzeTicketSubscriberLinks } from './report-ticket-subscriber-links';
+import { ephemeralSchemaName } from '../../../../packages/database/test/ephemeral-schema';
 
-const schemaName = `tenant_ticket_link_report_${randomBytes(5).toString('hex')}`;
+const schemaName = ephemeralSchemaName('tenant_ticket_link_report_');
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 

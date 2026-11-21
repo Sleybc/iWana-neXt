@@ -2,10 +2,11 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { InventoryExecutionRequestReceipts1390000000000 } from './139_inventory_execution_request_receipts';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
-const schema = `it_inv_receipts_${randomBytes(8).toString('hex')}`;
+const schema = ephemeralSchemaName('it_inv_receipts_');
 
 if (!dbAvailable) {
   console.warn(

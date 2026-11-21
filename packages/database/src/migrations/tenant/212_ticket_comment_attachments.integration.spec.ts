@@ -4,6 +4,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { TicketCommentAttachments2120000000212 } from './212_ticket_comment_attachments';
 import { applyTenantMigrationsInOrder, createTenantDataSource } from './runner';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * Migración 212 en PostgreSQL real (spec MOD09 2026-11-16 «adjuntos en tickets» §2.1):
@@ -13,7 +14,7 @@ import { applyTenantMigrationsInOrder, createTenantDataSource } from './runner';
  *
  * Datos sintéticos: nunca adjuntos reales.
  */
-const SCHEMA = `tenant_m212_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_m212_');
 const TENANT_ID = randomUUID();
 const ACTOR_ID = randomUUID();
 const DESTRUCTIVE = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';

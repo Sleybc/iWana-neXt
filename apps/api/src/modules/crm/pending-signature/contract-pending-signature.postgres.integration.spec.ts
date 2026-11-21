@@ -11,11 +11,12 @@ import {
 import { ContractProvisioningActivationReadAdapter } from '../../network/adapters/contract-provisioning-activation-read.adapter';
 import { ContractPendingSignatureAlertsProcessor } from './contract-pending-signature-alerts.processor';
 import { ContractPendingSignatureService } from './contract-pending-signature.service';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const databaseAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDatabase = databaseAvailable ? describe : describe.skip;
 const allowedDatabaseName = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
-const schemaName = `tenant_pending_sig_${randomBytes(5).toString('hex')}`;
+const schemaName = ephemeralSchemaName('tenant_pending_sig_');
 const tenantId = randomUUID();
 const tenantSlug = `pending-sig-${schemaName.slice(-10)}`;
 const NOW = new Date('2026-11-11T13:00:00.000Z');

@@ -11,6 +11,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -18,7 +19,7 @@ const describeWithDb = dbAvailable ? describe : describe.skip;
 describeWithDb('AuditService.logWithin con PostgreSQL real', () => {
   let dataSource: DataSource;
   const tenantId = randomUUID();
-  const schemaName = `tenant_a25_${randomUUID().replace(/-/g, '')}`;
+  const schemaName = ephemeralSchemaName('tenant_a25_');
   const tenantContext = { tenantId, schemaName, tenantSlug: 'audit-a25-test' };
 
   function qSchema(): string {

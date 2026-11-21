@@ -8,6 +8,7 @@ import {
   PRIVACY_H1_MONOTONIC_CATALOG,
   PrivacyErasureMonotonicLog1780000000178,
 } from './178_privacy_erasure_monotonic_log';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const enabled = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describePg = enabled ? describe : describe.skip;
@@ -95,7 +96,7 @@ function monotonicBodyGaps(body: string, catalog: Record<string, H1CatalogEntry[
 }
 
 describePg('178 — trigger monótono y bitácora append-only (H-1 B1)', () => {
-  const schema = `tenant_it178_${randomUUID().replaceAll('-', '').slice(0, 16)}`;
+  const schema = ephemeralSchemaName('tenant_it178_');
   const tenantId = randomUUID();
   const migration = new PrivacyErasureMonotonicLog1780000000178();
   let ds: DataSource;

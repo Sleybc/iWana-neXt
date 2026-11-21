@@ -45,6 +45,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -58,7 +59,7 @@ describeWithDb('Contrato automático desde la oportunidad (fase 2, A+B) con Post
   let autoCreation: ContractAutoCreationService;
   const tenantId = randomUUID();
   const tenantSlug = `contract-auto-${tenantId.slice(0, 8)}`;
-  const schemaName = 'tenant_contract_auto_' + randomUUID().replace(/-/g, '');
+  const schemaName = ephemeralSchemaName('tenant_contract_auto_');
   const actorId = '00000000-0000-4000-8000-000000000051';
   const ownerId = '00000000-0000-4000-8000-000000000052';
   const quoteIdentifier = (value: string) => '"' + value.replace(/"/g, '""') + '"';

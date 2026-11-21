@@ -3,13 +3,14 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { BillingAdditionalLines2020000000202 } from './202_billing_additional_lines';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 /**
  * Migración 202 — adicionales facturados (spec MOD14 2026-11-12 bloque C) en PostgreSQL real:
  * enlace de la línea al ítem, relleno del precio congelado por segmento (sin tocar titulares
  * anonimizados ni entradas ya congeladas), down con guarda destructiva y reaplicación.
  */
-const SCHEMA = `tenant_add_lines_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_add_lines_');
 const TENANT_ID = randomUUID();
 const PRODUCT = randomUUID();
 const SERVICE = randomUUID();

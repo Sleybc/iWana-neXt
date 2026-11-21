@@ -23,6 +23,7 @@ import { Subscriber } from '../crm/subscribers/entities/subscriber.entity';
 import { BillingDocumentsService } from './documents/billing-documents.service';
 import { BillingGenerationService } from './generation/billing-generation.service';
 import { BillingPaymentsService } from './payments/billing-payments.service';
+import { ephemeralSchemaName } from '../../../../../packages/database/test/ephemeral-schema';
 
 const quote = (value: string) => `"${value.replace(/"/gu, '""')}"`;
 
@@ -35,7 +36,7 @@ describeDb('BR-4.1 agenda de corte con el puerto real de Billing', () => {
   let ds: DataSource;
   const tenantId = randomUUID();
   const slug = `br4-agenda-${tenantId.slice(0, 8)}`;
-  const schemaName = `tenant_br4_agenda_${randomUUID().replace(/-/gu, '')}`;
+  const schemaName = ephemeralSchemaName('tenant_br4_agenda_');
   const actorId = randomUUID();
   const settings = {
     getSnapshot: jest.fn().mockResolvedValue({ timezone: 'America/Bogota' }),

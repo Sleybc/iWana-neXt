@@ -20,11 +20,12 @@ import {
   PrivacyDueAlertsProcessor,
   PrivacyDueAlertsTenantJobPayload,
 } from './privacy-due-alerts.processor';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const databaseAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDatabase = databaseAvailable ? describe : describe.skip;
 const allowedDatabaseName = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
-const schemaName = `tenant_privacy_alerts_${randomBytes(5).toString('hex')}`;
+const schemaName = ephemeralSchemaName('tenant_privacy_alerts_');
 // Distinto por corrida: identifica la fila efímera de public.tenants que exige la migración 092.
 const tenantId = randomUUID();
 const tenantSlug = `privacy-alerts-${schemaName.slice(-10)}`;

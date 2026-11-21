@@ -22,6 +22,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * H-EXP B4-R2 (M-1, B-1) por la ruta HTTP de supresión contra PostgreSQL real:
@@ -39,7 +40,7 @@ const keyHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 jest.setTimeout(300_000);
 
 describeWithDb('Supresión por HTTP — reloj sin conciliar (B4-R2) en PostgreSQL real', () => {
-  const schemaName = `tenant_erasure_http_${randomBytes(5).toString('hex')}`;
+  const schemaName = ephemeralSchemaName('tenant_erasure_http_');
   const s = `"${schemaName}"`;
   const tenantId = randomUUID();
   const tenantSlug = `erasure-http-${schemaName.slice(-10)}`;
@@ -262,7 +263,7 @@ describeWithDb('Supresión por HTTP — reloj sin conciliar (B4-R2) en PostgreSQ
   afterAll(async () => {
     await app?.close();
     if (!dataSource?.isInitialized) return;
-    if (!/^tenant_erasure_http_[a-f0-9]{10}$/u.test(schemaName)) {
+    if (!/^tenant_erasure_http_itx[0-9a-z]{8}[a-f0-9]{8}$/u.test(schemaName)) {
       throw new Error('Schema de limpieza inválido.');
     }
     try {

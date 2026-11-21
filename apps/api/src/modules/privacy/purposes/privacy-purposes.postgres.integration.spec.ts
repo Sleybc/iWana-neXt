@@ -11,10 +11,11 @@ import {
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { PrivacyAuthorizationAdapter } from '../authorizations/privacy-authorization.adapter';
 import { PurposesService } from './purposes.service';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
-const schemaName = `tenant_privacy_purposes_${randomBytes(5).toString('hex')}`;
+const schemaName = ephemeralSchemaName('tenant_privacy_purposes_');
 const tenantId = randomUUID();
 const actorId = randomUUID();
 const legalTextId = randomUUID();

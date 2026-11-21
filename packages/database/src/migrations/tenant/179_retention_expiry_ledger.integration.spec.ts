@@ -4,6 +4,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { TENANT_MIGRATIONS } from './runner';
 import { RetentionExpiryLedger1790000000179 } from './179_retention_expiry_ledger';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const enabled = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describePg = enabled ? describe : describe.skip;
@@ -13,7 +14,7 @@ if (enabled && !/^(test|iwana_it_[a-z0-9_]+)$/u.test(process.env['DB_NAME'] ?? '
 jest.setTimeout(900_000);
 
 describePg('179 — ledger de vencimiento y minimización de solicitudes (H-EXP B1)', () => {
-  const schema = `tenant_it179_${randomUUID().replaceAll('-', '').slice(0, 16)}`;
+  const schema = ephemeralSchemaName('tenant_it179_');
   const tenantId = randomUUID();
   const migration = new RetentionExpiryLedger1790000000179();
   let ds: DataSource;

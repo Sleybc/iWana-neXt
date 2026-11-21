@@ -63,6 +63,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -73,7 +74,7 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
   let dataSource: DataSource;
   const tenantId = randomUUID();
   const tenantSlug = `contracts-iva-${tenantId.slice(0, 8)}`;
-  const testSchemaName = 'tenant_iva_contract_' + randomUUID().replace(/-/g, '');
+  const testSchemaName = ephemeralSchemaName('tenant_iva_contract_');
   let vatConcept: VatConcept | null = VatConcept.INTERNET_ACCESS;
   let uploadedMediaAssetIds: string[] = [];
 

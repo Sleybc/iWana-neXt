@@ -11,6 +11,7 @@ import * as erasureSql from './titular-erasure-sql';
 import type { ErasureKeys } from './titular-erasure-sql';
 import type { TitularErasureTableResult } from './titular-erasure.types';
 import { CrmTitularErasureParticipant } from './crm-titular-erasure.participant';
+import { ephemeralSchemaName } from '../../../../../../../packages/database/test/ephemeral-schema';
 
 const integrationEnabled = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const databaseName = process.env['DB_NAME'] ?? '';
@@ -27,7 +28,7 @@ if (integrationEnabled && !supportedDatabaseName) {
 jest.setTimeout(900_000);
 
 describeWithDb('B1c — supresión CRM sobre migraciones tenant reales', () => {
-  const schemaName = `tenant_it_g7_b1c_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const schemaName = ephemeralSchemaName('tenant_it_g7_b1c_');
   const tenantId = randomUUID();
   const tenantSlug = `privacy-g7-${randomUUID().slice(0, 8)}`;
   const subscriberId = randomUUID();

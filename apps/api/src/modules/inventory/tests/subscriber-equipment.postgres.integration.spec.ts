@@ -8,6 +8,7 @@ import {
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { GetSubscriberEquipmentQuerySchema } from '../dto';
 import { AssetLoanService } from '../services/asset-loan.service';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * Lectura de equipos del suscriptor (spec 2026-11-16 §2.1, §4; CA-4 y CA-5) contra
@@ -15,8 +16,8 @@ import { AssetLoanService } from '../services/asset-loan.service';
  */
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
-const schemaA = `tenant_sub_equip_${randomBytes(5).toString('hex')}`;
-const schemaB = `tenant_sub_equip_${randomBytes(5).toString('hex')}`;
+const schemaA = ephemeralSchemaName('tenant_sub_equip_');
+const schemaB = ephemeralSchemaName('tenant_sub_equip_');
 const allowedDatabaseName = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
 
 if (dbAvailable && !allowedDatabaseName.test(process.env['DB_NAME'] ?? '')) {

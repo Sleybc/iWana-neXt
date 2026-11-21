@@ -7,6 +7,7 @@ import {
 } from '../../../../packages/database/src/migrations/tenant/runner';
 import { createFiscalDocumentCryptoFromKeys } from '../common/crypto/fiscal-document.util';
 import { runFiscalDocumentBackfillInTenantSchema } from './backfill-fiscal-document';
+import { ephemeralSchemaName } from '../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -44,7 +45,7 @@ describeWithDb('Backfill fiscal — PostgreSQL real en schema sintético', () =>
       extra: { max: 2, min: 1, connectionTimeoutMillis: 5_000 },
     });
     await dataSource.initialize();
-    schemaName = `tenant_fiscal_backfill_${randomBytes(5).toString('hex')}`;
+    schemaName = ephemeralSchemaName('tenant_fiscal_backfill_');
     // Esquema propio con la cadena tenant vigente: contracts y expediente_records conservan la
     // columna fiscal_document en claro que este backfill vacía.
     // La migración 092 exige un tenant canónico en public.tenants para su esquema.

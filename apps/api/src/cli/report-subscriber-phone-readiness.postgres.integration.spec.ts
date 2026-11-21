@@ -34,6 +34,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -59,7 +60,7 @@ function quoteIdentifier(value: string): string {
 }
 
 describeWithDb('Reporte de teléfonos de suscriptores — PostgreSQL real', () => {
-  const schemaName = `tenant_phone_readiness_${randomBytes(5).toString('hex')}`;
+  const schemaName = ephemeralSchemaName('tenant_phone_readiness_');
   const tenantId = randomUUID();
   // El slug hereda solo 6 hex del UUID: con 8, un hex de 7-8 dígitos hace un falso
   // positivo de la aserción not.toMatch(/\d{7,}/) (~5 % de corridas, red 42722797012

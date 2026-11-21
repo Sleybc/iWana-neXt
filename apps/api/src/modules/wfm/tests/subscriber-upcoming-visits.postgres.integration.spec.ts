@@ -18,6 +18,7 @@ import {
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { AssuranceSubscriberTicketsReadAdapter } from '../../assurance/ports/assurance-subscriber-tickets-read.adapter';
 import { SubscriberUpcomingVisitsService } from '../services/subscriber-upcoming-visits.service';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -34,8 +35,14 @@ type TenantFixture = { id: string; schema: string };
  */
 describeWithDb('Próximas visitas del suscriptor en PostgreSQL real (CA-13, CA-15)', () => {
   let dataSource: DataSource;
-  const tenantA: TenantFixture = { id: randomUUID(), schema: `tenant_wfm_upcoming_a_${suffix()}` };
-  const tenantB: TenantFixture = { id: randomUUID(), schema: `tenant_wfm_upcoming_b_${suffix()}` };
+  const tenantA: TenantFixture = {
+    id: randomUUID(),
+    schema: ephemeralSchemaName('tenant_wfm_upcoming_a_'),
+  };
+  const tenantB: TenantFixture = {
+    id: randomUUID(),
+    schema: ephemeralSchemaName('tenant_wfm_upcoming_b_'),
+  };
   const actorId = randomUUID();
   const subscriberId = randomUUID();
   const otherSubscriberId = randomUUID();

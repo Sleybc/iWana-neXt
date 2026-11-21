@@ -55,10 +55,11 @@ import {
   createTenantDataSource,
   applyTenantMigrationsInOrder,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
-const schemaName = `tenant_mod05_e3_${randomUUID().replace(/-/g, '')}`;
+const schemaName = ephemeralSchemaName('tenant_mod05_e3_');
 const tenantId = randomUUID();
 const tenantSlug = `mod05-e3-${randomUUID().slice(0, 8)}`;
 const actorId = '00000000-0000-4000-8000-0000000000e3';

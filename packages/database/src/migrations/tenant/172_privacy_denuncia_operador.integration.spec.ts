@@ -4,6 +4,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { TENANT_MIGRATIONS } from './runner';
 import { PrivacyDenunciaOperador1720000000172 } from './172_privacy_denuncia_operador';
+import { ephemeralSchemaName } from '../../../test/ephemeral-schema';
 
 const enabled = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describePg = enabled ? describe : describe.skip;
@@ -13,7 +14,7 @@ if (enabled && !/^(dbiw|test|iwana_it_[a-z0-9_]+)$/u.test(process.env['DB_NAME']
 jest.setTimeout(900_000);
 
 describePg('172 — tareas de denuncia y comunicación en PostgreSQL real', () => {
-  const schema = `tenant_it172_${randomUUID().replaceAll('-', '')}`;
+  const schema = ephemeralSchemaName('tenant_it172_');
   const tenantId = randomUUID();
   const partyId = randomUUID();
   const migration = new PrivacyDenunciaOperador1720000000172();

@@ -7,8 +7,9 @@ import {
 } from '../../../../packages/database/src/migrations/tenant/runner';
 import { hmacPii } from '../common/crypto/pii-hash-key.util';
 import { runPlaceholderBackfillInTenantSchema } from './backfill-placeholder-contacts';
+import { ephemeralSchemaName } from '../../../../packages/database/test/ephemeral-schema';
 
-const SCHEMA = `tenant_mod05_placeholder_${randomBytes(5).toString('hex')}`;
+const SCHEMA = ephemeralSchemaName('tenant_mod05_placeholder_');
 const TENANT_ID = randomUUID();
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;

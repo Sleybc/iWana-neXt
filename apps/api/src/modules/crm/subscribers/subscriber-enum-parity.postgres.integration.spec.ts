@@ -7,13 +7,14 @@ import {
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { Subscriber } from './entities/subscriber.entity';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 // Esquema propio e independiente: instala la cadena tenant vigente desde cero, así que no
 // depende de ningún esquema preexistente de la base de desarrollo.
 const tenantId = randomUUID();
-const schemaName = `tenant_enum_parity_${randomUUID().replace(/-/g, '')}`;
+const schemaName = ephemeralSchemaName('tenant_enum_parity_');
 
 describeWithDb('Subscriber enum metadata — parity con pg_type', () => {
   let dataSource: DataSource;

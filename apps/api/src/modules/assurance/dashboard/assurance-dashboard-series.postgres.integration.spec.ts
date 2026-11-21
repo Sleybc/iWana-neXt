@@ -21,6 +21,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * N3 contra PostgreSQL real (HLD-MOD02 v3.0 §3 N3, §7 y §8.4). Dos schemas efímeros con la
@@ -44,7 +45,7 @@ interface TenantFixture {
 }
 
 function newTenant(label: string): TenantFixture {
-  const schemaName = `tenant_n3_${label}_${randomBytes(4).toString('hex')}`;
+  const schemaName = ephemeralSchemaName(`tenant_n3_${label}_`);
   return { tenantId: randomUUID(), schemaName, quoted: `"${schemaName}"` };
 }
 

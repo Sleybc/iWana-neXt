@@ -31,6 +31,7 @@ import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../../../packages/database/test/ephemeral-schema';
 
 /**
  * H-EXP B5 contra PostgreSQL real: P3 de §1.10 del plan — un prospecto que la
@@ -50,7 +51,7 @@ const TODAY = '2026-11-08';
 describeWithDb(
   'RetentionExpiry B5 — selección de prospectos sin conciliar en PostgreSQL real',
   () => {
-    const schemaName = `tenant_hexp_b5_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const schemaName = ephemeralSchemaName('tenant_hexp_b5_');
     const tenantId = randomUUID();
     const tenantSlug = `hexp-b5-${randomUUID().slice(0, 8)}`;
     const actorId = randomUUID();
@@ -222,7 +223,7 @@ describeWithDb(
 
     afterAll(async () => {
       if (!dataSource?.isInitialized) return;
-      if (!/^tenant_hexp_b5_[a-f0-9]{12}$/u.test(schemaName)) {
+      if (!/^tenant_hexp_b5_itx[0-9a-z]{8}[a-f0-9]{8}$/u.test(schemaName)) {
         throw new Error('Schema de limpieza inválido.');
       }
       try {
