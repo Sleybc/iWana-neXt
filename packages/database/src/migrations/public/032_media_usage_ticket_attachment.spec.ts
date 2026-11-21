@@ -50,10 +50,10 @@ describe('032_media_usage_ticket_attachment (spec MOD09 adjuntos en tickets §2.
     expect(MediaUsage.TICKET_ATTACHMENT).toBe('ticket_attachment');
   });
 
-  it('queda registrada al final, después de la 031', () => {
+  it('queda registrada inmediatamente después de la 031', () => {
     expect(migration().name).toBe('MediaUsageTicketAttachment1784419220000');
     const index = PUBLIC_MIGRATIONS.indexOf(MediaUsageTicketAttachment1784419220000);
-    expect(index).toBe(PUBLIC_MIGRATIONS.length - 1);
+    expect(index).toBeGreaterThan(0);
     expect(PUBLIC_MIGRATIONS[index - 1]).toBe(TenantPurgeEvidence1784419219000);
   });
 

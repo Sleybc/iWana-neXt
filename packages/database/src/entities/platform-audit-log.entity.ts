@@ -15,6 +15,7 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 
  */
 @Index('idx_pal_user_created', ['userId', 'createdAt'])
 @Index('idx_pal_action_created', ['action', 'createdAt'])
+@Index('idx_pal_created_id', ['createdAt', 'id'])
 @Entity({ schema: 'public', name: 'platform_audit_logs' })
 export class PlatformAuditLog {
   @PrimaryGeneratedColumn('uuid')

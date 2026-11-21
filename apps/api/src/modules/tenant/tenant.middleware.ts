@@ -16,6 +16,7 @@ import {
   platformAccessCookieName,
   platformRefreshCookieName,
   tenantAccessCookieName,
+  tenantRefreshCookieName,
 } from '../auth/session-cookies.constants';
 import { PUBLIC_ROUTES_WITH_TENANT, PUBLIC_ROUTES_WITHOUT_TENANT } from './public-routes';
 import { TenantService } from './tenant.service';
@@ -216,6 +217,11 @@ export class TenantMiddleware implements NestMiddleware {
     if (this.getNormalizedPath(req) === '/auth/refresh') {
       const cookies = (req.cookies ?? {}) as Record<string, string>;
       if (cookies[platformRefreshCookieName()]) {
+        return false;
+      }
+      // V-2 (WEB-DASHBOARD Ola 2): sin ninguna cookie de refresh no hay sesión que
+      // rotar; el controlador responde 401 en vez del 400 por falta de cabecera.
+      if (!cookies[tenantRefreshCookieName()]) {
         return false;
       }
     }

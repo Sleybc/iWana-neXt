@@ -37,6 +37,7 @@ import { TenantSchemaPurgeDefiner1784419217000 } from './029_tenant_schema_purge
 import { HardenTenantPurgeDependencies1784419218000 } from './030_harden_tenant_purge_dependencies';
 import { TenantPurgeEvidence1784419219000 } from './031_tenant_purge_evidence';
 import { MediaUsageTicketAttachment1784419220000 } from './032_media_usage_ticket_attachment';
+import { DashboardStatusAndAuditCursorIndexes1784419221000 } from './033_dashboard_status_and_audit_cursor_indexes';
 
 /**
  * Migraciones del schema público, en orden.
@@ -84,6 +85,7 @@ export const PUBLIC_MIGRATIONS: (new () => MigrationInterface)[] = [
   HardenTenantPurgeDependencies1784419218000,
   TenantPurgeEvidence1784419219000,
   MediaUsageTicketAttachment1784419220000,
+  DashboardStatusAndAuditCursorIndexes1784419221000,
 ];
 
 /**

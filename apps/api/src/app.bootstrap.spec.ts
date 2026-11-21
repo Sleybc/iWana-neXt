@@ -60,7 +60,6 @@ jest.mock('bullmq', () => {
 import { Module } from '@nestjs/common';
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { Test } from '@nestjs/testing';
-import { HealthModule } from './modules/health/health.module';
 import { REDIS_CLIENT } from './modules/redis/redis.module';
 import { ExecutionOrderSchedulingModule } from './modules/tasks/execution-order-scheduling.module';
 import { TasksModule } from './modules/tasks/tasks.module';
@@ -100,8 +99,10 @@ describe('AppModule bootstrap', () => {
     jest.resetModules();
 
     // Mismo orden que el Scope del UndefinedModuleException:
-    // AppModule -> HealthModule -> TasksModule -> AssuranceModule -> WfmModule
-    require('./modules/health/health.module');
+    // AppModule -> HealthModule -> TasksModule -> AssuranceModule -> WfmModule.
+    // HealthModule ya no importa TasksModule (H-3, Ola 2): se entra por TasksModule
+    // para conservar el orden de evaluación que reproducía el defecto.
+    require('./modules/tasks/tasks.module');
     const { WfmModule: ReloadedWfmModule } = require('./modules/wfm/wfm.module') as {
       WfmModule: new () => unknown;
     };
@@ -127,8 +128,10 @@ describe('AppModule bootstrap', () => {
     expect(imports).not.toContain(ReloadedTasksModule);
   });
 
-  it('createTestingModule del grafo Health no lanza UndefinedModuleException', async () => {
-    // Sonda del scanner Nest sobre el camino que fallaba en main.ts.
+  it('createTestingModule del grafo Tasks no lanza UndefinedModuleException', async () => {
+    // Sonda del scanner Nest sobre el camino que fallaba en main.ts
+    // (Tasks -> Assurance -> Wfm). Antes se entraba por HealthModule, que dejó de
+    // importar TasksModule en la Ola 2 (H-3); la sonda entra ahora por TasksModule.
     // No montamos AppModule completo: TestingModule+TypeORM/Redis es deuda
     // distinta (baseline clamp-page 21), ajena al ciclo de módulos.
     //
@@ -137,7 +140,7 @@ describe('AppModule bootstrap', () => {
     // debe abrir conexiones. REDIS_CLIENT es un token unico y estable (no una
     // enumeracion por cola), asi que el doble via overrideProvider no envejece.
     const redisInfraDouble = {};
-    @Module({ imports: [HealthModule] })
+    @Module({ imports: [TasksModule] })
     class BootstrapCycleProbeModule {}
 
     try {

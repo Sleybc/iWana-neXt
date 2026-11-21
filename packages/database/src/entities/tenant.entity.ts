@@ -21,6 +21,7 @@ import { CompanyType, TenantStatus } from '@iwana/shared';
  */
 @Index('idx_tenants_slug', ['slug'])
 @Index('idx_tenants_schema_name', ['schemaName'])
+@Index('idx_tenants_status', ['status'])
 @Entity({ schema: 'public', name: 'tenants' })
 export class Tenant {
   @PrimaryGeneratedColumn('uuid')

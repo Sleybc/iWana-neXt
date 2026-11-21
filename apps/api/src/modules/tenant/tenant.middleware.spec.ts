@@ -151,13 +151,27 @@ describe('TenantMiddleware', () => {
   it('rechaza auth publico sin JWT ni X-Tenant-Slug', async () => {
     const request = buildRequest({
       method: 'POST',
-      originalUrl: '/api/v1/auth/refresh',
-      url: '/api/v1/auth/refresh',
+      originalUrl: '/api/v1/auth/login',
+      url: '/api/v1/auth/login',
     });
 
     await expect(middleware.use(request, {} as Response, jest.fn())).rejects.toThrow(
       BadRequestException,
     );
+  });
+
+  it('deja pasar /auth/refresh sin ninguna cookie de refresh para que el controlador responda 401 (V-2)', async () => {
+    const request = buildRequest({
+      method: 'POST',
+      originalUrl: '/api/v1/auth/refresh',
+      url: '/api/v1/auth/refresh',
+    });
+    const next = jest.fn();
+
+    await middleware.use(request, {} as Response, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(tenantService.findBySlug).not.toHaveBeenCalled();
   });
 
   it('rechaza el token si el schemaName del claim no coincide con public.tenants', async () => {
