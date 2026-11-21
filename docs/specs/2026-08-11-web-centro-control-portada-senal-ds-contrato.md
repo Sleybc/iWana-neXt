@@ -30,7 +30,7 @@
 
 | # | Prohibición | Motivo |
 | --- | --- | --- |
-| 1 | Nueva primitive en `@iwana/ui` o fusionar `PanelCard` ↔ `PortalPanel` | Fase-1 §1 / §7 lo prohíbe |
+| 1 | ~~Nueva primitive en `@iwana/ui` o fusionar `PanelCard` ↔ `PortalPanel`~~ **Superada el 2026-11-21** por [2026-11-21-web-portal-dashboard-consolidacion-ds-contrato.md](2026-11-21-web-portal-dashboard-consolidacion-ds-contrato.md) (U-1, U-3): entran `MetricCard`, `ErrorState`, `EmptyState` y `StackedBar`. La fusión `PanelCard` ↔ `PortalPanel` sigue fuera. | Fase-1 §1 / §7 lo prohíbe |
 | 2 | Importar `apps/portal/src/components/shared/portal-ui.tsx` desde web | Boundary de app |
 | 3 | Tokens o hex de marca nuevos; `tailwind.config.*` | CSS-first; marca = CTO |
 | 4 | Lima en urgencia, error o tramo «con error» / «requieren atención» | Firma §3 |
@@ -53,9 +53,9 @@
 | `font-mono tabular-nums` | Cifras y `<time>` |
 | `interactiveFocusClassName` (`@iwana/ui`) | Único anillo de foco |
 | `SkeletonBlock` (`@iwana/ui`) | Carga |
-| `bg-success-500` / `bg-amber-500` / `bg-error-500` / `bg-gray-400` | Tramos de la barra (relleno, no texto) |
-| `text-success-700` / `text-amber-700` / `text-error-700` / `dark:text-*-400` | Cifras de leyenda D |
-| `rounded-3xl` chip · `rounded-full` barra | Radio: superficie 2xl/3xl, control full |
+| `bg-success-500` / `bg-amber-500` / `bg-error-500` / `bg-gray-400` | Tramos de la barra (relleno, no texto). **Superada el 2026-11-21** por [2026-11-21-web-portal-dashboard-consolidacion-ds-contrato.md](2026-11-21-web-portal-dashboard-consolidacion-ds-contrato.md) §2: `amber-*` solo vía `toneFillVariants`. |
+| `text-success-700` / `text-amber-700` / `text-error-700` / `dark:text-*-400` | Cifras de leyenda D. **Superada el 2026-11-21** por [2026-11-21-web-portal-dashboard-consolidacion-ds-contrato.md](2026-11-21-web-portal-dashboard-consolidacion-ds-contrato.md) §2: `toneTextVariants`. |
+| ~~`rounded-3xl` chip~~ **Superada el 2026-11-21** por [2026-11-21-web-portal-dashboard-consolidacion-ds-contrato.md](2026-11-21-web-portal-dashboard-consolidacion-ds-contrato.md) R3: superficie `rounded-2xl` · `rounded-full` barra | Radio: superficie 2xl/3xl, control full |
 
 **Lima:** no entra en S-3, D-3, D-6 ni en ningún tramo de alerta. No se usa `from-iwana-primary to-iwana-secondary` en la barra (no es un único progreso; es un mix de estados).
 
@@ -79,7 +79,7 @@ No se crea `SignalChip`. Se **componen** las mismas clases que ya documenta el p
 | --- | --- | --- |
 | `primary` (S-1) | `border-iwana-primary/20 bg-iwana-primary-50/70` | `dark:border-iwana-primary-400/30 dark:bg-iwana-primary-900/15` |
 | `warning` (S-2) | `border-amber-200 bg-amber-50/80` | `dark:border-amber-500/20 dark:bg-amber-950/20` |
-| `danger` (S-3) | `border-rose-200 bg-rose-50/80` | `dark:border-rose-500/20 dark:bg-rose-950/20` |
+| `danger` (S-3) | ~~`border-rose-200 bg-rose-50/80`~~ | ~~`dark:border-rose-500/20 dark:bg-rose-950/20`~~ **Superada el 2026-11-21** por [2026-11-21-web-portal-dashboard-consolidacion-ds-contrato.md](2026-11-21-web-portal-dashboard-consolidacion-ds-contrato.md) §2 (U-4): todos los acentos pasan a `toneSurfaceVariants`; `danger` → `error`, sin `rose`, tono visible en oscuro. |
 | `neutral` (S-4) | `border-gray-200 bg-iwana-surface-soft` | `dark:border-dark-border dark:bg-dark-surface-3` |
 
 Carga: `SkeletonBlock` `h-[88px] w-full rounded-3xl` (misma caja que el chip). `aria-busy` en la franja.
@@ -174,4 +174,4 @@ Carga: 5 skeletons de fila (`h-4`), no spinner.
 
 ## 8. Relación con Fase-1
 
-Sombras (`shadow-iwana-soft` / `shadow-iwana-card` / `shadow-iwana-active`), dark `dark-surface-*` y `interactiveFocusClassName` **no se reabren**. Este contrato solo añade recetas de composición para S y D. `SystemStatusPanel` no se toca.
+Sombras (`shadow-iwana-soft` / `shadow-iwana-card` / `shadow-iwana-active`), dark `dark-surface-*` y `interactiveFocusClassName` **no se reabren**. Este contrato solo añade recetas de composición para S y D. ~~`SystemStatusPanel` no se toca.~~ **Superada el 2026-11-21** por [2026-11-21-web-portal-dashboard-consolidacion-ds-contrato.md](2026-11-21-web-portal-dashboard-consolidacion-ds-contrato.md) §4 (U-2): añade `error`, `onRetry` y estado vacío.
