@@ -111,6 +111,17 @@ import { titularAnonymizedConflict } from './guards/titular-anonymized-conflict'
 
 const ACTIVATED_SUBSCRIBER_SCOPE_SQL = `(s.activated_at IS NOT NULL AND s.status IN (${ACTIVATED_SUBSCRIBER_STATUSES.map((status) => "'" + status + "'").join(', ')}))`;
 
+// Facturación también busca al titular con un servicio que llegó a activarse,
+// aunque el suscriptor no haya pasado por la activación del expediente.
+const BILLABLE_SUBSCRIBER_SCOPE_SQL = `(${ACTIVATED_SUBSCRIBER_SCOPE_SQL} OR EXISTS (
+  SELECT 1
+    FROM contracts billable_contract
+   WHERE billable_contract.subscriber_id = s.id
+     AND billable_contract.tenant_id = s.tenant_id
+     AND billable_contract.deleted_at IS NULL
+     AND billable_contract.status::text IN ('ACTIVE', 'SUSPENDED', 'TERMINATED')
+))`;
+
 const SUBSCRIBER_SECTION_SCHEMAS = {
   identification: z
     .object({
@@ -782,6 +793,7 @@ export class SubscribersService implements CrmSubscriberReadPort {
     fiscalIncomplete?: boolean | undefined;
     withoutLiveServices?: boolean | undefined;
     tagId?: string | undefined;
+    billable?: boolean | undefined;
     excludeBlocked?: boolean | undefined;
     canSeeBlocked?: boolean | undefined;
     page?: number | undefined;
@@ -807,7 +819,9 @@ export class SubscribersService implements CrmSubscriberReadPort {
         addPrimaryServiceProjection(query);
 
         query.andWhere('s.tenantId = :tenantId', { tenantId });
-        query.andWhere(ACTIVATED_SUBSCRIBER_SCOPE_SQL);
+        query.andWhere(
+          filters.billable ? BILLABLE_SUBSCRIBER_SCOPE_SQL : ACTIVATED_SUBSCRIBER_SCOPE_SQL,
+        );
 
         if (filters.status) {
           query.andWhere('s.status = :status', { status: filters.status });

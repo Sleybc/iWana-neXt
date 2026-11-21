@@ -891,6 +891,37 @@ describe('SubscribersService', () => {
       );
     });
 
+    it('con billable amplía el alcance a titulares con un servicio que llegó a activarse', async () => {
+      const query = {
+        addSelect: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getRawAndEntities: jest.fn().mockResolvedValue({ entities: [], raw: [] }),
+        clone: jest.fn().mockReturnValue({ getCount: jest.fn().mockResolvedValue(0) }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager: { createQueryBuilder: () => query } }),
+      );
+
+      await service.findAll({ search: 'titular', billable: true });
+      const billableScope = query.andWhere.mock.calls
+        .map(([sql]) => String(sql))
+        .find((sql) => sql.includes('billable_contract'));
+      expect(billableScope).toContain('s.activated_at IS NOT NULL');
+      expect(billableScope).toContain(' OR EXISTS');
+      expect(billableScope).toContain("IN ('ACTIVE', 'SUSPENDED', 'TERMINATED')");
+
+      query.andWhere.mockClear();
+      await service.findAll({ search: 'titular' });
+      expect(
+        query.andWhere.mock.calls.some(([sql]) => String(sql).includes('billable_contract')),
+      ).toBe(false);
+    });
+
     it('aplica en conjunto filtros de estado, tipo, segmento, estrato y búsqueda libre', async () => {
       const query = {
         addSelect: jest.fn().mockReturnThis(),

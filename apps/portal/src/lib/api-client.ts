@@ -6327,6 +6327,8 @@ export interface ListSubscribersParams {
   contactPending?: boolean;
   fiscalIncomplete?: boolean;
   withoutLiveServices?: boolean;
+  /** Incluye titulares con un servicio que llegó a activarse (facturación). */
+  billable?: boolean;
   /** ADR-110 D8 — etiqueta manual del catálogo (uuid). */
   tagId?: string;
   search?: string;
@@ -7307,6 +7309,7 @@ export const subscribersApi = {
       searchParams.set('withoutLiveServices', String(params.withoutLiveServices));
     }
     if (params?.tagId) searchParams.set('tagId', params.tagId);
+    if (params?.billable) searchParams.set('billable', 'true');
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.limit) searchParams.set('limit', String(params.limit));
     if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
