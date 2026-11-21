@@ -5,6 +5,8 @@ import TenantsPage from './page';
 import { ApiError } from '@/lib/api-client';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 
+import { makeTenantStatusSummary } from '@/test-utils/tenant-status-summary';
+
 jest.mock('next/link', () => ({
   __esModule: true,
   default: ({
@@ -21,11 +23,13 @@ jest.mock('next/link', () => ({
   ),
 }));
 
+const mockRouterReplace = jest.fn();
+
 jest.mock('next/navigation', () => ({
   useSearchParams: jest.fn(() => new URLSearchParams()),
   usePathname: () => '/tenants',
   useRouter: () => ({
-    replace: jest.fn(),
+    replace: mockRouterReplace,
     push: jest.fn(),
   }),
 }));
@@ -74,6 +78,7 @@ jest.mock('@/lib/api-client', () => ({
   ApiError: jest.requireActual<typeof import('@/lib/api-client')>('@/lib/api-client').ApiError,
   tenantApi: {
     list: jest.fn(),
+    summary: jest.fn(),
     suspend: jest.fn(),
     activate: jest.fn(),
     retryProvisioning: jest.fn(),
@@ -115,6 +120,7 @@ describe('TenantsPage', () => {
   const { tenantApi } = jest.requireMock('@/lib/api-client') as {
     tenantApi: {
       list: jest.Mock;
+      summary: jest.Mock;
       suspend: jest.Mock;
       activate: jest.Mock;
       retryProvisioning: jest.Mock;
@@ -141,6 +147,10 @@ describe('TenantsPage', () => {
     jest.clearAllMocks();
     useSearchParams.mockReturnValue(new URLSearchParams());
     tenantApi.list.mockResolvedValue(mixedTenants);
+    // El parque (chips) sale de GET /tenants/summary, con el mismo reparto que mixedTenants.
+    tenantApi.summary.mockResolvedValue(
+      makeTenantStatusSummary({ ACTIVE: 1, PROVISIONING: 1, PROVISIONING_FAILED: 1 }),
+    );
     tenantApi.suspend.mockResolvedValue(undefined);
     tenantApi.activate.mockResolvedValue(undefined);
   });
@@ -316,11 +326,37 @@ describe('TenantsPage', () => {
     expect(tenantApi.list).toHaveBeenCalledWith(
       expect.objectContaining({ limit: expect.any(Number), offset: 0 }),
     );
-    const parkCall = tenantApi.list.mock.calls.find((call) => {
-      const params = call[0] as { status?: string; search?: string } | undefined;
-      return params != null && params.status === undefined && params.search === undefined;
+    // El parque ya no se pide como lista sin filtro (tope de 100): sale del resumen.
+    expect(tenantApi.summary).toHaveBeenCalled();
+    expect(
+      tenantApi.list.mock.calls.every(
+        (call) => (call[0] as { status?: string } | undefined)?.status === 'ACTIVE',
+      ),
+    ).toBe(true);
+  });
+
+  it('la URL es la única fuente del filtro: abrir con status=ACTIVE no reescribe la URL', async () => {
+    useSearchParams.mockReturnValue(new URLSearchParams('status=ACTIVE'));
+
+    const { rerender } = render(<TenantsPage />);
+    await waitFor(() => {
+      expect(tenantApi.list).toHaveBeenCalledWith(expect.objectContaining({ status: 'ACTIVE' }));
     });
-    expect(parkCall).toBeDefined();
+
+    // Navegación del chip: cambia la URL con el componente montado (antes, ping-pong).
+    useSearchParams.mockReturnValue(new URLSearchParams('status=PROVISIONING'));
+    rerender(<TenantsPage />);
+    await waitFor(() => {
+      expect(tenantApi.list).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'PROVISIONING' }),
+      );
+    });
+
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+    const statuses = tenantApi.list.mock.calls.map(
+      (call) => (call[0] as { status?: string } | undefined)?.status,
+    );
+    expect(statuses).toEqual(['ACTIVE', 'PROVISIONING']);
   });
 
   it('KPI del directorio usa el parque, no el lote filtrado', async () => {

@@ -16,6 +16,7 @@ import {
 } from '@/components/tenants/TenantsTable';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { TENANT_ATTENTION_STATUSES, type TenantStatusSummary } from '@iwana/shared';
 import { ApiError, tenantApi, type TenantListItem } from '@/lib/api-client';
 import { mergeUrlSearchParams, withSearchParams } from '@/lib/merge-url-search-params';
 import { PICKER_SOFT_CAP } from '@/lib/picker-soft-cap';
@@ -28,6 +29,7 @@ type TenantConfirmAction = {
 
 /** ADR-064 analogía web: page size / soft-cap previo → load-more por offset. */
 const TENANTS_PAGE_SIZE = PICKER_SOFT_CAP;
+const SEARCH_DEBOUNCE_MS = 300;
 
 const VALID_STATUS_FILTERS = new Set<StatusFilterValue>([
   'TODAS',
@@ -69,20 +71,21 @@ export default function TenantsPage() {
   const tenantsRef = useRef<TenantListItem[]>([]);
 
   const [tenants, setTenants] = useState<TenantListItem[]>([]);
-  const [parkTenants, setParkTenants] = useState<TenantListItem[]>([]);
+  const [parkSummary, setParkSummary] = useState<TenantStatusSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isParkLoading, setIsParkLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search')?.trim() ?? '');
-  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>(() =>
-    parseStatusFilter(searchParams.get('status')),
-  );
-  const [sortField, setSortField] = useState<SortField>(() =>
-    parseSortField(searchParams.get('sort')),
-  );
-  const [sortDir, setSortDir] = useState<SortDir>(() => parseSortDir(searchParams.get('dir')));
+  // La URL es la única fuente de verdad de los filtros. Antes había un espejo
+  // en estado sincronizado en las dos direcciones y entraba en ping-pong.
+  const statusFilter = parseStatusFilter(searchParams.get('status'));
+  const sortField = parseSortField(searchParams.get('sort'));
+  const sortDir = parseSortDir(searchParams.get('dir'));
+  const urlSearch = searchParams.get('search')?.trim() ?? '';
+  // El buscador conserva lo tecleado mientras la URL se actualiza con retardo.
+  const [searchInput, setSearchInput] = useState(urlSearch);
+  const lastWrittenSearchRef = useRef(urlSearch);
   const [notification, setNotification] = useState<{
     type: 'success' | 'error';
     message: string;
@@ -93,30 +96,51 @@ export default function TenantsPage() {
 
   tenantsRef.current = tenants;
 
+  const updateUrl = useCallback(
+    (patch: Partial<Record<'search' | 'status' | 'sort' | 'dir', string | null>>) => {
+      const query = mergeUrlSearchParams(new URLSearchParams(window.location.search), patch);
+      if (query === new URLSearchParams(window.location.search).toString()) {
+        return;
+      }
+      router.replace(withSearchParams(pathname, query), { scroll: false });
+    },
+    [pathname, router],
+  );
+
+  // Navegación externa (atrás, chips, enlaces): la URL manda sobre el buscador,
+  // salvo que el cambio lo hayamos escrito nosotros.
   useEffect(() => {
-    const nextStatus = parseStatusFilter(searchParams.get('status'));
-    const nextSearch = searchParams.get('search')?.trim() ?? '';
-    const nextSort = parseSortField(searchParams.get('sort'));
-    const nextDir = parseSortDir(searchParams.get('dir'));
-    setStatusFilter((current) => (current === nextStatus ? current : nextStatus));
-    setSearchQuery((current) => (current === nextSearch ? current : nextSearch));
-    setSortField((current) => (current === nextSort ? current : nextSort));
-    setSortDir((current) => (current === nextDir ? current : nextDir));
-  }, [searchParams]);
+    if (urlSearch !== lastWrittenSearchRef.current) {
+      lastWrittenSearchRef.current = urlSearch;
+      setSearchInput(urlSearch);
+    }
+  }, [urlSearch]);
 
   useEffect(() => {
-    const query = mergeUrlSearchParams(searchParams, {
-      search: searchQuery.trim() || null,
-      status: statusFilter === 'TODAS' ? null : statusFilter,
-      sort: sortField === 'createdAt' ? null : sortField,
-      dir: sortField === 'createdAt' && sortDir === 'desc' ? null : sortDir,
-    });
-    const current = searchParams.toString();
-    if (query === current) {
+    const next = searchInput.trim();
+    if (next === lastWrittenSearchRef.current) {
       return;
     }
-    router.replace(withSearchParams(pathname, query), { scroll: false });
-  }, [pathname, router, searchParams, searchQuery, statusFilter, sortField, sortDir]);
+    const timer = setTimeout(() => {
+      lastWrittenSearchRef.current = next;
+      updateUrl({ search: next || null });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchInput, updateUrl]);
+
+  const handleStatusFilterChange = useCallback(
+    (value: StatusFilterValue) => updateUrl({ status: value === 'TODAS' ? null : value }),
+    [updateUrl],
+  );
+
+  const handleSortChange = useCallback(
+    (field: SortField, dir: SortDir) =>
+      updateUrl({
+        sort: field === 'createdAt' ? null : field,
+        dir: field === 'createdAt' && dir === 'desc' ? null : dir,
+      }),
+    [updateUrl],
+  );
 
   const clearSuccessDismissTimer = useCallback(() => {
     if (successDismissTimerRef.current) {
@@ -149,16 +173,14 @@ export default function TenantsPage() {
     const merge = (current: TenantListItem[]) =>
       current.map((item) => (item.id === tenant.id ? { ...item, ...tenant } : item));
     setTenants(merge);
-    setParkTenants(merge);
   }, []);
 
   const loadParkSummary = useCallback(async () => {
     try {
       setIsParkLoading(true);
-      const response = await tenantApi.list({ limit: TENANTS_PAGE_SIZE, offset: 0 });
-      setParkTenants(response);
+      setParkSummary(await tenantApi.summary());
     } catch {
-      setParkTenants([]);
+      setParkSummary(null);
     } finally {
       setIsParkLoading(false);
     }
@@ -175,7 +197,7 @@ export default function TenantsPage() {
         }
         setError(null);
         const offset = append ? tenantsRef.current.length : 0;
-        const search = searchQuery.trim();
+        const search = urlSearch;
         const response = await tenantApi.list({
           limit: TENANTS_PAGE_SIZE,
           offset,
@@ -195,7 +217,7 @@ export default function TenantsPage() {
         setIsLoadingMore(false);
       }
     },
-    [searchQuery, statusFilter],
+    [urlSearch, statusFilter],
   );
 
   useEffect(() => {
@@ -326,16 +348,15 @@ export default function TenantsPage() {
   }, []);
 
   const kpiCounts = useMemo(() => {
-    const active = parkTenants.filter((tenant) => tenant.status === 'ACTIVE').length;
-    const provisioning = parkTenants.filter((tenant) => tenant.status === 'PROVISIONING').length;
-    const attention = parkTenants.filter((tenant) =>
-      ['PROVISIONING_FAILED', 'SUSPENDED', 'INACTIVE', 'MARKED_FOR_DELETION'].includes(
-        tenant.status,
-      ),
-    ).length;
-
-    return { active, provisioning, attention };
-  }, [parkTenants]);
+    const byStatus = parkSummary?.byStatus;
+    return {
+      active: byStatus?.ACTIVE ?? 0,
+      provisioning: byStatus?.PROVISIONING ?? 0,
+      attention: byStatus
+        ? TENANT_ATTENTION_STATUSES.reduce((sum, status) => sum + (byStatus[status] ?? 0), 0)
+        : 0,
+    };
+  }, [parkSummary]);
 
   const signalChips = useMemo<DashboardMetricModel[]>(() => {
     const current = new URLSearchParams(searchParams.toString());
@@ -466,10 +487,10 @@ export default function TenantsPage() {
         isLoading={isLoading}
         error={error}
         onRetry={() => void loadTenants()}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
+        searchQuery={searchInput}
+        onSearchChange={setSearchInput}
         statusFilter={statusFilter}
-        onStatusFilterChange={setStatusFilter}
+        onStatusFilterChange={handleStatusFilterChange}
         onSuspend={handleSuspend}
         onActivate={handleActivate}
         onRetryProvisioning={handleRetryProvisioning}
@@ -478,10 +499,7 @@ export default function TenantsPage() {
         onLoadMore={() => void loadTenants({ append: true })}
         sortField={sortField}
         sortDir={sortDir}
-        onSortChange={(field, dir) => {
-          setSortField(field);
-          setSortDir(dir);
-        }}
+        onSortChange={handleSortChange}
         titleRef={directoryTitleRef}
       />
     </div>
