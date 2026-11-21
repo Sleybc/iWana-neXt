@@ -128,3 +128,24 @@ Formato de la columna «Origen»: la letra es la del auditor (F = fe-platform, B
 | D4 | D-6 intermitente (`document-title`) | `<title>` se remonta ~5 ms en `/audit-logs` y `/users`; `useSearchParams` sin `Suspense` (hipótesis) | fe-platform |
 
 La campana ya no avisa de empresas en PROVISIONING (efecto de G0-2). V-1 queda atribuido a StrictMode por lectura de código, sin verificar con `start`.
+
+## 7. Ola 2 — cierre (2026-11-21)
+
+**G6: GO** de AI-EM-ARCH, sin regresiones atribuibles a la ola. Contrafirmas G4 de sr-backend (2A), plat-ops (2B), sr-qa (2C) y fe-platform (2D). Commits locales por bloque, sin push: `5afd2d13` (2C), `dfdb8259` (2A), `58d3a3f4` (2B) y `f0937f32` (2D).
+
+- **2A:** `/health` público devuelve solo `PublicHealth` v1.0 y responde 503 si fallan db o redis. Ya no importa `TasksModule`. La migración pública 033 crea `idx_tenants_status` e `idx_pal_created_id`; con `EXPLAIN` el plan pasa a Index (Only) Scan y desaparece el Sort del cursor de auditoría. V-2 tocó `modules/tenant` con autorización del CTO: `POST /auth/refresh` sin cookie responde 401.
+- **2B:** `limit_req` por IP (1 r/s, ráfaga de 5, 429) en `/health` y en `/api/v1/health`. `nginx -t` correcto y 429 comprobado tras 6 peticiones.
+- **2C:** `DashboardClient.spec` partido por criterio, con reintento real y tramos de `formatRelativeDate`.
+- **2D:** el 503 con cuerpo válido se muestra como degradado. Cualquier otro fallo de `/health` muestra siempre el copy canónico; se retiró `mapOperationalError` (decisión de AI-EM-ARCH).
+- **Conteo real (`--force`, `Cached: 0`, `DB_NAME=test`):** api 626 suites/8357 tests; web 39/278; db 82/455; shared 58/800. La 033 está aplicada en `test`.
+- **Revisores:** `boundary-reviewer` GO, con H1 (sonda vacía de `app.bootstrap.spec`) corregido. `test-change-reviewer` GO en las dos pasadas.
+
+**Abierto:**
+
+| ID | Tema | Dueño |
+| --- | --- | --- |
+| D5 | `web-audit-logs-datepicker.spec.ts:87,131,179` en rojo por `getByText` ambiguo; previo, desde 2026-08-11, y no corre en CI (`e2e-triage`) | sr-qa |
+| D6 | `curl` en vivo de `/api/v1/health` y `/auth/refresh` sin hacer: la API de dev estaba caída y `dbiw` no tiene la 033 | quien levante `pnpm dev` |
+| D7 | `getPlatformRelayTelemetry()` quedó sin llamador; decidir si se expone con guards de plataforma o se borra | AI-EM-ARCH |
+| D8 | Distribución en columnas del dashboard (CA-PS-09) sin prueba en CI | sr-qa |
+| D9 | Cifras de `limit_req` y `real_ip` detrás de un proxy, por confirmar antes de G7 | plat-ops |
