@@ -40,9 +40,7 @@ export function BillingSubscriberPicker({
     const controller = new AbortController();
     const timer = setTimeout(() => {
       void subscribersApi
-        .list({ search, billable: true, page: 1, limit: 10 }, undefined, {
-          signal: controller.signal,
-        })
+        .list({ search, page: 1, limit: 10 }, undefined, { signal: controller.signal })
         .then(({ data }) => {
           if (!controller.signal.aborted) {
             setResult({ query: search, items: data });

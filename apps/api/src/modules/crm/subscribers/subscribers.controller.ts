@@ -569,13 +569,6 @@ export class SubscribersController {
   @ApiQuery({ name: 'fiscalIncomplete', required: false, type: Boolean })
   @ApiQuery({ name: 'withoutLiveServices', required: false, type: Boolean })
   @ApiQuery({ name: 'tagId', required: false, type: String, format: 'uuid' })
-  @ApiQuery({
-    name: 'billable',
-    required: false,
-    type: Boolean,
-    description:
-      'Incluye titulares con un servicio que llegó a activarse (buscador de facturación).',
-  })
   async search(
     @Body(new ZodBodyValidationPipe(SearchSubscribersSchema)) body: SearchSubscribersInput,
     @CurrentUser() user: JwtPayload,
@@ -593,7 +586,6 @@ export class SubscribersController {
     @Query('withoutLiveServices', new ParseBoolPipe({ optional: true }))
     withoutLiveServices?: boolean,
     @Query('tagId', new ParseUUIDPipe({ optional: true })) tagId?: string,
-    @Query('billable', new ParseBoolPipe({ optional: true })) billable?: boolean,
   ) {
     const readAccess = await this.resolveBlockedReadAccess(user.sub);
     const filters = {
@@ -615,7 +607,6 @@ export class SubscribersController {
       const result = await this.subscribersService.findAll({
         ...filters,
         search: body.search,
-        billable,
         excludeBlocked: !readAccess.canSeeBlocked,
         canSeeBlocked: readAccess.canSeeBlocked,
       });

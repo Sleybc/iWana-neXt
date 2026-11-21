@@ -219,19 +219,6 @@ describe('etiquetas del suscriptor (ADR-110 D8)', () => {
     expect(searchUrl?.searchParams.get('tagId')).toBe(TAG_ID);
   });
 
-  it('envía billable solo cuando se pide', async () => {
-    const fetchMock = mockFetch({ data: [] });
-    await subscribersApi.list({ search: 'Ana', billable: true }, 'tenant-demo');
-    await subscribersApi.list({ search: 'Ana' }, 'tenant-demo');
-
-    const [billableUrl, plainUrl] = fetchMock.mock.calls.map(
-      ([input]) => new URL(String(input), 'http://portal.example.test'),
-    );
-    expect(billableUrl?.pathname).toBe('/api/v1/crm/subscribers/search');
-    expect(billableUrl?.searchParams.get('billable')).toBe('true');
-    expect(plainUrl?.searchParams.has('billable')).toBe(false);
-  });
-
   it('asigna con PUT y devuelve las etiquetas vigentes', async () => {
     const chips = [{ id: TAG_ID, name: 'VIP', color: '#2563EB' }];
     const fetchMock = mockFetch({ data: chips });

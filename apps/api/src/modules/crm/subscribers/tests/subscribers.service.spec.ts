@@ -891,7 +891,7 @@ describe('SubscribersService', () => {
       );
     });
 
-    it('con billable amplía el alcance a titulares con un servicio que llegó a activarse', async () => {
+    it('lista y búsqueda incluyen la primera activación o un servicio que llegó a activarse', async () => {
       const query = {
         addSelect: jest.fn().mockReturnThis(),
         leftJoin: jest.fn().mockReturnThis(),
@@ -907,19 +907,20 @@ describe('SubscribersService', () => {
         callback({ manager: { createQueryBuilder: () => query } }),
       );
 
-      await service.findAll({ search: 'titular', billable: true });
-      const billableScope = query.andWhere.mock.calls
-        .map(([sql]) => String(sql))
-        .find((sql) => sql.includes('billable_contract'));
-      expect(billableScope).toContain('s.activated_at IS NOT NULL');
-      expect(billableScope).toContain(' OR EXISTS');
-      expect(billableScope).toContain("IN ('ACTIVE', 'SUSPENDED', 'TERMINATED')");
-
-      query.andWhere.mockClear();
       await service.findAll({ search: 'titular' });
-      expect(
-        query.andWhere.mock.calls.some(([sql]) => String(sql).includes('billable_contract')),
-      ).toBe(false);
+      expectListedScope(query.andWhere.mock.calls.map(([sql]) => String(sql)).find(isListedScope));
+    });
+
+    it('la búsqueda exacta usa el mismo alcance', async () => {
+      const chainable = mockSearchResults([]);
+      const conditions: string[] = [];
+      chainable.andWhere = (sql: string) => {
+        conditions.push(String(sql));
+        return chainable;
+      };
+
+      await service.search({ nit: '900123456-7' });
+      expectListedScope(conditions.find(isListedScope));
     });
 
     it('aplica en conjunto filtros de estado, tipo, segmento, estrato y búsqueda libre', async () => {
@@ -1035,7 +1036,7 @@ describe('SubscribersService', () => {
       expect(query).toHaveBeenCalledTimes(1);
       expect(query.mock.calls[0]?.[0]).toContain('COUNT(*) FILTER');
       expect(query.mock.calls[0]?.[0]).toContain('s.anonymized_at IS NULL');
-      expect(query.mock.calls[0]?.[0]).toContain('s.activated_at IS NOT NULL');
+      expectListedScope(String(query.mock.calls[0]?.[0]));
       expect(privacyMarksReadPortMock.activeMarks).not.toHaveBeenCalled();
       expect(privacyMarksReadPortMock.partyIdsWithActiveMark).not.toHaveBeenCalled();
     });
@@ -2444,6 +2445,20 @@ describe('SubscribersService', () => {
    * Mock para búsqueda por hash (search method).
    * El search usa .where() en lugar de .andWhere() encadenado.
    */
+  function isListedScope(sql: string): boolean {
+    return sql.includes('activated_contract');
+  }
+
+  /** Alcance de lista (spec 2026-11-21 v1.1 §2): primera activación o servicio activado. */
+  function expectListedScope(sql: string | undefined) {
+    expect(sql).toContain('s.activated_at IS NOT NULL');
+    expect(sql).toContain('OR EXISTS');
+    expect(sql).toContain(
+      "activated_contract.status::text IN ('ACTIVE', 'SUSPENDED', 'TERMINATED')",
+    );
+    expect(sql).toContain('activated_contract.deleted_at IS NULL');
+  }
+
   function mockSearchResults(subscribers: Array<Subscriber & { hasLiveContracts?: boolean }>) {
     const chainable: Record<string, any> = {};
     chainable.where = () => chainable;

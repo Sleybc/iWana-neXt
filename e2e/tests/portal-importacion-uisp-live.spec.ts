@@ -628,7 +628,10 @@ test.describe('Importación desde UISP — ADR-110 contra Portal, API y worker r
         ],
       },
     });
-    expect(await listSubscriberIds()).toEqual([existing.id]);
+    // Spec 2026-11-21 v1.1: un titular sin servicio activado no sale en la lista. Sin
+    // duplicado = ningún otro suscriptor en la lista y el existente sigue accesible.
+    expect(await listSubscriberIds()).toEqual([]);
+    await expectJson(`/crm/subscribers/${existing.id}`, 'GET', 200, { headers: tenantHeaders() });
 
     await loginInPortal(page);
     await page.goto('/dashboard/settings/imports');
@@ -726,7 +729,8 @@ test.describe('Importación desde UISP — ADR-110 contra Portal, API y worker r
       page.getByText('Lote revertido. Lo que trajo ya no está en iWana.', { exact: true }),
     ).toBeVisible({ timeout: 60_000 });
     expect((await getBatch(batchId)).status).toBe('REVERTIDO');
-    expect(await listSubscriberIds()).toEqual([existing.id]);
+    // Sin los contratos importados vuelve a no tener servicio activado (spec 2026-11-21 v1.1).
+    expect(await listSubscriberIds()).toEqual([]);
     await expectJson(`/crm/subscribers/${existing.id}`, 'GET', 200, { headers: tenantHeaders() });
     expect(
       (await listDocuments(`&subscriberId=${existing.id}`)).filter((d) => d.status === 'IMPORTADO'),

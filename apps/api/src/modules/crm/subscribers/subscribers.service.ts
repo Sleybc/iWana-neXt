@@ -109,17 +109,16 @@ import { ContractAutoCreationPort } from '../ports/contract-auto-creation.port';
 import { ANONYMIZED } from '../privacy-adapters/titular-erasure/titular-erasure-sql';
 import { titularAnonymizedConflict } from './guards/titular-anonymized-conflict';
 
-const ACTIVATED_SUBSCRIBER_SCOPE_SQL = `(s.activated_at IS NOT NULL AND s.status IN (${ACTIVATED_SUBSCRIBER_STATUSES.map((status) => "'" + status + "'").join(', ')}))`;
-
-// Facturación también busca al titular con un servicio que llegó a activarse,
-// aunque el suscriptor no haya pasado por la activación del expediente.
-const BILLABLE_SUBSCRIBER_SCOPE_SQL = `(${ACTIVATED_SUBSCRIBER_SCOPE_SQL} OR EXISTS (
+// Lista, búsquedas y conteos (spec 2026-11-21 v1.1): primera activación o un servicio que
+// llegó a activarse. Cubre al importado y al contrato activado a mano, que siguen en
+// PROSPECT/LEAD mientras falten datos fiscales; el prospecto sin servicio queda fuera.
+const LISTED_SUBSCRIBER_SCOPE_SQL = `((s.activated_at IS NOT NULL AND s.status IN (${ACTIVATED_SUBSCRIBER_STATUSES.map((status) => "'" + status + "'").join(', ')})) OR EXISTS (
   SELECT 1
-    FROM contracts billable_contract
-   WHERE billable_contract.subscriber_id = s.id
-     AND billable_contract.tenant_id = s.tenant_id
-     AND billable_contract.deleted_at IS NULL
-     AND billable_contract.status::text IN ('ACTIVE', 'SUSPENDED', 'TERMINATED')
+    FROM contracts activated_contract
+   WHERE activated_contract.subscriber_id = s.id
+     AND activated_contract.tenant_id = s.tenant_id
+     AND activated_contract.deleted_at IS NULL
+     AND activated_contract.status::text IN ('ACTIVE', 'SUSPENDED', 'TERMINATED')
 ))`;
 
 const SUBSCRIBER_SECTION_SCHEMAS = {
@@ -793,7 +792,6 @@ export class SubscribersService implements CrmSubscriberReadPort {
     fiscalIncomplete?: boolean | undefined;
     withoutLiveServices?: boolean | undefined;
     tagId?: string | undefined;
-    billable?: boolean | undefined;
     excludeBlocked?: boolean | undefined;
     canSeeBlocked?: boolean | undefined;
     page?: number | undefined;
@@ -819,9 +817,7 @@ export class SubscribersService implements CrmSubscriberReadPort {
         addPrimaryServiceProjection(query);
 
         query.andWhere('s.tenantId = :tenantId', { tenantId });
-        query.andWhere(
-          filters.billable ? BILLABLE_SUBSCRIBER_SCOPE_SQL : ACTIVATED_SUBSCRIBER_SCOPE_SQL,
-        );
+        query.andWhere(LISTED_SUBSCRIBER_SCOPE_SQL);
 
         if (filters.status) {
           query.andWhere('s.status = :status', { status: filters.status });
@@ -968,7 +964,7 @@ export class SubscribersService implements CrmSubscriberReadPort {
          WHERE s.tenant_id = $1
            AND s.deleted_at IS NULL
            AND s.anonymized_at IS NULL
-           AND ${ACTIVATED_SUBSCRIBER_SCOPE_SQL}`,
+           AND ${LISTED_SUBSCRIBER_SCOPE_SQL}`,
         [tenantId],
       )) as Array<{
         active: string | number;
@@ -1398,7 +1394,7 @@ export class SubscribersService implements CrmSubscriberReadPort {
 
         qb.where(conditions.join(' AND '), params);
         qb.andWhere('s.tenantId = :tenantId', { tenantId });
-        qb.andWhere(ACTIVATED_SUBSCRIBER_SCOPE_SQL);
+        qb.andWhere(LISTED_SUBSCRIBER_SCOPE_SQL);
         qb.addSelect(
           `EXISTS (
           SELECT 1
