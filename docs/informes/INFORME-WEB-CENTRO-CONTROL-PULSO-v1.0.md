@@ -118,4 +118,11 @@
 
 ## Fase 4 — P4
 
-ADR-114 (propuesto) con dictamen de AI-SEC-ENG: aprobable con 7 condiciones. Espera D3 del CTO; no se implementa.
+**Estado:** detenida en espera del CTO. No se implementa.
+
+[ADR-114 (propuesto)](../adrs/ADR-114-Uso-por-Empresa-en-la-Consola-de-Plataforma.md): el API de plataforma no lee schemas de empresa; un job del worker guarda por hora un conteo por empresa en `public.tenant_usage_snapshots`. Dictamen de AI-SEC-ENG (§7): **aprobable con 7 condiciones**; principal hallazgo de contexto: API y worker comparten el rol `DB_APP_USER`, así que el confinamiento es de código, no de base de datos.
+
+| Espera decisión del CTO | Opciones |
+| --- | --- |
+| D3 de la dirección: mostrar conteos por empresa | Aprobar ADR-114 con las condiciones de §7 (recomendado) · rechazar y dejar P4 sin montar |
+| Visibilidad de P4 | Solo `SYSTEM_ADMIN` · también `IWANA_SUPPORT` |
