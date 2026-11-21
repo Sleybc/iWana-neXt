@@ -12,3 +12,14 @@ export enum TenantStatus {
   MARKED_FOR_DELETION = 'MARKED_FOR_DELETION',
   PROVISIONING_FAILED = 'PROVISIONING_FAILED',
 }
+
+/**
+ * Estados que exigen atención de plataforma en el resumen de empresas
+ * (`TenantStatusSummary.attention`). El orden de la lista no es la severidad;
+ * la severidad la fija el servicio que construye el resumen.
+ */
+export const TENANT_ATTENTION_STATUSES = [
+  'PROVISIONING_FAILED',
+  'SUSPENDED',
+  'MARKED_FOR_DELETION',
+] as const;

@@ -13,7 +13,13 @@ import { DataSource, Repository } from 'typeorm';
 import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { MediaUsage, Tenant, runInTenantSchema } from '@iwana/db';
 import type { MediaThemeVariant } from '@iwana/db';
-import { AuditAction, AdditionalProductCategory, TenantStatus } from '@iwana/shared';
+import {
+  AuditAction,
+  AdditionalProductCategory,
+  TENANT_ATTENTION_STATUSES,
+  TenantStatus,
+} from '@iwana/shared';
+import type { TenantStatusSummary } from '@iwana/shared';
 import { clampPage } from '../../common/pagination/clamp-page';
 import { AuditService } from '../audit/audit.service';
 import { MediaService } from '../media/media.service';
@@ -264,6 +270,65 @@ export class TenantService {
     void this.searchQueueService.enqueueNavigationRebuild();
 
     return this.toResponseDto(saved);
+  }
+
+  /**
+   * Resumen de estados de empresas para la portada de plataforma
+   * (`TenantStatusSummary` v1.0). Dos consultas fijas, sin N+1.
+   */
+  async getStatusSummary(): Promise<TenantStatusSummary> {
+    const countRows: Array<{ status: string; count: string; recent: string }> =
+      await this.dataSource.query(
+        `SELECT status,
+                COUNT(*) AS count,
+                COUNT(*) FILTER (WHERE updated_at >= now() - interval '7 days') AS recent
+           FROM public.tenants
+          GROUP BY status`,
+      );
+    const attentionRows: Array<{
+      id: string;
+      name: string;
+      status: TenantStatus;
+      updated_at: Date;
+    }> = await this.dataSource.query(
+      `SELECT id, name, status, updated_at
+           FROM public.tenants
+          WHERE status::text = ANY($1::text[])
+          ORDER BY CASE status
+                     WHEN 'PROVISIONING_FAILED' THEN 0
+                     WHEN 'MARKED_FOR_DELETION' THEN 1
+                     ELSE 2
+                   END,
+                   updated_at DESC,
+                   id DESC
+          LIMIT 5`,
+      [[...TENANT_ATTENTION_STATUSES]],
+    );
+
+    const byStatus = Object.fromEntries(
+      Object.values(TenantStatus).map((status) => [status, 0]),
+    ) as Record<TenantStatus, number>;
+    let total = 0;
+    let updatedLast7Days = 0;
+    for (const row of countRows) {
+      const count = Number(row.count);
+      total += count;
+      updatedLast7Days += Number(row.recent);
+      if (row.status in byStatus) byStatus[row.status as TenantStatus] = count;
+    }
+
+    return {
+      total,
+      byStatus,
+      updatedLast7Days,
+      attention: attentionRows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        status: row.status,
+        updatedAt: new Date(row.updated_at).toISOString(),
+      })),
+      generatedAt: new Date().toISOString(),
+    };
   }
 
   /** Lista tenants con paginación y filtros operativos de plataforma. */

@@ -149,6 +149,7 @@ describe('TenantController HTTP', () => {
     getTenantPublicBranding: jest.fn(),
     uploadTenantBrandingAsset: jest.fn(),
     updateTenantBranding: jest.fn(),
+    getStatusSummary: jest.fn(),
   };
 
   const provisioningService = { enqueue: jest.fn(), retryProvisioning: jest.fn() };
@@ -371,6 +372,43 @@ describe('TenantController HTTP', () => {
       .expect(400);
 
     expect(tenantService.updateTenantSelfBranding).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/v1/tenants/summary retorna el resumen en { data } para un token de plataforma', async () => {
+    const summary = {
+      total: 1,
+      byStatus: {
+        PROVISIONING: 0,
+        ACTIVE: 1,
+        SUSPENDED: 0,
+        INACTIVE: 0,
+        MARKED_FOR_DELETION: 0,
+        PROVISIONING_FAILED: 0,
+      },
+      updatedLast7Days: 1,
+      attention: [],
+      generatedAt: '2026-11-21T00:00:00.000Z',
+    };
+    tenantService.getStatusSummary.mockResolvedValueOnce(summary);
+
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/tenants/summary')
+      .set('Authorization', 'Bearer platform-admin-token')
+      .expect(200);
+
+    expect(response.body).toEqual({ data: summary });
+    expect(tenantService.findOne).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/v1/tenants/summary retorna 403 para un token de tenant', async () => {
+    tenantService.getStatusSummary.mockClear();
+
+    await request(app.getHttpServer())
+      .get('/api/v1/tenants/summary')
+      .set('Authorization', 'Bearer tenant-admin-token')
+      .expect(403);
+
+    expect(tenantService.getStatusSummary).not.toHaveBeenCalled();
   });
 
   it('PATCH /api/v1/tenants/me/branding retorna 403 para un rol sin permiso', async () => {

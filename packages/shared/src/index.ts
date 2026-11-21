@@ -41,6 +41,7 @@ export * from './interfaces/assurance-field-service-request.interface';
 
 // DTOs
 export * from './dto/pagination.dto';
+export * from './dto/tenant-status-summary.dto';
 
 // Constants
 export * from './constants/platform-roles';

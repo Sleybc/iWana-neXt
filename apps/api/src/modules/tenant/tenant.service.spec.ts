@@ -1426,4 +1426,85 @@ describe('TenantService', () => {
       );
     });
   });
+
+  describe('getStatusSummary', () => {
+    let query: jest.Mock;
+
+    beforeEach(() => {
+      query = jest.fn();
+      (dataSource as unknown as { query: jest.Mock }).query = query;
+    });
+
+    it('suma conteos por estado y rellena con 0 los estados sin empresas', async () => {
+      query
+        .mockResolvedValueOnce([
+          { status: 'ACTIVE', count: '230', recent: '12' },
+          { status: 'SUSPENDED', count: '2', recent: '1' },
+          { status: 'PROVISIONING_FAILED', count: '1', recent: '1' },
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: 'tenant-failed',
+            name: 'Empresa A',
+            status: TenantStatus.PROVISIONING_FAILED,
+            updated_at: new Date('2026-11-20T10:00:00.000Z'),
+          },
+        ]);
+
+      const summary = await service.getStatusSummary();
+
+      expect(summary.total).toBe(233);
+      expect(summary.updatedLast7Days).toBe(14);
+      expect(summary.byStatus).toEqual({
+        PROVISIONING: 0,
+        ACTIVE: 230,
+        SUSPENDED: 2,
+        INACTIVE: 0,
+        MARKED_FOR_DELETION: 0,
+        PROVISIONING_FAILED: 1,
+      });
+      expect(summary.attention).toEqual([
+        {
+          id: 'tenant-failed',
+          name: 'Empresa A',
+          status: TenantStatus.PROVISIONING_FAILED,
+          updatedAt: '2026-11-20T10:00:00.000Z',
+        },
+      ]);
+      expect(Number.isNaN(Date.parse(summary.generatedAt))).toBe(false);
+    });
+
+    it('hace exactamente dos consultas: GROUP BY y atención con LIMIT 5 parametrizada', async () => {
+      query.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+      await service.getStatusSummary();
+
+      expect(query).toHaveBeenCalledTimes(2);
+      expect(query.mock.calls[0][0]).toMatch(/GROUP BY status/);
+      expect(query.mock.calls[0][0]).toMatch(
+        /FILTER \(WHERE updated_at >= now\(\) - interval '7 days'\)/,
+      );
+      expect(query.mock.calls[1][0]).toMatch(/LIMIT 5/);
+      expect(query.mock.calls[1][1]).toEqual([
+        ['PROVISIONING_FAILED', 'SUSPENDED', 'MARKED_FOR_DELETION'],
+      ]);
+    });
+
+    it('sin empresas devuelve total 0, todas las claves en 0 y atención vacía', async () => {
+      query.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+      const summary = await service.getStatusSummary();
+
+      expect(summary.total).toBe(0);
+      expect(summary.updatedLast7Days).toBe(0);
+      expect(Object.values(summary.byStatus)).toEqual(Object.values(TenantStatus).map(() => 0));
+      expect(summary.attention).toEqual([]);
+    });
+
+    it('propaga el error de la base sin devolver un resumen parcial', async () => {
+      query.mockRejectedValueOnce(new Error('connection lost'));
+
+      await expect(service.getStatusSummary()).rejects.toThrow('connection lost');
+    });
+  });
 });

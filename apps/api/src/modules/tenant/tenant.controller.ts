@@ -53,6 +53,7 @@ import {
   TenantSelfSettingsResponseDto,
 } from './dto/tenant-self.dto';
 import { UploadTenantBrandingAssetDto } from './dto/tenant-branding.dto';
+import { TenantStatusSummaryResponseDto } from './dto/tenant-status-summary.dto';
 import {
   UpdateTenantSelfBrandingDto,
   UpdateTenantSelfProfileDto,
@@ -765,6 +766,25 @@ export class TenantController {
       data: result.data,
       meta: { total: result.total },
     };
+  }
+
+  /**
+   * GET /api/v1/tenants/summary
+   * Resumen de estados de empresas (`TenantStatusSummary` v1.0).
+   * Declarado antes de `:id` para que no lo capture ParseUUIDPipe.
+   */
+  @Get('summary')
+  @Roles(PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
+  @ApiOperation({ summary: 'Resumen de estados de empresas para la portada de plataforma' })
+  @ApiResponse({
+    status: 200,
+    description: 'Resumen de estados.',
+    type: TenantStatusSummaryResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
+  @ApiResponse({ status: 403, description: 'Requiere un token de plataforma.' })
+  async getStatusSummary(): Promise<TenantStatusSummaryResponseDto> {
+    return { data: await this.tenantService.getStatusSummary() };
   }
 
   /**
