@@ -149,3 +149,16 @@ La campana ya no avisa de empresas en PROVISIONING (efecto de G0-2). V-1 queda a
 | D7 | `getPlatformRelayTelemetry()` quedó sin llamador; decidir si se expone con guards de plataforma o se borra | AI-EM-ARCH |
 | D8 | Distribución en columnas del dashboard (CA-PS-09) sin prueba en CI | sr-qa |
 | D9 | Cifras de `limit_req` y `real_ip` detrás de un proxy, por confirmar antes de G7 | plat-ops |
+
+## 8. Ola 3 — cierre (2026-11-21)
+
+**G6: GO** de AI-EM-ARCH, sin regresiones atribuibles a la ola (`e2e-triage`). Contrafirmas G4 de fe-platform en §B y §C. Commits locales, sin push: `22a5a238` (3B), `c7ae859c` (adopción en web y portal) y `c3c194cc` (primitives de `@iwana/ui`). `c7ae859c` consume lo que añade `c3c194cc`, así que solo compila con los dos juntos; el push los lleva en el mismo tren.
+
+- **3A:** contrato DS v1.0 congelado. La v1.1 añade `emphasis` en rellenos y `toneMutedTextVariants`, y resuelve el `[BLOQUEO]` de las barras apiladas del portal. La v1.2 hace que el error de salud sustituya solo a los indicadores de servicio; sale del `[BLOQUEO]` T-2 y respeta L-10. Las dos versiones son aditivas.
+- **3B:** `formatRelativeTime` en `@iwana/shared` sustituye a 4 formateadores. La auditoría conserva la fecha corta pasados 30 días (decisión T-1).
+- **3C:** `MetricCard`, `StackedBar`, `ErrorState`, `EmptyState`, `Card outline` y la escala `warning` (G0-4). Se borran `SignalChips`, `PortalMetricCard` y `DashboardStackBar`. `aria-pressed` solo se emite con `isActive`.
+- **Conteo real (`--force`, `Cached: 0`):** ui 13 suites/121 tests; shared 59/811; web 40/289; portal 457/5199 (1 omitido). E2E del dashboard del portal 47/47, con axe en claro y oscuro.
+- **E2E web:** 19/24 con el servidor en caliente. Los 5 rojos son D2, D5 (×3) y `tenant-create` con la API caída.
+- **Revisores:** `test-change-reviewer` GO tras T-1 y T-2. ds-owner sin P0 ni P1; P2-1, P2-2, P3-2 y P3-5 corregidos.
+
+**Abierto:** revisión visual en vivo y captura en oscuro (la API de dev estaba caída, D6); `amber-*` en `Alert`, `DropdownMenu`, `PortalAlert` y `DashboardBars`; el delta `danger` de `PortalDashboardMetric`; `text-[11px]` en tres franjas del portal; renombrar `portal-eyebrow-muted` (P3-1); C-1 (`ListMeta`) sin G0.

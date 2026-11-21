@@ -1,7 +1,7 @@
 # SPEC — Consolidación DS web + portal del dashboard (contrato DS)
 
 **Estado:** Congelada — 2026-11-21 (U-1 a U-4). La §6 (U-5) queda aprobada por el CTO (G0-4 ✅ 2026-11-21) y entra en 3B/3C.
-**Versión de contrato:** 1.0
+**Versión de contrato:** 1.2 (aditiva sobre 1.1; ver §4.1, §5.5, §2.1 y changelog)
 **Autoridad:** AI-DS-OWNER
 **Ejecutor:** AI-FE-PLATFORM (bloque 3C) · **Validador:** AI-SR-QA · **Orquestador:** AI-EM-ARCH
 **Origen:** [informe de auditoría](../informes/INFORME-WEB-DASHBOARD-AUDITORIA-v1.0.md) §2 (U-1 a U-5) · [plan](../plans/2026-11-21-web-dashboard-auditoria-remediacion.md), fila 3A
@@ -72,6 +72,21 @@ export const toneFillVariants: (opts: { tone: Tone }) => string;    // cva: rell
 Todo ≥ 4,5:1. Consecuencia: el texto atenuado sobre `warning` y `error` es `gray-700 dark:gray-200` (regla que ya aplica `portalMetricMutedTextClassName`); sobre `neutral` y `primary`, `gray-500 dark:gray-400`. `text-*-700` en claro solo se usa en texto ≥ 12 px con peso ≥ 500 (`success` queda en 4,72, sin margen para pesos finos).
 
 **Estados:** el patrón no tiene estados propios; los aporta el componente que lo usa.
+
+### 2.1 v1.1 — Texto atenuado por tono (`toneMutedTextVariants`)
+
+La regla de texto atenuado de §2 estaba repetida en tres sitios y ya había derivado (`apps/web/src/components/dashboard/tone-muted-text.ts` usa `gray-600/300` en vez de `gray-500/400`). Se publica en `@iwana/ui` (`Tone.ts`) como cuarta variante del patrón:
+
+```ts
+export const toneMutedTextVariants: (opts: { tone: Tone }) => string; // cva
+```
+
+| Tone | Clase |
+| --- | --- |
+| `neutral`, `primary` | `text-gray-500 dark:text-gray-400` (4,60 / 5,52 medido en §2) |
+| `success`, `warning`, `error` | `text-gray-700 dark:text-gray-200` |
+
+`success` pasa al escalón fuerte porque su par atenuado no se midió en v1.0; `gray-700` sobre tintes `-50` claros está por encima de 9:1 en `warning` y `error`, de la misma familia de luminosidad. Lo consumen `MetricCard` (sustituye `metricCardMutedTextClassName` y la condición del eyebrow), `portal-ui.tsx` (`metricMutedTextClassName`, `metricEyebrowClassName`) y web (`tone-muted-text.ts` se borra). Cambio aditivo en API; el único cambio visible es `success` atenuado en `MetricCard`.
 
 ---
 
@@ -158,7 +173,37 @@ Mapa de nivel a tono (reemplaza `statusStyles`, líneas 21-43): `ok` → `succes
 | hover / focus / active / disabled | No aplica: el panel no es interactivo (solo el botón de `ErrorState`). |
 | success / readonly | = default. |
 
-Precedencia: `isLoading` > `error` > vacío > indicadores. Lo que cada indicador refleja (L-10) lo decide la Ola 1, no este contrato.
+Precedencia: `isLoading` > `error` > vacío > indicadores. Lo que cada indicador refleja (L-10) lo decide la Ola 1, no este contrato. **v1.2: esta precedencia se acota en §4.1.**
+
+### 4.1 v1.2 — Alcance del error de salud (salida del [BLOQUEO] T-2, decisión del orquestador 2026-11-21)
+
+**Problema.** Con la precedencia de v1.0, un fallo de `/health` ocultaba también «Atención operativa», que se calcula con el resumen de empresas, no con `/health`. Eso contradice L-10 (cada indicador refleja solo su servicio). Además, el mensaje salía dos veces: en `summary` y en `ErrorState`.
+
+**API (aditiva, sin romper v1.1):**
+
+```ts
+interface StatusIndicator {
+  // campos existentes sin cambio
+  kind?: 'service' | 'business';   // nuevo; por defecto 'service'
+}
+```
+
+No hay prop nueva en el panel: `error` y `onRetry` mantienen su firma y ahora se refieren solo a los indicadores de servicio.
+
+**Reglas:**
+
+| # | Regla |
+| --- | --- |
+| E1 | Con `error`, los indicadores `kind: 'service'` (API, base de datos, Redis) se sustituyen por **un** `ErrorState` (`message={error}`, `onRetry`, `retryLabel` del catálogo), que ocupa el lugar de esos indicadores en la rejilla (`col-span-full` o primera fila). |
+| E2 | Los indicadores `kind: 'business'` (hoy «Atención operativa») se siguen pintando con su propio nivel, aunque haya `error`. Si su dato también falta, su nivel es `unknown` → `neutral` (parcial de §4), nunca `error` heredado. |
+| E3 | **Mensaje único.** Con `error`, `summary` no se pinta: el panel no muestra el texto de error en la cabecera. El consumidor tampoco debe pasar el error como `summary`. Título, eyebrow y «Última lectura» se mantienen (§4). |
+| E4 | Si todos los indicadores son `service` y hay `error`, el resultado es igual al de v1.1: solo `ErrorState`. |
+| E5 | Precedencia v1.2: `isLoading` (todo el panel) > por grupo: servicio = `error` ? `ErrorState` : indicadores; negocio = indicadores > vacío (`indicators.length === 0` y sin `error`) → `EmptyState`. |
+| E6 | Orden visual: primero los de servicio (o su `ErrorState`), después los de negocio. El `ErrorState` no lleva `role` adicional: `role="alert"` lo da `Alert`. |
+
+**Estados requeridos añadidos:** error con negocio visible (`ErrorState` + indicador de negocio con su tono); error con negocio en `unknown`; reintento en curso (`isRetrying` si el consumidor lo expone, por `ErrorState`).
+
+**Criterio sr-qa añadido al §8.4:** spec con `error` + un indicador `business` en `warning`: el `ErrorState` aparece una vez, el indicador de negocio sigue visible con su tono, y el texto de error aparece una sola vez en el panel (`getAllByText(error)` = 1).
 
 ---
 
@@ -207,12 +252,58 @@ export interface StackedBarProps {
 }
 ```
 
-Anatomía: pista `rounded-full overflow-hidden flex gap-0.5 bg-gray-100 dark:bg-dark-surface-3` › un `span` por tramo con `toneFillVariants` y `style.width` en porcentaje (la única propiedad en línea permitida: es dato, no estilo). `role="img"` con nombre «{ariaLabel}: {etiqueta} {valor}, …». Tramos con valor 0 se omiten. Estados: total 0 → no renderiza nada (el consumidor muestra `EmptyState`); carga → `SkeletonBlock` `h-2.5 rounded-full` en el consumidor. La leyenda **no** entra en la primitive en esta versión (web usa tarjetas, portal un `dl`): candidata a v1.1.
+Anatomía: pista `rounded-full overflow-hidden flex gap-0.5 bg-gray-100 dark:bg-dark-surface-3` › un `span` por tramo con `toneFillVariants` y `style.width` en porcentaje (la única propiedad en línea permitida: es dato, no estilo). `role="img"` con nombre «{ariaLabel}: {etiqueta} {valor}, …». Tramos con valor 0 se omiten. Estados: total 0 → no renderiza nada (el consumidor muestra `EmptyState`); carga → `SkeletonBlock` `h-2.5 rounded-full` en el consumidor. La leyenda **no** entra en la primitive en esta versión (web usa tarjetas, portal un `dl`): candidata a una versión posterior (no entra en v1.1).
 
 El portal pasa de `segment.className` libre a `tone`. Si un tramo del portal necesita un color fuera de los cinco tonos, se reporta al DS antes de migrarlo; no se reabre `className`.
 
----
+### 5.5 v1.1 — Intensidad de relleno (salida del [BLOQUEO] de §5.4)
 
+**Problema.** `DashboardStackBar` del portal pinta escalas **ordinales** (prioridad de casos, antigüedad de cartera) y la base de suscriptores. Con cinco tonos planos, Crítica y Urgente se funden en `error`, y Normal y Baja en `primary`: se pierde el orden, que es la información.
+
+**Alternativas descartadas.** (a) Tonos nuevos: duplicarían la semántica (dos «error») sin token que los respalde. (b) Series `--chart-*`: son categóricas para series temporales (Fase 3), incluyen lima (`--chart-2`, R7) y no codifican urgencia. (c) Fusionar tramos: pierde información (Crítica ≠ Urgente). (d) Sacar `DashboardStackBar` de U-3: deja `className` libre vivo y duplicado. No se reabre `className`.
+
+**Decisión (aditiva).** `toneFillVariants` gana una variante opcional `emphasis` y `StackedBarSegment` un campo opcional `emphasis`. Sin `emphasis`, todo se pinta igual que en v1.0. Solo usa tokens existentes; ningún token nuevo.
+
+```ts
+export type FillEmphasis = 'soft' | 'default' | 'strong';
+export const toneFillVariants: (opts: { tone: Tone; emphasis?: FillEmphasis }) => string;
+export interface StackedBarSegment { key: string; label: string; value: number; tone: Tone; emphasis?: FillEmphasis; }
+```
+
+| Tone | `soft` | `default` (= v1.0, sin cambio) | `strong` |
+| --- | --- | --- | --- |
+| `neutral` | = default | `bg-gray-400 dark:bg-gray-500` | = default |
+| `primary` | `bg-iwana-primary-400` | `bg-iwana-primary` | `bg-iwana-primary dark:bg-iwana-primary-300` |
+| `success` | = default | `bg-success-500` | = default |
+| `warning` | `bg-warning-400` | `bg-warning-500` | `bg-warning-600` |
+| `error` | `bg-error-400` | `bg-error-500` | `bg-error-600` |
+
+Combinaciones «= default» no generan clase distinta (compoundVariants solo donde la tabla da valor). La leyenda del portal (`DashboardStackLegend`) pinta su muestra con el mismo `toneFillVariants({ tone, emphasis })`; la leyenda sigue fuera de la primitive.
+
+**Mapa de migración del portal** (`DashboardAreaCards.tsx`, `DashboardClient.tsx`):
+
+| Serie | Tramo | Hoy | v1.1 |
+| --- | --- | --- | --- |
+| Prioridad de casos | Crítica | `bg-error-600` | `error` / `strong` |
+| | Urgente | `bg-error-400` | `error` / `soft` |
+| | Alta | `bg-amber-500` | `warning` |
+| | Normal | `bg-iwana-primary-400` | `primary` / `soft` |
+| | Baja | `bg-iwana-primary-200 dark:bg-iwana-primary-700` | `neutral` |
+| Antigüedad de cartera | 1 a 30 días | `bg-(--chart-4)` | `neutral` |
+| | 31 a 60 días | `bg-(--chart-3)` | `primary` / `soft` |
+| | 61 a 90 días | `bg-amber-500` | `warning` |
+| | Más de 90 días | `bg-error-600` | `error` / `strong` |
+| Base de suscriptores | Activos | `bg-iwana-primary dark:bg-iwana-primary-300` | `primary` / `strong` |
+| | Suspendidos | `bg-amber-500` | `warning` |
+| | Resto | según tabla de tonos | tono semántico que corresponda; si alguno no cabe, se reporta antes de migrarlo |
+
+Diferencias visuales aceptadas: Baja pasa de azul claro a gris y 1-30 días de `neutral-600` a `gray-400`; ambos son los tramos menos urgentes, que es lo que el gris comunica.
+
+**Contraste.** 1.4.11 no aplica (§2): cada tramo acompaña una cifra en texto y el orden de los tramos es fijo (de más a menos urgente), de modo que el color no es el único portador. Los tramos adyacentes conservan el hueco `gap-0.5` sobre la pista.
+
+**Estados:** los de §5.4, sin cambio.
+
+---
 ## 6. U-5 — Propuesta de escala `warning` (G0-4 ✅ CTO 2026-11-21)
 
 **No forma parte del contrato congelado. No se aplica ni se usa en U-1 a U-4.**
@@ -302,3 +393,5 @@ Fuera de alcance: los otros usos de `rose-*` del portal (formularios de suscript
 
 - v1.0 (2026-11-21) — congelación de U-1 a U-4; U-5 como propuesta pendiente de G0-4.
 - v1.0 (2026-11-21) — G0-4 aprobado por el CTO: U-5 pasa de propuesta a contrato.
+- v1.1 (2026-11-21) — aditiva, carril rápido DS: §5.5 `emphasis` en `toneFillVariants`/`StackedBarSegment` para escalas ordinales (salida del [BLOQUEO] de fe-platform sobre `DashboardStackBar`); §2.1 `toneMutedTextVariants` publicado en `@iwana/ui`. Sin tokens nuevos ni cambio de los valores v1.0 salvo el atenuado de `success` en `MetricCard`. Notificar a fe-platform y sr-qa vía orquestador.
+- v1.2 (2026-11-21) — aditiva, decisión del orquestador sobre el [BLOQUEO] T-2: §4.1 `StatusIndicator.kind` (`service` | `business`, por defecto `service`); `error` sustituye solo a los indicadores de servicio, los de negocio siguen visibles, `summary` se oculta con `error` (mensaje único). Sin cambio de API del panel. Notificar a fe-platform y sr-qa vía orquestador.
