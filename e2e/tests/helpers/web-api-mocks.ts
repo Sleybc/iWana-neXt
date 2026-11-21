@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import type { TenantStatusSummary } from '@iwana/shared';
+import type { PlatformUsersSummary, TenantStatusSummary } from '@iwana/shared';
 
 export interface WebTenantMock {
   id: string;
@@ -78,9 +78,47 @@ export interface WebHealthMockOptions {
   redis?: WebHealthLevel;
 }
 
+/** Acciones de sesión que filtra `excludeSessionEvents=true` (espejo de `AUDIT_SESSION_ACTIONS`). */
+const AUDIT_SESSION_ACTION_KEYS = ['LOGIN', 'LOGOUT', 'LOGIN_FAILED', 'REFRESH'] as const;
+
+/** `YYYY-MM` de `date` desplazado `offset` meses (calendario local del runner). */
+function monthKey(date: Date, offset: number): string {
+  const value = new Date(date.getFullYear(), date.getMonth() + offset, 1);
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/**
+ * Serie de 12 meses (antiguo → actual) de `TenantStatusSummary` v1.1. `values[i]`
+ * es `[altas, bajas]` del mes i; si faltan valores, el mes queda en 0.
+ */
+export function buildMonthlyMock(
+  values: ReadonlyArray<readonly [number, number]> = [],
+): TenantStatusSummary['monthly'] {
+  const now = new Date();
+  return Array.from({ length: 12 }, (_, index) => {
+    const [created, removed] = values[index] ?? [0, 0];
+    return { month: monthKey(now, index - 11), created, removed };
+  });
+}
+
+/** Resumen de usuarios internos `PlatformUsersSummary` v1.0. Solo conteos, sin PII. */
+export function buildPlatformUsersSummaryMock(
+  overrides: Partial<PlatformUsersSummary> = {},
+): PlatformUsersSummary {
+  return {
+    total: 9,
+    byRole: { SYSTEM_ADMIN: 3, IWANA_SUPPORT: 6 },
+    withoutMfa: 2,
+    withoutAccess30d: 1,
+    generatedAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
 /**
  * Resumen por estado derivado de una lista de empresas, con la forma de
- * `TenantStatusSummary` v1.0. `overrides` permite fijar cifras mayores que la lista.
+ * `TenantStatusSummary` v1.1. `overrides` permite fijar cifras mayores que la lista.
+ * Por defecto la serie cuenta las altas de `tenants` por mes de `createdAt`.
  */
 export function buildTenantSummaryMock(
   tenants: WebTenantMock[],
@@ -110,8 +148,23 @@ export function buildTenantSummaryMock(
       status: status as TenantStatusSummary['attention'][number]['status'],
       updatedAt,
     }));
+  const monthly = buildMonthlyMock();
+  for (const tenant of tenants) {
+    const created = new Date(tenant.createdAt);
+    const key = monthKey(created, 0);
+    const month = monthly.find((entry) => entry.month === key);
+    if (month) month.created += 1;
+  }
+  const provisioning = tenants
+    .filter((tenant) => tenant.status === 'PROVISIONING')
+    .map((tenant) => tenant.createdAt)
+    .sort();
+  const effectiveMonthly = overrides.monthly ?? monthly;
   return {
     total: tenants.length,
+    period: effectiveMonthly[effectiveMonthly.length - 1]!,
+    monthly: effectiveMonthly,
+    oldestProvisioningAt: provisioning[0] ?? null,
     byStatus: byStatus as TenantStatusSummary['byStatus'],
     updatedLast7Days: tenants.filter((tenant) => new Date(tenant.updatedAt).getTime() >= weekAgo)
       .length,
@@ -156,6 +209,8 @@ interface SetupWebApiMocksOptions {
   health?: WebHealthMockOptions;
   platformAuditData?: WebPlatformAuditEntryMock[];
   tenantAuditDataBySlug?: Record<string, WebTenantAuditEntryMock[]>;
+  /** Resumen de `/platform-users/summary` (P3). */
+  platformUsersSummary?: PlatformUsersSummary;
   onUnhandledApiRoute?: 'continue' | '404';
   /** Fuentes de la portada que responden 500 (CA-PP-04). */
   failSources?: readonly DashboardSource[];
@@ -163,8 +218,8 @@ interface SetupWebApiMocksOptions {
   delaySourcesMs?: Partial<Record<DashboardSource, number>>;
 }
 
-/** Fuentes de `/dashboard` (Fase 1, sin endpoints nuevos). */
-export type DashboardSource = 'summary' | 'tenants' | 'audit' | 'health';
+/** Fuentes de `/dashboard` (Fase 1 + `users` de la Fase 2, P3). */
+export type DashboardSource = 'summary' | 'tenants' | 'audit' | 'health' | 'users';
 
 export function buildMockJwt(expirationSecondsFromNow = 3600): string {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
@@ -294,6 +349,7 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
   const onUnhandledApiRoute = options.onUnhandledApiRoute ?? 'continue';
   const tenantSummary = options.tenantSummary ?? buildTenantSummaryMock(tenants);
   const health = options.health ?? {};
+  const platformUsersSummary = options.platformUsersSummary ?? buildPlatformUsersSummaryMock();
   const failSources = new Set(options.failSources ?? []);
   const delaySourcesMs = options.delaySourcesMs ?? {};
 
@@ -372,13 +428,15 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
           ? null
           : new URL(url).pathname.endsWith('/tenants/summary')
             ? 'summary'
-            : url.includes('/platform-audit-logs')
-              ? 'audit'
-              : url.includes('/health')
-                ? 'health'
-                : /\/api\/v1\/tenants(\?|$)/.test(url)
-                  ? 'tenants'
-                  : null;
+            : new URL(url).pathname.endsWith('/platform-users/summary')
+              ? 'users'
+              : url.includes('/platform-audit-logs')
+                ? 'audit'
+                : url.includes('/health')
+                  ? 'health'
+                  : /\/api\/v1\/tenants(\?|$)/.test(url)
+                    ? 'tenants'
+                    : null;
       if (source && delaySourcesMs[source]) {
         await new Promise((resolve) => setTimeout(resolve, delaySourcesMs[source]));
       }
@@ -387,6 +445,15 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
           status: 500,
           contentType: 'application/json',
           body: JSON.stringify({ code: 'INTERNAL_ERROR', message: 'Fallo simulado' }),
+        });
+        return;
+      }
+
+      if (new URL(url).pathname.endsWith('/platform-users/summary') && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: platformUsersSummary }),
         });
         return;
       }
@@ -404,7 +471,8 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
         const searchParams = new URL(url).searchParams;
         const status = searchParams.get('status');
         const search = searchParams.get('search')?.trim().toLowerCase();
-        let filtered = tenants;
+        // Orden del servidor: alta más reciente primero.
+        let filtered = [...tenants].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         if (status) {
           filtered = filtered.filter((tenant) => tenant.status === status);
         }
@@ -436,6 +504,11 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
         const toParam = searchParams.get('toDate');
 
         let filtered = platformAuditData;
+        if (searchParams.get('excludeSessionEvents') === 'true') {
+          filtered = filtered.filter(
+            (entry) => !(AUDIT_SESSION_ACTION_KEYS as readonly string[]).includes(entry.action),
+          );
+        }
         if (fromParam) {
           const fromDate = new Date(fromParam);
           filtered = filtered.filter((entry) => new Date(entry.createdAt) >= fromDate);

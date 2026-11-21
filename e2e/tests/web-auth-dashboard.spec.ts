@@ -155,7 +155,8 @@ test.describe('Web dashboard — cifras del resumen por estado (E-1)', () => {
       const cell = signal.locator(`[aria-label="${label}"]`);
       await expect(cell).toContainText(value);
     }
-    await expect(signal.getByText('De 233 empresas en el directorio')).toBeVisible();
+    // Fase 2 (CA-PP2-02): con `period` v1.1 la pista de activas es el movimiento del mes.
+    await expect(signal.getByText('0 altas · 0 bajas este mes')).toBeVisible();
     expect(listRequests).toEqual([]);
   });
 });

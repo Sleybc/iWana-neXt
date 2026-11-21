@@ -41,7 +41,40 @@
 
 ## Fase 2 — P1 y P3
 
-Pendiente.
+**Estado:** G6 ✅ 2026-11-21 (AI-EM-ARCH) · commit local, sin push. Encargo: [FASE2](../prompts/PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE2-v1.0.md).
+
+| Bloque | Agente | Entregable |
+| --- | --- | --- |
+| Contratos | AI-EM-ARCH | `TenantStatusSummary` v1.1, `PlatformUsersSummary` v1.0, `AUDIT_SESSION_ACTIONS` en `packages/shared` |
+| §A | `sr-backend` | Serie mensual en `PlatformAuditService.countEntityLifecycleByMonth`, `GET platform-users/summary`, `excludeSessionEvents` |
+| §B | `fe-platform` | Tendencia con `Chart` (ADR-112), delta del mes, antigüedad del alta, celda Equipo interno, área Usuarios internos; filtro de sesión en servidor |
+| §C | `sr-qa` | Mocks v1.1, CA-PP2-01…06, axe |
+
+**Evidencia (conteo real, `--force`, `Cached: 0`):**
+
+| Comando | Resultado |
+| --- | --- |
+| `@iwana/shared` test | 59 suites · 811 tests |
+| `@iwana/web` typecheck lint test | 40 suites · 299 tests |
+| `@iwana/api` typecheck lint test | 626/627 suites · 8374/8375 tests; la roja (`app.config.production-urls.spec.ts`) pasa aislada 29/29: intermitente bajo carga, ajena al cambio |
+| Integración `DB_NAME=test` (3 specs) | 3 suites · 11 tests |
+| `e2e/playwright.web.config.ts --workers=1` | 41/43; rojas = las 2 preexistentes de F1-D2 |
+| axe `wcag22aa` 375/1280, claro/oscuro | 4/4 |
+| Revisión en vivo 1440×900 con datos reales | 5 celdas, tendencia 184 altas / 182 bajas, B2 termina a 761 px; sin P2 ni P4 |
+
+**Revisores:** `boundary-reviewer` GO con condición (SQL directo sobre `platform_audit_logs` desde `TenantService`) → corregido moviendo la agregación a `PlatformAuditService`. `contract-drift-reviewer`: sin deriva. `test-change-reviewer`: sin regresiones; hueco del `@Transform` cubierto con `query-platform-audit-logs.dto.spec.ts`. sr-qa halló la tendencia en ceros sin estado vacío (CA-PP2-01) → corregido.
+
+**Deuda:**
+
+| # | Deuda | Severidad |
+| --- | --- | --- |
+| F2-D1 | `web-chart.tsx` repite `portal-chart.tsx`; subirlo a `@iwana/ui` lo decide ds-owner | P3 |
+| F2-D2 | Sin serie histórica de activas: la tendencia no tiene la línea de activas ni el selector de periodo del prototipo | P3 |
+| F2-D3 | Fila «usuarios sin verificación en dos pasos» en la cola: no pedida; decide prod-ux | P3 |
+| F2-D4 | `platform_audit_logs` es append-only: la integración deja filas sintéticas en `test` | P3 |
+| F2-D5 | `exportCsv` de auditoría no aplica `excludeSessionEvents` | P3 |
+| F2-D6 | `app.config.production-urls.spec.ts` intermitente bajo carga | P2 |
+| F2-D7 | Mocks E2E repiten literales de sesión en vez de importar `AUDIT_SESSION_ACTIONS` | P3 |
 
 ## Fase 3 — P2
 

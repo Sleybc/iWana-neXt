@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import {
-  AuditAction,
   TENANT_ATTENTION_STATUSES,
   TenantStatus,
   formatRelativeTime,
@@ -13,6 +12,7 @@ import {
 import {
   AttentionQueue,
   Button,
+  ProgressMeter,
   PulseStrip,
   StackedBar,
   type AttentionQueueProps,
@@ -27,6 +27,8 @@ import {
   SystemStatusPanel,
   type StatusIndicator,
 } from '@/components/dashboard/SystemStatusPanel';
+import { PlatformUsersArea } from '@/components/dashboard/PlatformUsersArea';
+import { TenantTrendPanel } from '@/components/dashboard/TenantTrendPanel';
 import {
   TenantStatusDistribution,
   type StatusSegment,
@@ -34,9 +36,9 @@ import {
 import {
   healthApi,
   platformAuditApi,
+  platformUsersApi,
   tenantApi,
   type HealthStatusResponse,
-  type PlatformAuditLogEntry,
   type TenantListItem,
 } from '@/lib/api-client';
 import { describePlatformActivityLine } from '@/lib/platform-audit-vocabulary';
@@ -45,14 +47,6 @@ import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 const COPY = PLATFORM_UI_COPY.dashboard;
 const HEALTH_ANCHOR = 'salud-de-plataforma';
 const ACTIVITY_VISIBLE = 5;
-
-/** Acciones de sesión que no son «actividad» de la plataforma (CA-PP-06). */
-const SESSION_ACTIONS: ReadonlySet<string> = new Set([
-  AuditAction.LOGIN,
-  AuditAction.LOGOUT,
-  AuditAction.LOGIN_FAILED,
-  AuditAction.REFRESH,
-]);
 
 interface Remote<T> {
   data: T | null;
@@ -92,8 +86,10 @@ function useRemote<T>(fetcher: () => Promise<T>): Remote<T> {
 
 const fetchSummary = () => tenantApi.summary();
 const fetchLatest = () => tenantApi.list({ limit: 5 });
-// atajo: filtra en cliente sobre 20, subir a filtro de servidor en Fase 2
-const fetchActivity = () => platformAuditApi.list({ limit: 20 });
+// Las acciones de sesión se excluyen en servidor (CA-PP2-04).
+const fetchActivity = () =>
+  platformAuditApi.list({ excludeSessionEvents: true, limit: ACTIVITY_VISIBLE });
+const fetchTeam = () => platformUsersApi.summary();
 const fetchHealth = () => healthApi.get();
 
 /** Cada indicador refleja solo su servicio (L-10, contrato DS v1.2 §4.1). */
@@ -173,17 +169,20 @@ export function DashboardClient() {
   const latest = useRemote<TenantListItem[]>(fetchLatest);
   const activity = useRemote(fetchActivity);
   const health = useRemote(fetchHealth);
+  const team = useRemote(fetchTeam);
 
   const { reload: reloadSummary } = summary;
   const { reload: reloadLatest } = latest;
   const { reload: reloadActivity } = activity;
   const { reload: reloadHealth } = health;
+  const { reload: reloadTeam } = team;
   const refreshAll = useCallback(() => {
     reloadSummary();
     reloadLatest();
     reloadActivity();
     reloadHealth();
-  }, [reloadSummary, reloadLatest, reloadActivity, reloadHealth]);
+    reloadTeam();
+  }, [reloadSummary, reloadLatest, reloadActivity, reloadHealth, reloadTeam]);
 
   const counts = useMemo(() => countsOf(summary.data), [summary.data]);
   const firstLoad = summary.loading && !summary.data && !summary.error;
@@ -235,12 +234,28 @@ export function DashboardClient() {
       ? [h.status === 'ok', h.db === 'ok', h.redis === 'ok'].filter(Boolean).length
       : null;
 
+    const period = summary.data?.period;
+    const net = period ? period.created - period.removed : 0;
+    const oldest = summary.data?.oldestProvisioningAt ?? null;
+    const t = team.data;
+    const teamMfaPct =
+      t && t.total > 0 ? Math.round(((t.total - t.withoutMfa) / t.total) * 100) : null;
+
     return [
       {
         id: 'active',
         label: COPY.pulseActive,
         value: value(counts.active),
-        hint: summary.data ? COPY.pulseActiveHint(summary.data.total) : undefined,
+        // Lima solo con neto positivo (CA-PP2-02); neto negativo en neutro, neto 0 sin señal.
+        delta:
+          period && net !== 0
+            ? { label: COPY.pulseMonthDelta(net), tone: net > 0 ? 'progress' : 'neutral' }
+            : undefined,
+        hint: period
+          ? COPY.pulseMonthMovement(period.created, period.removed)
+          : summary.data
+            ? COPY.pulseActiveHint(summary.data.total)
+            : undefined,
         state: summaryState,
         updating: summaryUpdating,
         href: '/tenants?status=ACTIVE',
@@ -251,7 +266,11 @@ export function DashboardClient() {
         label: COPY.pulseProvisioning,
         value: value(counts.provisioning),
         hint:
-          counts.provisioning > 0 ? COPY.pulseProvisioningHintSome : COPY.pulseProvisioningHintNone,
+          counts.provisioning > 0
+            ? oldest
+              ? COPY.pulseProvisioningOldest(formatRelativeTime(oldest))
+              : COPY.pulseProvisioningHintSome
+            : COPY.pulseProvisioningHintNone,
         state: summaryState,
         updating: summaryUpdating,
         href: '/tenants?status=PROVISIONING',
@@ -307,8 +326,26 @@ export function DashboardClient() {
         href: `#${HEALTH_ANCHOR}`,
         onRetry: health.reload,
       },
+      {
+        id: 'team',
+        label: COPY.pulseTeam,
+        value: t ? t.total : null,
+        hint: t ? COPY.pulseTeamWithoutMfa(t.withoutMfa) : undefined,
+        visual:
+          teamMfaPct !== null ? (
+            <ProgressMeter
+              compact
+              value={teamMfaPct}
+              ariaLabel={COPY.pulseTeamMfaMeter(teamMfaPct)}
+            />
+          ) : undefined,
+        state: team.loading && !t ? 'loading' : team.error ? 'error' : 'idle',
+        updating: team.loading && t !== null,
+        href: '/platform-users',
+        onRetry: team.reload,
+      },
     ];
-  }, [counts, summary, health, focusCompanies]);
+  }, [counts, summary, health, team, focusCompanies]);
 
   const queueRows = useMemo<AttentionRow[]>(() => {
     const rows: AttentionRow[] = [];
@@ -349,15 +386,12 @@ export function DashboardClient() {
 
   const recentItems = useMemo(
     () =>
-      (activity.data?.data ?? [])
-        .filter((entry: PlatformAuditLogEntry) => !SESSION_ACTIONS.has(entry.action))
-        .slice(0, ACTIVITY_VISIBLE)
-        .map((entry) => ({
-          id: entry.id,
-          label: describePlatformActivityLine(entry),
-          dateTime: entry.createdAt,
-          relative: formatRelativeTime(entry.createdAt),
-        })),
+      (activity.data?.data ?? []).slice(0, ACTIVITY_VISIBLE).map((entry) => ({
+        id: entry.id,
+        label: describePlatformActivityLine(entry),
+        dateTime: entry.createdAt,
+        relative: formatRelativeTime(entry.createdAt),
+      })),
     [activity.data],
   );
 
@@ -388,7 +422,7 @@ export function DashboardClient() {
         linkComponent={Link}
       />
 
-      {/* B2 · Áreas (8) + Requiere tu atención (4); la cola va primero en el DOM (lectura y móvil). */}
+      {/* B2 · Tendencia (8) + Requiere tu atención (4); la cola va primero en el DOM (lectura y móvil). */}
       <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-12">
         <div className="xl:order-last xl:col-span-4">
           <AttentionQueue
@@ -405,30 +439,48 @@ export function DashboardClient() {
             linkComponent={Link}
           />
         </div>
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:col-span-8">
-          <TenantStatusDistribution
-            density="compact"
-            titleRef={companiesHeadingRef}
-            segments={statusSegments}
+        <div className="xl:col-span-8">
+          <TenantTrendPanel
+            monthly={summary.data?.monthly ?? null}
+            currentMonth={summary.data?.period.month ?? null}
             isLoading={summary.loading && !summary.data}
-            error={summary.error ? COPY.directoryError : null}
+            updating={summary.loading && summary.data !== null}
+            error={summary.error}
             onRetry={summary.reload}
           />
-          <SystemStatusPanel
-            id={HEALTH_ANCHOR}
-            density="compact"
-            className="h-full"
-            title={COPY.healthTitle}
-            eyebrow={COPY.healthEyebrow}
-            lastCheckedAt={health.data?.timestamp ?? null}
-            isLoading={health.loading && !health.data}
-            error={health.error ? COPY.healthError : null}
-            onRetry={health.reload}
-            emptyMessage={COPY.healthNoReading}
-            statusLabels={SYSTEM_STATUS_LABELS}
-            indicators={buildHealthIndicators(health.data)}
-          />
         </div>
+      </div>
+
+      {/* B3 · Una card por área del menú: Empresas, Salud, Usuarios internos (P4 no se monta). */}
+      <div className="grid grid-cols-1 items-stretch gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <TenantStatusDistribution
+          density="compact"
+          titleRef={companiesHeadingRef}
+          segments={statusSegments}
+          isLoading={summary.loading && !summary.data}
+          error={summary.error ? COPY.directoryError : null}
+          onRetry={summary.reload}
+        />
+        <SystemStatusPanel
+          id={HEALTH_ANCHOR}
+          density="compact"
+          className="h-full"
+          title={COPY.healthTitle}
+          eyebrow={COPY.healthEyebrow}
+          lastCheckedAt={health.data?.timestamp ?? null}
+          isLoading={health.loading && !health.data}
+          error={health.error ? COPY.healthError : null}
+          onRetry={health.reload}
+          emptyMessage={COPY.healthNoReading}
+          statusLabels={SYSTEM_STATUS_LABELS}
+          indicators={buildHealthIndicators(health.data)}
+        />
+        <PlatformUsersArea
+          summary={team.data}
+          isLoading={team.loading && !team.data}
+          error={team.error}
+          onRetry={team.reload}
+        />
       </div>
 
       {/* B4 · Últimas empresas (7) + Actividad reciente (5) */}

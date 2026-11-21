@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Brackets, DataSource } from 'typeorm';
 import { PlatformAuditLog, summarizeErrorForLog } from '@iwana/db';
+import { AUDIT_SESSION_ACTIONS } from '@iwana/shared';
+import type { TenantStatusSummaryMonth } from '@iwana/shared';
 import { sanitizeAuditPayload } from './audit-sanitize.policy';
 import { AuditEntryInput } from './interfaces/audit-entry.interface';
 import { AuditActorResolver } from './audit-actor.resolver';
@@ -33,6 +35,9 @@ import { encodeAuditCursor, decodeAuditCursor } from '../../common/pagination';
  * registradas en public.platform_audit_logs (ADR-018).
  * Ley 1581/2012: retención mínima 7 años.
  */
+/** Zona del mes calendario de las series de ciclo de vida (literal fijo, no input). */
+const LIFECYCLE_TIME_ZONE = 'America/Bogota';
+
 @Injectable()
 export class PlatformAuditService {
   private readonly logger = new Logger(PlatformAuditService.name);
@@ -92,6 +97,11 @@ export class PlatformAuditService {
     if (dto.entityType)
       qb.andWhere('audit.entityType = :entityType', { entityType: dto.entityType });
     if (dto.userId) qb.andWhere('audit.userId = :userId', { userId: dto.userId });
+    if (dto.excludeSessionEvents) {
+      qb.andWhere('audit.action NOT IN (:...sessionActions)', {
+        sessionActions: [...AUDIT_SESSION_ACTIONS],
+      });
+    }
 
     applyCreatedAtFilter(qb, 'audit', dto.fromDate, dto.toDate);
 
@@ -118,6 +128,11 @@ export class PlatformAuditService {
     if (dto.entityType)
       countQb.andWhere('audit.entityType = :entityType', { entityType: dto.entityType });
     if (dto.userId) countQb.andWhere('audit.userId = :userId', { userId: dto.userId });
+    if (dto.excludeSessionEvents) {
+      countQb.andWhere('audit.action NOT IN (:...sessionActions)', {
+        sessionActions: [...AUDIT_SESSION_ACTIONS],
+      });
+    }
     applyCreatedAtFilter(countQb, 'audit', dto.fromDate, dto.toDate);
     const total = await countQb.getCount();
 
@@ -137,6 +152,53 @@ export class PlatformAuditService {
       nextCursor,
       total,
     };
+  }
+
+  /**
+   * Altas (`CREATE`) y bajas (`DELETE`, entidad distinta por mes) de un
+   * `entityType` en los 12 meses calendario America/Bogota que terminan en el
+   * mes de `asOf`, del más antiguo al actual, con huecos en 0. Una consulta.
+   * El registro es append-only: las entidades ya purgadas siguen contando.
+   */
+  async countEntityLifecycleByMonth(
+    entityType: string,
+    asOf: Date = new Date(),
+  ): Promise<TenantStatusSummaryMonth[]> {
+    const rows: Array<{ month: string; created: string; removed: string }> =
+      await this.dataSource.query(
+        `WITH bounds AS (
+           SELECT date_trunc('month', $2::timestamptz AT TIME ZONE '${LIFECYCLE_TIME_ZONE}') AS current_month
+         ),
+         months AS (
+           SELECT to_char(m, 'YYYY-MM') AS month
+             FROM bounds,
+                  generate_series(bounds.current_month - interval '11 months',
+                                  bounds.current_month,
+                                  interval '1 month') AS m
+         ),
+         events AS (
+           SELECT to_char(date_trunc('month', l.created_at AT TIME ZONE '${LIFECYCLE_TIME_ZONE}'), 'YYYY-MM') AS month,
+                  COUNT(*) FILTER (WHERE l.action = 'CREATE') AS created,
+                  COUNT(DISTINCT l.entity_id) FILTER (WHERE l.action = 'DELETE') AS removed
+             FROM public.platform_audit_logs l, bounds
+            WHERE l.entity_type = $1
+              AND l.action IN ('CREATE', 'DELETE')
+              AND l.created_at >= (bounds.current_month - interval '11 months') AT TIME ZONE '${LIFECYCLE_TIME_ZONE}'
+            GROUP BY 1
+         )
+         SELECT months.month,
+                COALESCE(events.created, 0) AS created,
+                COALESCE(events.removed, 0) AS removed
+           FROM months
+           LEFT JOIN events USING (month)
+          ORDER BY months.month`,
+        [entityType, asOf.toISOString()],
+      );
+    return rows.map((row) => ({
+      month: row.month,
+      created: Number(row.created),
+      removed: Number(row.removed),
+    }));
   }
 
   /**

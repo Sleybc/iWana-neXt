@@ -770,7 +770,7 @@ export class TenantController {
 
   /**
    * GET /api/v1/tenants/summary
-   * Resumen de estados de empresas (`TenantStatusSummary` v1.0).
+   * Resumen de estados de empresas (`TenantStatusSummary` v1.1).
    * Declarado antes de `:id` para que no lo capture ParseUUIDPipe.
    */
   @Get('summary')

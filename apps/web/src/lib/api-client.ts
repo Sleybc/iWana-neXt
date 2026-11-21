@@ -1,6 +1,6 @@
 // apps/web/src/lib/api-client.ts
 
-import type { PublicHealth, TenantStatusSummary } from '@iwana/shared';
+import type { PlatformUsersSummary, PublicHealth, TenantStatusSummary } from '@iwana/shared';
 
 /**
  * Cliente HTTP para @iwana/web — Portal Administrativo.
@@ -483,6 +483,9 @@ export interface CreateBootstrapUserPayload {
 }
 
 export const platformUsersApi = {
+  /** Conteos del equipo interno (PlatformUsersSummary v1.0). */
+  summary: () => request<PlatformUsersSummary>('/platform-users/summary'),
+
   me: () => request<PlatformUserProfile>('/platform-users/me'),
 
   updateMe: (data: UpdatePlatformUserPayload) =>
@@ -753,7 +756,7 @@ export const tenantApi = {
     return request<TenantListItem[]>(`/tenants${query ? `?${query}` : ''}`);
   },
 
-  /** Conteo por estado y avisos del directorio completo (TenantStatusSummary v1.0). */
+  /** Conteo por estado y avisos del directorio completo (TenantStatusSummary v1.1). */
   summary: () => request<TenantStatusSummary>('/tenants/summary'),
 
   getOne: (id: string, options?: { signal?: AbortSignal }) =>
@@ -1081,6 +1084,8 @@ export interface AuditLogQueryParams {
   /** ISO 8601 → query `toDate` */
   to?: string;
   toDate?: string;
+  /** Excluye en servidor las acciones de sesión (`AUDIT_SESSION_ACTIONS`). */
+  excludeSessionEvents?: boolean;
 }
 
 /** Filtros de export CSV (sin cursor/limit; máx. 5000 filas en servidor). */
@@ -1120,6 +1125,9 @@ function appendAuditFilterParams(
   }
   if (toDate) {
     searchParams.set('toDate', toDate);
+  }
+  if ('excludeSessionEvents' in params && params.excludeSessionEvents) {
+    searchParams.set('excludeSessionEvents', 'true');
   }
 }
 

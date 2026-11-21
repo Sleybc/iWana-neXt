@@ -75,6 +75,7 @@ describe('PlatformUsersService', () => {
             save: jest.fn(),
             count: jest.fn(),
             create: jest.fn(),
+            query: jest.fn(),
           },
         },
         { provide: PlatformAuditService, useValue: platformAuditServiceMock },
@@ -101,6 +102,48 @@ describe('PlatformUsersService', () => {
       process.env.PII_HASH_KEY = originalPiiHashKey;
     }
     jest.clearAllMocks();
+  });
+
+  describe('getSummary', () => {
+    it('agrega por rol, rellena con 0 y suma sin MFA y sin acceso en 30 días', async () => {
+      (repo.query as jest.Mock).mockResolvedValue([
+        { role: 'SYSTEM_ADMIN', count: '3', without_mfa: '1', without_access: '2' },
+        { role: 'IWANA_SUPPORT', count: '2', without_mfa: '0', without_access: '1' },
+      ]);
+
+      const summary = await service.getSummary();
+
+      expect(summary.total).toBe(5);
+      expect(summary.withoutMfa).toBe(1);
+      expect(summary.withoutAccess30d).toBe(3);
+      expect(Object.keys(summary.byRole).sort()).toEqual(Object.values(PlatformRole).sort());
+      expect(summary.byRole[PlatformRole.SYSTEM_ADMIN]).toBe(3);
+      expect(summary.byRole[PlatformRole.IWANA_SUPPORT]).toBe(2);
+      expect(Object.keys(summary).sort()).toEqual(
+        ['byRole', 'generatedAt', 'total', 'withoutAccess30d', 'withoutMfa'].sort(),
+      );
+    });
+
+    it('una consulta parametrizada, excluye borrados y ancla la ventana a generatedAt − 30 días', async () => {
+      (repo.query as jest.Mock).mockResolvedValue([]);
+
+      const summary = await service.getSummary();
+
+      expect(repo.query).toHaveBeenCalledTimes(1);
+      const [sql, params] = (repo.query as jest.Mock).mock.calls[0] as [string, string[]];
+      expect(sql).toMatch(/deleted_at IS NULL/);
+      expect(sql).toMatch(/last_login_at IS NULL OR last_login_at < \$1/);
+      expect(Date.parse(summary.generatedAt) - Date.parse(params[0] as string)).toBe(
+        30 * 24 * 60 * 60 * 1000,
+      );
+      expect(summary.total).toBe(0);
+      expect(Object.values(summary.byRole).every((n) => n === 0)).toBe(true);
+    });
+
+    it('propaga el error de la base', async () => {
+      (repo.query as jest.Mock).mockRejectedValue(new Error('connection lost'));
+      await expect(service.getSummary()).rejects.toThrow('connection lost');
+    });
   });
 
   describe('getBootstrapStatus', () => {

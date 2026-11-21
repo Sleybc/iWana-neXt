@@ -15,6 +15,7 @@ import { DataSource } from 'typeorm';
 import { resolveMigrationDbCredentials } from '@iwana/db';
 import { TenantStatus } from '@iwana/shared';
 import type { TenantStatusSummary } from '@iwana/shared';
+import { PlatformAuditService } from '../audit/platform-audit.service';
 import { TenantService } from './tenant.service';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
@@ -64,6 +65,8 @@ describeWithDb('TenantService.getStatusSummary — PostgreSQL real', () => {
       undefined as never,
       undefined as never,
       undefined as never,
+      // Serie mensual v1.1: la provee el módulo audit sobre la misma base.
+      new PlatformAuditService(dataSource, undefined as never),
     );
 
     baseline = await service.getStatusSummary();
@@ -199,6 +202,8 @@ describeWithDb('TenantService.getStatusSummary — orden de attention con severi
       undefined as never,
       undefined as never,
       undefined as never,
+      // Serie mensual v1.1: la provee el módulo audit sobre la misma base.
+      new PlatformAuditService(dataSource, undefined as never),
     );
 
     for (const [key, status, seconds] of ROWS) {
@@ -259,5 +264,140 @@ describeWithDb('TenantService.getStatusSummary — orden de attention con severi
     ]);
     const excluded = [ids['prov'], ids['inactive'], ids['active']];
     expect(summary.attention.some((item) => excluded.includes(item.id))).toBe(false);
+  });
+});
+
+/**
+ * v1.1 (PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE2 §A.5): serie mensual desde
+ * `public.platform_audit_logs` y alta más vieja en PROVISIONING. El registro es
+ * append-only (trigger 014/024): las filas sembradas no se borran, por eso se
+ * mide contra una línea base y los `entity_id` son sintéticos por corrida.
+ */
+describeWithDb('TenantService.getStatusSummary — v1.1 serie mensual y PROVISIONING', () => {
+  let dataSource: DataSource;
+  let service: TenantService;
+  let baseline: TenantStatusSummary;
+  const run = randomBytes(4).toString('hex');
+  const provisioningId = randomUUID();
+
+  /** Inicio del mes Bogotá desplazado `offset` meses, + 1 hora, como timestamptz. */
+  const monthStart = (offset: number): string =>
+    `((date_trunc('month', now() AT TIME ZONE 'America/Bogota') + (${offset} * interval '1 month') + interval '1 hour') AT TIME ZONE 'America/Bogota')`;
+
+  const insertAudit = async (action: string, entityId: string, offset: number): Promise<void> => {
+    await dataSource.query(
+      `INSERT INTO public.platform_audit_logs (id, action, entity_type, entity_id, created_at)
+       VALUES ($1, $2, 'Tenant', $3, ${monthStart(offset)})`,
+      [randomUUID(), action, entityId],
+    );
+  };
+
+  beforeAll(async () => {
+    const credentials = resolveMigrationDbCredentials();
+    dataSource = new DataSource({
+      type: 'postgres',
+      host: process.env['DB_HOST'] ?? 'localhost',
+      port: Number.parseInt(process.env['DB_PORT'] ?? '5432', 10),
+      username: credentials.username,
+      password: credentials.password,
+      database: process.env['DB_NAME'] ?? 'iwana',
+      entities: [],
+      migrations: [],
+      synchronize: false,
+      logging: false,
+      extra: { max: 2, min: 1, connectionTimeoutMillis: 5_000 },
+    });
+    await dataSource.initialize();
+    service = new TenantService(
+      undefined as never,
+      dataSource,
+      undefined as never,
+      undefined as never,
+      undefined as never,
+      undefined as never,
+      // Serie mensual v1.1: la provee el módulo audit sobre la misma base.
+      new PlatformAuditService(dataSource, undefined as never),
+    );
+
+    baseline = await service.getStatusSummary();
+
+    // Mes en curso: 2 altas; la misma empresa marcada dos veces + otra = 2 bajas.
+    await insertAudit('CREATE', `it-pulse-${run}-a`, 0);
+    await insertAudit('CREATE', `it-pulse-${run}-b`, 0);
+    await insertAudit('DELETE', `it-pulse-${run}-a`, 0);
+    await insertAudit('DELETE', `it-pulse-${run}-a`, 0);
+    await insertAudit('DELETE', `it-pulse-${run}-c`, 0);
+    // Hace 3 meses: 1 alta. Hace 12 meses: fuera de la ventana.
+    await insertAudit('CREATE', `it-pulse-${run}-d`, -3);
+    await insertAudit('CREATE', `it-pulse-${run}-e`, -12);
+    // Otra acción y otra entidad no cuentan.
+    await insertAudit('UPDATE', `it-pulse-${run}-a`, 0);
+    await dataSource.query(
+      `INSERT INTO public.platform_audit_logs (id, action, entity_type, entity_id, created_at)
+       VALUES ($1, 'CREATE', 'PlatformUser', $2, ${monthStart(0)})`,
+      [randomUUID(), `it-pulse-${run}-pu`],
+    );
+
+    // Empresa en PROVISIONING con created_at muy antiguo: debe ser la más vieja.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email, created_at)
+       VALUES ($1, $2, $3, $4, 'PROVISIONING', $5, '2001-02-03T04:05:06.000Z')`,
+      [
+        provisioningId,
+        `Pulso sintético ${run}`,
+        `summary-pulse-${run}`,
+        `tenant_summary_pulse_${run}`,
+        `summary-pulse-${run}@example.invalid`,
+      ],
+    );
+  });
+
+  afterAll(async () => {
+    if (!dataSource?.isInitialized) return;
+    try {
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [provisioningId]);
+    } finally {
+      await dataSource.destroy();
+    }
+  });
+
+  it('monthly trae 12 meses consecutivos, del más antiguo al actual, y period es el último', async () => {
+    const summary = await service.getStatusSummary();
+
+    expect(summary.monthly).toHaveLength(12);
+    const months = summary.monthly.map((m) => m.month);
+    expect([...months].sort()).toEqual(months);
+    expect(new Set(months).size).toBe(12);
+    expect(summary.period).toEqual(summary.monthly[11]);
+    for (const m of summary.monthly) {
+      expect(m.month).toMatch(/^\d{4}-\d{2}$/);
+      expect(Number.isInteger(m.created) && m.created >= 0).toBe(true);
+      expect(Number.isInteger(m.removed) && m.removed >= 0).toBe(true);
+    }
+  });
+
+  it('cuenta altas y bajas (DELETE repetido de la misma empresa = 1) y deja en 0 lo ajeno', async () => {
+    const summary = await service.getStatusSummary();
+
+    expect(summary.period.created - baseline.period.created).toBe(2);
+    expect(summary.period.removed - baseline.period.removed).toBe(2);
+    expect(summary.monthly[8]!.created - baseline.monthly[8]!.created).toBe(1);
+    // Meses sin eventos sembrados: sin delta (incluye el borde de 12 meses atrás).
+    for (const index of [0, 1, 2, 3, 4, 5, 6, 7, 9, 10]) {
+      expect({ index, created: summary.monthly[index]!.created }).toEqual({
+        index,
+        created: baseline.monthly[index]!.created,
+      });
+      expect({ index, removed: summary.monthly[index]!.removed }).toEqual({
+        index,
+        removed: baseline.monthly[index]!.removed,
+      });
+    }
+  });
+
+  it('oldestProvisioningAt es el createdAt de la empresa PROVISIONING más antigua', async () => {
+    const summary = await service.getStatusSummary();
+
+    expect(summary.oldestProvisioningAt).toBe('2001-02-03T04:05:06.000Z');
   });
 });

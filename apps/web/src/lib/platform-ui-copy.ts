@@ -103,6 +103,36 @@ export const PLATFORM_UI_COPY = {
       total === 1 ? 'De 1 empresa en el directorio' : `De ${total} empresas en el directorio`,
     pulseProvisioningHintNone: 'Sin altas pendientes',
     pulseProvisioningHintSome: 'Aún no están listas para operar',
+    pulseProvisioningOldest: (relative: string) => `La más antigua empezó ${relative}`,
+    pulseMonthMovement: (created: number, removed: number) =>
+      `${created === 1 ? '1 alta' : `${created} altas`} · ${removed === 1 ? '1 baja' : `${removed} bajas`} este mes`,
+    pulseMonthDelta: (net: number) => (net > 0 ? `+${net} este mes` : `${net} este mes`),
+    pulseTeam: 'Equipo interno',
+    pulseTeamWithoutMfa: (n: number) =>
+      n === 0
+        ? 'Todos con verificación en dos pasos'
+        : n === 1
+          ? '1 sin verificación en dos pasos'
+          : `${n} sin verificación en dos pasos`,
+    pulseTeamMfaMeter: (pct: number) => `${pct} % del equipo con verificación en dos pasos`,
+    trendTitle: 'Tendencia',
+    trendSubtitle: 'Altas y bajas de empresas por mes, últimos 12 meses',
+    trendCreated: 'Altas',
+    trendRemoved: 'Bajas',
+    trendMonthHeader: 'Mes',
+    trendCaption: 'Altas y bajas de empresas por mes',
+    trendCurrentMonth: (label: string) => `${label} (en curso)`,
+    trendSummary: (created: number, removed: number) =>
+      `Altas y bajas de empresas por mes, últimos 12 meses: ${created} altas y ${removed} bajas en total`,
+    trendEmpty: 'Sin altas ni bajas en los últimos 12 meses',
+    trendError: 'No pudimos cargar la tendencia.',
+    usersTitle: 'Usuarios internos',
+    usersWithoutMfa: 'Sin verificación en dos pasos',
+    usersWithoutAccess: 'Sin acceso en 30 días',
+    usersTotal: (total: number) => (total === 1 ? '1 usuario' : `${total} usuarios`),
+    usersFooter: 'Ver usuarios',
+    usersEmpty: 'Aún no hay usuarios internos.',
+    usersError: 'No pudimos cargar el equipo interno.',
     attentionPart: {
       PROVISIONING_FAILED: (n: number) => `${n} con error`,
       SUSPENDED: (n: number) => (n === 1 ? '1 suspendida' : `${n} suspendidas`),

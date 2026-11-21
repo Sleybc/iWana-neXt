@@ -8,6 +8,7 @@ import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuditService } from '../audit/audit.service';
 import { MediaService } from '../media/media.service';
 import { SearchQueueService } from '../search/search-queue.service';
+import { PlatformAuditService } from '../audit/platform-audit.service';
 import { TenantService } from './tenant.service';
 import { CreateTenantDto, UpdateTenantDto } from './dto/tenant.dto';
 
@@ -108,6 +109,7 @@ describe('TenantService', () => {
     softDelete: jest.Mock;
     upload: jest.Mock;
   };
+  const platformAuditServiceMock = { countEntityLifecycleByMonth: jest.fn() };
   let searchQueueServiceMock: {
     enqueueTenantUpsert: jest.Mock;
     enqueueNavigationRebuild: jest.Mock;
@@ -209,6 +211,7 @@ describe('TenantService', () => {
           provide: SearchQueueService,
           useValue: searchQueueServiceMock,
         },
+        { provide: PlatformAuditService, useValue: platformAuditServiceMock },
       ],
     }).compile();
 
@@ -1433,6 +1436,7 @@ describe('TenantService', () => {
     beforeEach(() => {
       query = jest.fn();
       (dataSource as unknown as { query: jest.Mock }).query = query;
+      platformAuditServiceMock.countEntityLifecycleByMonth.mockReset().mockResolvedValue([]);
     });
 
     it('suma conteos por estado y rellena con 0 los estados sin empresas', async () => {
@@ -1477,12 +1481,14 @@ describe('TenantService', () => {
     it('hace exactamente dos consultas: GROUP BY y atención con LIMIT 5 parametrizada', async () => {
       query.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
-      await service.getStatusSummary();
+      const summary = await service.getStatusSummary();
 
       expect(query).toHaveBeenCalledTimes(2);
+      // `recent` anclado al mismo generatedAt de JS, por parámetro.
+      expect(query.mock.calls[0][1]).toEqual([summary.generatedAt]);
       expect(query.mock.calls[0][0]).toMatch(/GROUP BY status/);
       expect(query.mock.calls[0][0]).toMatch(
-        /FILTER \(WHERE updated_at >= now\(\) - interval '7 days'\)/,
+        /FILTER \(WHERE updated_at >= \$1::timestamptz - interval '7 days'\)/,
       );
       expect(query.mock.calls[1][0]).toMatch(/LIMIT 5/);
       expect(query.mock.calls[1][1]).toEqual([
@@ -1499,6 +1505,58 @@ describe('TenantService', () => {
       expect(summary.updatedLast7Days).toBe(0);
       expect(Object.values(summary.byStatus)).toEqual(Object.values(TenantStatus).map(() => 0));
       expect(summary.attention).toEqual([]);
+    });
+
+    it('v1.1: serie mensual numérica, period = último mes y alta más vieja en PROVISIONING', async () => {
+      const months = Array.from({ length: 12 }, (_, i) => ({
+        month: `2026-${String(i + 1).padStart(2, '0')}`,
+        created: i === 11 ? 3 : 0,
+        removed: i === 10 ? 1 : 0,
+      }));
+      query
+        .mockResolvedValueOnce([
+          {
+            status: 'PROVISIONING',
+            count: '2',
+            recent: '2',
+            oldest_created_at: new Date('2026-11-18T05:00:00.000Z'),
+          },
+          { status: 'ACTIVE', count: '5', recent: '0', oldest_created_at: new Date('2020-01-01') },
+        ])
+        .mockResolvedValueOnce([]);
+      platformAuditServiceMock.countEntityLifecycleByMonth.mockResolvedValue(months);
+
+      const summary = await service.getStatusSummary();
+
+      expect(summary.monthly).toHaveLength(12);
+      expect(summary.monthly[0]).toEqual({ month: '2026-01', created: 0, removed: 0 });
+      expect(summary.monthly[10]).toEqual({ month: '2026-11', created: 0, removed: 1 });
+      expect(summary.period).toEqual({ month: '2026-12', created: 3, removed: 0 });
+      expect(summary.oldestProvisioningAt).toBe('2026-11-18T05:00:00.000Z');
+    });
+
+    it('v1.1: sin PROVISIONING oldestProvisioningAt es null; la serie se pide al módulo audit', async () => {
+      query
+        .mockResolvedValueOnce([
+          { status: 'ACTIVE', count: '1', recent: '0', oldest_created_at: null },
+        ])
+        .mockResolvedValueOnce([]);
+
+      const summary = await service.getStatusSummary();
+
+      expect(summary.oldestProvisioningAt).toBeNull();
+      expect(summary.period).toEqual({
+        month: expect.stringMatching(/^\d{4}-\d{2}$/),
+        created: 0,
+        removed: 0,
+      });
+      expect(platformAuditServiceMock.countEntityLifecycleByMonth).toHaveBeenCalledWith(
+        'Tenant',
+        new Date(summary.generatedAt),
+      );
+      expect(query.mock.calls.some(([sql]) => String(sql).includes('platform_audit_logs'))).toBe(
+        false,
+      );
     });
 
     it('propaga el error de la base sin devolver un resumen parcial', async () => {

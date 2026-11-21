@@ -8,6 +8,7 @@ export * from './enums/user-role.enum';
 export * from './enums/user-status.enum';
 export * from './enums/tenant-status.enum';
 export * from './enums/audit-action.enum';
+export * from './enums/audit-session-actions.enum';
 export * from './enums/platform-role.enum';
 export * from './enums/company-type.enum';
 export * from './enums/document-type.enum';
@@ -42,6 +43,7 @@ export * from './interfaces/assurance-field-service-request.interface';
 // DTOs
 export * from './dto/pagination.dto';
 export * from './dto/tenant-status-summary.dto';
+export * from './dto/platform-users-summary.dto';
 export * from './dto/public-health.dto';
 
 // Constants

@@ -25,6 +25,7 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { PlatformUser } from '@iwana/db';
 import { CreatePlatformUserBootstrapDto } from './dto/create-platform-user-bootstrap.dto';
 import { PlatformUserResponseDto } from './dto/platform-user-response.dto';
+import { PlatformUsersSummaryResponseDto } from './dto/platform-users-summary.dto';
 import {
   ChangePlatformUserLoginEmailDto,
   ChangePlatformUserPasswordDto,
@@ -84,6 +85,21 @@ export class PlatformUsersController {
     );
     const accessToken = this.authService.signPlatformToken(user as unknown as PlatformUser);
     return { data: { accessToken } };
+  }
+
+  /**
+   * GET /api/v1/platform-users/summary — `PlatformUsersSummary` v1.0.
+   * Mismos guards y roles que el resto del controlador; declarado antes de
+   * cualquier ruta con parámetro.
+   */
+  @Get('summary')
+  @Roles(PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
+  @ApiOperation({ summary: 'Resumen de usuarios internos para la portada de plataforma' })
+  @ApiResponse({ status: 200, description: 'Resumen.', type: PlatformUsersSummaryResponseDto })
+  @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
+  @ApiResponse({ status: 403, description: 'Requiere un token de plataforma.' })
+  async getSummary(): Promise<PlatformUsersSummaryResponseDto> {
+    return { data: await this.platformUsersService.getSummary() };
   }
 
   @Get('me')

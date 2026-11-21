@@ -58,6 +58,7 @@ describe('PlatformUsersController HTTP', () => {
 
   const platformUsersServiceMock = {
     getProfile: jest.fn(),
+    getSummary: jest.fn(),
     updateProfile: jest.fn(),
     changeLoginEmail: jest.fn(),
     changePassword: jest.fn(),
@@ -112,6 +113,31 @@ describe('PlatformUsersController HTTP', () => {
       .expect(({ body }) => {
         expect(body.data.id).toBe('u1');
       });
+  });
+
+  it('GET /platform-users/summary retorna 200 envuelto en { data }', async () => {
+    platformUsersServiceMock.getSummary.mockResolvedValue({
+      total: 2,
+      byRole: { SYSTEM_ADMIN: 1, IWANA_SUPPORT: 1 },
+      withoutMfa: 0,
+      withoutAccess30d: 1,
+      generatedAt: '2026-11-21T12:00:00.000Z',
+    });
+
+    await request(app.getHttpServer())
+      .get('/api/v1/platform-users/summary')
+      .set('Authorization', 'Bearer test-access-token')
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data.total).toBe(2);
+        expect(body.data.withoutAccess30d).toBe(1);
+      });
+    expect(platformUsersServiceMock.getSummary).toHaveBeenCalledTimes(1);
+  });
+
+  it('GET /platform-users/summary retorna 401 sin token', async () => {
+    await request(app.getHttpServer()).get('/api/v1/platform-users/summary').expect(401);
+    expect(platformUsersServiceMock.getSummary).not.toHaveBeenCalled();
   });
 
   it('GET /platform-users/me retorna 401 sin token', async () => {

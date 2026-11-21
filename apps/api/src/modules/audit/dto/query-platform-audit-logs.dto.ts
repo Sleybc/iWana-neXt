@@ -1,6 +1,15 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsISO8601, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import {
+  IsBoolean,
+  IsEnum,
+  IsISO8601,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+} from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 import { AuditAction } from '@iwana/shared';
 
 /**
@@ -64,4 +73,21 @@ export class QueryPlatformAuditLogsDto {
   @IsOptional()
   @IsISO8601()
   toDate?: string;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    default: false,
+    description:
+      'Excluye las acciones de sesión (AUDIT_SESSION_ACTIONS: LOGIN, LOGOUT, LOGIN_FAILED, REFRESH).',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    value === true || value === 'true'
+      ? true
+      : value === false || value === 'false'
+        ? false
+        : value,
+  )
+  @IsBoolean()
+  excludeSessionEvents?: boolean = false;
 }

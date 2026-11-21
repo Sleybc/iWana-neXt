@@ -3,7 +3,8 @@ import type { AnchorHTMLAttributes, ReactNode } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TenantStatus } from '@iwana/shared';
-import { makeTenantStatusSummary } from '@/test-utils/tenant-status-summary';
+import { makePlatformUsersSummary } from '@/test-utils/platform-users-summary';
+import { makeMonthlySeries, makeTenantStatusSummary } from '@/test-utils/tenant-status-summary';
 import { DashboardClient } from './DashboardClient';
 
 type Deferred<T> = {
@@ -88,6 +89,9 @@ jest.mock('@/lib/api-client', () => {
     platformAuditApi: {
       list: jest.fn(),
     },
+    platformUsersApi: {
+      summary: jest.fn(),
+    },
     healthApi: {
       get: jest.fn(),
     },
@@ -126,12 +130,13 @@ const FIXED_NOW = Date.parse('2026-06-26T12:00:00.000Z');
 const minutesAgo = (minutes: number) => new Date(FIXED_NOW - minutes * 60 * 1000).toISOString();
 
 describe('DashboardClient', () => {
-  const { tenantApi, platformAuditApi, healthApi, ApiError } = jest.requireMock(
+  const { tenantApi, platformAuditApi, platformUsersApi, healthApi, ApiError } = jest.requireMock(
     '@/lib/api-client',
   ) as {
     ApiError: new (status: number, code: string, message: string) => Error;
     tenantApi: { summary: jest.Mock; list: jest.Mock };
     platformAuditApi: { list: jest.Mock };
+    platformUsersApi: { summary: jest.Mock };
     healthApi: { get: jest.Mock };
   };
 
@@ -149,6 +154,7 @@ describe('DashboardClient', () => {
     platformAuditApi.list.mockResolvedValue({ data: [] });
     tenantApi.summary.mockResolvedValue(makeTenantStatusSummary());
     tenantApi.list.mockResolvedValue([]);
+    platformUsersApi.summary.mockResolvedValue(makePlatformUsersSummary());
   });
 
   const pulse = () => screen.getByRole('region', { name: 'Pulso de plataforma' });
@@ -341,11 +347,9 @@ describe('DashboardClient', () => {
     expect(screen.queryByText(HEALTH_ERROR)).not.toBeInTheDocument();
   });
 
-  it('CA-PP-06: actividad pide 20, descarta sesión y pinta máx. 5 con <time dateTime>', async () => {
+  it('CA-PP2-04: actividad pide 5 sin eventos de sesión al servidor y pinta máx. 5 con <time dateTime>', async () => {
     platformAuditApi.list.mockResolvedValue({
       data: [
-        makeAuditEntry({ id: 'login', action: 'LOGIN' }),
-        makeAuditEntry({ id: 'refresh', action: 'REFRESH' }),
         ...Array.from({ length: 7 }, (_, index) =>
           makeAuditEntry({ id: `audit-${index}`, displayName: `Operador ${index + 1}` }),
         ),
@@ -353,7 +357,7 @@ describe('DashboardClient', () => {
     });
     await renderReady();
 
-    expect(platformAuditApi.list).toHaveBeenCalledWith({ limit: 20 });
+    expect(platformAuditApi.list).toHaveBeenCalledWith({ excludeSessionEvents: true, limit: 5 });
     const activity = screen.getByRole('region', { name: 'Actividad reciente' });
     expect(await within(activity).findAllByRole('listitem')).toHaveLength(5);
     expect(within(activity).getByText('Operador 1 actualizó una empresa')).toBeInTheDocument();
@@ -390,17 +394,12 @@ describe('DashboardClient', () => {
     expect(await screen.findByRole('link', { name: 'Empresas activas' })).toBeInTheDocument();
   });
 
-  it('CA-PP-05: no monta bloques de P1–P4 ni piezas retiradas', async () => {
+  it('CA-PP2-05: no monta bloques de P2 ni P4 ni piezas retiradas', async () => {
     await renderReady();
 
-    [
-      /Disponibilidad/,
-      /Equipo interno/,
-      /Usuarios internos/,
-      /Uso por empresa/,
-      /Cambios esta semana/,
-      /Atención operativa/,
-    ].forEach((text) => expect(screen.queryByText(text)).not.toBeInTheDocument());
+    [/Disponibilidad/, /Uso por empresa/, /Cambios esta semana/, /Atención operativa/].forEach(
+      (text) => expect(screen.queryByText(text)).not.toBeInTheDocument(),
+    );
     expect(screen.queryByRole('region', { name: 'Resumen operativo' })).not.toBeInTheDocument();
   });
 
@@ -491,21 +490,20 @@ describe('DashboardClient', () => {
     );
   });
 
-  it('CA-PP-06: descarta las cuatro acciones de sesión', async () => {
+  it('CA-PP2-04: el filtro de sesión vive en el servidor; el cliente pinta lo que recibe', async () => {
     platformAuditApi.list.mockResolvedValue({
       data: [
-        ...['LOGIN', 'LOGOUT', 'LOGIN_FAILED', 'REFRESH'].map((action) =>
-          makeAuditEntry({ id: `s-${action}`, action, displayName: `Sesión ${action}` }),
-        ),
-        makeAuditEntry({ id: 'keep', displayName: 'Operadora' }),
+        makeAuditEntry({ id: 'a', displayName: 'Operadora' }),
+        makeAuditEntry({ id: 'b', displayName: 'Operador' }),
       ],
     });
     await renderReady();
 
+    expect(platformAuditApi.list).toHaveBeenCalledWith(
+      expect.objectContaining({ excludeSessionEvents: true }),
+    );
     const activity = screen.getByRole('region', { name: 'Actividad reciente' });
-    expect(await within(activity).findAllByRole('listitem')).toHaveLength(1);
-    expect(within(activity).getByText('Operadora actualizó una empresa')).toBeInTheDocument();
-    expect(activity.textContent).not.toMatch(/Sesión/);
+    expect(await within(activity).findAllByRole('listitem')).toHaveLength(2);
   });
 
   it('CA-PP-04: la auditoría caída deja intactos pulso, Empresas y Salud', async () => {
@@ -543,6 +541,128 @@ describe('DashboardClient', () => {
     expect(within(health).queryByText('API de plataforma')).not.toBeInTheDocument();
   });
 
+  describe('Fase 2 · P1 y P3', () => {
+    const team = () => screen.getByRole('region', { name: 'Usuarios internos' });
+    const trend = () => screen.getByRole('region', { name: 'Tendencia' });
+
+    it('CA-PP2-02: neto positivo del mes en lima con altas y bajas en la frase', async () => {
+      const monthly = makeMonthlySeries({ '2026-11': { created: 4, removed: 1 } });
+      tenantApi.summary.mockResolvedValue(makeTenantStatusSummary({ ACTIVE: 48 }, { monthly }));
+      await renderReady();
+
+      const active = within(pulse()).getByRole('link', { name: 'Empresas activas' });
+      expect(within(active).getByText('+3 este mes')).toHaveClass('bg-iwana-secondary-100');
+      expect(active).toHaveTextContent('4 altas · 1 baja este mes');
+    });
+
+    it('CA-PP2-02: neto negativo sin lima y neto cero sin señal', async () => {
+      const negative = makeMonthlySeries({ '2026-11': { created: 0, removed: 2 } });
+      tenantApi.summary.mockResolvedValue(
+        makeTenantStatusSummary({ ACTIVE: 5 }, { monthly: negative }),
+      );
+      const { unmount } = render(<DashboardClient />);
+      const signal = await screen.findByText('-2 este mes');
+      expect(signal).not.toHaveClass('bg-iwana-secondary-100');
+      unmount();
+
+      tenantApi.summary.mockResolvedValue(makeTenantStatusSummary({ ACTIVE: 5 }));
+      await renderReady();
+      expect(screen.queryByText(/^[+-]?[0-9]+ este mes$/)).not.toBeInTheDocument();
+    });
+
+    it('B1: «Altas en curso» dice la antigüedad del alta más vieja', async () => {
+      tenantApi.summary.mockResolvedValue(
+        makeTenantStatusSummary(
+          { PROVISIONING: 3 },
+          { oldestProvisioningAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
+        ),
+      );
+      await renderReady();
+
+      expect(within(pulse()).getByRole('link', { name: 'Altas en curso' })).toHaveTextContent(
+        /La más antigua empezó hace 2 h/,
+      );
+    });
+
+    it('CA-PP2-01: la tendencia pinta 12 meses del resumen y degrada con él', async () => {
+      const monthly = makeMonthlySeries({ '2026-10': { created: 2, removed: 1 } });
+      tenantApi.summary.mockResolvedValue(makeTenantStatusSummary({ ACTIVE: 1 }, { monthly }));
+      const { unmount } = render(<DashboardClient />);
+      await screen.findByRole('link', { name: 'Empresas activas' });
+
+      expect(monthly).toHaveLength(12);
+      expect(within(trend()).getByRole('img')).toHaveAccessibleName(/2 altas y 1 bajas en total/);
+      unmount();
+
+      tenantApi.summary.mockRejectedValue(new Error('timeout'));
+      render(<DashboardClient />);
+      expect(await screen.findByText('No pudimos cargar la tendencia.')).toBeInTheDocument();
+      expect(within(trend()).queryByRole('img')).not.toBeInTheDocument();
+    });
+
+    it('CA-PP2-01: 12 meses en cero muestran el vacío, no una gráfica de ceros', async () => {
+      tenantApi.summary.mockResolvedValue(makeTenantStatusSummary({ ACTIVE: 1 }));
+      await renderReady();
+
+      expect(
+        within(trend()).getByText('Sin altas ni bajas en los últimos 12 meses'),
+      ).toBeInTheDocument();
+      expect(within(trend()).queryByRole('img')).not.toBeInTheDocument();
+    });
+
+    it('B1 y B3: «Equipo interno» y Usuarios internos leen el resumen del equipo', async () => {
+      await renderReady();
+
+      const cell = within(pulse()).getByRole('link', { name: 'Equipo interno' });
+      expect(cell).toHaveAttribute('href', '/platform-users');
+      expect(cell).toHaveTextContent('9');
+      expect(cell).toHaveTextContent('2 sin verificación en dos pasos');
+      expect(
+        within(cell).getByLabelText('78 % del equipo con verificación en dos pasos'),
+      ).toBeInTheDocument();
+
+      const area = await screen.findByRole('region', { name: 'Usuarios internos' });
+      expect(within(area).getByText('Administrador de plataforma').nextSibling).toHaveTextContent(
+        '4',
+      );
+      expect(within(area).getByText('Soporte iWana').nextSibling).toHaveTextContent('5');
+      expect(within(area).getByText('Sin verificación en dos pasos').nextSibling).toHaveTextContent(
+        '2',
+      );
+      expect(within(area).getByText('Sin acceso en 30 días').nextSibling).toHaveTextContent('1');
+      expect(within(area).getByRole('link', { name: 'Ver usuarios' })).toHaveAttribute(
+        'href',
+        '/platform-users',
+      );
+    });
+
+    it('CA-PP2-03: el resumen del equipo caído degrada solo su celda y su área, sin ceros', async () => {
+      const user = userEvent.setup();
+      platformUsersApi.summary
+        .mockRejectedValueOnce(new Error('timeout'))
+        .mockResolvedValueOnce(makePlatformUsersSummary());
+      tenantApi.summary.mockResolvedValue(makeTenantStatusSummary({ ACTIVE: 7 }));
+      await renderReady();
+
+      const strip = pulse();
+      expect(within(strip).queryByRole('link', { name: 'Equipo interno' })).not.toBeInTheDocument();
+      expect(within(strip).getByText('Equipo interno').closest('article')).toHaveTextContent(
+        'No disponible',
+      );
+      expect(
+        await within(team()).findByText('No pudimos cargar el equipo interno.'),
+      ).toBeInTheDocument();
+      expect(within(team()).queryByText('0')).not.toBeInTheDocument();
+      expect(within(strip).getByRole('link', { name: 'Empresas activas' })).toHaveTextContent('7');
+
+      await user.click(within(team()).getByRole('button', { name: 'Reintentar' }));
+      expect(
+        await within(pulse()).findByRole('link', { name: 'Equipo interno' }),
+      ).toBeInTheDocument();
+      expect(tenantApi.summary).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('reintento y actualización', () => {
     it('«Reintentar» en una celda vuelve a pedir solo su fuente', async () => {
       tenantApi.summary
@@ -577,7 +697,7 @@ describe('DashboardClient', () => {
       expect(screen.queryByText(ACTIVITY_ERROR)).not.toBeInTheDocument();
     });
 
-    it('B0: «Actualizar» vuelve a pedir las cuatro fuentes y la cabecera dice la última lectura', async () => {
+    it('B0: «Actualizar» vuelve a pedir las cinco fuentes y la cabecera dice la última lectura', async () => {
       const user = userEvent.setup();
       await renderReady();
       expect(screen.getByText(/^Última lectura /)).toBeInTheDocument();
@@ -588,6 +708,7 @@ describe('DashboardClient', () => {
       expect(tenantApi.list).toHaveBeenCalledTimes(2);
       expect(platformAuditApi.list).toHaveBeenCalledTimes(2);
       expect(healthApi.get).toHaveBeenCalledTimes(2);
+      expect(platformUsersApi.summary).toHaveBeenCalledTimes(2);
     });
   });
 

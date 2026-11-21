@@ -1,6 +1,8 @@
 /**
- * Centro de control «Pulso de plataforma» — Fase 1 (CA-PP-01…08).
- * Encargo: docs/prompts/PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE1-v1.0.md §C.
+ * Centro de control «Pulso de plataforma» — Fase 1 (CA-PP-01…08) y Fase 2 (CA-PP2-01…06).
+ * Encargos: docs/prompts/PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE1-v1.0.md §C y
+ * PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE2-v1.0.md §C. La Fase 2 sustituye CA-PP-01/05/07:
+ * B2 pasa a ser la tendencia, P1 y P3 se montan y el lima se permite en avance.
  * Selectores por rol y texto del catálogo `PLATFORM_UI_COPY.dashboard`. Sin PII.
  */
 import path from 'node:path';
@@ -9,6 +11,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { evidenceDir } from './helpers/evidence';
 import {
   buildIsoAt,
+  buildMonthlyMock,
   buildTenantSummaryMock,
   loginToDashboard,
   setupWebApiMocks,
@@ -45,8 +48,25 @@ const TENANTS: WebTenantMock[] = [
   tenant('emp-g', 'Empresa Eta', 'ACTIVE', 7),
 ];
 
+/** 12 meses de altas y bajas (52 y 14); el mes en curso (último) da neto +3. */
+const MONTHLY_VALUES: ReadonlyArray<readonly [number, number]> = [
+  [4, 1],
+  [6, 0],
+  [3, 2],
+  [7, 1],
+  [2, 0],
+  [5, 3],
+  [8, 1],
+  [1, 1],
+  [9, 2],
+  [1, 0],
+  [1, 1],
+  [5, 2],
+];
+
 /** Cifras de tres dígitos que no colisionan con fechas ni con el total. */
 const SUMMARY = buildTenantSummaryMock(TENANTS, {
+  monthly: buildMonthlyMock(MONTHLY_VALUES),
   total: 498,
   byStatus: {
     ACTIVE: 247,
@@ -105,6 +125,8 @@ function blocks(page: Page) {
     health: page.locator('#salud-de-plataforma'),
     latest: blockOf(page, 'Últimas empresas'),
     activity: page.getByRole('region', { name: 'Actividad reciente' }),
+    trend: page.getByRole('region', { name: 'Tendencia' }),
+    users: page.getByRole('region', { name: 'Usuarios internos' }),
   };
 }
 
@@ -124,18 +146,19 @@ test.describe('Centro de control — pulso de plataforma (datos completos)', () 
     }),
   );
 
-  test('CA-PP-01: a 1440 × 900 B0, B1 y B2 se ven completos sin desplazar', async ({ page }) => {
+  test('CA-PP2-06: a 1440 × 900 B0, B1 y B2 (tendencia y cola) completos sin desplazar', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await loginToPulse(page);
-    const { pulse, queue, companies, health } = blocks(page);
+    const { pulse, queue, trend } = blocks(page);
 
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
     for (const [name, block] of [
       ['B0', page.getByRole('heading', { name: 'Centro de control', level: 1 })],
       ['B1', pulse],
+      ['B2 tendencia', trend],
       ['B2 cola', queue],
-      ['B2 Empresas', companies],
-      ['B2 Salud', health],
     ] as const) {
       const box = await block.boundingBox();
       expect(box, `${name} renderizado`).toBeTruthy();
@@ -190,24 +213,73 @@ test.describe('Centro de control — pulso de plataforma (datos completos)', () 
     ).toHaveAttribute('href', '/tenants/emp-a/settings');
   });
 
-  test('CA-PP-05: ningún bloque de P1–P4 está montado', async ({ page }) => {
-    await loginToPulse(page);
-    for (const text of [
-      /tendencia/i,
-      /disponibilidad/i,
-      /equipo interno/i,
-      /uso por empresa/i,
-      /vs\.? (semana|mes) anterior/i,
-    ]) {
-      await expect(page.getByRole('main').getByText(text)).toHaveCount(0);
-    }
-    await expect(page.locator('canvas, .recharts-wrapper')).toHaveCount(0);
-  });
-
-  test('CA-PP-06: actividad con máx. 5 entradas, sin sesión y con <time dateTime>', async ({
+  test('CA-PP2-05: P2 (disponibilidad) y P4 (uso por empresa) siguen sin montar', async ({
     page,
   }) => {
     await loginToPulse(page);
+    for (const text of [/disponibilidad/i, /uso por empresa/i, /vs\.? (semana|mes) anterior/i]) {
+      await expect(page.getByRole('main').getByText(text)).toHaveCount(0);
+    }
+    // Una sola gráfica en la portada: la tendencia (P1).
+    await expect(page.locator('.recharts-wrapper')).toHaveCount(1);
+    await expect(blocks(page).trend.locator('.recharts-wrapper')).toHaveCount(1);
+  });
+
+  test('CA-PP2-01: la tendencia muestra los 12 meses del contrato con altas y bajas', async ({
+    page,
+  }) => {
+    await loginToPulse(page);
+    const { trend } = blocks(page);
+    await expect(trend.getByRole('img', { name: /52 altas y 14 bajas en total/ })).toBeVisible();
+    await trend.getByRole('button', { name: 'Ver como tabla' }).click();
+    const rows = trend.locator('tbody tr');
+    await expect(rows).toHaveCount(12);
+    const cells = await rows.evaluateAll((trs) =>
+      trs.map((tr) => Array.from(tr.querySelectorAll('td')).map((td) => td.textContent?.trim())),
+    );
+    expect(cells).toEqual(MONTHLY_VALUES.map(([c, r]) => [String(c), String(r)]));
+    await expect(rows.last().locator('th')).toContainText('(en curso)');
+  });
+
+  test('CA-PP2-02: neto positivo del mes en lima; altas en curso con su antigüedad', async ({
+    page,
+  }) => {
+    await loginToPulse(page);
+    const { pulse } = blocks(page);
+    const active = pulse.getByRole('link', { name: 'Empresas activas' });
+    const delta = active.getByText('+3 este mes', { exact: true });
+    await expect(delta).toBeVisible();
+    await expect(delta).toHaveClass(/iwana-secondary/);
+    await expect(active).toContainText('5 altas · 2 bajas este mes');
+    await expect(pulse.getByRole('link', { name: 'Altas en curso' })).toContainText(
+      'La más antigua empezó',
+    );
+  });
+
+  test('CA-PP2-03: Equipo interno y Usuarios internos con los conteos de P3', async ({ page }) => {
+    await loginToPulse(page);
+    const { pulse, users } = blocks(page);
+    const team = pulse.getByRole('link', { name: 'Equipo interno' });
+    await expect(team).toContainText('9');
+    await expect(team).toContainText('2 sin verificación en dos pasos');
+    await expect(team.getByRole('progressbar')).toHaveAttribute('value', '78');
+    await expect(users.getByRole('definition')).toHaveText(['3', '6', '2', '1']);
+    await expect(users.getByRole('link', { name: 'Ver usuarios' })).toHaveAttribute(
+      'href',
+      '/platform-users',
+    );
+  });
+
+  test('CA-PP-06 / CA-PP2-04: actividad pedida sin sesión al servidor, máx. 5 y con <time>', async ({
+    page,
+  }) => {
+    const auditRequest = page.waitForRequest(
+      (req) => req.method() === 'GET' && req.url().includes('/platform-audit-logs'),
+    );
+    await loginToPulse(page);
+    const params = new URL((await auditRequest).url()).searchParams;
+    expect(params.get('excludeSessionEvents')).toBe('true');
+    expect(params.get('limit')).toBe('5');
     const { activity } = blocks(page);
     const items = activity.getByRole('listitem');
     await expect(items).toHaveCount(5);
@@ -221,7 +293,7 @@ test.describe('Centro de control — pulso de plataforma (datos completos)', () 
     }
   });
 
-  test('CA-PP-07: lima solo en la barra del ítem activo; sin degradado azul→lima', async ({
+  test('CA-PP-07 (Fase 2): lima solo en el delta positivo y en la barra de dos pasos', async ({
     page,
   }) => {
     await loginToPulse(page);
@@ -230,7 +302,9 @@ test.describe('Centro de control — pulso de plataforma (datos completos)', () 
       const found: string[] = [];
       for (const el of Array.from(main.querySelectorAll<HTMLElement>('*'))) {
         const cls = typeof el.className === 'string' ? el.className : '';
-        if (/iwana-secondary|(^|\s|-)lime(\s|-|$)/.test(cls)) found.push(cls);
+        const allowed =
+          el.tagName === 'PROGRESS' || /^\+\d+ este mes$/.test(el.textContent?.trim() ?? '');
+        if (/iwana-secondary|(^|\s|-)lime(\s|-|$)/.test(cls) && !allowed) found.push(cls);
         const bg = getComputedStyle(el).backgroundImage;
         if (/gradient/.test(bg)) found.push(`gradient:${cls}`);
       }
@@ -310,7 +384,7 @@ test.describe('Centro de control — durante la carga (CA-PP-04)', () => {
     setupWebApiMocks({
       tenants: TENANTS,
       tenantSummary: SUMMARY,
-      delaySourcesMs: { summary: 4_000, health: 4_000, tenants: 4_000, audit: 4_000 },
+      delaySourcesMs: { summary: 4_000, health: 4_000, tenants: 4_000, audit: 4_000, users: 4_000 },
       onUnhandledApiRoute: '404',
     }),
   );
@@ -324,6 +398,107 @@ test.describe('Centro de control — durante la carga (CA-PP-04)', () => {
     await expect(queue).toHaveAttribute('aria-busy', 'true');
     await expect(queue.getByRole('listitem')).toHaveCount(0);
     await expect(queue.getByText('Todo al día')).toHaveCount(0);
+  });
+});
+
+test.describe('Centro de control — neto negativo del mes (CA-PP2-02)', () => {
+  test.beforeEach(
+    setupWebApiMocks({
+      tenants: TENANTS,
+      tenantSummary: buildTenantSummaryMock(TENANTS, {
+        monthly: buildMonthlyMock([...MONTHLY_VALUES.slice(0, 11), [1, 3]]),
+      }),
+      onUnhandledApiRoute: '404',
+    }),
+  );
+
+  test('el delta negativo no usa lima', async ({ page }) => {
+    await loginToPulse(page);
+    const delta = blocks(page)
+      .pulse.getByRole('link', { name: 'Empresas activas' })
+      .getByText('-2 este mes', { exact: true });
+    await expect(delta).toBeVisible();
+    await expect(delta).not.toHaveClass(/iwana-secondary|lime/);
+  });
+});
+
+test.describe('Centro de control — tendencia sin eventos (CA-PP2-01)', () => {
+  test.beforeEach(
+    setupWebApiMocks({
+      tenants: TENANTS,
+      tenantSummary: buildTenantSummaryMock(TENANTS, { monthly: buildMonthlyMock() }),
+      onUnhandledApiRoute: '404',
+    }),
+  );
+
+  test('12 meses en 0: estado vacío, sin serie de muestra ni delta', async ({ page }) => {
+    await loginToPulse(page);
+    const { trend, pulse } = blocks(page);
+    await expect(trend.getByText('Sin altas ni bajas en los últimos 12 meses')).toBeVisible();
+    await expect(trend.locator('.recharts-wrapper, table')).toHaveCount(0);
+    await expect(
+      pulse.getByRole('link', { name: 'Empresas activas' }).getByText(/^[+-]\d+ este mes$/),
+    ).toHaveCount(0);
+  });
+});
+
+test.describe('Centro de control — P1 en error (CA-PP2-01)', () => {
+  test.beforeEach(
+    setupWebApiMocks({ tenants: TENANTS, failSources: ['summary'], onUnhandledApiRoute: '404' }),
+  );
+
+  test('la tendencia muestra su error con Reintentar y no pinta serie', async ({ page }) => {
+    await loginToPulse(page);
+    const { trend } = blocks(page);
+    await expect(trend.getByText('No pudimos cargar la tendencia.')).toBeVisible();
+    await expect(trend.getByRole('button', { name: 'Reintentar' })).toBeVisible();
+    await expect(trend.locator('.recharts-wrapper, table')).toHaveCount(0);
+  });
+});
+
+test.describe('Centro de control — P3 en error (CA-PP2-03)', () => {
+  test.beforeEach(
+    setupWebApiMocks({
+      tenants: TENANTS,
+      tenantSummary: SUMMARY,
+      platformAuditData: AUDIT,
+      failSources: ['users'],
+      onUnhandledApiRoute: '404',
+    }),
+  );
+
+  test('degradan solo Equipo interno y Usuarios internos; el resto conserva su dato', async ({
+    page,
+  }) => {
+    await loginToPulse(page);
+    const { pulse, users, trend, activity } = blocks(page);
+    await expect(pulse.getByText('No disponible', { exact: true })).toHaveCount(1);
+    await expect(pulse).not.toContainText('sin verificación en dos pasos');
+    await expect(pulse.getByRole('link', { name: 'Empresas activas' })).toContainText('247');
+    await expect(users.getByText('No pudimos cargar el equipo interno.')).toBeVisible();
+    await expect(users.getByRole('button', { name: 'Reintentar' })).toBeVisible();
+    await expect(users.getByRole('definition')).toHaveCount(0);
+    await expect(trend.locator('.recharts-wrapper')).toHaveCount(1);
+    await expect(activity.getByRole('listitem')).toHaveCount(5);
+  });
+});
+
+test.describe('Centro de control — el cliente no filtra la actividad (CA-PP2-04)', () => {
+  test.beforeEach(
+    setupWebApiMocks({ tenants: TENANTS, tenantSummary: SUMMARY, onUnhandledApiRoute: '404' }),
+  );
+
+  test('pinta lo que entrega el servidor aunque incluya un evento de sesión', async ({ page }) => {
+    // Servidor que ignora el filtro: si el cliente filtrara en local, quedarían 4.
+    await page.route('**/api/v1/platform-audit-logs**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: AUDIT.slice(0, 5), nextCursor: null, total: 5 }),
+      }),
+    );
+    await loginToPulse(page);
+    await expect(blocks(page).activity.getByRole('listitem')).toHaveCount(5);
   });
 });
 

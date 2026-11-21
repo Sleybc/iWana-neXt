@@ -288,6 +288,24 @@ describe('PlatformAuditService', () => {
       expect(qbMock.take).toHaveBeenCalledWith(51);
     });
 
+    it('excludeSessionEvents=true filtra AUDIT_SESSION_ACTIONS en datos y total', async () => {
+      await service.query({ limit: 5, excludeSessionEvents: true });
+      const calls = qbMock['andWhere']!.mock.calls.filter(
+        ([sql]) => sql === 'audit.action NOT IN (:...sessionActions)',
+      );
+      expect(calls).toHaveLength(2);
+      for (const [, params] of calls) {
+        expect(params).toEqual({ sessionActions: ['LOGIN', 'LOGOUT', 'LOGIN_FAILED', 'REFRESH'] });
+      }
+    });
+
+    it('sin excludeSessionEvents no filtra acciones de sesión', async () => {
+      await service.query({ limit: 5 });
+      expect(
+        qbMock['andWhere']!.mock.calls.some(([sql]) => String(sql).includes('sessionActions')),
+      ).toBe(false);
+    });
+
     it('retorna nextCursor cuando hay mas resultados que el limite', async () => {
       getManyMock.mockResolvedValue([
         mockEntry,
@@ -362,6 +380,34 @@ describe('PlatformAuditService', () => {
         expect.objectContaining({
           toDate: expect.any(Date),
         }),
+      );
+    });
+  });
+
+  describe('countEntityLifecycleByMonth', () => {
+    it('una consulta parametrizada; baja distinta por entidad; numérico', async () => {
+      const dataSource = service['dataSource'] as unknown as { query: jest.Mock };
+      dataSource.query = jest
+        .fn()
+        .mockResolvedValue([{ month: '2026-11', created: '2', removed: '1' }]);
+      const asOf = new Date('2026-11-21T12:00:00.000Z');
+
+      const result = await service.countEntityLifecycleByMonth('Tenant', asOf);
+
+      expect(result).toEqual([{ month: '2026-11', created: 2, removed: 1 }]);
+      expect(dataSource.query).toHaveBeenCalledTimes(1);
+      const [sql, params] = dataSource.query.mock.calls[0] as [string, unknown[]];
+      expect(params).toEqual(['Tenant', asOf.toISOString()]);
+      expect(sql).toMatch(/COUNT\(DISTINCT l\.entity_id\) FILTER \(WHERE l\.action = 'DELETE'\)/);
+      expect(sql).toMatch(/America\/Bogota/);
+      expect(sql).toMatch(/interval '11 months'/);
+    });
+
+    it('propaga el error de la base (no es fire-and-forget)', async () => {
+      const dataSource = service['dataSource'] as unknown as { query: jest.Mock };
+      dataSource.query = jest.fn().mockRejectedValue(new Error('connection lost'));
+      await expect(service.countEntityLifecycleByMonth('Tenant')).rejects.toThrow(
+        'connection lost',
       );
     });
   });

@@ -10,6 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { PlatformUser } from '@iwana/db';
 import { AuditAction, PlatformRole, UserStatus } from '@iwana/shared';
+import type { PlatformUsersSummary } from '@iwana/shared';
 import { Repository } from 'typeorm';
 import { PLATFORM_USER_ENTITY_TYPE } from '../audit/audit.constants';
 import { AuditRequestContext } from '../audit/interfaces/audit-request-context.interface';
@@ -57,6 +58,47 @@ export class PlatformUsersService {
     this.encryptionKey = keys.activeKey;
     this.encryptionKeyPrevious = keys.previousKey;
     this.piiHashKey = resolvePiiHashKey(this.configService);
+  }
+
+  /**
+   * Resumen de usuarios internos (`PlatformUsersSummary` v1.0). Una sola consulta
+   * agregada sobre `public.platform_users`, sin borrados lógicos y sin PII.
+   * La ventana de 30 días se ancla a `generatedAt` (parámetro), no a `now()` de la base.
+   */
+  async getSummary(): Promise<PlatformUsersSummary> {
+    const generatedAt = new Date();
+    const threshold = new Date(generatedAt.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const rows: Array<{
+      role: string;
+      count: string;
+      without_mfa: string;
+      without_access: string;
+    }> = await this.platformUserRepo.query(
+      `SELECT role,
+              COUNT(*) AS count,
+              COUNT(*) FILTER (WHERE mfa_enabled = false) AS without_mfa,
+              COUNT(*) FILTER (WHERE last_login_at IS NULL OR last_login_at < $1) AS without_access
+         FROM public.platform_users
+        WHERE deleted_at IS NULL
+        GROUP BY role`,
+      [threshold.toISOString()],
+    );
+
+    const byRole = Object.fromEntries(
+      Object.values(PlatformRole).map((role) => [role, 0]),
+    ) as Record<PlatformRole, number>;
+    let total = 0;
+    let withoutMfa = 0;
+    let withoutAccess30d = 0;
+    for (const row of rows) {
+      const count = Number(row.count);
+      total += count;
+      withoutMfa += Number(row.without_mfa);
+      withoutAccess30d += Number(row.without_access);
+      if (row.role in byRole) byRole[row.role as PlatformRole] = count;
+    }
+
+    return { total, byRole, withoutMfa, withoutAccess30d, generatedAt: generatedAt.toISOString() };
   }
 
   async getProfile(userId: string): Promise<PlatformUserResponseDto> {

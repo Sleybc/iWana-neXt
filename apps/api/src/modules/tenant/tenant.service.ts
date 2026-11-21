@@ -22,6 +22,7 @@ import {
 import type { TenantStatusSummary } from '@iwana/shared';
 import { clampPage } from '../../common/pagination/clamp-page';
 import { AuditService } from '../audit/audit.service';
+import { PlatformAuditService } from '../audit/platform-audit.service';
 import { MediaService } from '../media/media.service';
 import { SearchQueueService } from '../search/search-queue.service';
 import type { MediaAssetResponseDto } from '../media/dto/media-asset-response.dto';
@@ -67,6 +68,23 @@ import {
 } from './tenant-status-transitions';
 
 const TENANT_CACHE_TTL_SECONDS = 5 * 60;
+
+/** Zona del mes calendario del resumen de plataforma (contrato v1.1). */
+const SUMMARY_TIME_ZONE = 'America/Bogota';
+/** `entity_type` de las altas y bajas de empresa en `public.platform_audit_logs`. */
+const TENANT_AUDIT_ENTITY_TYPE = 'Tenant';
+
+/** `YYYY-MM` del mes en curso en {@link SUMMARY_TIME_ZONE}. */
+function currentBogotaMonth(now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SUMMARY_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(now);
+  const year = parts.find((p) => p.type === 'year')?.value ?? '0000';
+  const month = parts.find((p) => p.type === 'month')?.value ?? '01';
+  return `${year}-${month}`;
+}
 
 type BrandingUrlKey =
   | 'logoLightUrl'
@@ -200,6 +218,7 @@ export class TenantService {
     private readonly auditService: AuditService,
     private readonly mediaService: MediaService,
     private readonly searchQueueService: SearchQueueService,
+    private readonly platformAuditService: PlatformAuditService,
   ) {}
 
   /**
@@ -277,14 +296,21 @@ export class TenantService {
    * (`TenantStatusSummary` v1.0). Dos consultas fijas, sin N+1.
    */
   async getStatusSummary(): Promise<TenantStatusSummary> {
-    const countRows: Array<{ status: string; count: string; recent: string }> =
-      await this.dataSource.query(
-        `SELECT status,
+    const generatedAt = new Date();
+    const countRows: Array<{
+      status: string;
+      count: string;
+      recent: string;
+      oldest_created_at?: Date | string | null;
+    }> = await this.dataSource.query(
+      `SELECT status,
                 COUNT(*) AS count,
-                COUNT(*) FILTER (WHERE updated_at >= now() - interval '7 days') AS recent
+                COUNT(*) FILTER (WHERE updated_at >= $1::timestamptz - interval '7 days') AS recent,
+                MIN(created_at) AS oldest_created_at
            FROM public.tenants
           GROUP BY status`,
-      );
+      [generatedAt.toISOString()],
+    );
     const attentionRows: Array<{
       id: string;
       name: string;
@@ -304,13 +330,22 @@ export class TenantService {
           LIMIT 5`,
       [[...TENANT_ATTENTION_STATUSES]],
     );
+    // v1.1: altas y bajas por mes (America/Bogota), propiedad del módulo audit.
+    const monthly = await this.platformAuditService.countEntityLifecycleByMonth(
+      TENANT_AUDIT_ENTITY_TYPE,
+      generatedAt,
+    );
 
     const byStatus = Object.fromEntries(
       Object.values(TenantStatus).map((status) => [status, 0]),
     ) as Record<TenantStatus, number>;
     let total = 0;
     let updatedLast7Days = 0;
+    let oldestProvisioningAt: string | null = null;
     for (const row of countRows) {
+      if (row.status === TenantStatus.PROVISIONING && row.oldest_created_at) {
+        oldestProvisioningAt = new Date(row.oldest_created_at).toISOString();
+      }
       const count = Number(row.count);
       total += count;
       updatedLast7Days += Number(row.recent);
@@ -328,6 +363,13 @@ export class TenantService {
         updatedAt: new Date(row.updated_at).toISOString(),
       })),
       generatedAt: new Date().toISOString(),
+      period: monthly[monthly.length - 1] ?? {
+        month: currentBogotaMonth(),
+        created: 0,
+        removed: 0,
+      },
+      monthly,
+      oldestProvisioningAt,
     };
   }
 
