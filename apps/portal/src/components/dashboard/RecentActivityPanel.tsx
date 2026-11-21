@@ -2,6 +2,7 @@
 
 import { Clock } from 'lucide-react';
 import Link from 'next/link';
+import { formatRelativeTime } from '@iwana/shared';
 import { Button } from '@iwana/ui';
 import type { AuditLogEntry } from '@/lib/api-client';
 import { auditFeedSummary } from '@/lib/audit-vocabulary';
@@ -35,19 +36,6 @@ export interface RecentActivityPanelProps {
    * Mismo panel/shell; solo cambia el vacío y la ausencia de destinos amplios.
    */
   minimized?: boolean;
-}
-
-function formatRelativeTime(isoDate: string): string {
-  const date = new Date(isoDate);
-  if (Number.isNaN(date.getTime())) return 'reciente';
-
-  const diffMs = Date.now() - date.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) return 'hace un momento';
-  if (diffMin < 60) return `hace ${diffMin} min`;
-  const diffHours = Math.floor(diffMin / 60);
-  if (diffHours < 24) return `hace ${diffHours}h`;
-  return `hace ${Math.floor(diffHours / 24)}d`;
 }
 
 function renderRelativeTime(isoDate: string) {

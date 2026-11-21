@@ -127,10 +127,10 @@ describe('RecentActivityPanel', () => {
       />,
     );
 
-    expect(screen.getByText('reciente')).toBeInTheDocument();
-    expect(screen.getByText('hace 30 min')).toBeInTheDocument();
-    expect(screen.getByText('hace 2h')).toBeInTheDocument();
-    expect(screen.getByText('hace 2d')).toBeInTheDocument();
+    expect(screen.getByText('Reciente')).toBeInTheDocument();
+    expect(screen.getByText('hace 30 minutos')).toBeInTheDocument();
+    expect(screen.getByText('hace 2 horas')).toBeInTheDocument();
+    expect(screen.getByText('anteayer')).toBeInTheDocument();
     expect(screen.getAllByText('Ana Operaciones')).toHaveLength(3);
 
     const times = screen.getAllByRole('time');

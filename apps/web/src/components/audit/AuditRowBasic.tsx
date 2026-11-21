@@ -11,7 +11,7 @@ import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 import { pickKeyChange } from './helpers/pickKeyChange';
 import { deriveSeverity, severityClasses, severityLabel } from './helpers/deriveSeverity';
 import { computeDiff, renderValue, formatFieldName } from './helpers/computeDiff';
-import { timeAgo } from './helpers/timeAgo';
+import { formatRelativeTime } from '@iwana/shared';
 import { AuditExpandedDetails } from './AuditExpandedDetails';
 
 export interface AuditBasicEntry {
@@ -42,6 +42,17 @@ interface AuditRowBasicProps {
   onToggle: () => void;
   companyName?: string | undefined;
   showTechnicalMeta?: boolean;
+}
+
+const AUDIT_RELATIVE_LIMIT_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Tope del log de auditoría: más de 30 días muestra la fecha corta (`d MMM`, es-CO). */
+function formatAuditTime(createdAt: string, now: number = Date.now()): string {
+  const time = new Date(createdAt).getTime();
+  if (!Number.isNaN(time) && now - time > AUDIT_RELATIVE_LIMIT_MS) {
+    return new Date(createdAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
+  }
+  return formatRelativeTime(createdAt);
 }
 
 function actionBadgeClass(action: string): string {
@@ -107,7 +118,7 @@ export function AuditRowBasic({
                   title={new Date(entry.createdAt).toLocaleString('es-CO')}
                   className="font-mono tabular-nums text-gray-500 dark:text-gray-400"
                 >
-                  {timeAgo(entry.createdAt)}
+                  {formatAuditTime(entry.createdAt)}
                 </time>
 
                 {companyName ? (

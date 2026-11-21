@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, BellRing } from 'lucide-react';
+import { formatRelativeTime } from '@iwana/shared';
 import { cn, headerIconControlClassName } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 import {
@@ -42,29 +43,9 @@ function toneForAction(action: string): NotificationTone {
   return 'info';
 }
 
-function formatRelativeDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return 'reciente';
-  }
-
-  const diffMs = Date.now() - date.getTime();
-  const diffMinutes = Math.max(1, Math.floor(diffMs / (1000 * 60)));
-  if (diffMinutes < 60) {
-    return `${diffMinutes}m`;
-  }
-
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) {
-    return `${diffHours}h`;
-  }
-
-  return `${Math.floor(diffHours / 24)}d`;
-}
-
 function renderBellTime(value: string) {
   const date = new Date(value);
-  const label = formatRelativeDate(value);
+  const label = formatRelativeTime(value);
   if (Number.isNaN(date.getTime())) {
     return label;
   }
