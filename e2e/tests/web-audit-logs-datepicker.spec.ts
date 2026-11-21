@@ -93,7 +93,9 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
     ).toBeVisible();
 
     const platformSection = page.locator('section[aria-labelledby="platform-audit-heading"]');
-    await expect(platformSection.getByText('Administrador plataforma')).toBeVisible();
+    await expect(
+      platformSection.getByText('Administrador plataforma', { exact: true }),
+    ).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -109,7 +111,9 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-from',
       buildDateInput(-3),
     );
-    await expect(platformSection.getByText('Administrador plataforma')).toBeVisible();
+    await expect(
+      platformSection.getByText('Administrador plataforma', { exact: true }),
+    ).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -125,7 +129,9 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-to',
       buildDateInput(1),
     );
-    await expect(platformSection.getByText('Administrador plataforma')).toBeVisible();
+    await expect(
+      platformSection.getByText('Administrador plataforma', { exact: true }),
+    ).toBeVisible();
   });
 
   test('filtra y restablece la tabla Por empresa usando Fecha desde y Fecha hasta', async ({
@@ -141,7 +147,7 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
     await page.getByRole('tab', { name: 'Cambios por empresa' }).click();
 
     const tenantSection = page.locator('section[aria-labelledby="tenant-audit-heading"]');
-    await expect(tenantSection.getByText('Operador demo')).toBeVisible();
+    await expect(tenantSection.getByText('Operador demo', { exact: true })).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -157,7 +163,7 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-from',
       buildDateInput(-3),
     );
-    await expect(tenantSection.getByText('Operador demo')).toBeVisible();
+    await expect(tenantSection.getByText('Operador demo', { exact: true })).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -173,7 +179,7 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-to',
       buildDateInput(1),
     );
-    await expect(tenantSection.getByText('Operador demo')).toBeVisible();
+    await expect(tenantSection.getByText('Operador demo', { exact: true })).toBeVisible();
   });
 
   test('cambia de empresa y mantiene filtros DatePicker funcionales en la tabla tenant', async ({
@@ -189,13 +195,13 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
     await page.getByRole('tab', { name: 'Cambios por empresa' }).click();
 
     const tenantSection = page.locator('section[aria-labelledby="tenant-audit-heading"]');
-    await expect(tenantSection.getByText('Operador demo')).toBeVisible();
+    await expect(tenantSection.getByText('Operador demo', { exact: true })).toBeVisible();
 
     await tenantSection.getByRole('button', { name: 'Seleccionar empresa' }).click();
     await page.getByRole('option', { name: 'Fibernet Colombia' }).click();
 
-    await expect(tenantSection.getByText('Operador fibernet')).toBeVisible();
-    await expect(tenantSection.getByText('Operador demo')).toHaveCount(0);
+    await expect(tenantSection.getByText('Operador fibernet', { exact: true })).toBeVisible();
+    await expect(tenantSection.getByText('Operador demo', { exact: true })).toHaveCount(0);
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -211,6 +217,6 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-from',
       buildDateInput(-10),
     );
-    await expect(tenantSection.getByText('Operador fibernet')).toBeVisible();
+    await expect(tenantSection.getByText('Operador fibernet', { exact: true })).toBeVisible();
   });
 });

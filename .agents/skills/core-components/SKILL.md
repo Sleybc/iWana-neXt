@@ -42,6 +42,8 @@ description: "API e inventario real de @iwana/ui y criterios para nuevas primiti
 | `Select.tsx` | `Select` |
 | `ShellSearchSheet.tsx` | `ShellSearchSheet` |
 | `StackedBar.tsx` | `StackedBar` (tipos `StackedBarSegment` con `emphasis` opcional, `StackedBarProps`; mismo contrato §5.4–§5.5) |
+| `PulseStrip.tsx` | `PulseStrip` (tipos `PulseCellData`, `PulseDeltaTone`, `PulseStripProps`; contrato de consolidación v1.3 §7bis.2; `linkComponent` lo pasa la app) |
+| `AttentionQueue.tsx` | `AttentionQueue` (tipos `AttentionRow`, `AttentionSeverity`, `AttentionQueueProps`; mismo contrato §7bis.3) |
 | `Tabs.tsx` | `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent`, `tabsTriggerVariants` |
 | `Tone.ts` | `toneSurfaceVariants`, `toneTextVariants`, `toneFillVariants` (con `emphasis`, v1.1 §5.5), `toneMutedTextVariants` (v1.1 §2.1), tipos `Tone` y `FillEmphasis` (mismo contrato §2) |
 | `ThemeProvider.tsx` | `ThemeProvider`, `useTheme` |

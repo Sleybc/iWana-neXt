@@ -40,6 +40,8 @@ export * from './components/MetricCard';
 export * from './components/ErrorState';
 export * from './components/EmptyState';
 export * from './components/StackedBar';
+export * from './components/PulseStrip';
+export * from './components/AttentionQueue';
 export * from './components/Badge';
 export * from './components/Alert';
 export * from './components/Avatar';

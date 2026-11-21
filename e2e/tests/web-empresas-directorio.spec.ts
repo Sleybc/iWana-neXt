@@ -53,7 +53,10 @@ const DIRECTORIO_TENANTS = [
 
 async function openEmpresasDirectory(page: Page) {
   await loginToDashboard(page);
-  await page.getByRole('link', { name: 'Ver empresas en configuración' }).click();
+  await page
+    .getByRole('region', { name: 'Pulso de plataforma' })
+    .getByRole('link', { name: 'Altas en curso' })
+    .click();
   await expect(page).toHaveURL(/\/tenants\?status=PROVISIONING/);
   await expect(page.getByRole('heading', { name: 'Empresas', exact: true })).toBeVisible();
   await expect(page.getByText('Cargando el directorio')).toHaveCount(0);

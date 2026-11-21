@@ -1706,7 +1706,7 @@ test.describe('Fase 2 · Dinero por rol (CA-PA-03, CA-PA-04, CA-PA-08)', () => {
     expect(
       await page
         .getByRole('heading', { name: 'Requiere tu atención' })
-        .locator('xpath=ancestor::section[1]')
+        .locator('xpath=ancestor::*[contains(@class,"rounded-2xl")][1]')
         .innerText(),
     ).not.toMatch(MONEY_TEXT);
   });
@@ -1830,7 +1830,7 @@ test.describe('Fase 2 · Primer viewport (CA-PA-01, CA-PA-02)', () => {
       'B2 Tendencia': await trend.evaluate((el) => el.getBoundingClientRect().bottom),
       'B2 Atención': await page
         .getByRole('heading', { name: 'Requiere tu atención', exact: true })
-        .evaluate((el) => (el.closest('section') ?? el).getBoundingClientRect().bottom),
+        .evaluate((el) => (el.closest('.rounded-2xl') ?? el).getBoundingClientRect().bottom),
     };
     // Evidencia de la medida (borde inferior en px) para el informe de cierre.
     console.log('[CA-PA-01:1440x900]', JSON.stringify(bottoms));

@@ -60,7 +60,7 @@ export function RecentActivityPanel({
               <span
                 className={cn(
                   'absolute -left-5.25 top-1.5 h-2 w-2 rounded-full',
-                  index === 0 ? 'bg-iwana-secondary' : 'bg-iwana-primary/20',
+                  index === 0 ? 'bg-iwana-primary' : 'bg-iwana-primary/20',
                 )}
                 aria-hidden="true"
               />

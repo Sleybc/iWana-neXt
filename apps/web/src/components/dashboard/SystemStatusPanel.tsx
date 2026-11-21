@@ -39,6 +39,10 @@ interface SystemStatusPanelProps {
   emptyMessage: string;
   statusLabels: Record<StatusLevel, string>;
   className?: string;
+  /** `compact`: indicadores en filas de una columna (contrato DS v1.3 §7bis.4); E1–E6 intactas. */
+  density?: 'default' | 'compact';
+  /** Ancla para enlazar el panel (p. ej. desde la cola de atención). */
+  id?: string;
 }
 
 const LEVEL_TONE: Record<StatusLevel, Tone> = {
@@ -84,7 +88,14 @@ export function SystemStatusPanel({
   emptyMessage,
   statusLabels,
   className,
+  density = 'default',
+  id,
 }: SystemStatusPanelProps) {
+  const compact = density === 'compact';
+  const Indicator = compact ? IndicatorRow : IndicatorTile;
+  const groupClassName = compact
+    ? 'mt-3 flex flex-col gap-2'
+    : 'mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2';
   // Precedencia v1.2 (§4.1 E5): carga > por grupo (servicio: error ? ErrorState : indicadores;
   // negocio: indicadores) > vacío, solo si no hay indicadores ni error.
   const service = indicators.filter((ind) => (ind.kind ?? 'service') === 'service');
@@ -92,17 +103,20 @@ export function SystemStatusPanel({
   let body: ReactNode;
   if (isLoading) {
     body = (
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2" aria-busy="true">
+      <div className={groupClassName} aria-busy="true">
         {Array.from({ length: 4 }).map((_, idx) => (
-          <SkeletonBlock key={`status-skeleton-${idx}`} className="h-20 w-full" />
+          <SkeletonBlock
+            key={`status-skeleton-${idx}`}
+            className={compact ? 'h-5 w-full rounded' : 'h-20 w-full'}
+          />
         ))}
       </div>
     );
   } else if (!error && indicators.length === 0) {
-    body = <EmptyState className="mt-4" message={emptyMessage} />;
+    body = <EmptyState className={compact ? 'mt-3' : 'mt-4'} message={emptyMessage} />;
   } else {
     body = (
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className={groupClassName}>
         {error ? (
           <ErrorState
             className="col-span-full"
@@ -112,18 +126,30 @@ export function SystemStatusPanel({
           />
         ) : (
           service.map((ind) => (
-            <IndicatorTile key={ind.label} indicator={ind} statusLabels={statusLabels} />
+            <Indicator key={ind.label} indicator={ind} statusLabels={statusLabels} />
           ))
         )}
         {business.map((ind) => (
-          <IndicatorTile key={ind.label} indicator={ind} statusLabels={statusLabels} />
+          <Indicator key={ind.label} indicator={ind} statusLabels={statusLabels} />
         ))}
       </div>
     );
   }
 
+  if (compact) {
+    return (
+      <Card id={id} className={cn('p-4', className)}>
+        <h2 className="text-base font-semibold text-gray-900 dark:text-white">{title}</h2>
+        <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+          {COPY.healthLastCheckedInline(formatLastChecked(lastCheckedAt))}
+        </p>
+        {body}
+      </Card>
+    );
+  }
+
   return (
-    <Card className={cn('p-5', className)}>
+    <Card id={id} className={cn('p-5', className)}>
       <div className="border-b border-gray-100 pb-4 dark:border-dark-border">
         <p className="portal-eyebrow">{eyebrow}</p>
         <div className="mt-1 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -171,6 +197,28 @@ function IndicatorTile({
           {indicator.detail}
         </p>
       )}
+    </div>
+  );
+}
+
+function IndicatorRow({
+  indicator,
+  statusLabels,
+}: {
+  indicator: StatusIndicator;
+  statusLabels: Record<StatusLevel, string>;
+}) {
+  const tone = LEVEL_TONE[indicator.status];
+  return (
+    <div data-tone={tone} className="flex items-center gap-2 text-sm">
+      <span
+        className={cn('h-2.5 w-2.5 shrink-0 rounded-full', toneFillVariants({ tone }))}
+        aria-hidden="true"
+      />
+      <span className="min-w-0 flex-1 text-gray-700 dark:text-gray-200">{indicator.label}</span>
+      <span className={cn('text-xs font-medium', toneTextVariants({ tone }))}>
+        {statusLabels[indicator.status]}
+      </span>
     </div>
   );
 }

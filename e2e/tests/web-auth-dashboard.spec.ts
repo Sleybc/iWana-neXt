@@ -11,12 +11,14 @@ import {
 /** Q-1: WCAG 2.2 AA completo (CA-4). */
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'];
 
-const SIGNAL_CHIP_LABELS = [
-  'Activas',
-  'En configuración',
+/** Celdas del pulso (CA-PP: sustituye a los chips de la portada de señal). */
+const PULSE_CELL_LABELS = [
+  'Empresas activas',
+  'Altas en curso',
   'Requieren atención',
-  'Cambios esta semana',
+  'Salud de plataforma',
 ] as const;
+const PULSE_REGION = 'Pulso de plataforma';
 
 async function expectNoAxeViolations(page: Page) {
   const result = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
@@ -44,23 +46,19 @@ test.describe('Web auth + dashboard flows', () => {
     await expect(page.getByRole('heading', { name: 'Centro de control' })).toBeVisible();
     await page.waitForLoadState('networkidle');
 
-    const signal = page.getByRole('region', { name: 'Resumen operativo' });
+    const signal = page.getByRole('region', { name: PULSE_REGION });
     await expect(signal).toBeVisible();
-    for (const label of SIGNAL_CHIP_LABELS) {
+    for (const label of PULSE_CELL_LABELS) {
       await expect(signal.getByText(label, { exact: true })).toBeVisible();
     }
-    await expect(
-      signal.getByText(/^(Activas|En configuración|Requieren atención|Cambios esta semana)$/),
-    ).toHaveCount(4);
 
-    await expect(page.getByRole('cell')).toHaveCount(0);
     await expect(page.getByText('Directorio de empresas')).toHaveCount(0);
     await expect(page.getByLabel('Buscar empresa')).toHaveCount(0);
     await expect(
       page.getByPlaceholder('Buscar por empresa, contacto o identificador...'),
     ).toHaveCount(0);
 
-    await page.getByRole('link', { name: 'Ver todas las empresas' }).click();
+    await page.getByRole('link', { name: 'Ver empresas', exact: true }).click();
     await expect(page).toHaveURL(/\/tenants/);
     await expect(page.getByRole('heading', { name: 'Empresas', exact: true })).toBeVisible();
 
@@ -94,7 +92,7 @@ test.describe('Web auth + dashboard flows', () => {
         await page.emulateMedia({ colorScheme: theme });
 
         await loginToDashboard(page);
-        await expect(page.getByRole('region', { name: 'Resumen operativo' })).toBeVisible();
+        await expect(page.getByRole('region', { name: PULSE_REGION })).toBeVisible();
         await page.waitForLoadState('networkidle');
         if (theme === 'dark') {
           await expect(page.locator('html')).toHaveClass(/(^|\s)dark(\s|$)/);
@@ -130,7 +128,7 @@ test.describe('Web dashboard — cifras del resumen por estado (E-1)', () => {
     }),
   );
 
-  test('con 233 empresas los chips muestran el resumen y no el tope de 100 de la lista', async ({
+  test('con 233 empresas el pulso muestra el resumen y no el tope de 100 de la lista', async ({
     page,
   }) => {
     const listRequests: string[] = [];
@@ -142,22 +140,22 @@ test.describe('Web dashboard — cifras del resumen por estado (E-1)', () => {
     });
 
     await loginToDashboard(page);
-    const signal = page.getByRole('region', { name: 'Resumen operativo' });
+    const signal = page.getByRole('region', { name: PULSE_REGION });
     await expect(signal).toBeVisible();
     await page.waitForLoadState('networkidle');
 
     // Requieren atención = PROVISIONING_FAILED + SUSPENDED + MARKED_FOR_DELETION.
-    const expected: Record<(typeof SIGNAL_CHIP_LABELS)[number], string> = {
-      Activas: '190',
-      'En configuración': '12',
+    // «Cambios esta semana» sale de la pantalla por encargo (Fase 1, §Composición).
+    const expected = {
+      'Empresas activas': '190',
+      'Altas en curso': '12',
       'Requieren atención': '24',
-      'Cambios esta semana': '37',
-    };
-    for (const label of SIGNAL_CHIP_LABELS) {
-      const chip = signal.getByText(label, { exact: true }).locator('..');
-      await expect(chip).toContainText(expected[label]);
+    } as const;
+    for (const [label, value] of Object.entries(expected)) {
+      const cell = signal.locator(`[aria-label="${label}"]`);
+      await expect(cell).toContainText(value);
     }
-    await expect(page.getByText('233 empresas', { exact: true })).toBeVisible();
+    await expect(signal.getByText('De 233 empresas en el directorio')).toBeVisible();
     expect(listRequests).toEqual([]);
   });
 });

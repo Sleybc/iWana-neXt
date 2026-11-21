@@ -1,43 +1,56 @@
-// apps/portal/src/components/dashboard/DashboardPulse.tsx
 'use client';
 
-import Link from 'next/link';
-import type { ReactNode } from 'react';
-import { Badge, Button, cn } from '@iwana/ui';
-import { PortalSkeletonBlock, interactiveFocusClassName } from '@/components/shared/portal-ui';
-import { formatDashboardNumber } from './dashboard-visuals';
+import * as React from 'react';
+import { cn } from '../lib/utils';
+import { interactiveFocusClassName } from '../focus';
+import { SkeletonBlock } from '../skeleton';
+import { Badge } from './Badge';
+import { Button } from './Button';
+import type { Tone } from './Tone';
 
-export type DashboardPulseTone = 'progress' | 'neutral' | 'warning' | 'danger';
+/** `progress` (lima) es exclusivo de la señal del pulso; nunca entra en `Tone` (contrato DS §7bis.2, R7). */
+export type PulseDeltaTone = Tone | 'progress';
 
-export interface DashboardPulseCell {
+export interface PulseCellData {
   id: string;
   label: string;
-  /** `null` = la fuente no entregó el dato: se dice, no se pinta cero. */
+  /** `null` = la fuente no entregó el dato: se dice, nunca se pinta cero. */
   value: number | null;
-  /** Cómo se pinta la cifra (importes con moneda); por defecto, número entero. */
+  /** Por defecto, entero con `Intl` es-CO. */
   formatValue?: ((value: number) => string) | undefined;
-  /** Señal de la misma fuente; lima solo en `progress`. */
-  delta?: { label: string; tone: DashboardPulseTone } | undefined;
-  /** Frase que interpreta la cifra con datos de la misma fuente. */
+  delta?: { label: string; tone: PulseDeltaTone } | undefined;
   hint?: string | undefined;
-  /** Mini visual con datos reales; sin dato no se monta. */
-  visual?: ReactNode;
+  /** Solo con dato real (p. ej. `StackedBar`). */
+  visual?: React.ReactNode;
   state: 'idle' | 'loading' | 'error';
-  /** Aviso accesible mientras la fuente se refresca. */
-  updating?: boolean;
+  updating?: boolean | undefined;
   href?: string | null | undefined;
   onClick?: (() => void) | undefined;
   onRetry?: (() => void) | undefined;
 }
 
+export interface PulseStripProps {
+  cells: readonly PulseCellData[];
+  /** Toda la franja en esqueleto. */
+  loading?: boolean | undefined;
+  ariaLabel: string;
+  labels: { unavailable: string; noData: string; retry: string; updating: string };
+  /** El consumidor pasa `next/link`; por defecto `a`. */
+  linkComponent?: React.ElementType | undefined;
+  className?: string | undefined;
+}
+
 const deltaBadgeVariant = {
   progress: 'lime',
   neutral: 'neutral',
+  primary: 'primary',
+  success: 'success',
   warning: 'warning',
-  danger: 'error',
-} as const;
+  error: 'error',
+} as const satisfies Record<PulseDeltaTone, string>;
 
-const PULSE_COLUMNS: Record<number, string> = {
+// Clases literales por mapa: Tailwind no ve clases interpoladas.
+const pulseColumns: Record<number, string> = {
   1: 'xl:grid-cols-1',
   2: 'xl:grid-cols-2',
   3: 'xl:grid-cols-3',
@@ -45,44 +58,49 @@ const PULSE_COLUMNS: Record<number, string> = {
   5: 'xl:grid-cols-5',
 };
 
+const integerFormatter = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 });
+const formatInteger = (value: number) => integerFormatter.format(value);
+
 const cellClassName =
   'flex min-h-36 flex-col gap-1.5 bg-white px-5 py-4 text-left dark:bg-dark-surface-2';
 const interactiveCellClassName = cn(
   'transition-colors hover:bg-iwana-surface-soft focus-visible:ring-inset dark:hover:bg-dark-surface-3',
   interactiveFocusClassName,
 );
+const missingValueClassName = 'text-sm font-semibold text-gray-700 dark:text-gray-200';
 
 /**
- * B1 · Pulso del negocio: una sola superficie con hasta cinco celdas.
- * Anatomía de celda: rótulo → cifra rol title → señal → frase → mini visual.
- * Patrón de pantalla; candidato a primitive de `portal-ui` (regla de promoción).
+ * Pulso: una sola superficie dividida en hasta cinco celdas (contrato DS v1.3 §7bis.2).
+ * Precedencia: `loading` de franja > `state` de celda > `value === null` > cifra.
  */
-export function DashboardPulse({
+export function PulseStrip({
   cells,
   loading,
-}: {
-  cells: readonly DashboardPulseCell[];
-  loading: boolean;
-}) {
+  ariaLabel,
+  labels,
+  linkComponent: LinkComponent = 'a',
+  className,
+}: PulseStripProps) {
   if (cells.length === 0) return null;
 
   return (
     <section
-      aria-label="Indicadores núcleo"
+      aria-label={ariaLabel}
       aria-busy={loading || undefined}
       className={cn(
         // `gap-px` sobre fondo gris dibuja los divisores en cualquier retícula.
         'grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-gray-200 bg-gray-200 shadow-iwana-soft dark:border-dark-border dark:bg-dark-border sm:grid-cols-2',
-        PULSE_COLUMNS[Math.min(cells.length, 5)],
+        pulseColumns[Math.min(cells.length, 5)],
+        className,
       )}
     >
       {cells.map((cell) => {
         if (loading || cell.state === 'loading') {
           return (
             <div key={cell.id} className={cellClassName}>
-              <PortalSkeletonBlock className="h-3 w-28 rounded-md" />
-              <PortalSkeletonBlock className="h-9 w-20 rounded-lg" />
-              <PortalSkeletonBlock className="h-4 w-32 rounded-md" />
+              <SkeletonBlock className="h-3 w-28 rounded-md" />
+              <SkeletonBlock className="h-9 w-20 rounded-lg" />
+              <SkeletonBlock className="h-4 w-32 rounded-md" />
             </div>
           );
         }
@@ -90,19 +108,15 @@ export function DashboardPulse({
         const isError = cell.state === 'error';
         const body = (
           <>
-            {/* Dos líneas reservadas: un rótulo largo no desalinea las cifras de la franja. */}
+            {/* Dos líneas reservadas: un rótulo largo no desalinea las cifras. */}
             <span className="portal-eyebrow-muted flex min-h-8 items-start">{cell.label}</span>
             {isError ? (
-              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                No disponible
-              </span>
+              <span className={missingValueClassName}>{labels.unavailable}</span>
             ) : cell.value === null ? (
-              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Sin dato disponible
-              </span>
+              <span className={missingValueClassName}>{labels.noData}</span>
             ) : (
               <span className="text-4xl leading-none font-bold tabular-nums text-iwana-primary dark:text-white">
-                {(cell.formatValue ?? formatDashboardNumber)(cell.value)}
+                {(cell.formatValue ?? formatInteger)(cell.value)}
               </span>
             )}
             {!isError && cell.delta ? (
@@ -115,7 +129,7 @@ export function DashboardPulse({
             ) : null}
             {cell.updating ? (
               <span className="sr-only" aria-live="polite">
-                Actualizando
+                {labels.updating}
               </span>
             ) : null}
             {!isError && cell.visual ? (
@@ -131,7 +145,7 @@ export function DashboardPulse({
               {cell.onRetry ? (
                 <span>
                   <Button type="button" variant="ghost" size="sm" onClick={cell.onRetry}>
-                    Reintentar
+                    {labels.retry}
                   </Button>
                 </span>
               ) : null}
@@ -141,14 +155,14 @@ export function DashboardPulse({
 
         if (cell.href) {
           return (
-            <Link
+            <LinkComponent
               key={cell.id}
               href={cell.href}
               aria-label={cell.label}
               className={cn(cellClassName, interactiveCellClassName)}
             >
               {body}
-            </Link>
+            </LinkComponent>
           );
         }
 

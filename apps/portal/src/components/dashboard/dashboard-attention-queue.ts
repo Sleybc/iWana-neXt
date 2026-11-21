@@ -24,7 +24,7 @@ export interface DashboardAttentionRow {
   count: number;
 }
 
-export interface DashboardAttentionQueue {
+export interface DashboardAttentionQueueState {
   /** `loading` solo mientras ninguna fuente pedida ha respondido. */
   state: 'loading' | 'ready';
   rows: readonly DashboardAttentionRow[];
@@ -164,7 +164,9 @@ export interface DashboardAttentionInput {
   todayLocalDate: string;
 }
 
-export function resolveAttentionQueue(input: DashboardAttentionInput): DashboardAttentionQueue {
+export function resolveAttentionQueue(
+  input: DashboardAttentionInput,
+): DashboardAttentionQueueState {
   const allowed = new Set(input.allowedIds);
   const requestedSources = new Set<DashboardDataSourceId>(
     input.allowedIds.map((id) => DASHBOARD_ATTENTION_SOURCES[id]),

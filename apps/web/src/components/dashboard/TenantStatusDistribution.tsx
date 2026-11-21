@@ -36,6 +36,8 @@ interface TenantStatusDistributionProps {
   error?: string | null;
   onRetry?: () => void;
   titleRef?: Ref<HTMLHeadingElement>;
+  /** `compact`: barra y leyenda en una columna, sin frase ni baldosas (contrato DS v1.3 §7bis.4). */
+  density?: 'default' | 'compact';
 }
 
 const tileShellClassName = 'flex h-full min-h-24 flex-col rounded-2xl border p-3';
@@ -55,6 +57,7 @@ export function TenantStatusDistribution({
   error,
   onRetry,
   titleRef,
+  density = 'default',
 }: TenantStatusDistributionProps) {
   const total = segments.reduce((sum, segment) => sum + segment.count, 0);
   const countByKey = (key: TenantStatus) =>
@@ -72,6 +75,19 @@ export function TenantStatusDistribution({
   );
   const legendSegments = segments.filter((segment) => !segment.hiddenWhenZero || segment.count > 0);
   const showReading = !isLoading && !error && total > 0;
+
+  if (density === 'compact') {
+    return (
+      <CompactDistribution
+        segments={legendSegments}
+        total={total}
+        isLoading={isLoading}
+        error={error}
+        onRetry={onRetry}
+        titleRef={titleRef}
+      />
+    );
+  }
 
   return (
     <Card role="region" className="flex h-full flex-col p-5" aria-labelledby="empresas-por-estado">
@@ -130,22 +146,7 @@ export function TenantStatusDistribution({
           />
         </div>
       ) : total === 0 ? (
-        <EmptyState
-          className="mt-4 flex flex-1 flex-col justify-center"
-          message={
-            <>
-              {PLATFORM_UI_COPY.dashboard.statusEmpty}
-              <span className="mt-1 block text-gray-500 dark:text-gray-400">
-                {PLATFORM_UI_COPY.dashboard.statusEmptyHint}
-              </span>
-            </>
-          }
-          action={
-            <Button asChild variant="secondary" size="sm">
-              <Link href="/tenants/new">{PLATFORM_UI_COPY.dashboard.statusEmptyCta}</Link>
-            </Button>
-          }
-        />
+        <EmptyDirectory className="mt-4 flex flex-1 flex-col justify-center" />
       ) : (
         <>
           <ul className="mt-4 grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
@@ -218,6 +219,134 @@ export function TenantStatusDistribution({
               )}
             >
               {PLATFORM_UI_COPY.dashboard.statusFooter}
+            </Link>
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+function EmptyDirectory({ className }: { className?: string }) {
+  return (
+    <EmptyState
+      className={className}
+      message={
+        <>
+          {PLATFORM_UI_COPY.dashboard.statusEmpty}
+          <span className="mt-1 block text-gray-500 dark:text-gray-400">
+            {PLATFORM_UI_COPY.dashboard.statusEmptyHint}
+          </span>
+        </>
+      }
+      action={
+        <Button asChild variant="secondary" size="sm">
+          <Link href="/tenants/new">{PLATFORM_UI_COPY.dashboard.statusEmptyCta}</Link>
+        </Button>
+      }
+    />
+  );
+}
+
+function CompactDistribution({
+  segments,
+  total,
+  isLoading,
+  error,
+  onRetry,
+  titleRef,
+}: {
+  /** Ya sin los tramos `hiddenWhenZero` a 0 (§7bis.4). */
+  segments: StatusSegment[];
+  total: number;
+  isLoading: boolean;
+  error?: string | null | undefined;
+  onRetry?: (() => void) | undefined;
+  titleRef?: Ref<HTMLHeadingElement> | undefined;
+}) {
+  const COPY = PLATFORM_UI_COPY.dashboard;
+
+  return (
+    <Card role="region" className="flex h-full flex-col p-4" aria-labelledby="empresas-por-estado">
+      <h2
+        id="empresas-por-estado"
+        ref={titleRef}
+        tabIndex={-1}
+        className="text-base font-semibold text-iwana-primary outline-none dark:text-white"
+      >
+        {COPY.companiesTitle}
+      </h2>
+
+      {isLoading ? (
+        <div className="mt-3 space-y-2" aria-hidden="true">
+          <SkeletonBlock className="h-2 w-full rounded-full" />
+          {Array.from({ length: 4 }).map((_, index) => (
+            <SkeletonBlock
+              key={`status-compact-skeleton-${index}`}
+              className="h-4 w-full rounded"
+            />
+          ))}
+        </div>
+      ) : error ? (
+        <ErrorState className="mt-3" message={error} onRetry={onRetry} retryLabel={COPY.retry} />
+      ) : total === 0 ? (
+        <EmptyDirectory className="mt-3" />
+      ) : (
+        <>
+          <StackedBar
+            className="mt-3"
+            size="sm"
+            ariaLabel={COPY.statusTitle}
+            segments={segments.map((segment) => ({
+              key: segment.key,
+              label: segment.label,
+              value: segment.count,
+              tone: segment.tone,
+            }))}
+          />
+          <dl className="mt-3 space-y-1.5">
+            {segments.map((segment) => (
+              <div key={segment.key} className="flex items-center gap-2 text-sm">
+                <dt className="flex min-w-0 flex-1 items-center gap-2 text-gray-700 dark:text-gray-200">
+                  <span
+                    className={cn(
+                      'h-2.5 w-2.5 shrink-0 rounded-full',
+                      toneFillVariants({ tone: segment.tone }),
+                    )}
+                    aria-hidden="true"
+                  />
+                  {/* Mismo destino que las baldosas de la variante default: un tramo en 0 no es control. */}
+                  {segment.count > 0 ? (
+                    <Link
+                      href={`/tenants?status=${segment.key}`}
+                      aria-label={`${segment.label}: ${segment.count}`}
+                      className={cn(
+                        'inline-flex min-h-6 items-center rounded hover:underline',
+                        interactiveFocusClassName,
+                      )}
+                    >
+                      {segment.label}
+                    </Link>
+                  ) : (
+                    segment.label
+                  )}
+                </dt>
+                <dd className="font-mono font-semibold tabular-nums text-gray-900 dark:text-white">
+                  {segment.count}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <div className="mt-auto flex items-center justify-between gap-3 pt-3 text-xs text-gray-600 dark:text-gray-300">
+            <span>{COPY.companiesTotal(total)}</span>
+            <Link
+              href="/tenants"
+              className={cn(
+                'inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary dark:text-white',
+                interactiveFocusClassName,
+              )}
+            >
+              {COPY.companiesFooter}
             </Link>
           </div>
         </>

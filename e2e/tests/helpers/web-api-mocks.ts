@@ -157,7 +157,14 @@ interface SetupWebApiMocksOptions {
   platformAuditData?: WebPlatformAuditEntryMock[];
   tenantAuditDataBySlug?: Record<string, WebTenantAuditEntryMock[]>;
   onUnhandledApiRoute?: 'continue' | '404';
+  /** Fuentes de la portada que responden 500 (CA-PP-04). */
+  failSources?: readonly DashboardSource[];
+  /** Retraso por fuente en ms, para observar el estado de carga (CA-PP-04). */
+  delaySourcesMs?: Partial<Record<DashboardSource, number>>;
 }
+
+/** Fuentes de `/dashboard` (Fase 1, sin endpoints nuevos). */
+export type DashboardSource = 'summary' | 'tenants' | 'audit' | 'health';
 
 export function buildMockJwt(expirationSecondsFromNow = 3600): string {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
@@ -287,6 +294,8 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
   const onUnhandledApiRoute = options.onUnhandledApiRoute ?? 'continue';
   const tenantSummary = options.tenantSummary ?? buildTenantSummaryMock(tenants);
   const health = options.health ?? {};
+  const failSources = new Set(options.failSources ?? []);
+  const delaySourcesMs = options.delaySourcesMs ?? {};
 
   return async ({ page }: { page: import('@playwright/test').Page }) => {
     let isLoggedIn = false;
@@ -358,6 +367,30 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
         return;
       }
 
+      const source: DashboardSource | null =
+        method !== 'GET'
+          ? null
+          : new URL(url).pathname.endsWith('/tenants/summary')
+            ? 'summary'
+            : url.includes('/platform-audit-logs')
+              ? 'audit'
+              : url.includes('/health')
+                ? 'health'
+                : /\/api\/v1\/tenants(\?|$)/.test(url)
+                  ? 'tenants'
+                  : null;
+      if (source && delaySourcesMs[source]) {
+        await new Promise((resolve) => setTimeout(resolve, delaySourcesMs[source]));
+      }
+      if (source && failSources.has(source)) {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ code: 'INTERNAL_ERROR', message: 'Fallo simulado' }),
+        });
+        return;
+      }
+
       if (new URL(url).pathname.endsWith('/tenants/summary') && method === 'GET') {
         await route.fulfill({
           status: 200,
@@ -382,6 +415,11 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
               .toLowerCase();
             return haystack.includes(search);
           });
+        }
+
+        const tenantLimit = Number(searchParams.get('limit'));
+        if (Number.isInteger(tenantLimit) && tenantLimit > 0) {
+          filtered = filtered.slice(0, tenantLimit);
         }
 
         await route.fulfill({

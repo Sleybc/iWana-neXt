@@ -12,7 +12,17 @@ import {
   type Ref,
 } from 'react';
 import { ExpedienteStatus, UserRole, type SubscriberQueueCounts } from '@iwana/shared';
-import { Badge, Button, ProgressMeter, StackedBar, cn } from '@iwana/ui';
+import {
+  AttentionQueue,
+  Badge,
+  Button,
+  ProgressMeter,
+  PulseStrip,
+  StackedBar,
+  cn,
+  type PulseCellData,
+  type PulseDeltaTone,
+} from '@iwana/ui';
 import { RefreshCw } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
@@ -94,7 +104,6 @@ import {
 } from './dashboard-role-composition';
 import { resolveModuleHealthChip, type ModuleHealthSnapshot } from './dashboard-module-health';
 import { resolveAttentionQueue } from './dashboard-attention-queue';
-import { DashboardAttentionQueue } from './DashboardAttentionQueue';
 import {
   DashboardAreaCards,
   casePrioritySegments,
@@ -103,7 +112,12 @@ import {
   type DashboardAreaHealth,
   type DashboardProvisioningCounts,
 } from './DashboardAreaCards';
-import { DashboardPulse, type DashboardPulseCell } from './DashboardPulse';
+import {
+  DASHBOARD_ATTENTION_COPY,
+  DASHBOARD_ATTENTION_LABELS,
+  DASHBOARD_PULSE_ARIA_LABEL,
+  DASHBOARD_PULSE_LABELS,
+} from './dashboard-copy';
 import { formatDashboardMoneyCompact, formatDashboardNumber } from './dashboard-visuals';
 import { DashboardTrend } from './DashboardTrend';
 import {
@@ -317,7 +331,7 @@ function metricValue(metricId: DashboardMetricId, sources: DashboardSourcesState
 function metricDelta(
   metricId: DashboardMetricId,
   sources: DashboardSourcesState,
-): { label: string; tone: 'warning' | 'danger' | 'neutral' | 'progress' } | undefined {
+): { label: string; tone: PulseDeltaTone } | undefined {
   if (metricId === 'P-1') {
     // Neto del mes: altas menos retiros (N2). El lima solo cuando la base crece.
     const movement = currentData(sources['subscribers-summary']);
@@ -346,7 +360,7 @@ function metricDelta(
   }
   if (metricId === 'I-1') {
     const overdue = sources.wfm.data?.overdueCount ?? 0;
-    if (overdue > 0) return { label: `${overdue} vencidas`, tone: 'danger' };
+    if (overdue > 0) return { label: `${overdue} vencidas`, tone: 'error' };
     const today = sources.wfm.data?.todayCount ?? 0;
     if (today > 0) return { label: 'Sin vencidas', tone: 'progress' };
   }
@@ -356,13 +370,13 @@ function metricDelta(
   }
   if (metricId === 'I-3') {
     const breached = sources.assurance.data?.breachedCount ?? 0;
-    if (breached > 0) return { label: `${breached} fuera de tiempo`, tone: 'danger' };
+    if (breached > 0) return { label: `${breached} fuera de tiempo`, tone: 'error' };
     const atRisk = sources.assurance.data?.atRiskCount ?? 0;
     if (atRisk > 0) return { label: `${atRisk} en riesgo`, tone: 'warning' };
   }
   if (metricId === 'I-4') {
     const breached = sources.assurance.data?.breachedCount ?? 0;
-    if (breached > 0) return { label: `${breached} incumplidos`, tone: 'danger' };
+    if (breached > 0) return { label: `${breached} incumplidos`, tone: 'error' };
   }
   return undefined;
 }
@@ -1497,7 +1511,7 @@ export function DashboardClient() {
     (metricId) => !resolveDashboardMetric(metricId).sources.every(isForbidden),
   );
 
-  const pulseCells: DashboardPulseCell[] = pulseMetricIds.map((metricId) => {
+  const pulseCells: PulseCellData[] = pulseMetricIds.map((metricId) => {
     const def = resolveDashboardMetric(metricId);
     const status = metricSourceStatus(metricId, sources);
     const href = def.buildHref(today);
@@ -1646,7 +1660,13 @@ export function DashboardClient() {
       />
 
       {/* B1 · Pulso: una superficie con hasta cinco celdas */}
-      <DashboardPulse cells={pulseCells} loading={firstLoadPending} />
+      <PulseStrip
+        cells={pulseCells}
+        loading={firstLoadPending}
+        ariaLabel={DASHBOARD_PULSE_ARIA_LABEL}
+        labels={DASHBOARD_PULSE_LABELS}
+        linkComponent={Link}
+      />
       {showDashboardControls && !hasTrend && period !== 'mes' ? (
         <p role="status" className="text-sm text-gray-600 dark:text-gray-300">
           No hay series disponibles para este periodo.
@@ -1673,8 +1693,14 @@ export function DashboardClient() {
           {hasAttention ? (
             // Primera en el DOM (lectura y móvil); a la derecha en escritorio.
             <div className={hasTrend ? 'xl:order-last xl:col-span-4' : 'xl:col-span-12'}>
-              <DashboardAttentionQueue
-                queue={attentionQueue}
+              <AttentionQueue
+                state={attentionQueue.state}
+                rows={attentionQueue.rows}
+                partial={attentionQueue.failedSources.length > 0}
+                title={DASHBOARD_ATTENTION_COPY.title}
+                description={DASHBOARD_ATTENTION_COPY.description}
+                labels={DASHBOARD_ATTENTION_LABELS}
+                linkComponent={Link}
                 onRetry={() => {
                   for (const sourceId of attentionQueue.failedSources) retrySource(sourceId);
                 }}

@@ -1,7 +1,7 @@
 # SPEC — Consolidación DS web + portal del dashboard (contrato DS)
 
-**Estado:** Congelada — 2026-11-21 (U-1 a U-4). La §6 (U-5) queda aprobada por el CTO (G0-4 ✅ 2026-11-21) y entra en 3B/3C.
-**Versión de contrato:** 1.2 (aditiva sobre 1.1; ver §4.1, §5.5, §2.1 y changelog)
+**Estado:** Congelada — 2026-11-21 (U-1 a U-4); §7bis (v1.3) congelada 2026-11-21. La §6 (U-5) queda aprobada por el CTO (G0-4 ✅ 2026-11-21) y entra en 3B/3C.
+**Versión de contrato:** 1.3 — congelada 2026-11-21 (aditiva sobre 1.2; ver §7bis, §4.1, §5.5, §2.1 y changelog)
 **Autoridad:** AI-DS-OWNER
 **Ejecutor:** AI-FE-PLATFORM (bloque 3C) · **Validador:** AI-SR-QA · **Orquestador:** AI-EM-ARCH
 **Origen:** [informe de auditoría](../informes/INFORME-WEB-DASHBOARD-AUDITORIA-v1.0.md) §2 (U-1 a U-5) · [plan](../plans/2026-11-21-web-dashboard-auditoria-remediacion.md), fila 3A
@@ -380,6 +380,140 @@ Fuera de alcance: los otros usos de `rose-*` del portal (formularios de suscript
 
 ---
 
+## 7bis. v1.3 — Pulso y cola de atención en `@iwana/ui` (aditiva, 2026-11-21)
+
+**Origen:** [dirección del centro de control](2026-11-21-web-centro-control-pulso-plataforma-direccion.md) §4 y D4 · [encargo Fase 1](../prompts/PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE1-v1.0.md) §A. Fuentes leídas en disco el 2026-11-21: `apps/portal/src/components/dashboard/DashboardPulse.tsx` y `DashboardAttentionQueue.tsx`. **Sin tokens nuevos** y sin pares de contraste nuevos: toda clase de color sale de `toneSurfaceVariants`/`toneTextVariants` (§2, ya con escala `warning` de §6), de `badgeVariants` o de pares ya medidos en §2 y §5.3. Rigen R1–R8.
+
+### 7bis.1 Veredicto D4
+
+**Procede la promoción.** Hay dos consumidores reales con la misma anatomía (portal hoy; web en la Fase 1), y ninguna primitive existente la compone: `MetricCard` es una tarjeta suelta con superficie tonal propia; el pulso es **una** superficie dividida en celdas sin tono, con estados por celda (`null`, error con reintento, actualizando). La cola tampoco cabe en `Card` + `EmptyState`: su orden, el tope de 6 y el estado «no pudimos revisar todo» son reglas de contrato, no de pantalla. Las piezas del portal no se pueden importar desde web (viven en `portal-ui` y dependen de `next/link`), y copiarlas crearía la duplicación que este contrato prohíbe.
+
+Dos ajustes respecto a la fuente, ambos ya decididos en este contrato: `danger` → `error` (§2) y el aviso de la cola pasa de `amber-*` a `Tone` `warning` (§6).
+
+### 7bis.2 `PulseStrip` (primitive)
+
+**Anatomía:** `section` (`aria-label`, `aria-busy` en carga) con superficie única `overflow-hidden rounded-2xl border border-gray-200 bg-gray-200 shadow-iwana-soft dark:border-dark-border dark:bg-dark-border`, rejilla `grid grid-cols-1 gap-px sm:grid-cols-2 xl:grid-cols-{n}` (n = número de celdas, máx. 5; el `gap-px` sobre el fondo dibuja los divisores; clases literales por mapa, no interpoladas) › celda `flex min-h-36 flex-col gap-1.5 bg-white px-5 py-4 text-left dark:bg-dark-surface-2` › rótulo (`portal-eyebrow-muted`, `min-h-8`: dos líneas reservadas) › cifra (`text-4xl leading-none font-bold tabular-nums text-iwana-primary dark:text-white`) › señal (`Badge`) › frase (`text-xs text-gray-600 dark:text-gray-400`) › mini visual (`mt-auto pt-1`).
+
+**API:**
+
+```ts
+export type PulseDeltaTone = Tone | 'progress';   // 'progress' (lima) solo aquí, nunca en Tone (§2, R7)
+export interface PulseCellData {
+  id: string;
+  label: string;
+  value: number | null;                          // null = la fuente no entregó el dato; nunca se pinta 0
+  formatValue?: (value: number) => string;       // por defecto entero con Intl es-CO
+  delta?: { label: string; tone: PulseDeltaTone };
+  hint?: string;
+  visual?: React.ReactNode;                      // solo con dato real (p. ej. StackedBar)
+  state: 'idle' | 'loading' | 'error';
+  updating?: boolean;
+  href?: string | null;
+  onClick?: () => void;
+  onRetry?: () => void;
+}
+export interface PulseStripProps {
+  cells: readonly PulseCellData[];
+  loading?: boolean;                             // toda la franja en esqueleto
+  ariaLabel: string;
+  labels: { unavailable: string; noData: string; retry: string; updating: string };  // R1
+  linkComponent?: React.ElementType;             // next/link lo pasa el consumidor; por defecto 'a'
+  className?: string;
+}
+```
+
+Señal: `delta.tone` → `badgeVariants`: `progress` → `lime`; `neutral`, `primary`, `success`, `warning`, `error` → la variante homónima. El portal deja de usar `danger`.
+
+**Estados requeridos (por celda):**
+
+| Estado | Regla |
+| --- | --- |
+| default | `article`, sin hover. |
+| hover | Solo interactiva (`href` u `onClick`): `hover:bg-iwana-surface-soft dark:hover:bg-dark-surface-3`. |
+| focus | `interactiveFocusClassName` + `focus-visible:ring-inset` (el anillo no se corta por `overflow-hidden`). |
+| active | Sin estilo propio. `href` → `linkComponent`; `onClick` → `button type="button"`; nombre accesible = `label`. |
+| disabled | No existe: una celda sin acción es `article`. |
+| loading / skeleton | `SkeletonBlock` ×3 (`h-3 w-28`, `h-9 w-20`, `h-4 w-32`) en la misma caja; `aria-busy` en la `section`. |
+| empty | `value === null`: `labels.noData` en `text-sm font-semibold text-gray-700 dark:text-gray-200` (par de §2). |
+| error | `labels.unavailable` con el mismo estilo; sin señal, frase ni visual; `Button variant="ghost" size="sm"` con `labels.retry` si hay `onRetry`. Una celda en error nunca es enlace. |
+| updating | `span.sr-only aria-live="polite"` con `labels.updating`; la cifra anterior se mantiene. |
+| success / readonly | = default. |
+
+`cells.length === 0` → no renderiza. Precedencia: `loading` de franja > `state` de celda > `value === null` > cifra.
+
+### 7bis.3 `AttentionQueue` (primitive)
+
+**Anatomía:** `Card` + `p-5` (§5.1) › cabecera (`h2` con `title`, descripción opcional, `Badge variant="neutral" font-mono tabular-nums` con el total si hay filas) › aviso parcial opcional (`Alert variant="warning"` con acción de reintento) › lista `ul divide-y divide-gray-100 dark:divide-dark-border` › fila enlazada `flex min-h-12 items-center gap-3 rounded-xl px-1.5 py-1.5` › icono en pozo `h-8 w-8 rounded-xl` con `toneSurfaceVariants` + `toneTextVariants` del tono de severidad › título (`text-sm font-medium text-gray-900 dark:text-white`) y área (`text-xs text-gray-600 dark:text-gray-400`) › chevron `text-gray-400` decorativo › conmutador de filas restantes.
+
+**API:**
+
+```ts
+export type AttentionSeverity = 'at-risk' | 'attention';   // at-risk → Tone 'error'; attention → Tone 'warning'
+export interface AttentionRow { id: string; severity: AttentionSeverity; title: string; area: string; href: string; }
+export interface AttentionQueueProps {
+  state: 'loading' | 'ready';
+  rows: readonly AttentionRow[];            // el consumidor las entrega ordenadas: at-risk primero
+  partial?: boolean;                        // alguna fuente falló: nunca se afirma «todo al día»
+  onRetry?: () => void;
+  maxVisible?: number;                      // por defecto 6
+  title: string;
+  description?: string;
+  labels: {
+    severity: Record<AttentionSeverity, string>;
+    partial: string; retry: string;
+    allClear: string; allClearHint: string;
+    showMore: (hidden: number) => string; showLess: string;
+  };
+  linkComponent?: React.ElementType;
+  className?: string;
+}
+```
+
+El icono lo fija la primitive (`AlertTriangle` en `at-risk`, `Clock` en `attention`, `CheckCircle2` en vacío; todos `aria-hidden`); el texto, el consumidor.
+
+**Estados requeridos:**
+
+| Estado | Regla |
+| --- | --- |
+| loading / skeleton | Cabecera con `title`; 4 `SkeletonBlock h-12 rounded-xl`; `aria-busy` en la `Card`. |
+| default | Hasta `maxVisible` filas. |
+| hover | Fila: `hover:bg-iwana-surface-soft dark:hover:bg-dark-surface-3`. |
+| focus | `interactiveFocusClassName` en fila y conmutador. |
+| active | Sin estilo propio; fila = `linkComponent`, `aria-label` = «{severity}: {title}. {area}». Área táctil ≥ 44 px (`min-h-12`). |
+| disabled / readonly | No aplica: toda fila es navegable. |
+| empty | `rows.length === 0` y `!partial`: pozo `h-9 w-9 rounded-xl` con `badgeVariants({ variant: 'lime' })` (par ya publicado en `Badge`) + `allClear` + `allClearHint`. Único lima de la pieza (dirección §4). |
+| error / parcial | `partial`: `Alert variant="warning"` con `labels.partial` y botón de texto `labels.retry`, `aria-live="polite"`; las filas disponibles se siguen mostrando; con 0 filas no se muestra el vacío. |
+| expandido | `button aria-expanded` con `showMore(hidden)` / `showLess`; solo si `rows.length > maxVisible`. |
+| success | = empty. |
+
+### 7bis.4 Variante compacta de las áreas Empresas y Salud (apps/web, Fase 1)
+
+Siguen en `apps/web` (U-2), sobre `Card`. Cada una recibe `density?: 'default' | 'compact'` (por defecto `default`: sin cambio para los consumidores actuales).
+
+| Pieza | `compact` |
+| --- | --- |
+| `TenantStatusDistribution` | `Card` `p-4`; sin frase por estado (`STATUS_HINT`) ni baldosas; `StackedBar size="sm"` + leyenda `dl` en una columna (estado · cifra `font-mono tabular-nums`); tramos con `hiddenWhenZero` a 0 se omiten. Carga, error (`ErrorState`) y vacío (`EmptyState`) sin cambio. |
+| `SystemStatusPanel` | `Card` `p-4`; indicadores como filas `flex items-center gap-2` en una columna (punto `toneFillVariants`, rótulo, estado `toneTextVariants`) en vez de baldosas con superficie; «Última lectura» en una línea `text-xs text-gray-600 dark:text-gray-300` bajo el título. Reglas E1–E6 de §4.1 intactas, incluido el `ErrorState` único en el lugar del grupo de servicio. |
+
+Ningún color nuevo: todos los pares figuran ya en §2, §4 y §5.
+
+### 7bis.5 Mapa de migración del portal (fe-platform, misma ola que las primitives)
+
+| Hoy | Pasa a |
+| --- | --- |
+| `apps/portal/src/components/dashboard/DashboardPulse.tsx` (`DashboardPulse`, `DashboardPulseCell`, `DashboardPulseTone`, `deltaBadgeVariant`, `PULSE_COLUMNS`) | `PulseStrip` / `PulseCellData` / `PulseDeltaTone` con `linkComponent={Link}`; el archivo se borra |
+| Tono `'danger'` en las celdas que arma `DashboardClient.tsx` | `'error'` |
+| `PortalSkeletonBlock` en ambas piezas | `SkeletonBlock` (R6) |
+| `apps/portal/src/components/dashboard/DashboardAttentionQueue.tsx` (`PortalPanel compact`, `PortalAlert`, `severityToneClassName` con `amber-*`, `ATTENTION_VISIBLE_ROWS`) | `AttentionQueue` sobre `Card`, `Alert` y `toneSurfaceVariants`; el archivo se borra |
+| `dashboard-attention-queue.ts` (`failedSources`) | Se queda como lógica de dominio del portal; el consumidor pasa `partial={failedSources.length > 0}` y mapea a `AttentionRow` |
+| Textos fijos de ambas piezas | Catálogo de copy del portal → `labels` |
+
+Diferencias visibles aceptadas: cola sobre `Card` (§5.1: sin `border-gray-200` en claro, `dark-border-2` en oscuro) y aviso en escala `warning`. Las pruebas del portal sobre estas piezas se re-apuntan, no se relajan: mismas filas, mismos `aria-label`, mismo vacío.
+
+**Criterios sr-qa añadidos al §8:** (7) render de `PulseStrip` por estado de celda (idle, loading, error con y sin `onRetry`, `null`, updating) y por cada `PulseDeltaTone`; (8) `AttentionQueue` en loading, vacío, parcial con 0 filas y con filas, y 7 filas con expandir y contraer; (9) `rg "DashboardPulse\b|DashboardAttentionQueue\b|'danger'" apps/portal/src/components/dashboard` = 0 tras migrar; (10) axe sin violaciones en `/dashboard` de web y portal, claro y oscuro; (11) `PulseStrip`, `PulseCellData`, `PulseDeltaTone`, `AttentionQueue`, `AttentionRow`, `AttentionSeverity` exportados desde `@iwana/ui` y en el inventario de `core-components` (R8).
+
+---
+
 ## 8. Criterios de aceptación (sr-qa)
 
 1. `rg "rose-|rounded-3xl|\[[0-9]+px\]" ` sobre las piezas de §3–§5 y los archivos de §7 tras la migración: 0 coincidencias en lo migrado.
@@ -395,3 +529,4 @@ Fuera de alcance: los otros usos de `rose-*` del portal (formularios de suscript
 - v1.0 (2026-11-21) — G0-4 aprobado por el CTO: U-5 pasa de propuesta a contrato.
 - v1.1 (2026-11-21) — aditiva, carril rápido DS: §5.5 `emphasis` en `toneFillVariants`/`StackedBarSegment` para escalas ordinales (salida del [BLOQUEO] de fe-platform sobre `DashboardStackBar`); §2.1 `toneMutedTextVariants` publicado en `@iwana/ui`. Sin tokens nuevos ni cambio de los valores v1.0 salvo el atenuado de `success` en `MetricCard`. Notificar a fe-platform y sr-qa vía orquestador.
 - v1.2 (2026-11-21) — aditiva, decisión del orquestador sobre el [BLOQUEO] T-2: §4.1 `StatusIndicator.kind` (`service` | `business`, por defecto `service`); `error` sustituye solo a los indicadores de servicio, los de negocio siguen visibles, `summary` se oculta con `error` (mensaje único). Sin cambio de API del panel. Notificar a fe-platform y sr-qa vía orquestador.
+- v1.3 (2026-11-21) — aditiva, congelada: §7bis `PulseStrip` y `AttentionQueue` promovidas a `@iwana/ui` desde el portal (veredicto D4: procede), `danger` → `error`, `progress` exclusivo del delta, cola en escala `warning`; `density="compact"` en `TenantStatusDistribution` y `SystemStatusPanel` (web). Sin tokens ni pares de contraste nuevos. Notificar a fe-platform y sr-qa vía orquestador.

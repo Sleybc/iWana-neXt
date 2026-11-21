@@ -24,7 +24,7 @@ test.describe('Web tenant create happy path real', () => {
       password: platformPassword!,
     });
 
-    await page.getByRole('link', { name: 'Empresas' }).click();
+    await page.getByRole('link', { name: 'Empresas', exact: true }).click();
     await page.getByRole('link', { name: 'Nueva empresa' }).click();
     await expect(page.getByRole('heading', { name: 'Nueva empresa' })).toBeVisible();
 
