@@ -11,7 +11,10 @@
 **Contrato DS hermano:** [`2026-08-11-web-centro-control-portada-senal-ds-contrato.md`](2026-08-11-web-centro-control-portada-senal-ds-contrato.md)  
 **Identidad:** [`2026-07-12-firma-iwana-diseno-visual-design.md`](2026-07-12-firma-iwana-diseno-visual-design.md)  
 **Copy de producto:** [`apps/web/src/lib/platform-ui-copy.ts`](../../apps/web/src/lib/platform-ui-copy.ts)  
-**Aclaración 2026-08-11:** §5 — B0 sin CTAs de salto. Destinos viven en la señal y el sidebar.
+**Aclaración 2026-08-11:** §5 — B0 sin CTAs de salto. Destinos viven en la señal y el sidebar.  
+**Superado parcialmente 2026-11-21 (G0-2 del CTO, [INFORME-WEB-DASHBOARD-AUDITORIA-v1.0](../informes/INFORME-WEB-DASHBOARD-AUDITORIA-v1.0.md) E-1 y L-11):**
+- La regla de S-3 pasa a `TENANT_ATTENTION_STATUSES` (sin `INACTIVE`).
+- La §12 deja de regir: el home consume `GET /api/v1/tenants/summary`, y la cota de 100 producía cifras falsas con los datos actuales.
 
 ---
 
