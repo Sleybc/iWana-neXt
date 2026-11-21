@@ -125,7 +125,8 @@ describeWithDb('Reporte de teléfonos de suscriptores — PostgreSQL real', () =
     subscriber.coverageNodeId = null;
     subscriber.expedienteId = null;
     subscriber.convertedAt = null;
-    subscriber.activatedAt = null;
+    // Un ACTIVE real tiene primera activación; sin ella la lista lo excluye desde 7bebb5eb.
+    subscriber.activatedAt = new Date('2026-01-01T00:00:00.000Z');
     subscriber.manualOverrideReason = null;
     subscriber.status = SubscriberStatus.ACTIVE;
     subscriber.externalId = null;
