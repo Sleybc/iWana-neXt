@@ -1,7 +1,7 @@
 # Spec — Importación UISP · Estado del suscriptor importado
 
 **Versión:** 1.0
-**Estado:** Sustituida por la [v1.1](2026-11-21-transversal-importacion-estado-del-suscriptor-v1.1.md). Su G0 del 2026-11-21 («G0 aprobado», D1–D4) quedó sin efecto por el bloqueo H7
+**Estado:** Deprecado: sustituida por la [v1.1](2026-11-21-transversal-importacion-estado-del-suscriptor-v1.1.md). Su G0 del 2026-11-21 («G0 aprobado», D1–D4) quedó sin efecto por el bloqueo H7
 **Fecha:** 2026-11-21
 **Relacionado:** [ADR-110](../adrs/ADR-110-Importacion-por-Lotes-desde-UISP-y-Portabilidad.md) · [complementar titular](2026-11-15-transversal-importacion-uisp-complementar-titular.md) · [usuarios UISP](2026-11-15-transversal-importacion-uisp-usuarios.md)
 
