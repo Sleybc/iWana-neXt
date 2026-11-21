@@ -1,4 +1,4 @@
-import { authApi, persistAccessToken } from './api-client';
+import { ApiError, authApi, healthApi, persistAccessToken } from './api-client';
 
 const buildJsonResponse = (body: unknown, status = 200) =>
   ({
@@ -83,6 +83,76 @@ describe('api-client', () => {
     await expect(authApi.me()).rejects.toMatchObject({
       message:
         'Ingresa un correo de acceso válido. La contraseña actual debe tener entre 10 y 128 caracteres.',
+    });
+  });
+
+  describe('healthApi.get (PublicHealth v1.0)', () => {
+    const healthBody = {
+      status: 'ok',
+      db: 'ok',
+      redis: 'ok',
+      timestamp: '2026-11-21T10:00:00.000Z',
+    } as const;
+
+    it('devuelve la lectura con 200', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(buildJsonResponse(healthBody));
+
+      await expect(healthApi.get()).resolves.toEqual(healthBody);
+    });
+
+    it('trata el 503 con cuerpo de salud como lectura degradada, no como error', async () => {
+      const degraded = { ...healthBody, status: 'degraded', redis: 'error' };
+      (global.fetch as jest.Mock).mockResolvedValue(buildJsonResponse(degraded, 503));
+
+      await expect(healthApi.get()).resolves.toEqual(degraded);
+    });
+
+    it('descarta campos fuera del contrato, como relay', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(
+        buildJsonResponse({ ...healthBody, relay: { outboxDepth: 3 } }),
+      );
+
+      const result = await healthApi.get();
+      expect(result).toEqual(healthBody);
+      expect(result).not.toHaveProperty('relay');
+    });
+
+    it('lanza ApiError si el 503 no trae un cuerpo de salud', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(
+        buildJsonResponse({ code: 'SERVICE_UNAVAILABLE', message: 'Sin lectura' }, 503),
+      );
+
+      const error = await healthApi.get().catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({ status: 503, code: 'SERVICE_UNAVAILABLE' });
+    });
+
+    it('lanza ApiError ante un 429 con cuerpo HTML', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        status: 429,
+        json: jest.fn().mockRejectedValue(new SyntaxError('Unexpected token <')),
+      } as unknown as Response);
+
+      const error = await healthApi.get().catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({ status: 429 });
+    });
+
+    it('lanza ApiError ante un 500 aunque el cuerpo cumpla PublicHealth', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(
+        buildJsonResponse({ ...healthBody, status: 'degraded', db: 'error' }, 500),
+      );
+
+      const error = await healthApi.get().catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({ status: 500 });
+    });
+
+    it('propaga el error de red', async () => {
+      (global.fetch as jest.Mock).mockRejectedValue(new TypeError('Failed to fetch'));
+
+      await expect(healthApi.get()).rejects.toThrow('Failed to fetch');
     });
   });
 });

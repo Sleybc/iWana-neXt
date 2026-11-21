@@ -1,6 +1,6 @@
 // apps/web/src/lib/api-client.ts
 
-import type { TenantStatusSummary } from '@iwana/shared';
+import type { PublicHealth, TenantStatusSummary } from '@iwana/shared';
 
 /**
  * Cliente HTTP para @iwana/web — Portal Administrativo.
@@ -540,33 +540,19 @@ export interface PlatformBranding extends PlatformPublicBranding {
   updatedAt: string;
 }
 
-export interface HealthStatusResponse {
-  status: 'ok' | 'degraded';
-  db: 'ok' | 'error';
-  redis: 'ok' | 'error';
-  timestamp: string;
-  relay:
-    | {
-        outboxDepth: number;
-        oldestPendingAgeSeconds: number | null;
-        dlqSize: number;
-        reconciliationDiscrepancies: number;
-        lastScanAt: string | null;
-        lagDistributionSeconds: {
-          count: number;
-          minSeconds: number | null;
-          p50Seconds: number | null;
-          p95Seconds: number | null;
-          p99Seconds: number | null;
-          maxSeconds: number | null;
-        };
-        lagThresholds: {
-          degradedSeconds: number | null;
-          stoppedSeconds: number | null;
-        };
-        lagThresholdStatus: 'configured' | 'sin umbral aprobado';
-      }
-    | { status: 'unavailable'; reason: 'telemetry_unavailable' };
+/** Salud pública de la plataforma: contrato `PublicHealth` v1.0 de `@iwana/shared`. */
+export type HealthStatusResponse = PublicHealth;
+
+function isPublicHealth(body: unknown): body is PublicHealth {
+  if (!body || typeof body !== 'object') return false;
+  const record = body as Record<string, unknown>;
+  const level = (value: unknown) => value === 'ok' || value === 'error';
+  return (
+    (record['status'] === 'ok' || record['status'] === 'degraded') &&
+    level(record['db']) &&
+    level(record['redis']) &&
+    typeof record['timestamp'] === 'string'
+  );
 }
 
 export interface UpdatePlatformBrandingPayload {
@@ -624,11 +610,27 @@ export const platformBrandingApi = {
 };
 
 export const healthApi = {
-  get: () =>
-    request<HealthStatusResponse>('/health', {
-      skipAuth: true,
-      skipRefreshRetry: true,
-    }),
+  /**
+   * `GET /health` responde 503 con el mismo cuerpo cuando la base de datos o Redis
+   * fallan (contrato `PublicHealth` v1.0): esa respuesta es una lectura de salud
+   * `degraded`, no un error. Solo se lanza `ApiError` si el cuerpo no cumple el
+   * contrato; un fallo de red se propaga tal cual.
+   */
+  get: async (): Promise<PublicHealth> => {
+    const res = await authorizeAndFetch('/health', { skipAuth: true, skipRefreshRetry: true });
+    const body: unknown = await res.json().catch(() => null);
+
+    if ((res.ok || res.status === 503) && isPublicHealth(body)) {
+      return { status: body.status, db: body.db, redis: body.redis, timestamp: body.timestamp };
+    }
+
+    const record = (body ?? {}) as Record<string, unknown>;
+    throw new ApiError(
+      res.status,
+      typeof record['code'] === 'string' ? record['code'] : 'UNKNOWN',
+      normalizeApiErrorMessage(record) || 'Error del servidor',
+    );
+  },
 };
 
 export interface TenantListItem {

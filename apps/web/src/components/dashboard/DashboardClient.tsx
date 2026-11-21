@@ -11,7 +11,6 @@ import {
   type StatusSegment,
 } from '@/components/dashboard/TenantStatusDistribution';
 import {
-  ApiError,
   healthApi,
   platformAuditApi,
   tenantApi,
@@ -43,14 +42,6 @@ function formatRelativeDate(value: string): string {
 
   const diffDays = Math.floor(diffHours / 24);
   return diffDays === 1 ? 'Hace 1 día' : `Hace ${diffDays} días`;
-}
-
-function mapOperationalError(error: unknown, fallback: string): string {
-  if (error instanceof ApiError && error.message.trim().length > 0) {
-    return error.message;
-  }
-
-  return fallback;
 }
 
 /** Cada indicador refleja solo su servicio (L-10); «Atención operativa» es la única lectura de negocio. */
@@ -123,7 +114,8 @@ export function DashboardClient() {
 
     const healthOk = healthResult.status === 'fulfilled';
     setHealth(healthOk ? healthResult.value : null);
-    setHealthError(healthOk ? null : mapOperationalError(healthResult.reason, COPY.healthError));
+    // Un fallo de /health (red, 429/502 de nginx con HTML…) muestra siempre el copy canónico.
+    setHealthError(healthOk ? null : COPY.healthError);
 
     setIsLoading(false);
   }, []);

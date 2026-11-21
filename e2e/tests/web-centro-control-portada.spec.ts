@@ -145,3 +145,20 @@ test.describe('Web centro de control — portada de señal', () => {
     });
   });
 });
+
+test.describe('Web centro de control — salud degradada (PublicHealth 503)', () => {
+  test.beforeEach(setupWebApiMocks({ health: { mode: 'partial' }, onUnhandledApiRoute: '404' }));
+
+  test('un 503 de /health se muestra como degradado, no como error', async ({ page }) => {
+    await loginToPortada(page);
+    const monitoring = page.getByTestId('control-center-monitoring');
+
+    await expect(
+      monitoring.getByText('La plataforma responde, pero hay servicios que requieren seguimiento.'),
+    ).toBeVisible();
+    await expect(monitoring.getByText('No disponible.', { exact: true })).toBeVisible();
+    await expect(
+      monitoring.getByText('No pudimos validar API, base de datos y Redis en este momento.'),
+    ).toHaveCount(0);
+  });
+});

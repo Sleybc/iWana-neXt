@@ -421,12 +421,14 @@ describe('DashboardClient', () => {
     expect(screen.queryByText('Directorio de empresas')).not.toBeInTheDocument();
   });
 
-  it('CA-PS-10: el fallo de health degrada solo el monitoreo', async () => {
+  // Ola 2 §D: un 503 de /health con cuerpo PublicHealth ya no es un fallo (healthApi lo
+  // resuelve como lectura `degraded`); el fallo de lectura se ejercita con un error de red real.
+  it('CA-PS-10: el fallo de red de health degrada solo el monitoreo', async () => {
     tenantApi.summary.mockResolvedValue(makeTenantStatusSummary({ ACTIVE: 1 }));
     platformAuditApi.list.mockResolvedValue({
       data: [makeAuditEntry()],
     });
-    healthApi.get.mockRejectedValue(new ApiError(503, 'UNAVAILABLE', ''));
+    healthApi.get.mockRejectedValue(new TypeError('Failed to fetch'));
 
     render(<DashboardClient />);
 
@@ -439,6 +441,42 @@ describe('DashboardClient', () => {
     expect(screen.getByText('Salud de plataforma')).toBeInTheDocument();
     expect(
       screen.queryByText('API, base de datos y Redis responden correctamente.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('CA-PS-10: un ApiError de health muestra el copy canónico, nunca el mensaje crudo', async () => {
+    healthApi.get.mockRejectedValue(new ApiError(503, 'UNKNOWN', 'Error del servidor'));
+
+    render(<DashboardClient />);
+
+    expect(
+      await screen.findByText('No pudimos validar API, base de datos y Redis en este momento.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Error del servidor/)).not.toBeInTheDocument();
+  });
+
+  it('CA-PS-10: una lectura degradada (503 de /health) se muestra como degradada, no como error', async () => {
+    healthApi.get.mockResolvedValue({
+      status: 'degraded',
+      db: 'error',
+      redis: 'ok',
+      timestamp: '2026-06-26T10:00:00.000Z',
+    });
+
+    render(<DashboardClient />);
+
+    expect(
+      await screen.findByText(
+        'La plataforma responde, pero hay servicios que requieren seguimiento.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Base de datos: No disponible.')).toBeInTheDocument();
+    expect(screen.getByText('Redis y colas: Sin acumulación visible.')).toBeInTheDocument();
+    expect(
+      screen.getByText('API de plataforma: Disponible con validaciones pendientes.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('No pudimos validar API, base de datos y Redis en este momento.'),
     ).not.toBeInTheDocument();
   });
 

@@ -431,33 +431,19 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
           });
           return;
         }
-        const db = health.db ?? (health.mode === 'partial' ? 'degraded' : 'ok');
-        const redis = health.redis ?? 'ok';
+        const toPublicLevel = (level: WebHealthLevel) => (level === 'ok' ? 'ok' : 'error');
+        const db = toPublicLevel(health.db ?? (health.mode === 'partial' ? 'degraded' : 'ok'));
+        const redis = toPublicLevel(health.redis ?? 'ok');
+        const healthy = db === 'ok' && redis === 'ok';
+        // PublicHealth v1.0: 503 con el mismo cuerpo si db o redis fallan; sin relay.
         await route.fulfill({
-          status: 200,
+          status: healthy ? 200 : 503,
           contentType: 'application/json',
           body: JSON.stringify({
-            status: db === 'ok' && redis === 'ok' ? 'ok' : 'degraded',
+            status: healthy ? 'ok' : 'degraded',
             db,
             redis,
             timestamp: new Date().toISOString(),
-            relay: {
-              outboxDepth: 0,
-              oldestPendingAgeSeconds: null,
-              dlqSize: 0,
-              reconciliationDiscrepancies: 0,
-              lastScanAt: null,
-              lagDistributionSeconds: {
-                count: 0,
-                minSeconds: null,
-                p50Seconds: null,
-                p95Seconds: null,
-                p99Seconds: null,
-                maxSeconds: null,
-              },
-              lagThresholds: { degradedSeconds: null, stoppedSeconds: null },
-              lagThresholdStatus: 'sin umbral aprobado',
-            },
           }),
         });
         return;
