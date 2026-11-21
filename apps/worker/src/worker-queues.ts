@@ -21,6 +21,9 @@ import { EVIDENCE_ORPHAN_DETECTION_QUEUE } from './processors/evidence-orphan-de
 /** Cola del muestreador de salud de plataforma (PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE3). */
 export const PLATFORM_HEALTH_SAMPLER_QUEUE = 'platform-health-sampler';
 
+/** Cola del muestreador de uso por empresa (ADR-114 D2, PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE4). */
+export const TENANT_USAGE_SAMPLER_QUEUE = 'tenant-usage-sampler';
+
 /**
  * Colas que registra el worker. Fuente única para `WorkerModule` y para el muestreador de
  * salud, que reporta espera, fallidos y antigüedad de cada una.
@@ -46,4 +49,5 @@ export const WORKER_QUEUE_NAMES: readonly string[] = [
   // SEC-1: barrido de objetos de contratos anonimizados y huérfanos.
   CONTRACT_MEDIA_SWEEP_QUEUE,
   PLATFORM_HEALTH_SAMPLER_QUEUE,
+  TENANT_USAGE_SAMPLER_QUEUE,
 ];

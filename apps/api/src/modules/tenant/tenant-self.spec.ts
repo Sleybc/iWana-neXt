@@ -36,6 +36,7 @@ import { TenantStatus, UserRole, UserStatus } from '@iwana/shared';
 import { AuthService } from '../auth/auth.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { DashboardSummaryService } from './dashboard-summary.service';
+import { TenantUsageService } from './tenant-usage.service';
 import { TenantController } from './tenant.controller';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { TenantService } from './tenant.service';
@@ -154,6 +155,7 @@ describe('TenantController — contratos self-service del tenant', () => {
         { provide: TenantProvisioningService, useValue: provisioningService },
         { provide: AuthService, useValue: authService },
         { provide: DashboardSummaryService, useValue: dashboardSummaryService },
+        { provide: TenantUsageService, useValue: { getUsage: jest.fn() } },
       ],
     }).compile();
 

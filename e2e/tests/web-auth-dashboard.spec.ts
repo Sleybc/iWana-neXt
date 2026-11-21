@@ -59,7 +59,12 @@ test.describe('Web auth + dashboard flows', () => {
       page.getByPlaceholder('Buscar por empresa, contacto o identificador...'),
     ).toHaveCount(0);
 
-    await page.getByRole('link', { name: 'Ver empresas', exact: true }).click();
+    // Fase 4: P4 «Uso por empresa» añade su propio «Ver empresas» (filtrado a ACTIVE);
+    // este flujo usa el del bloque Empresas, que lleva al directorio completo.
+    await page
+      .getByRole('link', { name: 'Ver empresas', exact: true })
+      .and(page.locator('a[href="/tenants"]'))
+      .click();
     await expect(page).toHaveURL(/\/tenants/);
     await expect(page.getByRole('heading', { name: 'Empresas', exact: true })).toBeVisible();
 

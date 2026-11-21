@@ -1,6 +1,6 @@
 # Dirección visual — Centro de control «Pulso de plataforma» (`apps/web`, `/dashboard`)
 
-**Versión:** 1.1 · **Fecha:** 2026-11-21 · **Estado:** Aprobado — G0 2026-11-21 (D1 y D2). D3 abierta, condiciona la Fase 4; D4 la resuelve DS-OWNER en la Fase 1 · **Plan:** [2026-11-21-web-centro-control-pulso-plataforma.md](../plans/2026-11-21-web-centro-control-pulso-plataforma.md)
+**Versión:** 1.1 · **Fecha:** 2026-11-21 · **Estado:** Aprobado — G0 2026-11-21 (D1 y D2). D3 aprobada 2026-11-21 con ADR-114; D4 la resuelve DS-OWNER en la Fase 1 · **Plan:** [2026-11-21-web-centro-control-pulso-plataforma.md](../plans/2026-11-21-web-centro-control-pulso-plataforma.md)
 **Modo:** dirección (`iwana-identity-ui-review`). No es spec de ejecución ni contrato DS.
 **Prototipo:** [`prototipo_web_centro_control.html`](../prototipo/prototipo_web_centro_control.html) — cifras ilustrativas; «Mostrar origen del dato» marca qué sale hoy y qué exige contrato nuevo.
 **Sustituye, si se aprueba:** la composición de [`2026-08-11-web-centro-control-portada-senal-ux-spec.md`](2026-08-11-web-centro-control-portada-senal-ux-spec.md). El contrato DS v1.2 del 2026-11-21 sigue vigente.
@@ -79,5 +79,5 @@ Un bloque sin contrato no se monta: ni ceros ni series de muestra.
 | --- | --- | --- |
 | D1 | Dirección | B — **aprobada 2026-11-21** |
 | D2 | Arrancar por Fase 1 sin backend | Sí — **aprobada 2026-11-21** |
-| D3 | P4: la consola de plataforma muestra conteos de cada empresa | Sí, solo conteos y con ADR; decide el CTO |
+| D3 | P4: la consola de plataforma muestra conteos de cada empresa | Sí, solo conteos y con ADR — **aprobada 2026-11-21** (ADR-114) |
 | D4 | Promover la celda de pulso del portal a `@iwana/ui` | Sí, por DS-OWNER |

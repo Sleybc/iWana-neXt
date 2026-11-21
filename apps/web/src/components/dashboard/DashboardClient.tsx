@@ -31,6 +31,8 @@ import { PlatformUsersArea } from '@/components/dashboard/PlatformUsersArea';
 import { TenantTrendPanel } from '@/components/dashboard/TenantTrendPanel';
 import { AvailabilityTracker } from '@/components/dashboard/AvailabilityTracker';
 import { WorkQueuesArea } from '@/components/dashboard/WorkQueuesArea';
+import { TenantUsageArea, canSeeTenantUsage } from '@/components/dashboard/TenantUsageArea';
+import { useAuth } from '@/components/auth/AuthProvider';
 import {
   TenantStatusDistribution,
   type StatusSegment,
@@ -60,12 +62,17 @@ interface Remote<T> {
 }
 
 /** Una fuente remota con estado propio: su fallo degrada solo sus bloques (CA-PP-04). */
-function useRemote<T>(fetcher: () => Promise<T>): Remote<T> {
+function useRemote<T>(fetcher: (() => Promise<T>) | null): Remote<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(fetcher !== null);
 
   const reload = useCallback(() => {
+    // Sin fetcher (rol sin permiso) no se pide nada (CA-PP4-01).
+    if (!fetcher) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     void fetcher().then(
       (value) => {
@@ -96,6 +103,7 @@ const fetchActivity = () =>
 const fetchTeam = () => platformUsersApi.summary();
 const fetchHealth = () => healthApi.get();
 const fetchHistory = () => platformHealthApi.history();
+const fetchUsage = () => tenantApi.usage();
 
 /** Cada indicador refleja solo su servicio (L-10, contrato DS v1.2 §4.1). */
 function buildHealthIndicators(health: HealthStatusResponse | null): StatusIndicator[] {
@@ -176,6 +184,9 @@ export function DashboardClient() {
   const health = useRemote(fetchHealth);
   const team = useRemote(fetchTeam);
   const history = useRemote(fetchHistory);
+  const { user } = useAuth();
+  const showUsage = canSeeTenantUsage(user?.role);
+  const usage = useRemote(showUsage ? fetchUsage : null);
 
   const { reload: reloadSummary } = summary;
   const { reload: reloadLatest } = latest;
@@ -183,6 +194,7 @@ export function DashboardClient() {
   const { reload: reloadHealth } = health;
   const { reload: reloadTeam } = team;
   const { reload: reloadHistory } = history;
+  const { reload: reloadUsage } = usage;
   const refreshAll = useCallback(() => {
     reloadSummary();
     reloadLatest();
@@ -190,7 +202,16 @@ export function DashboardClient() {
     reloadHealth();
     reloadTeam();
     reloadHistory();
-  }, [reloadSummary, reloadLatest, reloadActivity, reloadHealth, reloadTeam, reloadHistory]);
+    reloadUsage();
+  }, [
+    reloadSummary,
+    reloadLatest,
+    reloadActivity,
+    reloadHealth,
+    reloadTeam,
+    reloadHistory,
+    reloadUsage,
+  ]);
 
   const counts = useMemo(() => countsOf(summary.data), [summary.data]);
   const availability = useMemo(
@@ -469,8 +490,15 @@ export function DashboardClient() {
         </div>
       </div>
 
-      {/* B3 · Una card por área del menú: Empresas, Salud, Usuarios internos, Colas (P4 no se monta). */}
-      <div className="grid grid-cols-1 items-stretch gap-5 md:grid-cols-2 2xl:grid-cols-4">
+      {/* B3 · Una card por área: Empresas, Salud, Usuarios internos, Colas y, por rol, Uso por empresa.
+          Con 5 áreas: 3 + 2 en xl (rejilla de 6), para no estrechar las tablas. */}
+      <div
+        className={
+          showUsage
+            ? 'grid grid-cols-1 items-stretch gap-5 md:grid-cols-2 xl:grid-cols-6 xl:[&>*:nth-child(-n+3)]:col-span-2 xl:[&>*:nth-child(n+4)]:col-span-3'
+            : 'grid grid-cols-1 items-stretch gap-5 md:grid-cols-2 2xl:grid-cols-4'
+        }
+      >
         <TenantStatusDistribution
           density="compact"
           titleRef={companiesHeadingRef}
@@ -512,6 +540,15 @@ export function DashboardClient() {
           error={history.error}
           onRetry={history.reload}
         />
+        {showUsage ? (
+          <TenantUsageArea
+            className="md:col-span-2 xl:col-span-3"
+            items={usage.data?.items ?? null}
+            isLoading={usage.loading && !usage.data}
+            error={usage.error}
+            onRetry={usage.reload}
+          />
+        ) : null}
       </div>
 
       {/* B4 · Últimas empresas (7) + Actividad reciente (5) */}

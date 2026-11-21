@@ -11,6 +11,7 @@ import { TenantController } from './tenant.controller';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { TenantMiddleware } from './tenant.middleware';
 import { TenantService } from './tenant.service';
+import { TenantUsageService } from './tenant-usage.service';
 import { DashboardSummaryService } from './dashboard-summary.service';
 import { CommercialNode } from './entities/commercial-node.entity';
 import { CoverageZone } from './entities/coverage-zone.entity';
@@ -64,6 +65,7 @@ import { TenantLifecycleReadPort } from './ports/tenant-lifecycle-read.port';
     TenantProvisioningService,
     TenantMiddleware,
     DashboardSummaryService,
+    TenantUsageService,
     SettingsPriorityTenantReadAdapter,
     CommercialNodeReadAdapter,
     TenantLifecycleReadAdapter,

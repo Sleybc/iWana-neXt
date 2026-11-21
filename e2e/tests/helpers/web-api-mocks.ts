@@ -6,6 +6,8 @@ import type {
   PlatformQueueSnapshot,
   PlatformUsersSummary,
   TenantStatusSummary,
+  TenantUsage,
+  TenantUsageItem,
 } from '@iwana/shared';
 
 export interface WebTenantMock {
@@ -225,6 +227,35 @@ interface SetupWebApiMocksOptions {
   delaySourcesMs?: Partial<Record<DashboardSource, number>>;
   /** Historia de salud P2 (`/platform/health/history`, Fase 3). */
   healthHistory?: PlatformHealthHistory;
+  /** Uso por empresa P4 (`/tenants/usage`, Fase 4). */
+  tenantUsage?: TenantUsage;
+  /** Rol de `/auth/me` (`PlatformRole`, mayúsculas como el API real); por defecto `SYSTEM_ADMIN`. */
+  platformRole?: string;
+}
+
+/**
+ * Uso P4 por empresa (ADR-114). `minutesAgo: null` = sin medición (`measuredAt` y
+ * `activeSubscribers` en `null`). Solo conteos, sin PII.
+ */
+export function buildTenantUsageMock(
+  rows: ReadonlyArray<{
+    tenantId: string;
+    name: string;
+    activeSubscribers: number | null;
+    maxSubscribers: number | null;
+    minutesAgo: number | null;
+  }>,
+): TenantUsage {
+  const now = Date.now();
+  const items: TenantUsageItem[] = rows.map((row) => ({
+    tenantId: row.tenantId,
+    name: row.name,
+    activeSubscribers: row.minutesAgo === null ? null : row.activeSubscribers,
+    maxSubscribers: row.maxSubscribers,
+    measuredAt:
+      row.minutesAgo === null ? null : new Date(now - row.minutesAgo * 60_000).toISOString(),
+  }));
+  return { items, generatedAt: new Date(now).toISOString() };
 }
 
 /** Fuentes de `/dashboard` (Fase 1 + `users` de la Fase 2, P3). */
@@ -234,7 +265,8 @@ export type DashboardSource =
   | 'audit'
   | 'health'
   | 'users'
-  | 'healthHistory';
+  | 'healthHistory'
+  | 'tenantUsage';
 
 /**
  * Historia P2 de 30 días (antiguo → actual). `availability` por día y componente;
@@ -402,6 +434,8 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
   const failSources = new Set(options.failSources ?? []);
   const delaySourcesMs = options.delaySourcesMs ?? {};
   const healthHistory = options.healthHistory ?? buildHealthHistoryMock();
+  const tenantUsage = options.tenantUsage ?? buildTenantUsageMock([]);
+  const platformRole = options.platformRole ?? 'SYSTEM_ADMIN';
 
   return async ({ page }: { page: import('@playwright/test').Page }) => {
     let isLoggedIn = false;
@@ -443,7 +477,7 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
             data: {
               sub: '8f145de2-1111-4abc-9e08-3b768a194001',
               email: 'sha256:admin-hash',
-              role: 'system_admin',
+              role: platformRole,
               tenantId: null,
               schemaName: null,
               jti: 'jti-123',
@@ -476,19 +510,21 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
       const source: DashboardSource | null =
         method !== 'GET'
           ? null
-          : new URL(url).pathname.endsWith('/tenants/summary')
-            ? 'summary'
-            : new URL(url).pathname.endsWith('/platform-users/summary')
-              ? 'users'
-              : new URL(url).pathname.endsWith('/platform/health/history')
-                ? 'healthHistory'
-                : url.includes('/platform-audit-logs')
-                  ? 'audit'
-                  : url.includes('/health')
-                    ? 'health'
-                    : /\/api\/v1\/tenants(\?|$)/.test(url)
-                      ? 'tenants'
-                      : null;
+          : new URL(url).pathname.endsWith('/tenants/usage')
+            ? 'tenantUsage'
+            : new URL(url).pathname.endsWith('/tenants/summary')
+              ? 'summary'
+              : new URL(url).pathname.endsWith('/platform-users/summary')
+                ? 'users'
+                : new URL(url).pathname.endsWith('/platform/health/history')
+                  ? 'healthHistory'
+                  : url.includes('/platform-audit-logs')
+                    ? 'audit'
+                    : url.includes('/health')
+                      ? 'health'
+                      : /\/api\/v1\/tenants(\?|$)/.test(url)
+                        ? 'tenants'
+                        : null;
       if (source && delaySourcesMs[source]) {
         await new Promise((resolve) => setTimeout(resolve, delaySourcesMs[source]));
       }
@@ -506,6 +542,15 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({ data: platformUsersSummary }),
+        });
+        return;
+      }
+
+      if (new URL(url).pathname.endsWith('/tenants/usage') && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: tenantUsage }),
         });
         return;
       }

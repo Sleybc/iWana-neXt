@@ -22,6 +22,7 @@ import { TenantController } from '../modules/tenant/tenant.controller';
 import { TenantService } from '../modules/tenant/tenant.service';
 import { TenantProvisioningService } from '../modules/tenant/tenant-provisioning.service';
 import { DashboardSummaryService } from '../modules/tenant/dashboard-summary.service';
+import { TenantUsageService } from '../modules/tenant/tenant-usage.service';
 import { UsersController } from '../modules/users/users.controller';
 import { UsersService } from '../modules/users/users.service';
 import { getGlobalRateLimitTracker } from './rate-limit-tracker';
@@ -212,13 +213,11 @@ async function buildApp(): Promise<INestApplication> {
     regenerateTenantAdminCredentials: jest.fn(),
   };
   const tenantService = {
-    create: jest
-      .fn()
-      .mockResolvedValue({
-        id: TENANT_UUID,
-        schemaName: 'tenant_rate_limit_test',
-        slug: 'rate-limit-test',
-      }),
+    create: jest.fn().mockResolvedValue({
+      id: TENANT_UUID,
+      schemaName: 'tenant_rate_limit_test',
+      slug: 'rate-limit-test',
+    }),
     findAll: jest.fn(),
     findOne: jest.fn(),
     update: jest.fn(),
@@ -318,6 +317,7 @@ async function buildApp(): Promise<INestApplication> {
       { provide: TenantService, useValue: tenantService },
       { provide: TenantProvisioningService, useValue: provisioningService },
       { provide: DashboardSummaryService, useValue: dashboardSummaryService },
+      { provide: TenantUsageService, useValue: { getUsage: jest.fn() } },
       { provide: UsersService, useValue: usersService },
       { provide: MediaService, useValue: mediaService },
       { provide: AuditService, useValue: auditService },

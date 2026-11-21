@@ -8,6 +8,7 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Ip,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -40,10 +41,12 @@ import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { AuthService } from '../auth/auth.service';
-import { PlatformRole, TenantStatus, UserRole } from '@iwana/shared';
+import { PLATFORM_TENANT_USAGE_ROLES, PlatformRole, TenantStatus, UserRole } from '@iwana/shared';
 import { TenantService } from './tenant.service';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { DashboardSummaryService } from './dashboard-summary.service';
+import { TenantUsageService } from './tenant-usage.service';
+import { TenantUsageResponseDto } from './dto/tenant-usage.dto';
 import { CreateTenantDto, TenantResponseDto, UpdateTenantDto } from './dto/tenant.dto';
 import { TenantSettingsResponseDto, UpdateTenantSettingsDto } from './dto/tenant-settings.dto';
 import {
@@ -156,6 +159,7 @@ export class TenantController {
     private readonly provisioningService: TenantProvisioningService,
     private readonly authService: AuthService,
     private readonly dashboardSummaryService: DashboardSummaryService,
+    private readonly tenantUsageService: TenantUsageService,
   ) {}
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -785,6 +789,26 @@ export class TenantController {
   @ApiResponse({ status: 403, description: 'Requiere un token de plataforma.' })
   async getStatusSummary(): Promise<TenantStatusSummaryResponseDto> {
     return { data: await this.tenantService.getStatusSummary() };
+  }
+
+  /**
+   * GET /api/v1/tenants/usage
+   * Uso por empresa (`TenantUsage` v1.0, ADR-114 D4). Solo `PLATFORM_TENANT_USAGE_ROLES`;
+   * un JWT de empresa, incluido `ADMIN`, recibe 403. Declarado antes de `:id`.
+   */
+  @Get('usage')
+  @Roles(...PLATFORM_TENANT_USAGE_ROLES)
+  @ApiOperation({ summary: 'Uso por empresa: suscriptores medidos frente al cupo' })
+  @ApiResponse({ status: 200, description: 'Uso por empresa.', type: TenantUsageResponseDto })
+  @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
+  @ApiResponse({ status: 403, description: 'Requiere un rol de plataforma autorizado.' })
+  async getUsage(
+    @CurrentUser() user: JwtPayload,
+    @Ip() ip: string | undefined,
+  ): Promise<TenantUsageResponseDto> {
+    return {
+      data: await this.tenantUsageService.getUsage({ userId: user.sub, ipAddress: ip ?? null }),
+    };
   }
 
   /**

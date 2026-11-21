@@ -216,16 +216,13 @@ test.describe('Centro de control — pulso de plataforma (datos completos)', () 
     ).toHaveAttribute('href', '/tenants/emp-a/settings');
   });
 
-  test('CA-PP3-05: P2 (disponibilidad) se monta; P4 (uso por empresa) sigue sin montar', async ({
-    page,
-  }) => {
+  // Fase 4 (ADR-114 §6): la visibilidad de P4 por rol la cubre web-centro-control-uso-empresa.spec.ts.
+  test('CA-PP3-05: P2 (disponibilidad) se monta, sin comparativos de periodo', async ({ page }) => {
     await loginToPulse(page);
     await expect(
       blocks(page).pulse.getByText('Disponibilidad, 30 días', { exact: true }),
     ).toBeVisible();
-    for (const text of [/uso por empresa/i, /vs\.? (semana|mes) anterior/i]) {
-      await expect(page.getByRole('main').getByText(text)).toHaveCount(0);
-    }
+    await expect(page.getByRole('main').getByText(/vs\.? (semana|mes) anterior/i)).toHaveCount(0);
     // Una sola gráfica en la portada: la tendencia (P1).
     await expect(page.locator('.recharts-wrapper')).toHaveCount(1);
     await expect(blocks(page).trend.locator('.recharts-wrapper')).toHaveCount(1);

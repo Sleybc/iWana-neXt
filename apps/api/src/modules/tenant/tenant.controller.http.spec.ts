@@ -20,6 +20,7 @@ import { TenantService } from './tenant.service';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { assertTenantStatusTransition } from './tenant-status-transitions';
 import { DashboardSummaryService } from './dashboard-summary.service';
+import { TenantUsageService } from './tenant-usage.service';
 import { AuthService } from '../auth/auth.service';
 
 jest.mock('../auth/auth.service', () => ({
@@ -167,6 +168,7 @@ describe('TenantController HTTP', () => {
         { provide: TenantProvisioningService, useValue: provisioningService },
         { provide: AuthService, useValue: authService },
         { provide: DashboardSummaryService, useValue: dashboardSummaryService },
+        { provide: TenantUsageService, useValue: { getUsage: jest.fn() } },
         JwtAuthGuard,
         RolesGuard,
       ],
@@ -538,6 +540,7 @@ describe('TenantController HTTP — DT-4 v1.1 T6 (códigos de 409)', () => {
         { provide: getQueueToken(TENANT_PROVISIONING_QUEUE), useValue: provisioningQueue },
         { provide: AuthService, useValue: {} },
         { provide: DashboardSummaryService, useValue: { getSummary: jest.fn() } },
+        { provide: TenantUsageService, useValue: { getUsage: jest.fn() } },
         JwtAuthGuard,
         RolesGuard,
       ],

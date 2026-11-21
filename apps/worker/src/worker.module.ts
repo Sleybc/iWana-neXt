@@ -38,6 +38,7 @@ import { ContractPdfRenderer } from './contracts/contract-pdf-renderer';
 import { validateWorkerConfiguration } from './worker.config';
 import { WorkerHeartbeatService } from './services/worker-heartbeat.service';
 import { PlatformHealthSamplerProcessor } from './processors/platform-health-sampler.processor';
+import { TenantUsageSamplerProcessor } from './processors/tenant-usage-sampler.processor';
 
 const runtimeEnv = process.env['NODE_ENV'];
 const workerDevelopmentLocalEnvPath = resolve(__dirname, '../../../.env.development.local');
@@ -231,6 +232,7 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
     ContractPdfRenderer,
     ContractPdfProcessor,
     PlatformHealthSamplerProcessor,
+    TenantUsageSamplerProcessor,
   ],
 })
 export class WorkerModule {}

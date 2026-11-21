@@ -24,6 +24,7 @@ export type { DbCredentials } from './db-credentials';
 export { SafeTypeOrmLogger } from './safe-typeorm.logger';
 export type { SafeTypeOrmLogSink } from './safe-typeorm.logger';
 export { summarizeErrorForLog } from './summarize-error-for-log';
+export { LISTED_SUBSCRIBER_SCOPE_SQL, countListedSubscribers } from './crm/listed-subscribers';
 
 // Grants post-DDL de provisioning (SEC-04) — schema tenant → rol app
 export {

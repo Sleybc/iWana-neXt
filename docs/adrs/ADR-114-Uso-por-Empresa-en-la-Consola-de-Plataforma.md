@@ -1,8 +1,8 @@
 # ADR-114: Uso por empresa en la consola de plataforma (conteos leídos desde schemas de empresa)
 
-**Versión:** 1.0
-**Estado:** Propuesto
-**Aprobación:** pendiente del CTO (decisión D3 de la dirección)
+**Versión:** 1.1
+**Estado:** Aprobado
+**Aprobación:** CTO, 2026-11-21 («Aprobar ADR-114»), junto con D3 de la dirección; obligan las condiciones 1–7 de §7
 **Fecha:** 2026-11-21
 **Autor:** Claude Code (AI-EM-ARCH) · **Revisión de seguridad:** AI-SEC-ENG (§7)
 **Módulos:** `apps/worker` · `apps/api` (`tenant`) · `packages/database` (schema `public`) · `apps/web` (`/dashboard`)
@@ -43,8 +43,8 @@ Solo conteos agregados. Ninguna columna con PII cruza a `public`. El conteo de s
 
 ## 6. Pendiente para aprobar
 
-- D3 de la dirección: que la consola muestre conteos por empresa (CTO).
-- Si `IWANA_SUPPORT` debe ver P4 o solo `SYSTEM_ADMIN` (CTO).
+- ~~D3 de la dirección~~: aprobada por el CTO el 2026-11-21.
+- ~~Visibilidad~~: CTO 2026-11-21: «System_Admin, y a los roles que se les dé permiso». Se aplica con la constante `PLATFORM_TENANT_USAGE_ROLES` de `@iwana/shared` (hoy solo `SYSTEM_ADMIN`), que el endpoint y la consola leen. La plataforma no tiene permisos asignables por pantalla; concederlos así exige un modelo de permisos de plataforma con ADR propio.
 
 ## 7. Revisión de AI-SEC-ENG
 
@@ -64,3 +64,15 @@ Condiciones:
 5. D4 con `@Roles(PlatformRole...)` explícito y prueba de integración que un JWT de empresa (incluido `ADMIN`) recibe 403; respuesta sin campos fuera de D4.
 6. D6 con `actorId`, `ip` y conteo de empresas devueltas; la decisión `IWANA_SUPPORT` (§6) queda en el CTO.
 7. La tabla `tenant_usage_snapshots` con FK a `tenants` y borrado en cascada en la purga R7 (ADR-108).
+
+**Verificación de implementación (2026-11-21, AI-SEC-ENG, diff sin commit).** Las 7 condiciones se cumplen; GO de seguridad.
+1. Cumple: `LISTED_SUBSCRIBER_SCOPE_SQL` y `countListedSubscribers` en `packages/database/src/crm/listed-subscribers.ts:14,28`, única definición usada por CRM (`subscribers.service.ts`, copia local retirada) y por el job. Se acepta `@iwana/db` en lugar de un puerto: el worker no puede importar `apps/api`, la definición es una sola, CRM sigue como dueño declarado y solo sale un número.
+2. Cumple: `tenant-usage-sampler.processor.ts:63-79` (schema de `public.tenants` `ACTIVE`, `runInTenantSchema`, `SET LOCAL statement_timeout` 5 s, `$1`), fallo aislado sin escribir 0 (`:92-98`; prueba `tenant-usage-sampler.integration.spec.ts:110-118`).
+3. Cumple: conexión por defecto del worker (`:112`); ninguna referencia a migrator ni purger.
+4. Cumple: logs `tenantId`, `durationMs`, `result` (`:162-170`) con `summarizeErrorForLog` y `@SanitizeFailedReason`; el job no responde a clientes.
+5. Cumple: `tenant.controller.ts:799-800` `@Roles(...PLATFORM_TENANT_USAGE_ROLES)` = `SYSTEM_ADMIN`; `tenant-usage.postgres.integration.spec.ts:195-207` prueba 403 para `IWANA_SUPPORT`, `ADMIN` y `SUPPORT` de empresa, y `:154` solo campos del contrato.
+6. Cumple: `tenant-usage.service.ts:51-58` audita `userId`, `ipAddress` y `tenantsReturned`.
+7. Cumple: `035_tenant_usage_snapshots.ts:63-64` FK `ON DELETE CASCADE`. `iwana_purge_tenant_schema` (`029:195`) borra `public.tenants`; la acción referencial corre con el dueño de la tabla, así que `iwana_purger` no necesita grant. Prueba de cascada en `tenant-usage-sampler.integration.spec.ts:125` (con DELETE directo; informativo: no ejercita la función de purga).
+Conteo con anonimizados: conforme a la regla CRM vigente y a esta §7; solo agrega, no lee columnas.
+
+**Nota de implementación de la condición 1 (2026-11-21, AI-EM-ARCH).** El worker no puede importar módulos de `apps/api`, así que la definición de «suscriptor listado» vive en `packages/database/src/crm/listed-subscribers.ts` como única copia: CRM (`subscribers.service.ts`) y el job la importan de `@iwana/db`. El dueño del dato sigue siendo CRM; un cambio a esa definición se revisa como cambio de CRM. Líneas de la verificación corregidas tras `boundary-reviewer`.

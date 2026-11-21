@@ -15,6 +15,7 @@ import { Test } from '@nestjs/testing';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AuthService } from '../auth/auth.service';
 import { DashboardSummaryService } from './dashboard-summary.service';
+import { TenantUsageService } from './tenant-usage.service';
 import { TenantController } from './tenant.controller';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { TenantService } from './tenant.service';
@@ -53,6 +54,7 @@ describe('TenantController Swagger', () => {
         { provide: TenantProvisioningService, useValue: {} },
         { provide: AuthService, useValue: {} },
         { provide: DashboardSummaryService, useValue: {} },
+        { provide: TenantUsageService, useValue: { getUsage: jest.fn() } },
       ],
     }).compile();
 

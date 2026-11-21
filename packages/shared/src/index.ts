@@ -45,6 +45,7 @@ export * from './dto/pagination.dto';
 export * from './dto/tenant-status-summary.dto';
 export * from './dto/platform-users-summary.dto';
 export * from './dto/platform-health-history.dto';
+export * from './dto/tenant-usage.dto';
 export * from './dto/public-health.dto';
 
 // Constants

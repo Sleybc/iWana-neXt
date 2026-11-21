@@ -16,7 +16,12 @@ import { ModuleRef } from '@nestjs/core';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, SelectQueryBuilder } from 'typeorm';
 import { z } from 'zod';
-import { runInTenantSchema, summarizeErrorForLog, TenantContext } from '@iwana/db';
+import {
+  LISTED_SUBSCRIBER_SCOPE_SQL,
+  runInTenantSchema,
+  summarizeErrorForLog,
+  TenantContext,
+} from '@iwana/db';
 import { clampPage } from '../../../common/pagination/clamp-page';
 import { clampLimit } from '../../../common/pagination/clamp-limit';
 import { applySort } from '../../../common/pagination/apply-sort';
@@ -31,7 +36,6 @@ import { hmacPii, resolvePiiHashKey } from '../../../common/crypto/pii-hash-key.
 import {
   PersonType,
   CustomerSegment,
-  ACTIVATED_SUBSCRIBER_STATUSES,
   SubscriberStatus,
   DocumentType,
   ExpedienteStatus,
@@ -109,17 +113,8 @@ import { ContractAutoCreationPort } from '../ports/contract-auto-creation.port';
 import { ANONYMIZED } from '../privacy-adapters/titular-erasure/titular-erasure-sql';
 import { titularAnonymizedConflict } from './guards/titular-anonymized-conflict';
 
-// Lista, búsquedas y conteos (spec 2026-11-21 v1.1): primera activación o un servicio que
-// llegó a activarse. Cubre al importado y al contrato activado a mano, que siguen en
-// PROSPECT/LEAD mientras falten datos fiscales; el prospecto sin servicio queda fuera.
-const LISTED_SUBSCRIBER_SCOPE_SQL = `((s.activated_at IS NOT NULL AND s.status IN (${ACTIVATED_SUBSCRIBER_STATUSES.map((status) => "'" + status + "'").join(', ')})) OR EXISTS (
-  SELECT 1
-    FROM contracts activated_contract
-   WHERE activated_contract.subscriber_id = s.id
-     AND activated_contract.tenant_id = s.tenant_id
-     AND activated_contract.deleted_at IS NULL
-     AND activated_contract.status::text IN ('ACTIVE', 'SUSPENDED', 'TERMINATED')
-))`;
+// Lista, búsquedas y conteos: `LISTED_SUBSCRIBER_SCOPE_SQL` de `@iwana/db` (definición única
+// de CRM, compartida con el muestreador de uso por empresa, ADR-114).
 
 const SUBSCRIBER_SECTION_SCHEMAS = {
   identification: z

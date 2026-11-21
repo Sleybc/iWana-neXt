@@ -116,13 +116,45 @@
 | F3-D6 | Sin prueba E2E de 401 (cubierto en integración del API); `formatPercent` trunca en vez de redondear | P3 |
 | F3-D7 | `docker-compose.e2e.yml` sin API: ese worker no mide `api` | P3 |
 
-## Fase 4 — P4
+## Fase 4 — P4, uso por empresa
 
-**Estado:** detenida en espera del CTO. No se implementa.
+**Estado:** G6 ✅ 2026-11-21 (AI-EM-ARCH) · commit local, sin push. [ADR-114](../adrs/ADR-114-Uso-por-Empresa-en-la-Consola-de-Plataforma.md) aprobado por el CTO el 2026-11-21 con D3. Visibilidad (CTO): «System_Admin, y a los roles que se les dé permiso» → constante `PLATFORM_TENANT_USAGE_ROLES` (hoy solo `SYSTEM_ADMIN`). Encargo: [FASE4](../prompts/PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE4-v1.0.md).
 
-[ADR-114 (propuesto)](../adrs/ADR-114-Uso-por-Empresa-en-la-Consola-de-Plataforma.md): el API de plataforma no lee schemas de empresa; un job del worker guarda por hora un conteo por empresa en `public.tenant_usage_snapshots`. Dictamen de AI-SEC-ENG (§7): **aprobable con 7 condiciones**; principal hallazgo de contexto: API y worker comparten el rol `DB_APP_USER`, así que el confinamiento es de código, no de base de datos.
+| Bloque | Agente | Entregable |
+| --- | --- | --- |
+| Contrato | AI-EM-ARCH | `TenantUsage` v1.0 y `PLATFORM_TENANT_USAGE_ROLES` en `packages/shared` |
+| §A | `sr-backend` | Migración `public/035_tenant_usage_snapshots` (FK en cascada), definición única de suscriptor listado en `@iwana/db` (CRM la importa), job horario del worker, `GET /api/v1/tenants/usage` auditado |
+| §B | `fe-platform` | Área «Uso por empresa» solo para roles autorizados; «Sin dato», desactualizada a 2 h, cupo 0 distinto de sin cupo |
+| §C | `sr-qa` | `web-centro-control-uso-empresa.spec.ts`, rol de los mocks alineado al API real, CA-PP3-05 reformulado |
+| Verificación | `sec-eng` | Las 7 condiciones del ADR-114 §7 cumplen: GO |
 
-| Espera decisión del CTO | Opciones |
+**Evidencia (conteo real, `--force`, `Cached: 0`):**
+
+| Comando | Resultado |
 | --- | --- |
-| D3 de la dirección: mostrar conteos por empresa | Aprobar ADR-114 con las condiciones de §7 (recomendado) · rechazar y dejar P4 sin montar |
-| Visibilidad de P4 | Solo `SYSTEM_ADMIN` · también `IWANA_SUPPORT` |
+| `@iwana/shared` | 59 suites · 811 tests |
+| `@iwana/db` | 85 suites · 463 tests |
+| `@iwana/worker` | 30 suites · 317 tests |
+| `@iwana/api` | 629/630 suites · 8388/8389 tests; la roja es F2-D6 |
+| `@iwana/web` (paquete solo) | 40 suites · 308 tests; en la corrida paralela de 5 paquetes CA-PP2-02 superó los 15 s |
+| Integración `DB_NAME=test` | API 4/4 (200 con solo campos del contrato, 401, 403 `IWANA_SUPPORT`, 403 empresa) · worker 2/2 (definición de CRM, fallo aislado sin 0, cascada) |
+| `e2e/playwright.web.config.ts --workers=1` | 57/59; rojas = las 2 de F1-D2 |
+| E2E uso por empresa y axe | 10/10 · 4/4 |
+| Revisión en vivo 1440×900 como `SYSTEM_ADMIN` | `tenants/usage` 200; iWana «Sin dato» (aún sin medición); B3 en 3 + 2; B2 termina a 761 px; sin desplazamiento horizontal |
+| Migración 035 | aplicada en `dbiw` y `test` |
+
+**Revisores:** `boundary-reviewer` GO; la definición en `@iwana/db` en vez de un puerto de CRM la acepta AI-EM-ARCH (nota en ADR-114 §7). `contract-drift-reviewer` sin deriva; cupo 0 frente a sin cupo → corregido. `test-change-reviewer` sin regresiones.
+
+**Incidencia de entorno:** el API de `pnpm dev` (3000) cayó durante la fase, probablemente al recompilar `@iwana/db`. Con autorización del usuario se arrancó solo el API con `pnpm --filter @iwana/api dev` en una pestaña nueva; web, portal y contenedores no se tocaron.
+
+**Deuda:**
+
+| # | Deuda | Severidad |
+| --- | --- | --- |
+| F4-D1 | Medición «bajo demanda tras activar una empresa» (ADR-114 D2) no implementada: una empresa nueva sale «sin dato» hasta una hora | P2 |
+| F4-D2 | El conteo incluye anonimizados (regla de la lista CRM); el conteo de colas de CRM los excluye. Decide el CTO | P2 |
+| F4-D3 | Permisos de plataforma asignables por pantalla: exigen un modelo de permisos de plataforma con ADR propio | P3 |
+| F4-D4 | Umbrales de color del uso (90 % / 95 %) tomados del prototipo; confirmar con prod-ux | P3 |
+| F4-D5 | Una fila por empresa sin tope; límite o «Ver más» por decidir (prod-ux) | P3 |
+| F4-D6 | La cascada se probó borrando la empresa directo, no con la función de purga R7 | P3 |
+| F4-D7 | El worker de `pnpm dev` no midió en vivo (colas y uso sin muestras); ligado a F3-D2 | P2 |

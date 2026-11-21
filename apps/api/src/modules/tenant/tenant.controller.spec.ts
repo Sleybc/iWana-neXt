@@ -10,6 +10,7 @@ import { TenantController } from './tenant.controller';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { TenantService } from './tenant.service';
 import { DashboardSummaryService } from './dashboard-summary.service';
+import { TenantUsageService } from './tenant-usage.service';
 
 describe('TenantController', () => {
   let controller: TenantController;
@@ -51,6 +52,7 @@ describe('TenantController', () => {
         { provide: TenantProvisioningService, useValue: provisioningService },
         { provide: AuthService, useValue: authService },
         { provide: DashboardSummaryService, useValue: dashboardSummaryService },
+        { provide: TenantUsageService, useValue: { getUsage: jest.fn() } },
       ],
     }).compile();
 

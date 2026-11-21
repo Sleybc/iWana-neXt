@@ -69,6 +69,11 @@ jest.mock('@/components/layout/PageHeader', () => ({
   ),
 }));
 
+let mockRole = 'IWANA_SUPPORT';
+jest.mock('@/components/auth/AuthProvider', () => ({
+  useAuth: () => ({ user: { role: mockRole } }),
+}));
+
 jest.mock('@/lib/api-client', () => {
   class ApiError extends Error {
     constructor(
@@ -86,6 +91,7 @@ jest.mock('@/lib/api-client', () => {
     tenantApi: {
       summary: jest.fn(),
       list: jest.fn(),
+      usage: jest.fn(),
     },
     platformAuditApi: {
       list: jest.fn(),
@@ -137,7 +143,7 @@ describe('DashboardClient', () => {
   const { tenantApi, platformAuditApi, platformUsersApi, healthApi, platformHealthApi, ApiError } =
     jest.requireMock('@/lib/api-client') as {
       ApiError: new (status: number, code: string, message: string) => Error;
-      tenantApi: { summary: jest.Mock; list: jest.Mock };
+      tenantApi: { summary: jest.Mock; list: jest.Mock; usage: jest.Mock };
       platformAuditApi: { list: jest.Mock };
       platformUsersApi: { summary: jest.Mock };
       healthApi: { get: jest.Mock };
@@ -154,6 +160,8 @@ describe('DashboardClient', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRole = 'IWANA_SUPPORT';
+    tenantApi.usage.mockResolvedValue({ items: [], generatedAt: new Date().toISOString() });
     healthApi.get.mockResolvedValue(HEALTH_OK);
     platformAuditApi.list.mockResolvedValue({ data: [] });
     tenantApi.summary.mockResolvedValue(makeTenantStatusSummary());
@@ -847,6 +855,113 @@ describe('DashboardClient', () => {
       expect(within(queues).getByText('Acumulación')).toBeInTheDocument();
       expect(queues).not.toHaveTextContent('search-index');
       expect(queues).not.toHaveTextContent('cola-nueva-x');
+    });
+  });
+
+  describe('P4 · Uso por empresa', () => {
+    const usageRegion = () => screen.queryByRole('region', { name: 'Uso por empresa' });
+    const hoursAgo = (h: number) => new Date(Date.now() - h * 60 * 60 * 1000).toISOString();
+
+    it('CA-PP4-01: IWANA_SUPPORT no ve el área ni la pide', async () => {
+      await renderReady();
+      expect(usageRegion()).not.toBeInTheDocument();
+      expect(tenantApi.usage).not.toHaveBeenCalled();
+    });
+
+    it('CA-PP4-01/02/03: SYSTEM_ADMIN ve barra, sin cupo, «Sin dato» y desactualizada', async () => {
+      mockRole = 'SYSTEM_ADMIN';
+      tenantApi.usage.mockResolvedValue({
+        generatedAt: hoursAgo(0),
+        items: [
+          {
+            tenantId: 't1',
+            name: 'NetCaribe',
+            activeSubscribers: 64,
+            maxSubscribers: 100,
+            measuredAt: hoursAgo(1),
+          },
+          {
+            tenantId: 't2',
+            name: 'Redes del Sur',
+            activeSubscribers: 96,
+            maxSubscribers: 100,
+            measuredAt: hoursAgo(3),
+          },
+          {
+            tenantId: 't3',
+            name: 'Sin Cupo',
+            activeSubscribers: 1200,
+            maxSubscribers: null,
+            measuredAt: hoursAgo(1),
+          },
+          {
+            tenantId: 't4',
+            name: 'Nueva',
+            activeSubscribers: null,
+            maxSubscribers: 50,
+            measuredAt: null,
+          },
+        ],
+      });
+      await renderReady();
+      const region = await screen.findByRole('region', { name: 'Uso por empresa' });
+      const area = within(region);
+      expect(tenantApi.usage).toHaveBeenCalledTimes(1);
+      expect(await area.findByText('96 %')).toBeInTheDocument();
+      expect(area.getByText('64 %')).toBeInTheDocument();
+      expect(area.getByText('1.200 suscriptores')).toBeInTheDocument();
+      expect(area.getByText('Sin dato')).toBeInTheDocument();
+      expect(area.queryByText('0 %')).not.toBeInTheDocument();
+      expect(area.getAllByText('Desactualizada')).toHaveLength(1);
+      expect(area.getByText('Cerca del cupo')).toBeInTheDocument();
+      const items = area.getAllByRole('listitem').map((li) => li.textContent);
+      expect(items[0]).toContain('Redes del Sur');
+      expect(items[3]).toContain('Nueva');
+    });
+
+    it('cupo 0: cifra con aviso «No admite nuevos suscriptores», sin porcentaje', async () => {
+      mockRole = 'SYSTEM_ADMIN';
+      tenantApi.usage.mockResolvedValue({
+        generatedAt: hoursAgo(0),
+        items: [
+          {
+            tenantId: 't1',
+            name: 'Cerrada',
+            activeSubscribers: 7,
+            maxSubscribers: 0,
+            measuredAt: hoursAgo(1),
+          },
+          {
+            tenantId: 't2',
+            name: 'Vacía',
+            activeSubscribers: 0,
+            maxSubscribers: 0,
+            measuredAt: hoursAgo(1),
+          },
+        ],
+      });
+      await renderReady();
+      const area = within(await screen.findByRole('region', { name: 'Uso por empresa' }));
+      expect(await area.findByText('7 suscriptores')).toBeInTheDocument();
+      expect(area.getByText('0 suscriptores')).toBeInTheDocument();
+      expect(area.getAllByText('No admite nuevos suscriptores')).toHaveLength(2);
+      expect(area.queryByText(/%/)).not.toBeInTheDocument();
+      expect(area.queryByRole('img')).not.toBeInTheDocument();
+    });
+
+    it('CA-PP4-04: en error solo el área degrada y Reintentar la recupera', async () => {
+      mockRole = 'SYSTEM_ADMIN';
+      tenantApi.usage.mockRejectedValueOnce(new ApiError(500, 'X', 'fallo'));
+      await renderReady();
+      const region = await screen.findByRole('region', { name: 'Uso por empresa' });
+      expect(
+        await within(region).findByText('No pudimos cargar el uso por empresa.'),
+      ).toBeInTheDocument();
+      expect(companies()).toBeInTheDocument();
+      expect(screen.queryByText(DIRECTORY_ERROR)).not.toBeInTheDocument();
+      await userEvent.click(within(region).getByRole('button', { name: 'Reintentar' }));
+      await waitFor(() => expect(tenantApi.usage).toHaveBeenCalledTimes(2));
+      expect(await within(region).findByText('Aún no hay empresas activas.')).toBeInTheDocument();
     });
   });
 });

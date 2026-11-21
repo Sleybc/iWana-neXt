@@ -5,6 +5,7 @@ import type {
   PlatformUsersSummary,
   PublicHealth,
   TenantStatusSummary,
+  TenantUsage,
 } from '@iwana/shared';
 
 /**
@@ -768,6 +769,9 @@ export const tenantApi = {
 
   /** Conteo por estado y avisos del directorio completo (TenantStatusSummary v1.1). */
   summary: () => request<TenantStatusSummary>('/tenants/summary'),
+
+  /** Uso por empresa (contrato P4 v1.0, `{ data }`); solo `PLATFORM_TENANT_USAGE_ROLES`. */
+  usage: () => request<TenantUsage>('/tenants/usage'),
 
   getOne: (id: string, options?: { signal?: AbortSignal }) =>
     request<TenantListItem>(
