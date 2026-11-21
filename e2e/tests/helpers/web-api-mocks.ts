@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import type { TenantStatusSummary } from '@iwana/shared';
 
 export interface WebTenantMock {
   id: string;
@@ -53,8 +54,106 @@ export interface WebTenantAuditEntryMock {
   createdAt: string;
 }
 
+type TenantStatusKey = keyof TenantStatusSummary['byStatus'];
+
+/** Estados de TenantStatus v1.0; espejo literal para no exigir el build de @iwana/shared. */
+const TENANT_STATUS_KEYS = [
+  'PROVISIONING',
+  'ACTIVE',
+  'SUSPENDED',
+  'INACTIVE',
+  'MARKED_FOR_DELETION',
+  'PROVISIONING_FAILED',
+] as const satisfies readonly TenantStatusKey[];
+
+/** Orden de severidad de `attention` según el contrato TenantStatusSummary v1.0. */
+const ATTENTION_SEVERITY = ['PROVISIONING_FAILED', 'MARKED_FOR_DELETION', 'SUSPENDED'] as const;
+
+export type WebHealthLevel = 'ok' | 'degraded' | 'down';
+
+export interface WebHealthMockOptions {
+  /** `error` responde 503 sin cuerpo útil. */
+  mode?: 'ok' | 'partial' | 'error';
+  db?: WebHealthLevel;
+  redis?: WebHealthLevel;
+}
+
+/**
+ * Resumen por estado derivado de una lista de empresas, con la forma de
+ * `TenantStatusSummary` v1.0. `overrides` permite fijar cifras mayores que la lista.
+ */
+export function buildTenantSummaryMock(
+  tenants: WebTenantMock[],
+  overrides: Partial<TenantStatusSummary> = {},
+): TenantStatusSummary {
+  const byStatus = Object.fromEntries(TENANT_STATUS_KEYS.map((key) => [key, 0])) as Record<
+    TenantStatusKey,
+    number
+  >;
+  for (const tenant of tenants) {
+    const key = tenant.status as TenantStatusKey;
+    if (key in byStatus) byStatus[key] += 1;
+  }
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const attention = tenants
+    .filter((tenant) => (ATTENTION_SEVERITY as readonly string[]).includes(tenant.status))
+    .sort((a, b) => {
+      const bySeverity =
+        ATTENTION_SEVERITY.indexOf(a.status as (typeof ATTENTION_SEVERITY)[number]) -
+        ATTENTION_SEVERITY.indexOf(b.status as (typeof ATTENTION_SEVERITY)[number]);
+      return bySeverity !== 0 ? bySeverity : b.updatedAt.localeCompare(a.updatedAt);
+    })
+    .slice(0, 5)
+    .map(({ id, name, status, updatedAt }) => ({
+      id,
+      name,
+      status: status as TenantStatusSummary['attention'][number]['status'],
+      updatedAt,
+    }));
+  return {
+    total: tenants.length,
+    byStatus: byStatus as TenantStatusSummary['byStatus'],
+    updatedLast7Days: tenants.filter((tenant) => new Date(tenant.updatedAt).getTime() >= weekAgo)
+      .length,
+    attention,
+    generatedAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+/** Empresas de la portada compartidas por los specs de `/dashboard` (Q17). Sin PII. */
+export const DASHBOARD_TENANTS: WebTenantMock[] = [
+  {
+    id: 'tenant-1',
+    name: 'Demo ISP',
+    slug: 'demo-isp',
+    schemaName: 'tenant_demo_isp',
+    status: 'PROVISIONING_FAILED',
+    contactEmail: 'hash:contact-1',
+    maxSubscribers: 500,
+    settings: {},
+    createdAt: '2026-03-12T09:00:00.000Z',
+    updatedAt: '2026-03-13T10:00:00.000Z',
+  },
+  {
+    id: 'tenant-2',
+    name: 'Fibernet Colombia',
+    slug: 'fibernet-col',
+    schemaName: 'tenant_fibernet_col',
+    status: 'ACTIVE',
+    contactEmail: 'hash:contact-2',
+    maxSubscribers: 1200,
+    settings: {},
+    createdAt: '2026-03-11T10:00:00.000Z',
+    updatedAt: '2026-03-13T09:30:00.000Z',
+  },
+];
+
 interface SetupWebApiMocksOptions {
   tenants?: WebTenantMock[];
+  /** Resumen de `/tenants/summary`; por defecto, derivado de `tenants`. */
+  tenantSummary?: TenantStatusSummary;
+  health?: WebHealthMockOptions;
   platformAuditData?: WebPlatformAuditEntryMock[];
   tenantAuditDataBySlug?: Record<string, WebTenantAuditEntryMock[]>;
   onUnhandledApiRoute?: 'continue' | '404';
@@ -186,6 +285,8 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
   const tenantAuditDataBySlug =
     options.tenantAuditDataBySlug ?? buildDefaultTenantAuditDataBySlug();
   const onUnhandledApiRoute = options.onUnhandledApiRoute ?? 'continue';
+  const tenantSummary = options.tenantSummary ?? buildTenantSummaryMock(tenants);
+  const health = options.health ?? {};
 
   return async ({ page }: { page: import('@playwright/test').Page }) => {
     let isLoggedIn = false;
@@ -257,6 +358,15 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
         return;
       }
 
+      if (new URL(url).pathname.endsWith('/tenants/summary') && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: tenantSummary }),
+        });
+        return;
+      }
+
       if (url.includes('/tenants') && method === 'GET') {
         const searchParams = new URL(url).searchParams;
         const status = searchParams.get('status');
@@ -296,13 +406,16 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
           const toDate = new Date(toParam);
           filtered = filtered.filter((entry) => new Date(entry.createdAt) <= toDate);
         }
+        const limitParam = Number(searchParams.get('limit'));
+        const page =
+          Number.isInteger(limitParam) && limitParam > 0 ? filtered.slice(0, limitParam) : filtered;
 
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
-            data: filtered,
-            nextCursor: null,
+            data: page,
+            nextCursor: page.length < filtered.length ? (page[page.length - 1]?.id ?? null) : null,
             total: filtered.length,
           }),
         });
@@ -310,13 +423,23 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
       }
 
       if (url.includes('/health') && method === 'GET') {
+        if (health.mode === 'error') {
+          await route.fulfill({
+            status: 503,
+            contentType: 'application/json',
+            body: JSON.stringify({ code: 'SERVICE_UNAVAILABLE', message: 'Sin lectura' }),
+          });
+          return;
+        }
+        const db = health.db ?? (health.mode === 'partial' ? 'degraded' : 'ok');
+        const redis = health.redis ?? 'ok';
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
-            status: 'ok',
-            db: 'ok',
-            redis: 'ok',
+            status: db === 'ok' && redis === 'ok' ? 'ok' : 'degraded',
+            db,
+            redis,
             timestamp: new Date().toISOString(),
             relay: {
               outboxDepth: 0,
@@ -405,4 +528,10 @@ export async function loginAsPlatformAdmin(
   await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible();
   await submitPlatformLogin(page, credentials);
   await expect(page).toHaveURL(/\/dashboard/);
+}
+
+/** Login de plataforma hasta la portada «Centro de control» (compartido, Q17). */
+export async function loginToDashboard(page: Page): Promise<void> {
+  await loginAsPlatformAdmin(page);
+  await expect(page.getByRole('heading', { name: 'Centro de control' })).toBeVisible();
 }

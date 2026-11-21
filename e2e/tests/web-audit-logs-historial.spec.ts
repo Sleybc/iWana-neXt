@@ -88,7 +88,7 @@ test.describe('Web Historial — audit-logs alineación', () => {
     });
   });
 
-  test('D-6: axe wcag2a+wcag2aa en /audit-logs y cero tr[role=button]', async ({ page }) => {
+  test('D-6: axe WCAG 2.2 AA en /audit-logs y cero tr[role=button]', async ({ page }) => {
     await loginAsPlatformAdmin(page);
     await page.goto('/audit-logs');
     await expect(
@@ -98,7 +98,9 @@ test.describe('Web Historial — audit-logs alineación', () => {
 
     await expect(page.locator('tr[role="button"]')).toHaveCount(0);
 
-    const auditA11y = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+    const auditA11y = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+      .analyze();
     expect(auditA11y.violations).toEqual([]);
   });
 

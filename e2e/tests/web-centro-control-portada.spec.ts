@@ -5,7 +5,7 @@
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { evidenceDir } from './helpers/evidence';
-import { setupWebApiMocks, submitPlatformLogin } from './helpers/web-api-mocks';
+import { loginToDashboard, setupWebApiMocks } from './helpers/web-api-mocks';
 
 const EVIDENCE_DIR = evidenceDir('quality/evidence-web-centro-control-portada');
 
@@ -17,11 +17,7 @@ const SIGNAL_CHIP_LABELS = [
 ] as const;
 
 async function loginToPortada(page: Page) {
-  await page.goto('/auth/login');
-  await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible();
-  await submitPlatformLogin(page);
-  await expect(page).toHaveURL(/\/dashboard/);
-  await expect(page.getByRole('heading', { name: 'Centro de control' })).toBeVisible();
+  await loginToDashboard(page);
   await expect(page.getByRole('region', { name: 'Resumen operativo' })).toBeVisible();
   await expect(page.getByText('Cargando el centro de control')).toHaveCount(0);
 }

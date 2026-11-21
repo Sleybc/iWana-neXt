@@ -1,6 +1,15 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { setupWebApiMocks, submitPlatformLogin } from './helpers/web-api-mocks';
+import {
+  buildTenantSummaryMock,
+  DASHBOARD_TENANTS,
+  loginToDashboard,
+  setupWebApiMocks,
+  submitPlatformLogin,
+} from './helpers/web-api-mocks';
+
+/** Q-1: WCAG 2.2 AA completo (CA-4). */
+const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'];
 
 const SIGNAL_CHIP_LABELS = [
   'Activas',
@@ -9,35 +18,15 @@ const SIGNAL_CHIP_LABELS = [
   'Cambios esta semana',
 ] as const;
 
+async function expectNoAxeViolations(page: Page) {
+  const result = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+  expect(result.violations).toEqual([]);
+}
+
 test.describe('Web auth + dashboard flows', () => {
   test.beforeEach(
     setupWebApiMocks({
-      tenants: [
-        {
-          id: 'tenant-1',
-          name: 'Demo ISP',
-          slug: 'demo-isp',
-          schemaName: 'tenant_demo_isp',
-          status: 'PROVISIONING_FAILED',
-          contactEmail: 'hash:contact-1',
-          maxSubscribers: 500,
-          settings: {},
-          createdAt: '2026-03-12T09:00:00.000Z',
-          updatedAt: '2026-03-13T10:00:00.000Z',
-        },
-        {
-          id: 'tenant-2',
-          name: 'Fibernet Colombia',
-          slug: 'fibernet-col',
-          schemaName: 'tenant_fibernet_col',
-          status: 'ACTIVE',
-          contactEmail: 'hash:contact-2',
-          maxSubscribers: 1200,
-          settings: {},
-          createdAt: '2026-03-11T10:00:00.000Z',
-          updatedAt: '2026-03-13T09:30:00.000Z',
-        },
-      ],
+      tenants: DASHBOARD_TENANTS,
       onUnhandledApiRoute: '404',
     }),
   );
@@ -47,8 +36,7 @@ test.describe('Web auth + dashboard flows', () => {
     await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible();
     await page.waitForLoadState('networkidle');
 
-    const loginA11y = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
-    expect(loginA11y.violations).toEqual([]);
+    await expectNoAxeViolations(page);
 
     await submitPlatformLogin(page);
 
@@ -87,16 +75,89 @@ test.describe('Web auth + dashboard flows', () => {
     await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible();
   });
 
-  test('D-8: /dashboard post-login sin violaciones wcag2a+wcag2aa', async ({ page }) => {
-    await page.goto('/auth/login');
-    await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible();
-    await submitPlatformLogin(page);
-    await expect(page).toHaveURL(/\/dashboard/);
-    await expect(page.getByRole('heading', { name: 'Centro de control' })).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Resumen operativo' })).toBeVisible();
+  for (const viewport of [
+    { name: '1280', width: 1280, height: 800 },
+    { name: '375', width: 375, height: 812 },
+  ]) {
+    for (const theme of ['light', 'dark'] as const) {
+      test(`D-8 / CA-4: /dashboard sin violaciones WCAG 2.2 AA a ${viewport.name} px, tema ${theme}`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await page.addInitScript((value) => {
+          try {
+            window.localStorage.setItem('iwana-theme', value);
+          } catch {
+            /* sin almacenamiento: el tema queda por defecto y la aserción lo detecta */
+          }
+        }, theme);
+        await page.emulateMedia({ colorScheme: theme });
+
+        await loginToDashboard(page);
+        await expect(page.getByRole('region', { name: 'Resumen operativo' })).toBeVisible();
+        await page.waitForLoadState('networkidle');
+        if (theme === 'dark') {
+          await expect(page.locator('html')).toHaveClass(/(^|\s)dark(\s|$)/);
+        } else {
+          await expect(page.locator('html')).not.toHaveClass(/(^|\s)dark(\s|$)/);
+        }
+
+        await expectNoAxeViolations(page);
+      });
+    }
+  }
+});
+
+test.describe('Web dashboard — cifras del resumen por estado (E-1)', () => {
+  const SUMMARY_233 = buildTenantSummaryMock(DASHBOARD_TENANTS, {
+    total: 233,
+    byStatus: {
+      PROVISIONING: 12,
+      ACTIVE: 190,
+      SUSPENDED: 9,
+      INACTIVE: 7,
+      MARKED_FOR_DELETION: 4,
+      PROVISIONING_FAILED: 11,
+    },
+    updatedLast7Days: 37,
+  });
+
+  test.beforeEach(
+    setupWebApiMocks({
+      tenants: DASHBOARD_TENANTS,
+      tenantSummary: SUMMARY_233,
+      onUnhandledApiRoute: '404',
+    }),
+  );
+
+  test('con 233 empresas los chips muestran el resumen y no el tope de 100 de la lista', async ({
+    page,
+  }) => {
+    const listRequests: string[] = [];
+    page.on('request', (request) => {
+      const { pathname, searchParams } = new URL(request.url());
+      if (pathname.endsWith('/api/v1/tenants') && searchParams.get('limit') === '100') {
+        listRequests.push(request.url());
+      }
+    });
+
+    await loginToDashboard(page);
+    const signal = page.getByRole('region', { name: 'Resumen operativo' });
+    await expect(signal).toBeVisible();
     await page.waitForLoadState('networkidle');
 
-    const dashboardA11y = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
-    expect(dashboardA11y.violations).toEqual([]);
+    // Requieren atención = PROVISIONING_FAILED + SUSPENDED + MARKED_FOR_DELETION.
+    const expected: Record<(typeof SIGNAL_CHIP_LABELS)[number], string> = {
+      Activas: '190',
+      'En configuración': '12',
+      'Requieren atención': '24',
+      'Cambios esta semana': '37',
+    };
+    for (const label of SIGNAL_CHIP_LABELS) {
+      const chip = signal.getByText(label, { exact: true }).locator('..');
+      await expect(chip).toContainText(expected[label]);
+    }
+    await expect(page.getByText('233 empresas', { exact: true })).toBeVisible();
+    expect(listRequests).toEqual([]);
   });
 });

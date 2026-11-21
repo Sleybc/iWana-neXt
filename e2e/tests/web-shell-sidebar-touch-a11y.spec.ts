@@ -7,17 +7,9 @@
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { evidenceDir } from './helpers/evidence';
-import { setupWebApiMocks, submitPlatformLogin } from './helpers/web-api-mocks';
+import { DASHBOARD_TENANTS, loginToDashboard, setupWebApiMocks } from './helpers/web-api-mocks';
 
 const EVIDENCE_DIR = evidenceDir('quality/evidence-web-shell-sidebar-touch');
-
-async function loginToDashboard(page: Page) {
-  await page.goto('/auth/login');
-  await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible();
-  await submitPlatformLogin(page);
-  await expect(page).toHaveURL(/\/dashboard/);
-  await expect(page.getByRole('heading', { name: 'Centro de control' })).toBeVisible();
-}
 
 async function openMobileSidebar(page: Page) {
   await page.setViewportSize({ width: 375, height: 812 });
@@ -38,20 +30,7 @@ async function measureBox(locator: ReturnType<Page['locator']>) {
 test.describe('Web shell sidebar — touch targets + evidencia visual', () => {
   test.beforeEach(
     setupWebApiMocks({
-      tenants: [
-        {
-          id: 'tenant-1',
-          name: 'Demo ISP',
-          slug: 'demo-isp',
-          schemaName: 'tenant_demo_isp',
-          status: 'ACTIVE',
-          contactEmail: 'hash:contact-1',
-          maxSubscribers: 500,
-          settings: {},
-          createdAt: '2026-03-12T09:00:00.000Z',
-          updatedAt: '2026-03-13T10:00:00.000Z',
-        },
-      ],
+      tenants: DASHBOARD_TENANTS.filter((tenant) => tenant.status === 'ACTIVE'),
       onUnhandledApiRoute: '404',
     }),
   );

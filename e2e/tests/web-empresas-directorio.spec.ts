@@ -6,7 +6,7 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { evidenceDir } from './helpers/evidence';
-import { setupWebApiMocks, submitPlatformLogin } from './helpers/web-api-mocks';
+import { loginToDashboard, setupWebApiMocks } from './helpers/web-api-mocks';
 
 const EVIDENCE_DIR = evidenceDir('quality/evidence-web-empresas-directorio');
 
@@ -51,16 +51,8 @@ const DIRECTORIO_TENANTS = [
   },
 ];
 
-async function loginToControlCenter(page: Page) {
-  await page.goto('/auth/login');
-  await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible();
-  await submitPlatformLogin(page);
-  await expect(page).toHaveURL(/\/dashboard/);
-  await expect(page.getByRole('heading', { name: 'Centro de control' })).toBeVisible();
-}
-
 async function openEmpresasDirectory(page: Page) {
-  await loginToControlCenter(page);
+  await loginToDashboard(page);
   await page.getByRole('link', { name: 'Ver empresas en configuración' }).click();
   await expect(page).toHaveURL(/\/tenants\?status=PROVISIONING/);
   await expect(page.getByRole('heading', { name: 'Empresas', exact: true })).toBeVisible();
@@ -105,7 +97,7 @@ test.describe('Web Empresas — directorio', () => {
 
   test('D-5: 375 H1 + chips + tabla en una columna, sin H2', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    await loginToControlCenter(page);
+    await loginToDashboard(page);
     await page.goto('/tenants');
     await expect(page.getByRole('heading', { name: 'Empresas', exact: true })).toBeVisible();
     await expect(page.getByRole('cell', { name: /Fibernet Colombia/ })).toBeVisible();
@@ -145,7 +137,7 @@ test.describe('Web Empresas — directorio', () => {
 
   test('D-5: 1280 chips en fila', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
-    await loginToControlCenter(page);
+    await loginToDashboard(page);
     await page.goto('/tenants');
     await expect(page.getByRole('heading', { name: 'Empresas', exact: true })).toBeVisible();
     await expect(page.getByRole('cell', { name: /Fibernet Colombia/ })).toBeVisible();
@@ -172,8 +164,8 @@ test.describe('Web Empresas — directorio', () => {
     });
   });
 
-  test('D-6: axe wcag2a+wcag2aa en /tenants y aria-sort en th', async ({ page }) => {
-    await loginToControlCenter(page);
+  test('D-6: axe WCAG 2.2 AA en /tenants y aria-sort en th', async ({ page }) => {
+    await loginToDashboard(page);
     await page.goto('/tenants');
     await expect(page.getByRole('heading', { name: 'Empresas', exact: true })).toBeVisible();
     await expect(page.getByRole('cell', { name: /Fibernet Colombia/ })).toBeVisible();
@@ -182,7 +174,9 @@ test.describe('Web Empresas — directorio', () => {
     await expect(sortedHeaders).not.toHaveCount(0);
     await expect(page.locator('th[aria-sort]:not([aria-sort="none"])')).toHaveCount(1);
 
-    const tenantsA11y = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+    const tenantsA11y = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+      .analyze();
     expect(tenantsA11y.violations).toEqual([]);
   });
 });
