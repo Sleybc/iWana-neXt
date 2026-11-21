@@ -376,6 +376,9 @@ services:
       TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:?TYPESENSE_API_KEY is required}
       TYPESENSE_HOST: ${TYPESENSE_HOST:-typesense}
       TYPESENSE_PORT: ${TYPESENSE_PORT:-8108}
+      # Pulso fase 3: el muestreador mide GET /api/v1/health por la red interna `data`
+      # (api-prod también está en ella). Solo origen, sin ruta; vacío = API no medido.
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api-prod:3000}
     healthcheck:
       # Lee el latido que el loop de eventos del worker actualiza en Redis.
       test: ['CMD', 'node', 'dist/worker-healthcheck.js']

@@ -43,6 +43,8 @@ interface SystemStatusPanelProps {
   density?: 'default' | 'compact';
   /** Ancla para enlazar el panel (p. ej. desde la cola de atención). */
   id?: string;
+  /** Contenido extra bajo los indicadores en `compact` (p. ej. tracker de 30 días). */
+  children?: ReactNode;
 }
 
 const LEVEL_TONE: Record<StatusLevel, Tone> = {
@@ -90,6 +92,7 @@ export function SystemStatusPanel({
   className,
   density = 'default',
   id,
+  children,
 }: SystemStatusPanelProps) {
   const compact = density === 'compact';
   const Indicator = compact ? IndicatorRow : IndicatorTile;
@@ -144,6 +147,7 @@ export function SystemStatusPanel({
           {COPY.healthLastCheckedInline(formatLastChecked(lastCheckedAt))}
         </p>
         {body}
+        {children}
       </Card>
     );
   }

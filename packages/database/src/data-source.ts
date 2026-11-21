@@ -19,6 +19,7 @@ import { OrganizationSiteCapabilityEntity } from './entities/organization-site-c
 import { OrganizationSiteResponsibilityEntity } from './entities/organization-site-responsibility.entity';
 import { PlatformAuditLog } from './entities/platform-audit-log.entity';
 import { PlatformBrandingSettings } from './entities/platform-branding-settings.entity';
+import { PlatformHealthSample } from './entities/platform-health-sample.entity';
 import { PlatformUser } from './entities/platform-user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { ScheduleEvent } from './entities/schedule-event.entity';
@@ -125,6 +126,7 @@ export const dataSourceOptions: DataSourceOptions = {
     PlatformUser,
     PlatformAuditLog,
     PlatformBrandingSettings,
+    PlatformHealthSample,
     MediaAsset,
     User,
     RefreshToken,

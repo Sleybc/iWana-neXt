@@ -78,7 +78,43 @@
 
 ## Fase 3 — P2
 
-Pendiente.
+**Estado:** G6 ✅ 2026-11-21 (AI-EM-ARCH) · commit local, sin push. Encargo: [FASE3](../prompts/PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE3-v1.0.md).
+
+| Bloque | Agente | Entregable |
+| --- | --- | --- |
+| Contrato | AI-EM-ARCH | `PlatformHealthHistory` v1.0 en `packages/shared` |
+| §A | `sr-backend` | Migración `public/034_platform_health_samples`, entidad, muestreador del worker cada 5 min (retención 35 días), `GET /api/v1/platform/health/history` |
+| §B | `plat-ops` | `API_INTERNAL_URL` en `docker-compose.prod.yml` y `.env.example`; red `data` compartida worker↔API |
+| §C | `fe-platform` | Celda «Disponibilidad, 30 días», tracker de 30 días en Salud, área Colas de trabajo con nombres en español |
+| §D | `sr-qa` | Mocks `healthHistory`, CA-PP3-01…03 y 05, axe |
+
+**Evidencia (conteo real):**
+
+| Comando | Resultado |
+| --- | --- |
+| `@iwana/db` jest `--force` | 83 suites · 458 tests |
+| `@iwana/worker` jest `--force` | 29 suites · 315 tests |
+| `@iwana/api` jest `--force` | 628/629 suites · 8383/8384 tests; la roja es F2-D6 (`app.config.production-urls.spec.ts`, pasa aislada) |
+| `@iwana/web` typecheck lint test | 40 suites · 304 tests |
+| Integración `DB_NAME=test` | API 5/5 (401 anónimo y token inválido, 403 token de empresa, día parcial, días sin muestras, tabla vacía) · worker 2/2 (Redis real: cola vacía y antigüedad; retención) |
+| `e2e/playwright.web.config.ts --workers=1` | 46/49; rojas: las 2 de F1-D2 y D-4 de `web-empresas-directorio`, intermitente (aislada 2/2) |
+| Portada (focal) y axe `wcag22aa` | 28/28 · 4/4 |
+| Revisión en vivo 1440×900 con endpoint real | 200 con 30 días; sin muestras aún: «Sin dato disponible» y tracker neutro, nunca verde; B2 termina a 762 px; sin P4 |
+| Migración 034 | aplicada en `dbiw` y `test` con `pnpm --filter @iwana/db migration:run` |
+
+**Revisores:** `boundary-reviewer` sin hallazgos (una nota menor); `contract-drift-reviewer` sin deriva (2 menores); `test-change-reviewer` sin regresiones. La señal instantánea de servicio caído queda en «Requiere tu atención».
+
+**Deuda:**
+
+| # | Deuda | Severidad |
+| --- | --- | --- |
+| F3-D1 | Umbrales de color de disponibilidad (100 % verde, desde 99 % ámbar) fijados por fe-platform: confirmar con prod-ux | P2 |
+| F3-D2 | No se observó en vivo que el worker de `pnpm dev` escriba muestras (el rol MCP no lee la tabla) | P2 |
+| F3-D3 | Sonda HTTP del muestreador a `API_INTERNAL_URL`: revisión de `sec-eng` antes de G7 | P2 |
+| F3-D4 | Tracker local de `apps/web`; candidato a `@iwana/ui` (ds-owner) | P3 |
+| F3-D5 | `PlatformQueueSnapshot` y `PlatformHealthSampleQueue` sin `satisfies` entre sí; nombres de cola en copy a mano | P3 |
+| F3-D6 | Sin prueba E2E de 401 (cubierto en integración del API); `formatPercent` trunca en vez de redondear | P3 |
+| F3-D7 | `docker-compose.e2e.yml` sin API: ese worker no mide `api` | P3 |
 
 ## Fase 4 — P4
 

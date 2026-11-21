@@ -9,6 +9,8 @@ export { Tenant } from './tenant.entity';
 export { PlatformUser } from './platform-user.entity';
 export { PlatformAuditLog } from './platform-audit-log.entity';
 export { PlatformBrandingSettings } from './platform-branding-settings.entity';
+export { PlatformHealthSample } from './platform-health-sample.entity';
+export type { PlatformHealthSampleQueue } from './platform-health-sample.entity';
 export { MediaAsset, MediaUsage } from './media-asset.entity';
 export type { MediaThemeVariant } from './media-asset.entity';
 

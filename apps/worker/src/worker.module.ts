@@ -1,7 +1,4 @@
-import {
-  CONTRACT_MEDIA_SWEEP_QUEUE,
-  ContractMediaSweepProcessor,
-} from './processors/contract-media-sweep.processor';
+import { ContractMediaSweepProcessor } from './processors/contract-media-sweep.processor';
 import { BullModule, BullRegistrar } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { DiscoveryModule } from '@nestjs/core';
@@ -13,22 +10,7 @@ import { resolve } from 'node:path';
 import { dataSourceOptions, SafeTypeOrmLogger } from '@iwana/db';
 import { WORKER_ENTITIES } from './worker-entities';
 import { createStorageAdapter, STORAGE_PORT, type StoragePort } from '@iwana/storage';
-import {
-  ASSURANCE_FIELD_SERVICE_QUEUE,
-  REFRESH_TOKEN_PURGE_QUEUE,
-  SEARCH_INDEX_QUEUE,
-  TENANT_PROVISIONING_QUEUE,
-  TENANT_SCHEMA_PURGE_QUEUE,
-  OPERATIONS_EXECUTION_EVENTS_QUEUE,
-  INVENTORY_EXECUTION_REQUESTS_QUEUE,
-  OPERATIONS_EXECUTION_RELAY_QUEUE,
-  OPERATIONS_EXECUTION_TOMBSTONE_QUEUE,
-  OPERATIONS_EXECUTION_DLQ,
-  NETWORK_EXECUTION_EVENTS_QUEUE,
-  BILLING_INSTALLATION_EVENTS_QUEUE,
-  SCHEDULE_EVENTS_SWEEP_QUEUE,
-  CRM_CONTRACT_PDF_QUEUE,
-} from '@iwana/shared';
+import { WORKER_QUEUE_NAMES } from './worker-queues';
 import { AssuranceFieldServiceProcessor } from './processors/assurance-field-service.processor';
 import { RefreshTokenPurgeProcessor } from './processors/refresh-token-purge.processor';
 import { TenantSchemaPurgeProcessor } from './processors/tenant-schema-purge.processor';
@@ -48,19 +30,14 @@ import { ExecutionOrderRelayProcessor } from './processors/execution-order-relay
 import { ExecutionOrderTombstoneProcessor } from './processors/execution-order-tombstone.processor';
 import { ExecutionOrderDlqProcessor } from './processors/execution-order-dlq.processor';
 import { ExpiredScheduleEventsProcessor } from './processors/expired-schedule-events.processor';
-import {
-  EvidenceOrphanDetectionProcessor,
-  EVIDENCE_ORPHAN_DETECTION_QUEUE,
-} from './processors/evidence-orphan-detection.processor';
+import { EvidenceOrphanDetectionProcessor } from './processors/evidence-orphan-detection.processor';
 import { TenantSeedService } from './services/tenant-seed.service';
-import {
-  EvidenceAnalysisProcessor,
-  EVIDENCE_ANALYSIS_QUEUE,
-} from './processors/evidence-analysis.processor';
+import { EvidenceAnalysisProcessor } from './processors/evidence-analysis.processor';
 import { ContractPdfProcessor } from './processors/contract-pdf.processor';
 import { ContractPdfRenderer } from './contracts/contract-pdf-renderer';
 import { validateWorkerConfiguration } from './worker.config';
 import { WorkerHeartbeatService } from './services/worker-heartbeat.service';
+import { PlatformHealthSamplerProcessor } from './processors/platform-health-sampler.processor';
 
 const runtimeEnv = process.env['NODE_ENV'];
 const workerDevelopmentLocalEnvPath = resolve(__dirname, '../../../.env.development.local');
@@ -208,42 +185,8 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
       inject: [ConfigService],
     }),
 
-    // Registro de la cola — el nombre debe coincidir con el productor en @iwana/api
-    BullModule.registerQueue({
-      name: TENANT_PROVISIONING_QUEUE,
-    }),
-
-    // Cola de purga diaria de refresh tokens expirados
-    BullModule.registerQueue({
-      name: REFRESH_TOKEN_PURGE_QUEUE,
-    }),
-
-    // Cola de purga fisica diferida de schemas tenant marcados para eliminacion
-    BullModule.registerQueue({
-      name: TENANT_SCHEMA_PURGE_QUEUE,
-    }),
-
-    BullModule.registerQueue({
-      name: SEARCH_INDEX_QUEUE,
-    }),
-
-    BullModule.registerQueue({
-      name: ASSURANCE_FIELD_SERVICE_QUEUE,
-    }),
-    BullModule.registerQueue({ name: OPERATIONS_EXECUTION_EVENTS_QUEUE }),
-    BullModule.registerQueue({ name: INVENTORY_EXECUTION_REQUESTS_QUEUE }),
-    BullModule.registerQueue({ name: OPERATIONS_EXECUTION_RELAY_QUEUE }),
-    BullModule.registerQueue({ name: OPERATIONS_EXECUTION_TOMBSTONE_QUEUE }),
-    BullModule.registerQueue({ name: OPERATIONS_EXECUTION_DLQ }),
-    BullModule.registerQueue({ name: NETWORK_EXECUTION_EVENTS_QUEUE }),
-    BullModule.registerQueue({ name: BILLING_INSTALLATION_EVENTS_QUEUE }),
-    BullModule.registerQueue({ name: EVIDENCE_ORPHAN_DETECTION_QUEUE }),
-    BullModule.registerQueue({ name: EVIDENCE_ANALYSIS_QUEUE }),
-    BullModule.registerQueue({ name: SCHEDULE_EVENTS_SWEEP_QUEUE }),
-    // Cierre de venta (ADR-109 D5): PDF del contrato con Chromium, solo en el worker.
-    BullModule.registerQueue({ name: CRM_CONTRACT_PDF_QUEUE }),
-    // SEC-1: barrido de objetos de contratos anonimizados y huérfanos.
-    BullModule.registerQueue({ name: CONTRACT_MEDIA_SWEEP_QUEUE }),
+    // Colas del worker: lista única en worker-queues.ts (también la usa el muestreador de salud).
+    ...WORKER_QUEUE_NAMES.map((name) => BullModule.registerQueue({ name })),
   ],
   providers: [
     {
@@ -287,6 +230,7 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
     ExpiredScheduleEventsProcessor,
     ContractPdfRenderer,
     ContractPdfProcessor,
+    PlatformHealthSamplerProcessor,
   ],
 })
 export class WorkerModule {}

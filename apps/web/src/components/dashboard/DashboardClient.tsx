@@ -29,6 +29,8 @@ import {
 } from '@/components/dashboard/SystemStatusPanel';
 import { PlatformUsersArea } from '@/components/dashboard/PlatformUsersArea';
 import { TenantTrendPanel } from '@/components/dashboard/TenantTrendPanel';
+import { AvailabilityTracker } from '@/components/dashboard/AvailabilityTracker';
+import { WorkQueuesArea } from '@/components/dashboard/WorkQueuesArea';
 import {
   TenantStatusDistribution,
   type StatusSegment,
@@ -36,6 +38,7 @@ import {
 import {
   healthApi,
   platformAuditApi,
+  platformHealthApi,
   platformUsersApi,
   tenantApi,
   type HealthStatusResponse,
@@ -43,6 +46,7 @@ import {
 } from '@/lib/api-client';
 import { describePlatformActivityLine } from '@/lib/platform-audit-vocabulary';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
+import { formatPercent, summarizeAvailability } from '@/lib/platform-health';
 
 const COPY = PLATFORM_UI_COPY.dashboard;
 const HEALTH_ANCHOR = 'salud-de-plataforma';
@@ -91,6 +95,7 @@ const fetchActivity = () =>
   platformAuditApi.list({ excludeSessionEvents: true, limit: ACTIVITY_VISIBLE });
 const fetchTeam = () => platformUsersApi.summary();
 const fetchHealth = () => healthApi.get();
+const fetchHistory = () => platformHealthApi.history();
 
 /** Cada indicador refleja solo su servicio (L-10, contrato DS v1.2 §4.1). */
 function buildHealthIndicators(health: HealthStatusResponse | null): StatusIndicator[] {
@@ -170,21 +175,28 @@ export function DashboardClient() {
   const activity = useRemote(fetchActivity);
   const health = useRemote(fetchHealth);
   const team = useRemote(fetchTeam);
+  const history = useRemote(fetchHistory);
 
   const { reload: reloadSummary } = summary;
   const { reload: reloadLatest } = latest;
   const { reload: reloadActivity } = activity;
   const { reload: reloadHealth } = health;
   const { reload: reloadTeam } = team;
+  const { reload: reloadHistory } = history;
   const refreshAll = useCallback(() => {
     reloadSummary();
     reloadLatest();
     reloadActivity();
     reloadHealth();
     reloadTeam();
-  }, [reloadSummary, reloadLatest, reloadActivity, reloadHealth, reloadTeam]);
+    reloadHistory();
+  }, [reloadSummary, reloadLatest, reloadActivity, reloadHealth, reloadTeam, reloadHistory]);
 
   const counts = useMemo(() => countsOf(summary.data), [summary.data]);
+  const availability = useMemo(
+    () => (history.data ? summarizeAvailability(history.data) : null),
+    [history.data],
+  );
   const firstLoad = summary.loading && !summary.data && !summary.error;
 
   const statusSegments = useMemo<StatusSegment[]>(
@@ -228,11 +240,6 @@ export function DashboardClient() {
         ? COPY.attentionPart.MARKED_FOR_DELETION(counts.markedForDeletion)
         : null,
     ].filter((part): part is string => part !== null);
-
-    const h = health.data;
-    const okServices = h
-      ? [h.status === 'ok', h.db === 'ok', h.redis === 'ok'].filter(Boolean).length
-      : null;
 
     const period = summary.data?.period;
     const net = period ? period.created - period.removed : 0;
@@ -311,20 +318,31 @@ export function DashboardClient() {
         onRetry: summary.reload,
       },
       {
-        id: 'health',
-        label: COPY.pulseHealth,
-        value: okServices,
-        formatValue: COPY.pulseHealthValue,
-        delta: h
-          ? okServices === 3
-            ? { label: COPY.pulseHealthOk, tone: 'success' }
-            : { label: COPY.pulseHealthDegraded, tone: 'warning' }
+        // P2: peor componente en 30 días, solo con muestras reales (CA-PP3-02).
+        id: 'availability',
+        label: COPY.pulseAvailability,
+        value: availability?.availability ?? null,
+        formatValue: formatPercent,
+        delta:
+          availability?.availability != null
+            ? availability.availability >= 1
+              ? { label: COPY.availabilityOk, tone: 'success' }
+              : { label: COPY.availabilityDegraded, tone: 'warning' }
+            : undefined,
+        hint: availability
+          ? availability.availability === null
+            ? COPY.availabilityNoSamples
+            : availability.daysWithoutData > 0
+              ? COPY.availabilityDaysWithoutData(availability.daysWithoutData)
+              : availability.worst && availability.availability < 1
+                ? COPY.availabilityWorst(COPY.componentShort[availability.worst])
+                : undefined
           : undefined,
-        hint: COPY.pulseHealthServices,
-        state: health.loading && !h ? 'loading' : health.error ? 'error' : 'idle',
-        updating: health.loading && h !== null,
+        visual: availability ? <AvailabilityTracker days={availability.days} /> : undefined,
+        state: history.loading && !history.data ? 'loading' : history.error ? 'error' : 'idle',
+        updating: history.loading && history.data !== null,
         href: `#${HEALTH_ANCHOR}`,
-        onRetry: health.reload,
+        onRetry: history.reload,
       },
       {
         id: 'team',
@@ -345,7 +363,7 @@ export function DashboardClient() {
         onRetry: team.reload,
       },
     ];
-  }, [counts, summary, health, team, focusCompanies]);
+  }, [counts, summary, team, history, availability, focusCompanies]);
 
   const queueRows = useMemo<AttentionRow[]>(() => {
     const rows: AttentionRow[] = [];
@@ -451,8 +469,8 @@ export function DashboardClient() {
         </div>
       </div>
 
-      {/* B3 · Una card por área del menú: Empresas, Salud, Usuarios internos (P4 no se monta). */}
-      <div className="grid grid-cols-1 items-stretch gap-5 md:grid-cols-2 xl:grid-cols-3">
+      {/* B3 · Una card por área del menú: Empresas, Salud, Usuarios internos, Colas (P4 no se monta). */}
+      <div className="grid grid-cols-1 items-stretch gap-5 md:grid-cols-2 2xl:grid-cols-4">
         <TenantStatusDistribution
           density="compact"
           titleRef={companiesHeadingRef}
@@ -474,12 +492,25 @@ export function DashboardClient() {
           emptyMessage={COPY.healthNoReading}
           statusLabels={SYSTEM_STATUS_LABELS}
           indicators={buildHealthIndicators(health.data)}
-        />
+        >
+          {history.error ? (
+            <p className="mt-3 text-xs text-gray-600 dark:text-gray-300">{COPY.trackerError}</p>
+          ) : availability ? (
+            <AvailabilityTracker className="mt-3" size="md" days={availability.days} />
+          ) : null}
+        </SystemStatusPanel>
         <PlatformUsersArea
           summary={team.data}
           isLoading={team.loading && !team.data}
           error={team.error}
           onRetry={team.reload}
+        />
+        <WorkQueuesArea
+          queues={history.data?.queues ?? null}
+          sampledAt={history.data?.queuesSampledAt ?? null}
+          isLoading={history.loading && !history.data}
+          error={history.error}
+          onRetry={history.reload}
         />
       </div>
 

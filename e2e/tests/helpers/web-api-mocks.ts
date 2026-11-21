@@ -1,5 +1,12 @@
 import { expect, type Page } from '@playwright/test';
-import type { PlatformUsersSummary, TenantStatusSummary } from '@iwana/shared';
+import type {
+  PlatformHealthComponent,
+  PlatformHealthDay,
+  PlatformHealthHistory,
+  PlatformQueueSnapshot,
+  PlatformUsersSummary,
+  TenantStatusSummary,
+} from '@iwana/shared';
 
 export interface WebTenantMock {
   id: string;
@@ -216,10 +223,52 @@ interface SetupWebApiMocksOptions {
   failSources?: readonly DashboardSource[];
   /** Retraso por fuente en ms, para observar el estado de carga (CA-PP-04). */
   delaySourcesMs?: Partial<Record<DashboardSource, number>>;
+  /** Historia de salud P2 (`/platform/health/history`, Fase 3). */
+  healthHistory?: PlatformHealthHistory;
 }
 
 /** Fuentes de `/dashboard` (Fase 1 + `users` de la Fase 2, P3). */
-export type DashboardSource = 'summary' | 'tenants' | 'audit' | 'health' | 'users';
+export type DashboardSource =
+  | 'summary'
+  | 'tenants'
+  | 'audit'
+  | 'health'
+  | 'users'
+  | 'healthHistory';
+
+/**
+ * Historia P2 de 30 días (antiguo → actual). `availability` por día y componente;
+ * `null` deja el día sin muestras (CA-PP3-01). Por defecto, todo al 100 %.
+ */
+export function buildHealthHistoryMock(
+  overrides: {
+    availabilityByDay?: Record<number, Partial<Record<PlatformHealthComponent, number | null>>>;
+    queues?: PlatformQueueSnapshot[];
+    queuesSampledAt?: string | null;
+  } = {},
+): PlatformHealthHistory {
+  const today = new Date();
+  const days: PlatformHealthDay[] = Array.from({ length: 30 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (29 - index));
+    const byComponent = overrides.availabilityByDay?.[index] ?? {};
+    const component = (key: PlatformHealthComponent) => {
+      const availability = key in byComponent ? (byComponent[key] ?? null) : 1;
+      return { samples: availability === null ? 0 : 288, availability };
+    };
+    return {
+      date: date.toISOString().slice(0, 10),
+      components: { api: component('api'), db: component('db'), redis: component('redis') },
+    };
+  });
+  return {
+    days,
+    queues: overrides.queues ?? [],
+    queuesSampledAt:
+      overrides.queuesSampledAt === undefined ? today.toISOString() : overrides.queuesSampledAt,
+    generatedAt: today.toISOString(),
+  };
+}
 
 export function buildMockJwt(expirationSecondsFromNow = 3600): string {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
@@ -352,6 +401,7 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
   const platformUsersSummary = options.platformUsersSummary ?? buildPlatformUsersSummaryMock();
   const failSources = new Set(options.failSources ?? []);
   const delaySourcesMs = options.delaySourcesMs ?? {};
+  const healthHistory = options.healthHistory ?? buildHealthHistoryMock();
 
   return async ({ page }: { page: import('@playwright/test').Page }) => {
     let isLoggedIn = false;
@@ -430,13 +480,15 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
             ? 'summary'
             : new URL(url).pathname.endsWith('/platform-users/summary')
               ? 'users'
-              : url.includes('/platform-audit-logs')
-                ? 'audit'
-                : url.includes('/health')
-                  ? 'health'
-                  : /\/api\/v1\/tenants(\?|$)/.test(url)
-                    ? 'tenants'
-                    : null;
+              : new URL(url).pathname.endsWith('/platform/health/history')
+                ? 'healthHistory'
+                : url.includes('/platform-audit-logs')
+                  ? 'audit'
+                  : url.includes('/health')
+                    ? 'health'
+                    : /\/api\/v1\/tenants(\?|$)/.test(url)
+                      ? 'tenants'
+                      : null;
       if (source && delaySourcesMs[source]) {
         await new Promise((resolve) => setTimeout(resolve, delaySourcesMs[source]));
       }
@@ -529,6 +581,15 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
             nextCursor: page.length < filtered.length ? (page[page.length - 1]?.id ?? null) : null,
             total: filtered.length,
           }),
+        });
+        return;
+      }
+
+      if (source === 'healthHistory') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: healthHistory }),
         });
         return;
       }

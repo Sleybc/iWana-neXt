@@ -1,6 +1,11 @@
 // apps/web/src/lib/api-client.ts
 
-import type { PlatformUsersSummary, PublicHealth, TenantStatusSummary } from '@iwana/shared';
+import type {
+  PlatformHealthHistory,
+  PlatformUsersSummary,
+  PublicHealth,
+  TenantStatusSummary,
+} from '@iwana/shared';
 
 /**
  * Cliente HTTP para @iwana/web — Portal Administrativo.
@@ -610,6 +615,11 @@ export const platformBrandingApi = {
       body: formData,
     });
   },
+};
+
+/** Historia de salud autenticada (contrato P2 v1.0, `{ data }`). */
+export const platformHealthApi = {
+  history: () => request<PlatformHealthHistory>('/platform/health/history'),
 };
 
 export const healthApi = {

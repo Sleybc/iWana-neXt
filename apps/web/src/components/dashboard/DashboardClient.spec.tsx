@@ -3,6 +3,7 @@ import type { AnchorHTMLAttributes, ReactNode } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TenantStatus } from '@iwana/shared';
+import { makeHealthDays, makePlatformHealthHistory } from '@/test-utils/platform-health-history';
 import { makePlatformUsersSummary } from '@/test-utils/platform-users-summary';
 import { makeMonthlySeries, makeTenantStatusSummary } from '@/test-utils/tenant-status-summary';
 import { DashboardClient } from './DashboardClient';
@@ -95,6 +96,9 @@ jest.mock('@/lib/api-client', () => {
     healthApi: {
       get: jest.fn(),
     },
+    platformHealthApi: {
+      history: jest.fn(),
+    },
   };
 });
 
@@ -130,15 +134,15 @@ const FIXED_NOW = Date.parse('2026-06-26T12:00:00.000Z');
 const minutesAgo = (minutes: number) => new Date(FIXED_NOW - minutes * 60 * 1000).toISOString();
 
 describe('DashboardClient', () => {
-  const { tenantApi, platformAuditApi, platformUsersApi, healthApi, ApiError } = jest.requireMock(
-    '@/lib/api-client',
-  ) as {
-    ApiError: new (status: number, code: string, message: string) => Error;
-    tenantApi: { summary: jest.Mock; list: jest.Mock };
-    platformAuditApi: { list: jest.Mock };
-    platformUsersApi: { summary: jest.Mock };
-    healthApi: { get: jest.Mock };
-  };
+  const { tenantApi, platformAuditApi, platformUsersApi, healthApi, platformHealthApi, ApiError } =
+    jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, code: string, message: string) => Error;
+      tenantApi: { summary: jest.Mock; list: jest.Mock };
+      platformAuditApi: { list: jest.Mock };
+      platformUsersApi: { summary: jest.Mock };
+      healthApi: { get: jest.Mock };
+      platformHealthApi: { history: jest.Mock };
+    };
 
   const HEALTH_OK = {
     status: 'ok',
@@ -155,6 +159,7 @@ describe('DashboardClient', () => {
     tenantApi.summary.mockResolvedValue(makeTenantStatusSummary());
     tenantApi.list.mockResolvedValue([]);
     platformUsersApi.summary.mockResolvedValue(makePlatformUsersSummary());
+    platformHealthApi.history.mockResolvedValue(makePlatformHealthHistory());
   });
 
   const pulse = () => screen.getByRole('region', { name: 'Pulso de plataforma' });
@@ -207,10 +212,11 @@ describe('DashboardClient', () => {
     const attention = within(strip).getByRole('button', { name: 'Requieren atención' });
     expect(attention).toHaveTextContent('15');
     expect(attention).toHaveTextContent('2 con error · 13 suspendidas');
-    const health = within(strip).getByRole('link', { name: 'Salud de plataforma' });
-    expect(health).toHaveTextContent('3 de 3');
-    expect(health).toHaveTextContent('Operativa');
-    expect(health).toHaveTextContent('API · base de datos · Redis');
+    // Fase 3: la celda de salud pasa a «Disponibilidad, 30 días» (dirección §4 B1).
+    const availability = within(strip).getByRole('link', { name: 'Disponibilidad, 30 días' });
+    expect(availability).toHaveAttribute('href', '#salud-de-plataforma');
+    expect(availability).toHaveTextContent('100 %');
+    expect(availability).toHaveTextContent('Operativa');
   });
 
   it('B1: «Requieren atención» lleva el foco al encabezado del área Empresas', async () => {
@@ -313,9 +319,9 @@ describe('DashboardClient', () => {
     expect(screen.getByText('No pudimos revisar todas las fuentes.')).toBeInTheDocument();
     expect(screen.queryByText('Todo al día')).not.toBeInTheDocument();
     expect(screen.queryByText(/Servicio caído crudo/)).not.toBeInTheDocument();
-    expect(within(pulse()).getByRole('link', { name: 'Salud de plataforma' })).toHaveTextContent(
-      '3 de 3',
-    );
+    expect(
+      within(pulse()).getByRole('link', { name: 'Disponibilidad, 30 días' }),
+    ).toHaveTextContent('100 %');
   });
 
   it('CA-PP-04: /health caído degrada solo su celda y su panel, con un único error canónico', async () => {
@@ -328,19 +334,17 @@ describe('DashboardClient', () => {
     expect(await screen.findByRole('link', { name: 'Empresas activas' })).toHaveTextContent('1');
     expect(screen.getAllByText(HEALTH_ERROR)).toHaveLength(1);
     expect(screen.queryByText(/Error del servidor/)).not.toBeInTheDocument();
-    expect(within(pulse()).getByText('No disponible')).toBeInTheDocument();
+    // La disponibilidad viene del historial, no de /health: su celda sigue intacta.
+    expect(within(pulse()).queryByText('No disponible')).not.toBeInTheDocument();
     expect(
-      within(pulse()).queryByRole('link', { name: 'Salud de plataforma' }),
-    ).not.toBeInTheDocument();
+      within(pulse()).getByRole('link', { name: 'Disponibilidad, 30 días' }),
+    ).toBeInTheDocument();
   });
 
   it('B2: una lectura degradada se muestra como degradada, no como error de lectura', async () => {
     healthApi.get.mockResolvedValue({ ...HEALTH_OK, status: 'degraded', db: 'error' });
     await renderReady();
 
-    expect(within(pulse()).getByRole('link', { name: 'Salud de plataforma' })).toHaveTextContent(
-      'Degradada',
-    );
     const panel = document.getElementById('salud-de-plataforma') as HTMLElement;
     expect(within(panel).getByText('Base de datos').parentElement).toHaveTextContent('Error');
     expect(within(panel).getByText('Redis y colas').parentElement).toHaveTextContent('Operativo');
@@ -394,11 +398,11 @@ describe('DashboardClient', () => {
     expect(await screen.findByRole('link', { name: 'Empresas activas' })).toBeInTheDocument();
   });
 
-  it('CA-PP2-05: no monta bloques de P2 ni P4 ni piezas retiradas', async () => {
+  it('CA-PP2-05 / CA-PP3-05: no monta P4 ni piezas retiradas', async () => {
     await renderReady();
 
-    [/Disponibilidad/, /Uso por empresa/, /Cambios esta semana/, /Atención operativa/].forEach(
-      (text) => expect(screen.queryByText(text)).not.toBeInTheDocument(),
+    [/Uso por empresa/, /Cambios esta semana/, /Atención operativa/].forEach((text) =>
+      expect(screen.queryByText(text)).not.toBeInTheDocument(),
     );
     expect(screen.queryByRole('region', { name: 'Resumen operativo' })).not.toBeInTheDocument();
   });
@@ -736,6 +740,113 @@ describe('DashboardClient', () => {
 
       const activity = await screen.findByRole('region', { name: 'Actividad reciente' });
       expect(await within(activity).findByRole('time')).toHaveTextContent(expected);
+    });
+  });
+
+  describe('Fase 3 · disponibilidad y colas (P2)', () => {
+    const none = { samples: 0, availability: null };
+
+    it('CA-PP3-01: un día sin muestras se pinta sin dato, nunca verde', async () => {
+      platformHealthApi.history.mockResolvedValue(
+        makePlatformHealthHistory({
+          days: makeHealthDays({ 3: { api: none, db: none, redis: none }, 7: { db: none } }),
+        }),
+      );
+      await renderReady();
+
+      const cell = within(pulse()).getByRole('link', { name: 'Disponibilidad, 30 días' });
+      expect(cell).toHaveTextContent('100 %');
+      expect(cell).toHaveTextContent('2 días sin dato');
+      const tracker = within(cell).getByRole('img');
+      expect(tracker).toHaveAccessibleName(
+        'Disponibilidad diaria de los últimos 30 días: 28 sin fallas, 0 con fallas, 2 sin dato',
+      );
+      const bars = tracker.querySelectorAll('[data-tone]');
+      expect(bars).toHaveLength(30);
+      expect(bars[3]).toHaveAttribute('data-tone', 'neutral');
+      expect(bars[7]).toHaveAttribute('data-tone', 'neutral');
+    });
+
+    it('CA-PP3-02: disponibilidad solo con muestras reales y peor componente', async () => {
+      platformHealthApi.history.mockResolvedValue(
+        makePlatformHealthHistory({
+          days: makeHealthDays({ 29: { redis: { samples: 100, availability: 0.5 } } }),
+        }),
+      );
+      await renderReady();
+
+      const cell = within(pulse()).getByRole('link', { name: 'Disponibilidad, 30 días' });
+      // Redis: (29·288 + 50) / (29·288 + 100) = 0,99408…, truncado a 99,4 %.
+      expect(cell).toHaveTextContent('99,4 %');
+      expect(cell).toHaveTextContent('Con fallas');
+      expect(cell).toHaveTextContent('Peor componente: Redis');
+    });
+
+    it('CA-PP3-02: sin ninguna muestra no inventa disponibilidad', async () => {
+      platformHealthApi.history.mockResolvedValue(
+        makePlatformHealthHistory({
+          days: makeHealthDays(
+            Object.fromEntries(
+              Array.from({ length: 30 }, (_, i) => [i, { api: none, db: none, redis: none }]),
+            ),
+          ),
+          queues: [],
+          queuesSampledAt: null,
+        }),
+      );
+      await renderReady();
+
+      const cell = within(pulse()).getByRole('link', { name: 'Disponibilidad, 30 días' });
+      expect(cell).toHaveTextContent('Sin muestras en 30 días');
+      expect(cell).not.toHaveTextContent('%');
+      expect(screen.getByText('Aún no hay muestras de las colas.')).toBeInTheDocument();
+    });
+
+    it('CA-PP3-02: el historial caído degrada solo su celda, el tracker y Colas, con Reintentar', async () => {
+      platformHealthApi.history
+        .mockRejectedValueOnce(new ApiError(500, 'UNKNOWN', 'Error crudo'))
+        .mockResolvedValue(makePlatformHealthHistory());
+      const user = userEvent.setup();
+      await renderReady();
+
+      expect(
+        await screen.findByText('No pudimos cargar las colas de trabajo.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('No pudimos cargar la disponibilidad de 30 días.'),
+      ).toBeInTheDocument();
+      expect(within(pulse()).getByText('No disponible')).toBeInTheDocument();
+      expect(screen.queryByText(/Error crudo/)).not.toBeInTheDocument();
+      expect(within(pulse()).getByRole('link', { name: 'Empresas activas' })).toBeInTheDocument();
+
+      const queues = screen.getByRole('region', { name: 'Colas de trabajo' });
+      await user.click(within(queues).getByRole('button', { name: 'Reintentar' }));
+      expect(
+        await within(pulse()).findByRole('link', { name: 'Disponibilidad, 30 días' }),
+      ).toHaveTextContent('100 %');
+      expect(platformHealthApi.history).toHaveBeenCalledTimes(2);
+    });
+
+    it('CA-PP3-03: colas con espera, fallidos y antigüedad, nombres en español', async () => {
+      platformHealthApi.history.mockResolvedValue(
+        makePlatformHealthHistory({
+          queues: [
+            { name: 'search-index', waiting: 3, failed: 1, oldestWaitingSeconds: 420 },
+            { name: 'cola-nueva-x', waiting: 0, failed: 0, oldestWaitingSeconds: null },
+          ],
+        }),
+      );
+      await renderReady();
+
+      const queues = screen.getByRole('region', { name: 'Colas de trabajo' });
+      const row = within(queues).getByRole('row', { name: /Índice de búsqueda/ });
+      expect(row).toHaveTextContent('Índice de búsqueda317 min');
+      expect(within(queues).getByRole('row', { name: /Proceso interno/ })).toHaveTextContent(
+        'Sin espera',
+      );
+      expect(within(queues).getByText('Acumulación')).toBeInTheDocument();
+      expect(queues).not.toHaveTextContent('search-index');
+      expect(queues).not.toHaveTextContent('cola-nueva-x');
     });
   });
 });

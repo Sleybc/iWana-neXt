@@ -16,7 +16,8 @@ const PULSE_CELL_LABELS = [
   'Empresas activas',
   'Altas en curso',
   'Requieren atención',
-  'Salud de plataforma',
+  // Fase 3 (CA-PP3): la celda de salud instantánea pasa a ser la disponibilidad P2.
+  'Disponibilidad, 30 días',
 ] as const;
 const PULSE_REGION = 'Pulso de plataforma';
 

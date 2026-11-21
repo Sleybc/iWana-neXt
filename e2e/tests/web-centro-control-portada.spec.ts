@@ -3,6 +3,8 @@
  * Encargos: docs/prompts/PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE1-v1.0.md §C y
  * PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE2-v1.0.md §C. La Fase 2 sustituye CA-PP-01/05/07:
  * B2 pasa a ser la tendencia, P1 y P3 se montan y el lima se permite en avance.
+ * Fase 3 (PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE3-v1.0.md §D, CA-PP3-01…05): P2 se monta;
+ * la celda de salud del pulso pasa a ser «Disponibilidad, 30 días» y se añade Colas de trabajo.
  * Selectores por rol y texto del catálogo `PLATFORM_UI_COPY.dashboard`. Sin PII.
  */
 import path from 'node:path';
@@ -10,6 +12,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { evidenceDir } from './helpers/evidence';
 import {
+  buildHealthHistoryMock,
   buildIsoAt,
   buildMonthlyMock,
   buildTenantSummaryMock,
@@ -213,11 +216,14 @@ test.describe('Centro de control — pulso de plataforma (datos completos)', () 
     ).toHaveAttribute('href', '/tenants/emp-a/settings');
   });
 
-  test('CA-PP2-05: P2 (disponibilidad) y P4 (uso por empresa) siguen sin montar', async ({
+  test('CA-PP3-05: P2 (disponibilidad) se monta; P4 (uso por empresa) sigue sin montar', async ({
     page,
   }) => {
     await loginToPulse(page);
-    for (const text of [/disponibilidad/i, /uso por empresa/i, /vs\.? (semana|mes) anterior/i]) {
+    await expect(
+      blocks(page).pulse.getByText('Disponibilidad, 30 días', { exact: true }),
+    ).toBeVisible();
+    for (const text of [/uso por empresa/i, /vs\.? (semana|mes) anterior/i]) {
       await expect(page.getByRole('main').getByText(text)).toHaveCount(0);
     }
     // Una sola gráfica en la portada: la tendencia (P1).
@@ -369,10 +375,14 @@ test.describe('Centro de control — salud en error (CA-PP-04)', () => {
     }),
   );
 
-  test('degrada solo la celda y el área de salud, con Reintentar', async ({ page }) => {
+  test('degrada solo el área de salud, con Reintentar; la celda P2 no depende de ella', async ({
+    page,
+  }) => {
     await loginToPulse(page);
     const { pulse, companies, health } = blocks(page);
-    await expect(pulse.getByText('No disponible', { exact: true })).toHaveCount(1);
+    // Fase 3: la celda del pulso es P2 (historia), no la lectura instantánea de /health.
+    await expect(pulse.getByText('No disponible', { exact: true })).toHaveCount(0);
+    await expect(pulse).toContainText('100 %');
     await expect(pulse.getByRole('link', { name: 'Empresas activas' })).toContainText('247');
     await expect(health.getByRole('button', { name: 'Reintentar' })).toBeVisible();
     await expect(companies).toContainText('247');
@@ -384,7 +394,14 @@ test.describe('Centro de control — durante la carga (CA-PP-04)', () => {
     setupWebApiMocks({
       tenants: TENANTS,
       tenantSummary: SUMMARY,
-      delaySourcesMs: { summary: 4_000, health: 4_000, tenants: 4_000, audit: 4_000, users: 4_000 },
+      delaySourcesMs: {
+        summary: 4_000,
+        health: 4_000,
+        tenants: 4_000,
+        audit: 4_000,
+        users: 4_000,
+        healthHistory: 4_000,
+      },
       onUnhandledApiRoute: '404',
     }),
   );
@@ -502,11 +519,169 @@ test.describe('Centro de control — el cliente no filtra la actividad (CA-PP2-0
   });
 });
 
+/** Días 0–2 sin muestras; día 10 con fallas en la base de datos; tres colas, una desconocida. */
+const HISTORY = buildHealthHistoryMock({
+  availabilityByDay: {
+    0: { api: null, db: null, redis: null },
+    1: { api: null, db: null, redis: null },
+    2: { api: null, db: null, redis: null },
+    10: { db: 0.5 },
+  },
+  queues: [
+    { name: 'tenant-provisioning', waiting: 437, failed: 0, oldestWaitingSeconds: 7_200 },
+    { name: 'crm-contract-pdf', waiting: 0, failed: 389, oldestWaitingSeconds: null },
+    { name: 'cola-interna-sin-catalogo', waiting: 0, failed: 0, oldestWaitingSeconds: null },
+  ],
+});
+const PERCENT = /\d+([,.]\d+)? %/;
+
+test.describe('Centro de control — disponibilidad y colas P2 (CA-PP3-01/02/03)', () => {
+  test.beforeEach(
+    setupWebApiMocks({
+      tenants: TENANTS,
+      tenantSummary: SUMMARY,
+      healthHistory: HISTORY,
+      onUnhandledApiRoute: '404',
+    }),
+  );
+
+  test('CA-PP3-01: un día sin muestras se pinta «sin dato», nunca como disponible', async ({
+    page,
+  }) => {
+    await loginToPulse(page);
+    const tracker = blocks(page).health.getByRole('img', {
+      name: /Disponibilidad diaria de los últimos 30 días/,
+    });
+    await expect(tracker).toHaveAccessibleName(/26 sin fallas, 1 con fallas, 3 sin dato/);
+    const dayNoData = tracker.locator(`[title="${HISTORY.days[0]!.date}: sin dato"]`);
+    await expect(dayNoData).toHaveAttribute('data-tone', 'neutral');
+    await expect(tracker.locator('[data-tone="success"]')).toHaveCount(26);
+    await expect(blocks(page).pulse).toContainText('3 días sin dato');
+  });
+
+  test('CA-PP3-02: el % sale solo de muestras reales (peor componente)', async ({ page }) => {
+    await loginToPulse(page);
+    // db: 26 días a 1 y uno a 0,5, 288 muestras cada uno → 26,5/27 = 98,148 %, truncado a 98,14 %. Si los días
+    // sin muestras contaran como disponibles daría 29,5/30 = 98,33 %.
+    const pulse = blocks(page).pulse;
+    await expect(pulse).toContainText('98,14 %');
+    await expect(pulse).toContainText('Con fallas');
+    await expect(pulse).not.toContainText('98,33 %');
+  });
+
+  test('CA-PP3-03: colas con espera, fallidos y antigüedad, nombres en español', async ({
+    page,
+  }) => {
+    await loginToPulse(page);
+    const area = page.getByRole('region', { name: 'Colas de trabajo' });
+    const table = area.getByRole('table', { name: 'Colas de trabajo' });
+    for (const header of ['Cola', 'En espera', 'Fallidos', 'Más antiguo']) {
+      await expect(table.getByRole('columnheader', { name: header })).toBeVisible();
+    }
+    const provisioning = table.getByRole('row', { name: /Puesta en marcha de empresas/ });
+    await expect(provisioning).toContainText('437');
+    await expect(provisioning).not.toContainText('Sin espera');
+    const pdf = table.getByRole('row', { name: /Documentos de contrato/ });
+    await expect(pdf).toContainText('389');
+    await expect(pdf).toContainText('Sin espera');
+    await expect(table.getByRole('row', { name: /Proceso interno/ })).toBeVisible();
+    for (const technical of ['tenant-provisioning', 'crm-contract-pdf', 'cola-interna']) {
+      await expect(area).not.toContainText(technical);
+    }
+    await expect(area.getByText('Acumulación', { exact: true })).toBeVisible();
+  });
+});
+
+test.describe('Centro de control — historia P2 sin muestras (CA-PP3-01)', () => {
+  test.beforeEach(
+    setupWebApiMocks({
+      tenants: TENANTS,
+      tenantSummary: SUMMARY,
+      healthHistory: buildHealthHistoryMock({
+        availabilityByDay: Object.fromEntries(
+          Array.from({ length: 30 }, (_, i) => [i, { api: null, db: null, redis: null }]),
+        ),
+        queues: [],
+        queuesSampledAt: null,
+      }),
+      onUnhandledApiRoute: '404',
+    }),
+  );
+
+  test('30 días sin muestras: sin %, sin verde y colas vacías', async ({ page }) => {
+    await loginToPulse(page);
+    const { pulse, health } = blocks(page);
+    await expect(pulse).toContainText('Sin muestras en 30 días');
+    await expect(pulse).not.toContainText(PERCENT);
+    await expect(pulse).not.toContainText('Operativa');
+    await expect(
+      health.getByRole('img', { name: /0 sin fallas, 0 con fallas, 30 sin dato/ }),
+    ).toBeVisible();
+    await expect(health.getByRole('img').locator('[data-tone="success"]')).toHaveCount(0);
+    await expect(
+      page
+        .getByRole('region', { name: 'Colas de trabajo' })
+        .getByText('Aún no hay muestras de las colas.'),
+    ).toBeVisible();
+  });
+});
+
+test.describe('Centro de control — historia P2 en error (CA-PP3-02)', () => {
+  test.beforeEach(
+    setupWebApiMocks({
+      tenants: TENANTS,
+      tenantSummary: SUMMARY,
+      failSources: ['healthHistory'],
+      onUnhandledApiRoute: '404',
+    }),
+  );
+
+  test('celda y colas en error con Reintentar; nunca pinta %; el resto conserva su dato', async ({
+    page,
+  }) => {
+    await loginToPulse(page);
+    const { pulse, health } = blocks(page);
+    await expect(pulse.getByText('No disponible', { exact: true })).toHaveCount(1);
+    await expect(pulse).not.toContainText(PERCENT);
+    await expect(pulse.getByRole('button', { name: 'Reintentar' })).toBeVisible();
+    await expect(pulse.getByRole('link', { name: 'Empresas activas' })).toContainText('247');
+    await expect(health).toContainText('No pudimos cargar la disponibilidad de 30 días.');
+    const queues = page.getByRole('region', { name: 'Colas de trabajo' });
+    await expect(queues).toContainText('No pudimos cargar las colas de trabajo.');
+    await expect(queues.getByRole('button', { name: 'Reintentar' })).toBeVisible();
+  });
+});
+
+test.describe('Centro de control — historia P2 durante la carga (CA-PP3-02)', () => {
+  test.beforeEach(
+    setupWebApiMocks({
+      tenants: TENANTS,
+      tenantSummary: SUMMARY,
+      healthHistory: HISTORY,
+      delaySourcesMs: { healthHistory: 4_000 },
+      onUnhandledApiRoute: '404',
+    }),
+  );
+
+  test('mientras carga no pinta % ni tabla de colas', async ({ page }) => {
+    await loginToDashboard(page);
+    const { pulse } = blocks(page);
+    await expect(pulse.getByRole('link', { name: 'Empresas activas' })).toContainText('247');
+    await expect(pulse).not.toContainText('%');
+    await expect(
+      page.getByRole('region', { name: 'Colas de trabajo' }).getByRole('table'),
+    ).toHaveCount(0);
+    await loginToPulse(page);
+    await expect(pulse).toContainText('98,14 %');
+  });
+});
+
 test.describe('Centro de control — axe WCAG 2.2 AA (CA-PP-08)', () => {
   test.beforeEach(
     setupWebApiMocks({
       tenants: TENANTS,
       tenantSummary: SUMMARY,
+      healthHistory: HISTORY,
       platformAuditData: AUDIT,
       onUnhandledApiRoute: '404',
     }),

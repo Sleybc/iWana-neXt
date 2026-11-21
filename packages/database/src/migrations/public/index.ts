@@ -38,6 +38,7 @@ import { HardenTenantPurgeDependencies1784419218000 } from './030_harden_tenant_
 import { TenantPurgeEvidence1784419219000 } from './031_tenant_purge_evidence';
 import { MediaUsageTicketAttachment1784419220000 } from './032_media_usage_ticket_attachment';
 import { DashboardStatusAndAuditCursorIndexes1784419221000 } from './033_dashboard_status_and_audit_cursor_indexes';
+import { PlatformHealthSamples1784419222000 } from './034_platform_health_samples';
 
 /**
  * Migraciones del schema público, en orden.
@@ -86,6 +87,7 @@ export const PUBLIC_MIGRATIONS: (new () => MigrationInterface)[] = [
   TenantPurgeEvidence1784419219000,
   MediaUsageTicketAttachment1784419220000,
   DashboardStatusAndAuditCursorIndexes1784419221000,
+  PlatformHealthSamples1784419222000,
 ];
 
 /**
