@@ -163,14 +163,17 @@ async function createExpedienteFixture(
   return { id: newExpediente.id, suffix, email, planId, subscriberName: `Prueba ${suffix}` };
 }
 
-async function searchConvertedSubscriber(page: Page, email: string): Promise<string | null> {
-  const response = await page.request.post('/api/v1/crm/subscribers/search', {
+// Desde 7bebb5eb la búsqueda excluye a los prospectos: el suscriptor que crea
+// la conversión se lee del bootstrap del expediente.
+async function searchConvertedSubscriber(page: Page, expedienteId: string): Promise<string | null> {
+  const response = await page.request.get(`/api/v1/crm/expedientes/${expedienteId}/bootstrap`, {
     headers: tenantHeaders(),
-    data: { email },
   });
   if (!response.ok()) return null;
-  const body = (await response.json()) as { data?: Array<{ id: string }> };
-  return body.data?.[0]?.id ?? null;
+  const body = (await response.json()) as {
+    data?: { subscriberSummary: { id: string } | null };
+  };
+  return body.data?.subscriberSummary?.id ?? null;
 }
 
 async function createConvertedSubscriberFixture(page: Page): Promise<{
@@ -212,9 +215,9 @@ async function createConvertedSubscriberFixture(page: Page): Promise<{
   }
 
   await expect
-    .poll(() => searchConvertedSubscriber(page, expediente.email), { timeout: 20_000 })
+    .poll(() => searchConvertedSubscriber(page, expediente.id), { timeout: 20_000 })
     .not.toBeNull();
-  const subscriberId = await searchConvertedSubscriber(page, expediente.email);
+  const subscriberId = await searchConvertedSubscriber(page, expediente.id);
   expect(subscriberId).toBeTruthy();
 
   const convertedProfile = await apiJson<{

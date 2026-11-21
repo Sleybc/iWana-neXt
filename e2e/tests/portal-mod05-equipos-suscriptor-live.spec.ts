@@ -181,10 +181,18 @@ async function findOrCreateSubscriber(page: Page): Promise<string> {
   ]) {
     await apiJson(page, `/crm/expedientes/${expediente.id}/status`, 'PATCH', { targetStatus });
   }
-  await expect
-    .poll(() => findSubscriberByEmail(page, FIXTURE_EMAIL), { timeout: 30_000 })
-    .not.toBeNull();
-  return (await findSubscriberByEmail(page, FIXTURE_EMAIL))!;
+  // Desde 7bebb5eb la búsqueda excluye a los prospectos: el suscriptor que crea
+  // la conversión se lee del bootstrap del expediente.
+  const findConverted = async (): Promise<string | null> => {
+    const bootstrap = await apiJson<{ subscriberSummary: { id: string } | null }>(
+      page,
+      `/crm/expedientes/${expediente.id}/bootstrap`,
+      'GET',
+    );
+    return bootstrap.subscriberSummary?.id ?? null;
+  };
+  await expect.poll(findConverted, { timeout: 30_000 }).not.toBeNull();
+  return (await findConverted())!;
 }
 
 interface EquipmentFixture {

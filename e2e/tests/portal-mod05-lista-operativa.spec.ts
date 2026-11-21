@@ -472,12 +472,13 @@ test.describe('MOD05 Fase 06 · lista operativa de suscriptores', () => {
 
     await page.goto('/dashboard/crm/subscribers');
     await page.getByRole('heading', { name: 'Suscriptores' }).waitFor();
-    const filtersButton = page.getByRole('button', { name: 'Más filtros' });
-    await filtersButton.focus();
+    // Desde 7bebb5eb «Más filtros» solo existe en móvil; en escritorio los
+    // filtros van en línea. Se usa otro control visible fuera de la tabla.
+    const outsideControl = page.getByRole('link', { name: 'Agenda de corte' });
+    await outsideControl.focus();
     await page.keyboard.press('j');
 
-    await expect(filtersButton).toBeFocused();
-    await expect(filtersButton).toHaveAttribute('aria-expanded', 'false');
+    await expect(outsideControl).toBeFocused();
     await expect(page).not.toHaveURL(/peek=/);
     await expect(page.getByRole('row', { name: /Ana Sintética/ })).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);

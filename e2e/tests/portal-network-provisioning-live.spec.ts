@@ -528,12 +528,16 @@ async function createCommercialFixture(
     });
   }
 
+  // Desde 7bebb5eb la búsqueda excluye a los prospectos: el suscriptor que crea
+  // la conversión se lee del bootstrap del expediente.
   const findSubscriber = async (): Promise<string | null> => {
-    const results = await api<unknown>(page, admin.token, 'POST', '/crm/subscribers/search', {
-      email,
-    });
-    const rows = asList<Dict>(results);
-    return typeof rows[0]?.id === 'string' ? (rows[0].id as string) : null;
+    const bootstrap = await api<{ subscriberSummary: { id: string } | null }>(
+      page,
+      admin.token,
+      'GET',
+      '/crm/expedientes/' + expediente.id + '/bootstrap',
+    );
+    return bootstrap.subscriberSummary?.id ?? null;
   };
   await expect
     .poll(findSubscriber, { timeout: 30_000, intervals: [500, 1_000, 2_000] })

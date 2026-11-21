@@ -133,14 +133,17 @@ async function createConvertedSubscriber(page: Page): Promise<string> {
   ]) {
     await apiJson(page, `/crm/expedientes/${expediente.id}/status`, 'PATCH', { targetStatus });
   }
+  // Desde 7bebb5eb la búsqueda excluye a los prospectos: el suscriptor que crea
+  // la conversión se lee del bootstrap del expediente.
   const findSubscriber = async (): Promise<string | null> => {
-    const response = await page.request.post('/api/v1/crm/subscribers/search', {
+    const response = await page.request.get(`/api/v1/crm/expedientes/${expediente.id}/bootstrap`, {
       headers: { 'X-Tenant-Slug': tenantSlug!, 'X-Requested-With': 'XMLHttpRequest' },
-      data: { email },
     });
     if (!response.ok()) return null;
-    const body = (await response.json()) as { data?: Array<{ id: string }> };
-    return body.data?.[0]?.id ?? null;
+    const body = (await response.json()) as {
+      data?: { subscriberSummary: { id: string } | null };
+    };
+    return body.data?.subscriberSummary?.id ?? null;
   };
   await expect.poll(findSubscriber, { timeout: 20_000 }).not.toBeNull();
   return (await findSubscriber())!;

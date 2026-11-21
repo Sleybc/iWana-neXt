@@ -502,17 +502,17 @@ async function convertToParty(
     });
   }
 
+  // Desde 7bebb5eb la búsqueda excluye a los prospectos: el suscriptor que crea
+  // la conversión se lee del bootstrap del expediente.
   const findSubscriber = async (): Promise<string | null> => {
-    const results = await api<Array<JsonRecord>>(
+    const bootstrap = await api<{ subscriberSummary: { id: string } | null }>(
       page,
       session,
       session.admin,
-      'POST',
-      '/crm/subscribers/search',
-      { email: prospect.email },
+      'GET',
+      `/crm/expedientes/${prospect.id}/bootstrap`,
     );
-    const id = results[0]?.['id'];
-    return typeof id === 'string' ? id : null;
+    return bootstrap.subscriberSummary?.id ?? null;
   };
   await expect.poll(findSubscriber, { timeout: 25_000 }).not.toBeNull();
   const subscriberId = await findSubscriber();
