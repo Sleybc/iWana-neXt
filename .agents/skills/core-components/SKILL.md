@@ -3,7 +3,7 @@ name: core-components
 description: "API e inventario real de @iwana/ui y criterios para nuevas primitives; dueña única de los tokens. Usar cuando se crea o cambia una primitive de packages/ui o se define un token. No usar para estilos de una pantalla (→ tailwind-patterns) ni para su aspecto visual (→ iwana-identity-ui-review)."
 ---
 
-## Inventario real de @iwana/ui (verificado 2026-11-08)
+## Inventario real de @iwana/ui (verificado 2026-11-21)
 
 > Fuente única: `packages/ui/src/index.ts` (150 exportaciones públicas: 95 valores y 55 tipos). Importar solo desde `@iwana/ui`; el paquete expone además `@iwana/ui/styles/globals.css` y `@iwana/ui/chart` (`ChartPlot`, único módulo con Recharts; en las apps solo por `import()` dinámico vía `PortalChart`, ADR-112) (`packages/ui/package.json`). Si este inventario discrepa de `index.ts`, manda `index.ts`.
 
@@ -16,16 +16,19 @@ description: "API e inventario real de @iwana/ui y criterios para nuevas primiti
 | `Badge.tsx` | `Badge`, `badgeVariants` |
 | `Button.tsx` | `Button`, `buttonVariants` |
 | `Calendar.tsx` | `Calendar` |
-| `Card.tsx` | `Card`, `CardHeader`, `CardTitle`, `CardContent`, `CardFooter` |
+| `Card.tsx` | `Card` (variantes `default`, `glass`, `outline`), `CardHeader`, `CardTitle`, `CardContent`, `CardFooter` |
 | `Chart.tsx` | `Chart`, `ChartSkeleton` (tipos `ChartProps`, `ChartPlotProps`, `ChartPoint`, `BarSeries`, `LineSeries`…; contrato `docs/specs/2026-11-17-portal-graficas-ds-contrato.md`) |
 | `CheckboxCard.tsx` | `CheckboxCard` |
 | `DatePicker.tsx` | `DatePicker` |
 | `Dialog.tsx` | `Dialog`, `DialogTrigger`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription`, `DialogClose` |
+| `EmptyState.tsx` | `EmptyState` (contrato `docs/specs/2026-11-21-web-portal-dashboard-consolidacion-ds-contrato.md` §5.3) |
+| `ErrorState.tsx` | `ErrorState` (mismo contrato §5.2) |
 | `DropdownMenu.tsx` | `DropdownMenu`, `DropdownMenuTrigger`, `DropdownMenuContent`, `DropdownMenuHeader`, `DropdownMenuItem`, `DropdownMenuSeparator`, `dropdownMenuItemVariants` |
 | `FormField.tsx` | `FormField` |
 | `FormSection.tsx` | `FormFieldset`, `FormPanel`, `FormSectionTitle` |
 | `FormStatus.tsx` | `FormStatus` |
 | `Input.tsx` | `Input` |
+| `MetricCard.tsx` | `MetricCard`, `metricCardVariants` (mismo contrato §3) |
 | `ModalLayer.tsx` | `ModalLayer`, `overlayEdgeClassName` |
 | `MultiSelect.tsx` | `MultiSelect` |
 | `OperationalSidePeek.tsx` | `OperationalSidePeek` |
@@ -38,7 +41,9 @@ description: "API e inventario real de @iwana/ui y criterios para nuevas primiti
 | `SectionHeader.tsx` | `SectionHeader` |
 | `Select.tsx` | `Select` |
 | `ShellSearchSheet.tsx` | `ShellSearchSheet` |
+| `StackedBar.tsx` | `StackedBar` (tipos `StackedBarSegment` con `emphasis` opcional, `StackedBarProps`; mismo contrato §5.4–§5.5) |
 | `Tabs.tsx` | `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent`, `tabsTriggerVariants` |
+| `Tone.ts` | `toneSurfaceVariants`, `toneTextVariants`, `toneFillVariants` (con `emphasis`, v1.1 §5.5), `toneMutedTextVariants` (v1.1 §2.1), tipos `Tone` y `FillEmphasis` (mismo contrato §2) |
 | `ThemeProvider.tsx` | `ThemeProvider`, `useTheme` |
 | `ThemeToggle.tsx` | `ThemeToggle` |
 | `auth/AuthPremiumShell.tsx` | `AuthPremiumShell` |
@@ -59,7 +64,7 @@ Los tipos (`*Props`, `AvatarSize`, `AvatarVariant`, `FormStatusState`, `ModalLay
 
 ### Lo que NO existe hoy
 
-No importar nada de esta lista desde `@iwana/ui`: `Textarea`, `Checkbox` suelto (existe `CheckboxCard`), `Toast`, `Table`, `Sidebar`, `PageHeader` (existe `SectionHeader`), `MetricCard`, `Stack`, `Inline`, `Container`, `Section`, `Text`, `Heading`, `Label`, `EmptyState`, `Modal` (existen `Dialog` y `ModalLayer`). Las primitives del portal (`PortalPanel`, `PortalAlert`, `PortalEmptyState`, `PortalSkeletonBlock`) viven en `apps/portal/src/components/shared/portal-ui.tsx`, no en `@iwana/ui`. Sus contratos de densidad (dueño `ds-owner`) viven en `docs/specs/2026-11-10-mod05-ficha-suscriptor-estilo-uisp-ux.md` §8:
+No importar nada de esta lista desde `@iwana/ui`: `Textarea`, `Checkbox` suelto (existe `CheckboxCard`), `Toast`, `Table`, `Sidebar`, `PageHeader` (existe `SectionHeader`), `Stack`, `Inline`, `Container`, `Section`, `Text`, `Heading`, `Label`, `Modal` (existen `Dialog` y `ModalLayer`). Las primitives del portal (`PortalPanel`, `PortalAlert`, `PortalEmptyState`, `PortalSkeletonBlock`) viven en `apps/portal/src/components/shared/portal-ui.tsx`, no en `@iwana/ui`. Sus contratos de densidad (dueño `ds-owner`) viven en `docs/specs/2026-11-10-mod05-ficha-suscriptor-estilo-uisp-ux.md` §8:
 
 - v1.0 (2026-11-10, §8.1–8.5) — `PortalPanel density="dense"` y `PortalFieldRow`/`PortalFieldList` (aditivo, D1 MOD05).
 - v1.1 (2026-11-16, §8.6) — `PortalFieldList columns`, `PortalFieldRow emptyLabel` y ancho del panel con riel (aditivo, MOD10).
@@ -98,7 +103,7 @@ Este skill gobierna el uso del sistema de componentes del frontend web de iWana 
 |---|---|
 | Tokens vivos (Tailwind 4 CSS-first, `@theme`) | `packages/ui/src/styles/globals.css:25` |
 | Escalas de marca: primario `--color-iwana-primary-*` (l.27), secundario `--color-iwana-secondary-*` (l.41), neutral `--color-iwana-neutral-*` (l.58) | `globals.css:27-70` |
-| Superficie y semánticos (`--color-iwana-background`, `-foreground`, `-success`, `-warning`, `-error`) | `globals.css:72-100` |
+| Superficie y semánticos (`--color-iwana-background`, `-foreground`, `-success`, `-warning`, `-error`); escalas `success-*`, `error-*` y `warning-*` (U-5, G0-4 2026-11-21) | `globals.css:72-100` |
 | Radios (`--radius-sm` a `--radius-full`) | `globals.css:102-108` |
 | Superficies y bordes oscuros (`--color-dark-surface*`, `--color-dark-border*`) | `globals.css:127-133` |
 | Sombras (`--shadow-iwana*`) | `globals.css:137-142` |

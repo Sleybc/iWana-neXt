@@ -99,6 +99,14 @@
   --color-error-500: oklch(0.65 0.18 25);
   --color-error-600: oklch(0.55 0.2 25);
   --color-error-700: oklch(0.48 0.18 25);
+  /* Escala de aviso (U-5, contrato DS 2026-11-21 §6; G0-4 CTO 2026-11-21).
+     warning-600 no es texto (3,80:1 sobre blanco); texto en claro = warning-700. */
+  --color-warning-50: oklch(0.97 0.03 85);
+  --color-warning-200: oklch(0.92 0.09 85);
+  --color-warning-400: oklch(0.8 0.15 75);
+  --color-warning-500: oklch(0.75 0.16 70);
+  --color-warning-600: oklch(0.62 0.15 60);
+  --color-warning-700: oklch(0.52 0.13 55);
 
   /* Radio de bordes */
   --radius-sm: 0.375rem;

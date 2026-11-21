@@ -4,12 +4,13 @@ import { cn } from '../lib/utils';
 
 /**
  * Componente Card del sistema de diseño iWana neXt.
- * Variantes: default (blanco), glass (glassmorphism sobre oscuro).
+ * Variantes: default (blanco), glass (glassmorphism sobre oscuro) y outline
+ * (borde sin sombra, para tablas y cabeceras; contrato DS 2026-11-21 §5.1).
  */
 
 const Card = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement> & { variant?: 'default' | 'glass' }
+  React.HTMLAttributes<HTMLDivElement> & { variant?: 'default' | 'glass' | 'outline' }
 >(({ className, variant = 'default', ...props }, ref) => (
   <div
     ref={ref}
@@ -18,6 +19,8 @@ const Card = React.forwardRef<
       variant === 'default' &&
         'bg-white shadow-iwana-card dark:bg-dark-surface-2 dark:shadow-none dark:border dark:border-dark-border-2',
       variant === 'glass' && 'bg-white/10 backdrop-blur-md border border-white/20',
+      variant === 'outline' &&
+        'border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-2',
       className,
     )}
     {...props}
