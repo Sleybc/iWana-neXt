@@ -1,11 +1,23 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { TENANT_ATTENTION_STATUSES, TenantStatus, type TenantStatusSummary } from '@iwana/shared';
+import {
+  TENANT_ATTENTION_STATUSES,
+  TenantStatus,
+  formatRelativeTime,
+  type TenantStatusSummary,
+} from '@iwana/shared';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { RecentActivityPanel } from '@/components/dashboard/RecentActivityPanel';
-import { SignalChips, type SignalChipModel } from '@/components/dashboard/SignalChips';
-import { SystemStatusPanel, type StatusIndicator } from '@/components/dashboard/SystemStatusPanel';
+import {
+  DashboardMetricStrip,
+  type DashboardMetricModel,
+} from '@/components/dashboard/DashboardMetricStrip';
+import {
+  SYSTEM_STATUS_LABELS,
+  SystemStatusPanel,
+  type StatusIndicator,
+} from '@/components/dashboard/SystemStatusPanel';
 import {
   TenantStatusDistribution,
   type StatusSegment,
@@ -22,33 +34,13 @@ import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 
 const COPY = PLATFORM_UI_COPY.dashboard;
 
-function formatRelativeDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return 'Reciente';
-  }
-
-  const diffMs = Date.now() - date.getTime();
-  const diffMinutes = Math.max(1, Math.floor(diffMs / (1000 * 60)));
-
-  if (diffMinutes < 60) {
-    return diffMinutes === 1 ? 'Hace 1 min' : `Hace ${diffMinutes} min`;
-  }
-
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) {
-    return diffHours === 1 ? 'Hace 1 hora' : `Hace ${diffHours} horas`;
-  }
-
-  const diffDays = Math.floor(diffHours / 24);
-  return diffDays === 1 ? 'Hace 1 día' : `Hace ${diffDays} días`;
-}
-
-/** Cada indicador refleja solo su servicio (L-10); «Atención operativa» es la única lectura de negocio. */
+/**
+ * Cada indicador refleja solo su servicio (L-10); «Atención operativa» es la única lectura de negocio
+ * y sale del resumen de empresas, no de /health (contrato DS v1.2 §4.1).
+ */
 function buildHealthIndicators(
   health: HealthStatusResponse | null,
-  healthError: string | null,
-  attention: number,
+  attention: number | null,
 ): StatusIndicator[] {
   const serviceIndicator = (
     label: string,
@@ -64,22 +56,26 @@ function buildHealthIndicators(
   };
 
   return [
-    {
-      label: COPY.healthAttentionLabel,
-      status: attention > 0 ? 'warning' : 'ok',
-      detail: attention > 0 ? COPY.healthAttentionSome(attention) : COPY.healthAttentionNone,
-    },
+    attention === null
+      ? {
+          kind: 'business',
+          label: COPY.healthAttentionLabel,
+          status: 'unknown',
+          detail: COPY.healthNoReading,
+        }
+      : {
+          kind: 'business',
+          label: COPY.healthAttentionLabel,
+          status: attention > 0 ? 'warning' : 'ok',
+          detail: attention > 0 ? COPY.healthAttentionSome(attention) : COPY.healthAttentionNone,
+        },
     health
       ? {
           label: COPY.healthApiLabel,
           status: health.status === 'ok' ? 'ok' : 'warning',
           detail: health.status === 'ok' ? COPY.healthApiOk : COPY.healthApiDegraded,
         }
-      : {
-          label: COPY.healthApiLabel,
-          status: 'unknown',
-          detail: healthError ?? COPY.healthNoReading,
-        },
+      : { label: COPY.healthApiLabel, status: 'unknown', detail: COPY.healthNoReading },
     serviceIndicator(COPY.healthDbLabel, health?.db, COPY.healthDbOk),
     serviceIndicator(COPY.healthRedisLabel, health?.redis, COPY.healthRedisOk),
   ];
@@ -160,13 +156,13 @@ export function DashboardClient() {
     }
   }, []);
 
-  const signalChips = useMemo<SignalChipModel[]>(
+  const signalChips = useMemo<DashboardMetricModel[]>(
     () => [
       {
         id: 's1',
         label: COPY.chipActive,
         count: summary.active,
-        accent: 'primary',
+        tone: 'primary',
         href: '/tenants?status=ACTIVE',
         ariaLabel: COPY.viewActiveCompanies,
       },
@@ -174,7 +170,7 @@ export function DashboardClient() {
         id: 's2',
         label: COPY.chipProvisioning,
         count: summary.provisioning,
-        accent: 'warning',
+        tone: 'warning',
         href: '/tenants?status=PROVISIONING',
         ariaLabel: COPY.viewProvisioningCompanies,
       },
@@ -182,7 +178,7 @@ export function DashboardClient() {
         id: 's3',
         label: COPY.chipAttention,
         count: summary.attention,
-        accent: 'danger',
+        tone: 'error',
         ariaLabel: COPY.viewStatusBreakdown,
         onActivate: focusStatusBreakdown,
       },
@@ -190,7 +186,7 @@ export function DashboardClient() {
         id: 's4',
         label: COPY.chipWeeklyChanges,
         count: summary.updatedLast7Days,
-        accent: 'neutral',
+        tone: 'neutral',
       },
     ],
     [
@@ -259,21 +255,22 @@ export function DashboardClient() {
         id: entry.id,
         label: describePlatformActivityLine(entry),
         dateTime: entry.createdAt,
-        relative: formatRelativeDate(entry.createdAt),
+        relative: formatRelativeTime(entry.createdAt),
       })),
     [recentAudit],
   );
 
   const healthIndicators = useMemo(
-    () => buildHealthIndicators(health, healthError, summary.attention),
-    [health, healthError, summary.attention],
+    () => buildHealthIndicators(health, tenantSummary ? summary.attention : null),
+    [health, tenantSummary, summary.attention],
   );
 
   const healthSummary = health
     ? health.status === 'ok'
       ? COPY.healthSummaryOk
       : COPY.healthSummaryDegraded
-    : (healthError ?? COPY.healthSummaryPending);
+    : // El error de /health lo muestra solo el ErrorState del panel (v1.2 §4.1, E3).
+      COPY.healthSummaryPending;
 
   return (
     <div className="space-y-5">
@@ -282,16 +279,26 @@ export function DashboardClient() {
       <div className="space-y-6">
         {isLoading ? <span className="sr-only">{COPY.loading}</span> : null}
 
-        <SignalChips chips={signalChips} isLoading={isLoading} error={error} onRetry={retry} />
+        <DashboardMetricStrip
+          metrics={signalChips}
+          isLoading={isLoading}
+          error={error}
+          onRetry={retry}
+        />
 
         <div data-testid="control-center-split" className="grid grid-cols-1 gap-6 xl:grid-cols-12">
           <div data-testid="control-center-monitoring" className="h-full xl:col-span-7">
             <SystemStatusPanel
               className="h-full"
               title={COPY.healthTitle}
+              eyebrow={COPY.healthEyebrow}
               summary={healthSummary}
               lastCheckedAt={health?.timestamp ?? null}
               isLoading={isLoading}
+              error={healthError}
+              onRetry={retry}
+              emptyMessage={COPY.healthNoReading}
+              statusLabels={SYSTEM_STATUS_LABELS}
               indicators={healthIndicators}
             />
           </div>

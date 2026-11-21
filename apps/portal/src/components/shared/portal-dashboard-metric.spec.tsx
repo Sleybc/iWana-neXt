@@ -165,7 +165,7 @@ describe('PortalDashboardMetric', () => {
         eyebrow="Crítico"
         label="Casos abiertos"
         value={4}
-        accent="danger"
+        accent="error"
         icon={Calendar}
       />,
     );

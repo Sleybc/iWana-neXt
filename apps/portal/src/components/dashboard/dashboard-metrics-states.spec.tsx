@@ -1,11 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Calendar } from 'lucide-react';
-import {
-  PortalAlert,
-  PortalDashboardMetric,
-  portalMetricCardShellClassName,
-} from '@/components/shared/portal-ui';
+import { PortalAlert, PortalDashboardMetric } from '@/components/shared/portal-ui';
 import { PageHeader } from '@/components/layout/PageHeader';
 
 jest.mock('next/link', () => {
@@ -156,7 +152,6 @@ describe('Dashboard metrics states (D-1/D-2/D-7)', () => {
     );
 
     const link = screen.getByRole('link', { name: 'Visitas de hoy' });
-    expect(portalMetricCardShellClassName).toMatch(/shadow-iwana-soft/);
     expect(link.className).toMatch(/shadow-iwana-soft/);
     expect(link.className).toMatch(/hover:shadow-iwana-active/);
   });
@@ -179,7 +174,7 @@ describe('Dashboard metrics states (D-1/D-2/D-7)', () => {
         label="Casos en riesgo de incumplir"
         value={2}
         description="Acuerdo de servicio en riesgo"
-        accent="danger"
+        accent="error"
       />,
     );
 

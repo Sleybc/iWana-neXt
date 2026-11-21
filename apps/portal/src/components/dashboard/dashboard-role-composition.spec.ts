@@ -319,18 +319,18 @@ describe('resolveDashboardMetricAccent', () => {
     ).toBe('neutral');
   });
 
-  it('apaga warning/danger sin señal y los conserva con valor o delta', () => {
+  it('apaga warning/error sin señal y los conserva con valor o delta', () => {
     expect(resolveDashboardMetricAccent({ declared: 'warning', value: 0, hasDelta: false })).toBe(
       'neutral',
     );
-    expect(resolveDashboardMetricAccent({ declared: 'danger', value: null, hasDelta: false })).toBe(
+    expect(resolveDashboardMetricAccent({ declared: 'error', value: null, hasDelta: false })).toBe(
       'neutral',
     );
     expect(resolveDashboardMetricAccent({ declared: 'warning', value: 2, hasDelta: false })).toBe(
       'warning',
     );
-    expect(resolveDashboardMetricAccent({ declared: 'danger', value: 0, hasDelta: true })).toBe(
-      'danger',
+    expect(resolveDashboardMetricAccent({ declared: 'error', value: 0, hasDelta: true })).toBe(
+      'error',
     );
   });
 

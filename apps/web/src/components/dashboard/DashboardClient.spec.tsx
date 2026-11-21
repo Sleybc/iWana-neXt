@@ -66,25 +66,32 @@ jest.mock('@/components/layout/PageHeader', () => ({
   ),
 }));
 
-jest.mock('@/components/dashboard/SystemStatusPanel', () => ({
-  SystemStatusPanel: ({
-    summary,
-    indicators,
-  }: {
-    summary?: string;
-    indicators: Array<{ label: string; detail?: string }>;
-  }) => (
-    <section>
-      <p>Salud de plataforma</p>
-      {summary ? <p>{summary}</p> : null}
-      {indicators.map((indicator) => (
-        <p key={indicator.label}>
-          {indicator.label}: {indicator.detail}
-        </p>
-      ))}
-    </section>
-  ),
-}));
+// Doble ligero del panel; `useRealStatusPanel` monta el componente real (v1.2 §4.1, §8.4).
+let useRealStatusPanel = false;
+jest.mock('@/components/dashboard/SystemStatusPanel', () => {
+  const actual = jest.requireActual<typeof import('@/components/dashboard/SystemStatusPanel')>(
+    '@/components/dashboard/SystemStatusPanel',
+  );
+  return {
+    ...actual,
+    SystemStatusPanel: (props: Parameters<typeof actual.SystemStatusPanel>[0]) =>
+      useRealStatusPanel ? (
+        <actual.SystemStatusPanel {...props} />
+      ) : (
+        <section>
+          <p>Salud de plataforma</p>
+          {props.summary && !props.error ? <p>{props.summary}</p> : null}
+          {/* v1.2 E1: el error de /health sale una vez, en el lugar de los servicios. */}
+          {props.error ? <p>{props.error}</p> : null}
+          {props.indicators.map((indicator) => (
+            <p key={indicator.label}>
+              {indicator.label}: {indicator.detail}
+            </p>
+          ))}
+        </section>
+      ),
+  };
+});
 
 jest.mock('@/lib/api-client', () => {
   class ApiError extends Error {
@@ -225,7 +232,8 @@ describe('DashboardClient', () => {
     ['Activas', 'En configuración', 'Requieren atención', 'Cambios esta semana'].forEach(
       (label) => {
         const chipLabel = within(summaryRegion).getByText(label);
-        expect(chipLabel.nextElementSibling).toHaveTextContent(/^0$/);
+        // Anatomía de MetricCard (contrato DS 2026-11-21 §3): la cifra precede al título.
+        expect(chipLabel.previousElementSibling).toHaveTextContent(/^0$/);
       },
     );
   });
@@ -455,6 +463,29 @@ describe('DashboardClient', () => {
     expect(screen.queryByText(/Error del servidor/)).not.toBeInTheDocument();
   });
 
+  it('v1.2 §4.1: con /health caído, el panel real muestra un solo error y conserva Atención operativa', async () => {
+    useRealStatusPanel = true;
+    try {
+      tenantApi.summary.mockResolvedValue(makeTenantStatusSummary({ ACTIVE: 1 }));
+      platformAuditApi.list.mockResolvedValue({ data: [makeAuditEntry()] });
+      healthApi.get.mockRejectedValue(new TypeError('Failed to fetch'));
+
+      render(<DashboardClient />);
+
+      const message = 'No pudimos validar API, base de datos y Redis en este momento.';
+      expect(await screen.findByText(message)).toBeInTheDocument();
+      expect(screen.getAllByText(message)).toHaveLength(1);
+      expect(
+        screen.getAllByRole('alert').filter((el) => el.textContent?.includes(message)),
+      ).toHaveLength(1);
+      expect(screen.getByText('Atención operativa')).toBeInTheDocument();
+      expect(screen.queryByText('API de plataforma')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+    } finally {
+      useRealStatusPanel = false;
+    }
+  });
+
   it('CA-PS-10: una lectura degradada (503 de /health) se muestra como degradada, no como error', async () => {
     healthApi.get.mockResolvedValue({
       status: 'degraded',
@@ -574,7 +605,7 @@ describe('DashboardClient', () => {
     });
   });
 
-  describe('formatRelativeDate (vía la actividad)', () => {
+  describe('formatRelativeTime (vía la actividad)', () => {
     beforeEach(() => {
       jest.spyOn(Date, 'now').mockReturnValue(FIXED_NOW);
     });
@@ -584,12 +615,12 @@ describe('DashboardClient', () => {
     });
 
     it.each([
-      ['segundos (mínimo 1 min)', minutesAgo(0.5), 'Hace 1 min'],
-      ['59 minutos', minutesAgo(59), 'Hace 59 min'],
-      ['60 minutos', minutesAgo(60), 'Hace 1 hora'],
-      ['23 h 59 min', minutesAgo(23 * 60 + 59), 'Hace 23 horas'],
-      ['24 horas', minutesAgo(24 * 60), 'Hace 1 día'],
-      ['3 días', minutesAgo(3 * 24 * 60), 'Hace 3 días'],
+      ['segundos', minutesAgo(0.5), 'ahora'],
+      ['59 minutos', minutesAgo(59), 'hace 59 minutos'],
+      ['60 minutos', minutesAgo(60), 'hace 1 hora'],
+      ['23 h 59 min', minutesAgo(23 * 60 + 59), 'hace 23 horas'],
+      ['24 horas', minutesAgo(24 * 60), 'ayer'],
+      ['3 días', minutesAgo(3 * 24 * 60), 'hace 3 días'],
       ['fecha inválida', 'no-es-fecha', 'Reciente'],
     ])('%s se muestra con su tramo', async (_label, createdAt, expected) => {
       platformAuditApi.list.mockResolvedValue({ data: [makeAuditEntry({ createdAt })] });

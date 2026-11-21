@@ -6,12 +6,9 @@ import type { StockIssueRecord } from '@/lib/api-client';
 import {
   PortalPanel,
   PortalSkeletonBlock,
-  type PortalMetricCardAccent,
   interactiveFocusClassName,
-  portalMetricCardAccentClassName,
-  portalMetricCardShellClassName,
 } from '@/components/shared/portal-ui';
-import { cn } from '@iwana/ui';
+import { cn, metricCardVariants, type Tone } from '@iwana/ui';
 
 export type StockIssueKpiPreset = 'requested' | 'approved' | 'picking' | 'ready';
 
@@ -21,7 +18,7 @@ interface MetricCardConfig {
   eyebrow: string;
   title: string;
   description: string;
-  accent: PortalMetricCardAccent;
+  accent: Tone;
 }
 
 const METRIC_CARDS: MetricCardConfig[] = [
@@ -98,9 +95,7 @@ export function StockIssuesSummary({
             const isActive = activeStatus === metric.status;
 
             if (isLoading) {
-              return (
-                <PortalSkeletonBlock key={metric.preset} className="min-h-[148px] rounded-3xl" />
-              );
+              return <PortalSkeletonBlock key={metric.preset} className="min-h-37 rounded-2xl" />;
             }
 
             return (
@@ -110,9 +105,9 @@ export function StockIssuesSummary({
                 aria-pressed={isActive}
                 onClick={() => onStatusFilterChange(metric.status)}
                 className={cn(
-                  portalMetricCardShellClassName,
-                  'min-h-[148px] w-full text-left transition',
-                  portalMetricCardAccentClassName(metric.accent, { isActive }),
+                  metricCardVariants({ tone: metric.accent }),
+                  'min-h-37 transition',
+                  isActive && 'ring-2 ring-iwana-primary/40',
                   interactiveFocusClassName,
                 )}
               >

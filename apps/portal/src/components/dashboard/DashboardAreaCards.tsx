@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { TicketPriority, type SubscriberQueueCounts } from '@iwana/shared';
-import { Badge } from '@iwana/ui';
+import { Badge, StackedBar, type FillEmphasis, type Tone } from '@iwana/ui';
 import {
   PortalAlert,
   PortalPanel,
@@ -26,7 +26,6 @@ import type {
 } from './dashboard-role-composition';
 import {
   DashboardBars,
-  DashboardStackBar,
   DashboardStackLegend,
   formatDashboardMoneyCompact,
   formatDashboardNumber,
@@ -47,38 +46,43 @@ const healthBadge = {
   unknown: { label: 'Sin dato', variant: 'neutral' },
 } as const;
 
-/** Urgencia en escalas de error y advertencia; el lima no es una prioridad (Firma §3). */
-const PRIORITY_SEGMENTS: readonly { priority: TicketPriority; className: string }[] = [
-  { priority: TicketPriority.CRITICAL, className: 'bg-error-600' },
-  { priority: TicketPriority.URGENT, className: 'bg-error-400' },
-  { priority: TicketPriority.HIGH, className: 'bg-amber-500' },
-  { priority: TicketPriority.NORMAL, className: 'bg-iwana-primary-400' },
-  { priority: TicketPriority.LOW, className: 'bg-iwana-primary-200 dark:bg-iwana-primary-700' },
+/** Urgencia por tono e intensidad (contrato DS v1.1 §5.5); el lima no es una prioridad (Firma §3). */
+const PRIORITY_SEGMENTS: readonly {
+  priority: TicketPriority;
+  tone: Tone;
+  emphasis?: FillEmphasis;
+}[] = [
+  { priority: TicketPriority.CRITICAL, tone: 'error', emphasis: 'strong' },
+  { priority: TicketPriority.URGENT, tone: 'error', emphasis: 'soft' },
+  { priority: TicketPriority.HIGH, tone: 'warning' },
+  { priority: TicketPriority.NORMAL, tone: 'primary', emphasis: 'soft' },
+  { priority: TicketPriority.LOW, tone: 'neutral' },
 ];
 
 /** Casos abiertos por prioridad, en el orden de urgencia. */
 export function casePrioritySegments(byPriority: Record<string, number>): DashboardSegment[] {
-  return PRIORITY_SEGMENTS.map(({ priority, className }) => ({
+  return PRIORITY_SEGMENTS.map(({ priority, tone, emphasis }) => ({
     key: priority,
     label: getAssuranceTicketPriorityLabel(priority),
     value: byPriority[priority] ?? 0,
-    className,
+    tone,
+    ...(emphasis ? { emphasis } : {}),
   }));
 }
 
 /**
  * Cartera vencida por antigüedad (N1 `overdue.buckets`, siempre los cuatro tramos en orden).
- * La mora nunca va en lima: los tramos recientes en series neutras y los viejos en advertencia
- * y error (CA-PA-03).
+ * La mora nunca va en lima: los tramos recientes en neutro y primario suave, los viejos en
+ * advertencia y error (CA-PA-03; contrato DS v1.1 §5.5).
  */
 const OVERDUE_BUCKET_SEGMENTS: Record<
   BillingDashboardSummary['overdue']['buckets'][number]['bucket'],
-  { label: string; className: string }
+  { label: string; tone: Tone; emphasis?: FillEmphasis }
 > = {
-  '1_30': { label: '1 a 30 días', className: 'bg-(--chart-4)' },
-  '31_60': { label: '31 a 60 días', className: 'bg-(--chart-3)' },
-  '61_90': { label: '61 a 90 días', className: 'bg-amber-500' },
-  '90_plus': { label: 'Más de 90 días', className: 'bg-error-600' },
+  '1_30': { label: '1 a 30 días', tone: 'neutral' },
+  '31_60': { label: '31 a 60 días', tone: 'primary', emphasis: 'soft' },
+  '61_90': { label: '61 a 90 días', tone: 'warning' },
+  '90_plus': { label: 'Más de 90 días', tone: 'error', emphasis: 'strong' },
 };
 
 export function overdueBucketSegments(
@@ -89,7 +93,10 @@ export function overdueBucketSegments(
     label: OVERDUE_BUCKET_SEGMENTS[bucket.bucket].label,
     // Texto decimal → número solo para pintar la proporción.
     value: Number(bucket.amount),
-    className: OVERDUE_BUCKET_SEGMENTS[bucket.bucket].className,
+    tone: OVERDUE_BUCKET_SEGMENTS[bucket.bucket].tone,
+    ...(OVERDUE_BUCKET_SEGMENTS[bucket.bucket].emphasis
+      ? { emphasis: OVERDUE_BUCKET_SEGMENTS[bucket.bucket].emphasis }
+      : {}),
   }));
 }
 
@@ -100,9 +107,10 @@ export function subscriberBaseSegments(counts: SubscriberQueueCounts): Dashboard
       key: 'active',
       label: 'Activos',
       value: counts.active,
-      className: 'bg-iwana-primary dark:bg-iwana-primary-300',
+      tone: 'primary',
+      emphasis: 'strong',
     },
-    { key: 'suspended', label: 'Suspendidos', value: counts.suspended, className: 'bg-amber-500' },
+    { key: 'suspended', label: 'Suspendidos', value: counts.suspended, tone: 'warning' },
   ];
 }
 
@@ -173,11 +181,7 @@ function resolveAreaContent(id: DashboardAreaId, props: DashboardAreaCardsProps)
               figure={formatDashboardNumber(open)}
               caption={open > 0 ? 'casos abiertos por prioridad' : 'casos abiertos'}
             />
-            <DashboardStackBar
-              segments={segments}
-              ariaLabel="Casos abiertos por prioridad"
-              className="h-2.5"
-            />
+            <StackedBar segments={segments} ariaLabel="Casos abiertos por prioridad" size="md" />
             <DashboardStackLegend segments={segments} />
           </>
         ),
@@ -254,10 +258,10 @@ function resolveAreaContent(id: DashboardAreaId, props: DashboardAreaCardsProps)
               figure={formatDashboardMoneyCompact(amount)}
               caption={amount > 0 ? 'vencidos por antigüedad' : 'sin cartera vencida'}
             />
-            <DashboardStackBar
+            <StackedBar
               segments={segments}
               ariaLabel="Cartera vencida por antigüedad"
-              className="h-2.5"
+              size="md"
               formatValue={formatDashboardMoneyCompact}
             />
             <DashboardStackLegend segments={segments} formatValue={formatDashboardMoneyCompact} />
@@ -277,11 +281,7 @@ function resolveAreaContent(id: DashboardAreaId, props: DashboardAreaCardsProps)
         body: (
           <>
             <AreaLead figure={formatDashboardNumber(data?.active ?? 0)} caption="activos" />
-            <DashboardStackBar
-              segments={segments}
-              ariaLabel="Base de suscriptores"
-              className="h-2.5"
-            />
+            <StackedBar segments={segments} ariaLabel="Base de suscriptores" size="md" />
             <DashboardStackLegend segments={segments} />
           </>
         ),

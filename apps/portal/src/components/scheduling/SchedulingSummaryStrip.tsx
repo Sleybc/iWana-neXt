@@ -1,13 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { Badge, cn } from '@iwana/ui';
+import { Badge, cn, metricCardVariants, type Tone } from '@iwana/ui';
 import type { WfmDashboardSummary } from '@/lib/api-client';
-import {
-  type PortalMetricCardAccent,
-  portalMetricCardAccentClassName,
-  portalMetricCardShellClassName,
-} from '@/components/shared/portal-ui';
 
 interface SchedulingSummaryStripProps {
   summary: WfmDashboardSummary | null;
@@ -39,16 +34,10 @@ function SummaryCard({
   detail: string;
   actionHref?: string;
   actionLabel?: string;
-  accent?: PortalMetricCardAccent;
+  accent?: Tone;
 }) {
   return (
-    <article
-      className={cn(
-        portalMetricCardShellClassName,
-        'min-h-[168px]',
-        portalMetricCardAccentClassName(accent),
-      )}
-    >
+    <article className={cn(metricCardVariants({ tone: accent }), 'min-h-42')}>
       <p className="portal-eyebrow-muted">{eyebrow}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">
         {value}
@@ -127,7 +116,7 @@ export function SchedulingSummaryStrip({
           value={overdueValue}
           description="Eventos que ya quedaron por fuera de su franja prevista."
           detail="Conviene intervenir antes de que afecten el resto del día."
-          accent="danger"
+          accent="error"
           actionHref="/dashboard/scheduling/unrealized-visits"
           actionLabel="Visitas sin realizar"
         />

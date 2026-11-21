@@ -1,18 +1,14 @@
 'use client';
 
 import type { InventoryDashboardSummary } from '@/lib/api-client';
-import {
-  PortalEmptyState,
-  PortalMetricCard,
-  PortalSkeletonBlock,
-  type PortalMetricCardAccent,
-} from '@/components/shared/portal-ui';
+import { PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import {
   formatInventoryCurrency,
   formatInventoryQuantity,
   INVENTORY_ESTIMATED_VALUE_HELP_TEXT,
   INVENTORY_ESTIMATED_VALUE_LABEL,
 } from './inventory-labels';
+import { MetricCard, type Tone } from '@iwana/ui';
 
 interface InventoryDashboardProps {
   summary: InventoryDashboardSummary | null;
@@ -31,7 +27,7 @@ const KPI_ITEMS: ReadonlyArray<{
   eyebrow: string;
   title: string;
   description: string;
-  accent: PortalMetricCardAccent;
+  accent: Tone;
   emphasized?: boolean;
   format: 'number' | 'quantity' | 'currency';
 }> = [
@@ -115,15 +111,15 @@ export function InventoryDashboard({ summary, isLoading = false }: InventoryDash
   return (
     <div className="grid gap-3 grid-cols-2 xl:grid-cols-5">
       {KPI_ITEMS.map((item) => (
-        <PortalMetricCard
+        <MetricCard
           key={item.key}
           eyebrow={item.eyebrow}
           value={formatKpiValue(summary[item.key], item.format)}
-          title={item.title}
+          label={item.title}
           description={item.description}
-          accent={item.accent}
+          tone={item.accent}
           emphasized={item.emphasized === true}
-          minHeightClassName="min-h-0"
+          className="min-h-0"
         />
       ))}
     </div>

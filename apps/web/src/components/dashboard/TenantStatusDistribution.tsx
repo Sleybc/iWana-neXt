@@ -1,18 +1,26 @@
 import Link from 'next/link';
 import type { Ref } from 'react';
 import {
-  Alert,
-  AlertDescription,
   Button,
+  Card,
   cn,
+  EmptyState,
+  ErrorState,
   interactiveFocusClassName,
   SkeletonBlock,
+  StackedBar,
+  toneFillVariants,
+  toneMutedTextVariants,
+  toneSurfaceVariants,
+  toneTextVariants,
+  type Tone,
 } from '@iwana/ui';
 import { describeTenantDirectorySummary } from '@/lib/tenant-directory-summary';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 import type { TenantStatus } from '@/lib/tenant-status-label';
 
-export type StatusTone = 'success' | 'warning' | 'error' | 'neutral';
+/** Tono de un estado del directorio; subconjunto de `Tone` del DS (contrato 2026-11-21 §2). */
+export type StatusTone = Extract<Tone, 'success' | 'warning' | 'error' | 'neutral'>;
 
 export interface StatusSegment {
   key: TenantStatus;
@@ -30,29 +38,7 @@ interface TenantStatusDistributionProps {
   titleRef?: Ref<HTMLHeadingElement>;
 }
 
-const FILL_CLASS: Record<StatusTone, string> = {
-  success: 'bg-success-500',
-  warning: 'bg-amber-500',
-  error: 'bg-error-500',
-  neutral: 'bg-gray-400 dark:bg-gray-500',
-};
-
-const VALUE_CLASS: Record<StatusTone, string> = {
-  success: 'text-success-700 dark:text-success-400',
-  warning: 'text-amber-700 dark:text-amber-400',
-  error: 'text-error-700 dark:text-error-400',
-  neutral: 'text-gray-600 dark:text-gray-400',
-};
-
-const TILE_BG_CLASS: Record<StatusTone, string> = {
-  success: 'bg-success-50 dark:bg-dark-surface-3/30',
-  warning: 'bg-amber-50 dark:bg-dark-surface-3/30',
-  error: 'bg-error-50 dark:bg-dark-surface-3/30',
-  neutral: 'bg-gray-50 dark:bg-dark-surface-3/80',
-};
-
-const tileShellClassName =
-  'flex h-full min-h-24 flex-col rounded-2xl border border-transparent p-3';
+const tileShellClassName = 'flex h-full min-h-24 flex-col rounded-2xl border p-3';
 
 const STATUS_HINT: Record<TenantStatus, string> = {
   ACTIVE: PLATFORM_UI_COPY.dashboard.statusHintActive,
@@ -84,18 +70,11 @@ export function TenantStatusDistribution({
     },
     total,
   );
-  const barSegments = segments.filter((segment) => segment.count > 0);
   const legendSegments = segments.filter((segment) => !segment.hiddenWhenZero || segment.count > 0);
-  const barAriaLabel = barSegments
-    .map((segment) => `${segment.count} ${segment.label.toLowerCase()}`)
-    .join(', ');
   const showReading = !isLoading && !error && total > 0;
 
   return (
-    <section
-      className="flex h-full flex-col rounded-2xl border border-gray-200 bg-white p-5 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2"
-      aria-labelledby="empresas-por-estado"
-    >
+    <Card role="region" className="flex h-full flex-col p-5" aria-labelledby="empresas-por-estado">
       <div className="border-b border-gray-100 pb-4 dark:border-dark-border">
         <p className="portal-eyebrow">{PLATFORM_UI_COPY.dashboard.statusEyebrow}</p>
         <div className="mt-1 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -122,19 +101,17 @@ export function TenantStatusDistribution({
           ) : null}
         </div>
         {showReading ? (
-          <div
-            role="img"
-            aria-label={barAriaLabel}
-            className="mt-3 flex h-2.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-dark-surface-3"
-          >
-            {barSegments.map((segment) => (
-              <span
-                key={segment.key}
-                style={{ width: `${(segment.count / total) * 100}%` }}
-                className={cn('h-full', FILL_CLASS[segment.tone])}
-              />
-            ))}
-          </div>
+          <StackedBar
+            className="mt-3"
+            size="md"
+            ariaLabel={PLATFORM_UI_COPY.dashboard.statusTitle}
+            segments={segments.map((segment) => ({
+              key: segment.key,
+              label: segment.label,
+              value: segment.count,
+              tone: segment.tone,
+            }))}
+          />
         ) : null}
       </div>
 
@@ -146,53 +123,65 @@ export function TenantStatusDistribution({
         </div>
       ) : error ? (
         <div className="mt-4 flex flex-1 flex-col justify-center">
-          <Alert variant="error">
-            <AlertDescription>{error}</AlertDescription>
-            {onRetry ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="mt-3"
-                onClick={onRetry}
-              >
-                {PLATFORM_UI_COPY.dashboard.retry}
-              </Button>
-            ) : null}
-          </Alert>
+          <ErrorState
+            message={error}
+            onRetry={onRetry}
+            retryLabel={PLATFORM_UI_COPY.dashboard.retry}
+          />
         </div>
       ) : total === 0 ? (
-        <div className="mt-4 flex flex-1 flex-col justify-center">
-          <p className="text-sm leading-6 text-gray-600 dark:text-gray-300">
-            {PLATFORM_UI_COPY.dashboard.statusEmpty}
-          </p>
-          <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">
-            {PLATFORM_UI_COPY.dashboard.statusEmptyHint}
-          </p>
-          <Button asChild variant="secondary" size="sm" className="mt-3">
-            <Link href="/tenants/new">{PLATFORM_UI_COPY.dashboard.statusEmptyCta}</Link>
-          </Button>
-        </div>
+        <EmptyState
+          className="mt-4 flex flex-1 flex-col justify-center"
+          message={
+            <>
+              {PLATFORM_UI_COPY.dashboard.statusEmpty}
+              <span className="mt-1 block text-gray-500 dark:text-gray-400">
+                {PLATFORM_UI_COPY.dashboard.statusEmptyHint}
+              </span>
+            </>
+          }
+          action={
+            <Button asChild variant="secondary" size="sm">
+              <Link href="/tenants/new">{PLATFORM_UI_COPY.dashboard.statusEmptyCta}</Link>
+            </Button>
+          }
+        />
       ) : (
         <>
           <ul className="mt-4 grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
             {legendSegments.map((segment) => {
-              const tileClassName = cn(tileShellClassName, TILE_BG_CLASS[segment.tone]);
+              const tileClassName = cn(
+                tileShellClassName,
+                toneSurfaceVariants({ tone: segment.tone }),
+              );
               const content = (
                 <>
                   <div className="flex items-center gap-2">
                     <span
-                      className={cn('h-2.5 w-2.5 shrink-0 rounded-full', FILL_CLASS[segment.tone])}
+                      className={cn(
+                        'h-2.5 w-2.5 shrink-0 rounded-full',
+                        toneFillVariants({ tone: segment.tone }),
+                      )}
                       aria-hidden="true"
                     />
-                    <span className={cn('text-xs font-medium', VALUE_CLASS[segment.tone])}>
+                    <span
+                      className={cn(
+                        'text-xs font-medium',
+                        toneTextVariants({ tone: segment.tone }),
+                      )}
+                    >
                       {segment.label}
                     </span>
                   </div>
                   <p className="mt-2 font-mono text-sm font-semibold tabular-nums text-gray-900 dark:text-white">
                     {segment.count}
                   </p>
-                  <p className="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-300">
+                  <p
+                    className={cn(
+                      'mt-1 text-xs leading-5',
+                      toneMutedTextVariants({ tone: segment.tone }),
+                    )}
+                  >
                     {STATUS_HINT[segment.key]}
                   </p>
                 </>
@@ -233,6 +222,6 @@ export function TenantStatusDistribution({
           </div>
         </>
       )}
-    </section>
+    </Card>
   );
 }

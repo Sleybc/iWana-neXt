@@ -1,3 +1,4 @@
+import type { Tone } from '@iwana/ui';
 /**
  * Composición tipada del inicio `/dashboard` por rol de tenant.
  *
@@ -121,7 +122,8 @@ export interface DashboardActionDefinition {
   href: string;
 }
 
-export type DashboardMetricAccent = 'neutral' | 'primary' | 'warning' | 'danger';
+/** Tono de la métrica: `Tone` del DS sin `success` (contrato DS 2026-11-21 §2; danger → error). */
+export type DashboardMetricAccent = Exclude<Tone, 'success'>;
 
 export interface DashboardMetricDefinition {
   id: DashboardMetricId;
@@ -434,7 +436,7 @@ export const DASHBOARD_METRIC_REGISTRY: Record<DashboardMetricId, DashboardMetri
     id: 'I-4',
     label: 'Casos en riesgo de incumplir',
     description: 'Acuerdo de servicio en riesgo',
-    accent: 'danger',
+    accent: 'error',
     icon: AlertTriangle,
     buildHref: () => '/dashboard/assurance?slaBreachStatus=AT_RISK',
     sources: ['assurance'],
@@ -929,7 +931,7 @@ export const DASHBOARD_IDENTITY_ICON = UserRound;
 
 /**
  * Tinte de métrica del inicio (UX U-D / DS v1.4).
- * `warning`/`danger` solo si hay señal (`value > 0` o delta). Cero no es urgencia.
+ * `warning`/`error` solo si hay señal (`value > 0` o delta). Cero no es urgencia.
  * `primary`/`neutral` se conservan.
  */
 export function resolveDashboardMetricAccent(options: {
@@ -938,7 +940,7 @@ export function resolveDashboardMetricAccent(options: {
   hasDelta: boolean;
 }): DashboardMetricAccent {
   const { declared, value, hasDelta } = options;
-  if (declared !== 'warning' && declared !== 'danger') {
+  if (declared !== 'warning' && declared !== 'error') {
     return declared;
   }
   const hasSignal = (value != null && value > 0) || hasDelta;

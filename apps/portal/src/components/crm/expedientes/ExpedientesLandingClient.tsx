@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Badge, Button, Input, Select, cn } from '@iwana/ui';
+import { Badge, Button, Input, Select, cn, MetricCard } from '@iwana/ui';
 import type { ListMeta } from '@iwana/shared';
 import { AcquisitionChannel, CustomerSegment } from '@iwana/shared';
 import { ArrowRight, Building2, CircleDashed, Plus, User } from 'lucide-react';
@@ -18,7 +18,6 @@ import {
   PortalAlert,
   PortalDataTableHead,
   PortalEmptyState,
-  PortalMetricCard,
   PortalPageSizeSelect,
   PortalPanel,
   PortalSearchField,
@@ -433,14 +432,14 @@ function ExpedientesLandingClientInner() {
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         {summaryCards.map((item) => (
-          <PortalMetricCard
+          <MetricCard
             key={item.eyebrow}
             eyebrow={item.eyebrow}
             value={item.value}
-            title={item.title}
+            label={item.title}
             description={item.description}
-            accent="neutral"
-            minHeightClassName="min-h-0"
+            tone="neutral"
+            className="min-h-0"
           />
         ))}
       </div>

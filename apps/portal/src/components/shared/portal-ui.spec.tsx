@@ -48,8 +48,8 @@ describe('portal-ui', () => {
     },
     {
       variant: 'warning' as const,
-      light: ['bg-amber-50', 'text-amber-700'],
-      dark: ['dark:bg-amber-500/15', 'dark:text-amber-400'],
+      light: ['bg-warning-50', 'text-warning-700'], // U-5 (G0-4): Badge warning usa la escala warning
+      dark: ['dark:bg-warning-500/15', 'dark:text-warning-400'],
     },
     {
       variant: 'error' as const,

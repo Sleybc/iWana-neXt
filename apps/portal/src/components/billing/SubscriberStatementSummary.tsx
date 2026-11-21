@@ -2,10 +2,9 @@
 
 import { ChevronRight } from 'lucide-react';
 import type { BillingAccountStatement } from '@iwana/shared';
-import { Badge, cn } from '@iwana/ui';
+import { Badge, cn, MetricCard } from '@iwana/ui';
 import {
   PortalAlert,
-  PortalMetricCard,
   PortalPanel,
   portalInlineTextLinkClassName,
 } from '@/components/shared/portal-ui';
@@ -101,20 +100,20 @@ function StatementBody({
         />
       ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
-        <PortalMetricCard
+        <MetricCard
           eyebrow="Cartera"
-          title="Deuda pendiente"
+          label="Deuda pendiente"
           value={formatBillingMoney(statement.totalPending)}
-          accent={hasOverdue ? 'warning' : 'neutral'}
+          tone={hasOverdue ? 'warning' : 'neutral'}
           description={
             hasOverdue ? (
               <Badge variant={overdue.variant}>Tiene facturas vencidas</Badge>
             ) : undefined
           }
         />
-        <PortalMetricCard
+        <MetricCard
           eyebrow="Crédito"
-          title="Saldo a favor"
+          label="Saldo a favor"
           value={formatBillingMoney(statement.creditBalance)}
         />
       </div>

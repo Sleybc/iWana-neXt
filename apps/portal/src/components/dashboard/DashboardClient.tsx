@@ -12,7 +12,7 @@ import {
   type Ref,
 } from 'react';
 import { ExpedienteStatus, UserRole, type SubscriberQueueCounts } from '@iwana/shared';
-import { Badge, Button, ProgressMeter, cn } from '@iwana/ui';
+import { Badge, Button, ProgressMeter, StackedBar, cn } from '@iwana/ui';
 import { RefreshCw } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
@@ -104,11 +104,7 @@ import {
   type DashboardProvisioningCounts,
 } from './DashboardAreaCards';
 import { DashboardPulse, type DashboardPulseCell } from './DashboardPulse';
-import {
-  DashboardStackBar,
-  formatDashboardMoneyCompact,
-  formatDashboardNumber,
-} from './dashboard-visuals';
+import { formatDashboardMoneyCompact, formatDashboardNumber } from './dashboard-visuals';
 import { DashboardTrend } from './DashboardTrend';
 import {
   buildDashboardTrendTabs,
@@ -454,7 +450,8 @@ function metricVisual(metricId: DashboardMetricId, sources: DashboardSourcesStat
   }
   if (metricId === 'P-1' && sources.subscribers.data) {
     return (
-      <DashboardStackBar
+      <StackedBar
+        size="sm"
         segments={subscriberBaseSegments(sources.subscribers.data)}
         ariaLabel="Base de suscriptores"
       />
@@ -475,7 +472,8 @@ function metricVisual(metricId: DashboardMetricId, sources: DashboardSourcesStat
   }
   if (metricId === 'P-3' && sources['billing-summary'].data) {
     return (
-      <DashboardStackBar
+      <StackedBar
+        size="sm"
         segments={overdueBucketSegments(sources['billing-summary'].data.overdue.buckets)}
         ariaLabel="Cartera vencida por antigüedad"
         formatValue={formatDashboardMoneyCompact}
@@ -484,7 +482,8 @@ function metricVisual(metricId: DashboardMetricId, sources: DashboardSourcesStat
   }
   if (metricId === 'I-3' && sources.assurance.data) {
     return (
-      <DashboardStackBar
+      <StackedBar
+        size="sm"
         segments={casePrioritySegments(sources.assurance.data.byPriority ?? {})}
         ariaLabel="Casos abiertos por prioridad"
       />

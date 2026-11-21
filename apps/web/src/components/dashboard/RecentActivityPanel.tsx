@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import {
-  Alert,
-  AlertDescription,
-  Button,
+  Card,
   cn,
+  EmptyState,
+  ErrorState,
   interactiveFocusClassName,
   SkeletonBlock,
 } from '@iwana/ui';
@@ -30,10 +30,7 @@ export function RecentActivityPanel({
   onRetry,
 }: RecentActivityPanelProps) {
   return (
-    <section
-      aria-labelledby="actividad-reciente"
-      className="w-full rounded-2xl border border-gray-200 bg-white p-5 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2"
-    >
+    <Card role="region" aria-labelledby="actividad-reciente" className="w-full p-5">
       <h2
         id="actividad-reciente"
         className="text-base font-semibold text-iwana-primary dark:text-white"
@@ -48,33 +45,21 @@ export function RecentActivityPanel({
           ))}
         </div>
       ) : error ? (
-        <div className="mt-4">
-          <Alert variant="error">
-            <AlertDescription>{error}</AlertDescription>
-            {onRetry ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="mt-3"
-                onClick={onRetry}
-              >
-                {PLATFORM_UI_COPY.dashboard.retry}
-              </Button>
-            ) : null}
-          </Alert>
-        </div>
+        <ErrorState
+          className="mt-4"
+          message={error}
+          onRetry={onRetry}
+          retryLabel={PLATFORM_UI_COPY.dashboard.retry}
+        />
       ) : items.length === 0 ? (
-        <p className="mt-4 text-sm leading-6 text-gray-600 dark:text-gray-300">
-          {PLATFORM_UI_COPY.dashboard.activityEmpty}
-        </p>
+        <EmptyState className="mt-4" message={PLATFORM_UI_COPY.dashboard.activityEmpty} />
       ) : (
         <ol className="relative mt-4 border-l border-gray-200 dark:border-dark-border">
           {items.map((item, index) => (
             <li key={item.id} className="relative ml-4 pb-4 last:pb-0">
               <span
                 className={cn(
-                  'absolute -left-[21px] top-1.5 h-2 w-2 rounded-full',
+                  'absolute -left-5.25 top-1.5 h-2 w-2 rounded-full',
                   index === 0 ? 'bg-iwana-secondary' : 'bg-iwana-primary/20',
                 )}
                 aria-hidden="true"
@@ -104,6 +89,6 @@ export function RecentActivityPanel({
           </Link>
         </div>
       ) : null}
-    </section>
+    </Card>
   );
 }

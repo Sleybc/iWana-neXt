@@ -138,6 +138,7 @@ describe('PortalModuleHealthChip', () => {
 
     const badge = screen.getByText('Atención');
     expect(badge.className).not.toMatch(/iwana-secondary/);
-    expect(badge.className).toMatch(/amber/);
+    // U-5 (G0-4): amber → warning
+    expect(badge.className).toMatch(/warning-700/);
   });
 });

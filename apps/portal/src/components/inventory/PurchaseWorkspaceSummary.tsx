@@ -6,12 +6,9 @@ import type { PurchaseRequestRecord } from '@/lib/api-client';
 import {
   PortalPanel,
   PortalSkeletonBlock,
-  type PortalMetricCardAccent,
   interactiveFocusClassName,
-  portalMetricCardAccentClassName,
-  portalMetricCardShellClassName,
 } from '@/components/shared/portal-ui';
-import { cn } from '@iwana/ui';
+import { cn, metricCardVariants, type Tone } from '@iwana/ui';
 import {
   type PurchaseKpiPreset,
   isPendingQuoteStatus,
@@ -33,7 +30,7 @@ interface MetricCardConfig {
   eyebrow: string;
   title: string;
   description: string;
-  accent: PortalMetricCardAccent;
+  accent: Tone;
 }
 
 const METRIC_CARDS: MetricCardConfig[] = [
@@ -70,14 +67,14 @@ const METRIC_CARDS: MetricCardConfig[] = [
     eyebrow: 'Prioridad',
     title: 'Urgentes',
     description: 'Solicitudes marcadas con prioridad urgente.',
-    accent: 'danger',
+    accent: 'error',
   },
   {
     preset: 'overdue',
     eyebrow: 'Plazo',
     title: 'Vencidas',
     description: 'Fecha requerida superada sin cierre.',
-    accent: 'danger',
+    accent: 'error',
   },
 ];
 
@@ -132,9 +129,7 @@ export function PurchaseWorkspaceSummary({
             const isActive = activePreset === metric.preset;
 
             if (isLoading) {
-              return (
-                <PortalSkeletonBlock key={metric.preset} className="min-h-[168px] rounded-3xl" />
-              );
+              return <PortalSkeletonBlock key={metric.preset} className="min-h-42 rounded-2xl" />;
             }
 
             return (
@@ -144,9 +139,9 @@ export function PurchaseWorkspaceSummary({
                 aria-pressed={isActive}
                 onClick={() => onKpiFilterChange(metric.preset)}
                 className={cn(
-                  portalMetricCardShellClassName,
-                  'min-h-[168px] w-full text-left transition',
-                  portalMetricCardAccentClassName(metric.accent, { isActive }),
+                  metricCardVariants({ tone: metric.accent }),
+                  'min-h-42 transition',
+                  isActive && 'ring-2 ring-iwana-primary/40',
                   interactiveFocusClassName,
                 )}
               >

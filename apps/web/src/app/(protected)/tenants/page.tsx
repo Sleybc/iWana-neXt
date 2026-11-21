@@ -4,7 +4,10 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AlertDescription, cn, interactiveFocusClassName } from '@iwana/ui';
 import { X } from 'lucide-react';
-import { SignalChips, type SignalChipModel } from '@/components/dashboard/SignalChips';
+import {
+  DashboardMetricStrip,
+  type DashboardMetricModel,
+} from '@/components/dashboard/DashboardMetricStrip';
 import {
   TenantsTable,
   type SortDir,
@@ -334,7 +337,7 @@ export default function TenantsPage() {
     return { active, provisioning, attention };
   }, [parkTenants]);
 
-  const signalChips = useMemo<SignalChipModel[]>(() => {
+  const signalChips = useMemo<DashboardMetricModel[]>(() => {
     const current = new URLSearchParams(searchParams.toString());
 
     return [
@@ -342,7 +345,7 @@ export default function TenantsPage() {
         id: 'active',
         label: PLATFORM_UI_COPY.dashboard.chipActive,
         count: kpiCounts.active,
-        accent: 'primary',
+        tone: 'primary',
         href: tenantsStatusHref('ACTIVE', current),
         ariaLabel: PLATFORM_UI_COPY.dashboard.viewActiveCompanies,
       },
@@ -350,7 +353,7 @@ export default function TenantsPage() {
         id: 'provisioning',
         label: PLATFORM_UI_COPY.dashboard.chipProvisioning,
         count: kpiCounts.provisioning,
-        accent: 'warning',
+        tone: 'warning',
         href: tenantsStatusHref('PROVISIONING', current),
         ariaLabel: PLATFORM_UI_COPY.dashboard.viewProvisioningCompanies,
       },
@@ -358,7 +361,7 @@ export default function TenantsPage() {
         id: 'attention',
         label: PLATFORM_UI_COPY.dashboard.chipAttention,
         count: kpiCounts.attention,
-        accent: 'danger',
+        tone: 'error',
         ariaLabel: PLATFORM_UI_COPY.tenants.focusDirectory,
         onActivate: focusDirectory,
       },
@@ -450,8 +453,8 @@ export default function TenantsPage() {
 
       {isLoading ? <span className="sr-only">{PLATFORM_UI_COPY.tenants.loading}</span> : null}
 
-      <SignalChips
-        chips={signalChips}
+      <DashboardMetricStrip
+        metrics={signalChips}
         isLoading={isParkLoading}
         eyebrow={PLATFORM_UI_COPY.tenants.eyebrow}
         ariaLabel={PLATFORM_UI_COPY.tenants.eyebrow}

@@ -5,6 +5,7 @@ import React, { type Ref, useMemo, useState } from 'react';
 import {
   Alert,
   AlertDescription,
+  Card,
   DatePicker,
   Select,
   SkeletonBlock,
@@ -207,7 +208,7 @@ export function AuditLogsTable({
   }, [entries.length, isLoading, pageIndex]);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2">
+    <Card variant="outline" className="overflow-hidden">
       <div className="border-b border-gray-200 px-4 pt-4 dark:border-dark-border">
         <h2
           id={titleId}
@@ -461,6 +462,6 @@ export function AuditLogsTable({
           </div>
         )}
       </div>
-    </div>
+    </Card>
   );
 }

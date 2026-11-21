@@ -1,5 +1,5 @@
 // apps/portal/src/components/dashboard/dashboard-visuals.tsx
-import { cn } from '@iwana/ui';
+import { cn, toneFillVariants, type StackedBarSegment } from '@iwana/ui';
 
 /**
  * Visuales de proporción del inicio, sin librería de gráficas: barras en CSS.
@@ -19,46 +19,8 @@ const compactMoneyFormat = new Intl.NumberFormat('es-CO', {
 /** Importe abreviado para cifras de pulso y ejes («$148,2 M»). El valor completo va en la tabla. */
 export const formatDashboardMoneyCompact = (value: number) => compactMoneyFormat.format(value);
 
-export interface DashboardSegment {
-  key: string;
-  label: string;
-  value: number;
-  /** Clase de relleno. Urgencia en escalas de error y advertencia; nunca lima. */
-  className: string;
-}
-
-/** Barra apilada. La proporción se lee en la barra; la cifra, en el texto que la acompaña. */
-export function DashboardStackBar({
-  segments,
-  ariaLabel,
-  className,
-  formatValue = String,
-}: {
-  segments: readonly DashboardSegment[];
-  ariaLabel: string;
-  className?: string;
-  /** Cómo se lee cada valor en el nombre accesible (importes con moneda). */
-  formatValue?: (value: number) => string;
-}) {
-  const visible = segments.filter((segment) => segment.value > 0);
-  const total = visible.reduce((sum, segment) => sum + segment.value, 0);
-  if (total === 0) return null;
-  return (
-    <div
-      className={cn('flex h-2 gap-0.5 overflow-hidden rounded-full', className)}
-      role="img"
-      aria-label={`${ariaLabel}: ${visible.map((s) => `${s.label} ${formatValue(s.value)}`).join(', ')}`}
-    >
-      {visible.map((segment) => (
-        <span
-          key={segment.key}
-          className={segment.className}
-          style={{ width: `${(segment.value / total) * 100}%` }}
-        />
-      ))}
-    </div>
-  );
-}
+/** Tramo de una proporción del inicio: el de `StackedBar` (contrato DS v1.1 §5.5), sin clase libre. */
+export type DashboardSegment = StackedBarSegment;
 
 export function DashboardStackLegend({
   segments,
@@ -74,7 +36,10 @@ export function DashboardStackLegend({
       {visible.map((segment) => (
         <div key={segment.key} className="flex items-center gap-2">
           <span
-            className={cn('h-2 w-2 shrink-0 rounded-sm', segment.className)}
+            className={cn(
+              'h-2 w-2 shrink-0 rounded-sm',
+              toneFillVariants({ tone: segment.tone, emphasis: segment.emphasis }),
+            )}
             aria-hidden={true}
           />
           <dt className="min-w-0 flex-1 truncate text-gray-600 dark:text-gray-400">

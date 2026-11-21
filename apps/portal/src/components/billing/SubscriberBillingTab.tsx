@@ -19,12 +19,12 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  MetricCard,
 } from '@iwana/ui';
 import { usePermissions } from '@/components/access-control/permissions-context';
 import {
   PortalAlert,
   PortalEmptyState,
-  PortalMetricCard,
   PortalPanel,
   portalResourceTabListClassName,
   portalResourceTabTriggerClassName,
@@ -176,46 +176,46 @@ export function SubscriberBillingTab({
         />
       ) : null}
       <div className={`grid gap-3 sm:grid-cols-2 ${METRIC_GRID_COLUMNS[metricCount]}`}>
-        <PortalMetricCard
+        <MetricCard
           eyebrow="Histórico"
-          title="Total facturado"
+          label="Total facturado"
           value={formatBillingMoney(data.totalInvoiced)}
         />
-        <PortalMetricCard
+        <MetricCard
           eyebrow="Histórico"
-          title="Total pagado"
+          label="Total pagado"
           value={formatBillingMoney(data.totalPaid)}
         />
         {withholdingTotal ? (
-          <PortalMetricCard
+          <MetricCard
             eyebrow="Histórico"
-            title="Retenciones"
+            label="Retenciones"
             value={formatBillingMoney(withholdingTotal)}
             description={WITHHOLDING_INCLUDED_NOTE}
           />
         ) : null}
         {courtesyTotal ? (
-          <PortalMetricCard
+          <MetricCard
             eyebrow="Histórico"
-            title="Cortesías otorgadas"
+            label="Cortesías otorgadas"
             value={formatBillingMoney(courtesyTotal)}
             description="No son pagos: bajan el saldo de las facturas."
           />
         ) : null}
-        <PortalMetricCard
+        <MetricCard
           eyebrow="Cartera"
-          title="Deuda pendiente actual"
+          label="Deuda pendiente actual"
           value={formatBillingMoney(data.totalPending)}
           {...(courtesyTotal ? { description: COURTESY_PENDING_NOTE } : {})}
-          accent={
+          tone={
             data.documents.some((document) => document.paymentState === 'VENCIDO')
               ? 'warning'
               : 'neutral'
           }
         />
-        <PortalMetricCard
+        <MetricCard
           eyebrow="Crédito"
-          title="Saldo a favor disponible"
+          label="Saldo a favor disponible"
           value={formatBillingMoney(data.creditBalance)}
           description={
             moneyCents(data.creditBalance) > 0 ? (

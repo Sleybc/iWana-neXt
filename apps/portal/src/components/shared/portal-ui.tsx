@@ -44,6 +44,11 @@ import {
   interactiveFocusClassName,
   overlayEdgeClassName,
   useDeferredInitialFocus,
+  metricCardVariants,
+  toneSurfaceVariants,
+  toneTextVariants,
+  type Tone,
+  toneMutedTextVariants,
 } from '@iwana/ui';
 import {
   usePortalModalDrawerBroadcast,
@@ -369,49 +374,6 @@ export const portalModuleTabTriggerClassName = cn(
   interactiveFocusClassName,
 );
 
-export type PortalMetricCardAccent = 'neutral' | 'primary' | 'warning' | 'danger';
-
-export const portalMetricCardShellClassName =
-  'flex h-full flex-col rounded-3xl border px-4 py-4 shadow-iwana-soft';
-
-export function portalMetricCardAccentClassName(
-  accent: PortalMetricCardAccent,
-  options?: { isActive?: boolean; emphasized?: boolean },
-): string {
-  const base =
-    accent === 'primary'
-      ? 'border-iwana-primary/20 bg-iwana-primary-50/70 dark:border-iwana-primary-400/30 dark:bg-iwana-primary-900/15'
-      : accent === 'warning'
-        ? 'border-amber-200 bg-amber-50/80 dark:border-amber-500/20 dark:bg-amber-950/20'
-        : accent === 'danger'
-          ? 'border-rose-200 bg-rose-50/80 dark:border-rose-500/20 dark:bg-rose-950/20'
-          : 'border-gray-200 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3';
-
-  return cn(
-    base,
-    options?.isActive && 'ring-2 ring-iwana-primary/40',
-    options?.emphasized && !options?.isActive && 'ring-2 ring-iwana-primary/25',
-  );
-}
-
-/** Eyebrow de métrica — tipografía muted; color por matriz DS §1.7. */
-export function portalMetricEyebrowClassName(accent: PortalMetricCardAccent = 'neutral'): string {
-  return cn(
-    'portal-eyebrow-muted',
-    (accent === 'danger' || accent === 'warning') && 'text-gray-700 dark:text-gray-200',
-  );
-}
-
-/**
- * Texto muted de cuerpo en métrica (description y afines) — DS §1.7 v1.2.
- * Mismo escalón que el eyebrow sobre shells `danger`/`warning`.
- */
-export function portalMetricMutedTextClassName(accent: PortalMetricCardAccent = 'neutral'): string {
-  return accent === 'danger' || accent === 'warning'
-    ? 'text-gray-700 dark:text-gray-200'
-    : 'text-gray-500 dark:text-gray-400';
-}
-
 /** Enlace de texto secundario del portal (CTAs «Ver más») — par dark AA + anillo iWana. */
 export const portalInlineTextLinkClassName = cn(
   'inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline dark:text-iwana-primary-300',
@@ -456,73 +418,6 @@ export const portalFilterChipGroupClassName =
 export const portalResultsStripClassName =
   'flex flex-wrap items-center gap-3 rounded-2xl border border-gray-100 bg-iwana-surface-soft px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3';
 
-interface PortalMetricCardProps {
-  eyebrow: string;
-  value: ReactNode;
-  total?: ReactNode | undefined;
-  title: string;
-  description?: ReactNode | undefined;
-  accent?: PortalMetricCardAccent | undefined;
-  emphasized?: boolean | undefined;
-  isActive?: boolean | undefined;
-  onClick?: (() => void) | undefined;
-  className?: string | undefined;
-  minHeightClassName?: string | undefined;
-}
-
-/** KPI card Firma §2.1 — eyebrow, cifra mono, título, descripción muted. */
-export function PortalMetricCard({
-  eyebrow,
-  value,
-  total,
-  title,
-  description,
-  accent = 'neutral',
-  emphasized = false,
-  isActive = false,
-  onClick,
-  className,
-  minHeightClassName = 'min-h-[148px]',
-}: PortalMetricCardProps) {
-  const shellClassName = cn(
-    portalMetricCardShellClassName,
-    minHeightClassName,
-    portalMetricCardAccentClassName(accent, { emphasized, isActive }),
-    onClick ? interactiveFocusClassName : null,
-    className,
-  );
-
-  const body = (
-    <>
-      <p className={portalMetricEyebrowClassName(accent)}>{eyebrow}</p>
-      <p className="mt-2 font-mono text-2xl font-semibold tabular-nums tracking-tight text-gray-900 dark:text-white">
-        {value}
-        {total !== undefined && total !== null && (
-          <span className={cn('ml-1 text-sm font-normal', portalMetricMutedTextClassName(accent))}>
-            / {total}
-          </span>
-        )}
-      </p>
-      <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">{title}</p>
-      {description ? (
-        <p className={cn('mt-1 text-sm leading-6', portalMetricMutedTextClassName(accent))}>
-          {description}
-        </p>
-      ) : null}
-    </>
-  );
-
-  if (onClick) {
-    return (
-      <button type="button" className={cn(shellClassName, 'w-full text-left')} onClick={onClick}>
-        {body}
-      </button>
-    );
-  }
-
-  return <article className={shellClassName}>{body}</article>;
-}
-
 export type PortalDashboardMetricState = 'idle' | 'loading' | 'error';
 
 /** Tono del delta. `progress` es la ÚNICA puerta al lima en este componente. */
@@ -555,8 +450,8 @@ interface PortalDashboardMetricBaseProps {
   formatValue?: (value: number) => string;
   /** Ranura 5. */
   description?: ReactNode;
-  /** Superficie del acento. Sin casilla lima. */
-  accent?: PortalMetricCardAccent;
+  /** Tono de la superficie (`Tone` del DS; sin lima). */
+  accent?: Tone;
   /** Ranura 4 — badge tonal. */
   delta?: PortalDashboardMetricDelta;
   /** Ciclo de vida del bloque. */
@@ -587,12 +482,12 @@ export type PortalDashboardMetricProps = PortalDashboardMetricBaseProps &
     | { href?: never; onClick?: never }
   );
 
-const portalDashboardMetricIconToneClassName: Record<PortalMetricCardAccent, string> = {
+const portalDashboardMetricIconToneClassName: Record<Tone, string> = {
   neutral: 'bg-white text-gray-500 dark:bg-dark-surface-4 dark:text-gray-300',
-  primary:
-    'bg-iwana-primary-50 text-iwana-primary dark:bg-iwana-primary-800/40 dark:text-iwana-primary-200',
-  warning: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
-  danger: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400',
+  primary: cn(toneSurfaceVariants({ tone: 'primary' }), toneTextVariants({ tone: 'primary' })),
+  success: cn(toneSurfaceVariants({ tone: 'success' }), toneTextVariants({ tone: 'success' })),
+  warning: cn(toneSurfaceVariants({ tone: 'warning' }), toneTextVariants({ tone: 'warning' })),
+  error: cn(toneSurfaceVariants({ tone: 'error' }), toneTextVariants({ tone: 'error' })),
 };
 
 const portalDashboardMetricDeltaBadgeVariant: Record<
@@ -669,9 +564,9 @@ export function PortalDashboardMetric({
   const isCompact = density === 'compact';
 
   const shellClassName = cn(
-    'flex flex-col justify-center border px-4 py-3 shadow-iwana-soft',
-    isCompact ? 'min-h-28 rounded-2xl' : 'min-h-24 rounded-3xl',
-    portalMetricCardAccentClassName(accent),
+    metricCardVariants({ tone: accent, size: 'compact' }),
+    'justify-center py-3',
+    isCompact ? 'min-h-28' : 'min-h-24',
     isInteractive && interactiveFocusClassName,
     isInteractive && 'transition-shadow hover:shadow-iwana-active',
     className,
@@ -704,7 +599,7 @@ export function PortalDashboardMetric({
       <p className={valueClassName}>
         {formatValue(value)}
         {total !== undefined && total !== null ? (
-          <span className={cn('ml-1 text-sm font-normal', portalMetricMutedTextClassName(accent))}>
+          <span className={cn('ml-1 text-sm font-normal', toneMutedTextVariants({ tone: accent }))}>
             / {formatValue(total)}
           </span>
         ) : null}
@@ -730,7 +625,13 @@ export function PortalDashboardMetric({
         </span>
       ) : null}
       {showEyebrow ? (
-        <p className={cn(portalMetricEyebrowClassName(accent), iconClearanceClassName)}>
+        <p
+          className={cn(
+            'portal-eyebrow-muted',
+            toneMutedTextVariants({ tone: accent }),
+            iconClearanceClassName,
+          )}
+        >
           {eyebrowText}
         </p>
       ) : null}
@@ -745,7 +646,7 @@ export function PortalDashboardMetric({
         <div
           className={cn(
             isCompact ? 'sr-only' : 'mt-0.5 text-sm leading-5',
-            portalMetricMutedTextClassName(accent),
+            toneMutedTextVariants({ tone: accent }),
           )}
         >
           {description}
