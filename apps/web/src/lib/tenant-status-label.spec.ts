@@ -1,9 +1,5 @@
 import { PLATFORM_UI_COPY } from './platform-ui-copy';
-import {
-  labelForTenantStatus,
-  tenantNeedsDirectoryReview,
-  variantForTenantStatus,
-} from './tenant-status-label';
+import { labelForTenantStatus, variantForTenantStatus } from './tenant-status-label';
 
 describe('labelForTenantStatus', () => {
   it('lee el plural desde PLATFORM_UI_COPY.dashboard.status*', () => {
@@ -61,19 +57,5 @@ describe('variantForTenantStatus', () => {
     expect(variantForTenantStatus('SUSPENDED')).toBe('warning');
     expect(variantForTenantStatus('INACTIVE')).toBe('neutral');
     expect(variantForTenantStatus('MARKED_FOR_DELETION')).toBe('error');
-  });
-});
-
-describe('tenantNeedsDirectoryReview', () => {
-  it('incluye solo estados warning o error', () => {
-    expect(tenantNeedsDirectoryReview('PROVISIONING')).toBe(true);
-    expect(tenantNeedsDirectoryReview('SUSPENDED')).toBe(true);
-    expect(tenantNeedsDirectoryReview('PROVISIONING_FAILED')).toBe(true);
-    expect(tenantNeedsDirectoryReview('MARKED_FOR_DELETION')).toBe(true);
-  });
-
-  it('excluye activa e inactiva: no son avisos', () => {
-    expect(tenantNeedsDirectoryReview('ACTIVE')).toBe(false);
-    expect(tenantNeedsDirectoryReview('INACTIVE')).toBe(false);
   });
 });

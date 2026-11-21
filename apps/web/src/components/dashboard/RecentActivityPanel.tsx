@@ -34,12 +34,12 @@ export function RecentActivityPanel({
       aria-labelledby="actividad-reciente"
       className="w-full rounded-2xl border border-gray-200 bg-white p-5 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2"
     >
-      <h3
+      <h2
         id="actividad-reciente"
         className="text-base font-semibold text-iwana-primary dark:text-white"
       >
         {PLATFORM_UI_COPY.dashboard.activityTitle}
-      </h3>
+      </h2>
 
       {isLoading ? (
         <div className="mt-4 space-y-3" aria-hidden="true">

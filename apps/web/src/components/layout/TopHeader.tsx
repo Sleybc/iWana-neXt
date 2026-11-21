@@ -8,9 +8,9 @@ import {
   headerIconControlClassName,
   interactiveFocusClassName,
   ShellSearchSheet,
+  ThemeToggle,
 } from '@iwana/ui';
 import { DropdownUser } from './DropdownUser';
-import { ThemeToggle } from './ThemeToggle';
 import { NotificationBell } from './NotificationBell';
 import { usePlatformBrandingAssets } from '@/components/branding/PlatformBrandingProvider';
 import { GlobalSearch } from '@/components/search/GlobalSearch';

@@ -42,8 +42,11 @@ export default function UsersPage() {
     const loadTenants = async () => {
       try {
         // ADR-064 excepción picker: soft-cap, no tabla operativa.
-        const list = await tenantApi.list({ limit: PICKER_SOFT_CAP, offset: 0 });
-        const active = list.filter((item) => item.status === 'ACTIVE');
+        const active = await tenantApi.list({
+          limit: PICKER_SOFT_CAP,
+          offset: 0,
+          status: 'ACTIVE',
+        });
         setTenants(active);
         const initialTenant =
           active.find((item) => item.slug === requestedTenantSlug) ?? active[0] ?? null;

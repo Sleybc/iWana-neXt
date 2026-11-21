@@ -101,12 +101,30 @@ export const Sidebar = ({
   const sidebar = useRef<HTMLElement>(null);
   const { branding, logoUrl } = usePlatformBrandingAssets();
 
-  // Persistir estado desktop en localStorage
+  // Persistir estado desktop en localStorage (L-7). El almacenamiento puede no estar disponible.
+  const restoredRef = useRef(false);
   useEffect(() => {
-    const stored = localStorage.getItem(DESKTOP_STORAGE_KEY);
-    if (stored === 'true') setDesktopCollapsed(true);
-    else if (stored === 'false') setDesktopCollapsed(false);
+    try {
+      const stored = localStorage.getItem(DESKTOP_STORAGE_KEY);
+      if (stored === 'true') setDesktopCollapsed(true);
+      else if (stored === 'false') setDesktopCollapsed(false);
+    } catch {
+      // Sin almacenamiento: se conserva el valor por defecto.
+    }
   }, [setDesktopCollapsed]);
+
+  useEffect(() => {
+    // La primera pasada es la lectura; escribir aquí pisaría el valor guardado.
+    if (!restoredRef.current) {
+      restoredRef.current = true;
+      return;
+    }
+    try {
+      localStorage.setItem(DESKTOP_STORAGE_KEY, String(desktopCollapsed));
+    } catch {
+      // Sin almacenamiento: el estado vive solo en esta sesión.
+    }
+  }, [desktopCollapsed]);
 
   // Cerrar drawer mobile con tecla Escape
   useEffect(() => {

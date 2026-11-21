@@ -62,7 +62,8 @@ const authClassNames = {
   fieldLeadingIcon:
     'absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-gray-400',
   fieldTrailingButton:
-    'absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-600 dark:text-gray-400 dark:hover:text-gray-300',
+    // Área de clic de 24 px (WCAG 2.5.8) con el ícono de 20 px en la misma posición.
+    'absolute right-3.5 top-1/2 inline-flex min-h-6 min-w-6 -translate-y-1/2 items-center justify-center text-slate-400 transition-colors hover:text-slate-600 dark:text-gray-400 dark:hover:text-gray-300',
   infoCard:
     'rounded-2xl border border-iwana-primary-100 bg-[linear-gradient(135deg,var(--color-iwana-surface-soft),rgba(255,255,255,0.96))] p-4 shadow-[var(--shadow-iwana-soft)] dark:border-dark-border dark:bg-dark-surface-3 dark:shadow-none',
   helperCard:

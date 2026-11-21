@@ -1,5 +1,8 @@
 // apps/web/src/components/dashboard/SystemStatusPanel.tsx
 import { cn, SkeletonBlock } from '@iwana/ui';
+import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
+
+const COPY = PLATFORM_UI_COPY.dashboard;
 
 type StatusLevel = 'ok' | 'warning' | 'error' | 'unknown';
 
@@ -43,20 +46,20 @@ const statusStyles: Record<StatusLevel, { dot: string; text: string; bg: string 
 };
 
 const statusLabel: Record<StatusLevel, string> = {
-  ok: 'Operativo',
-  warning: 'Degradado',
-  error: 'Error',
-  unknown: 'Desconocido',
+  ok: COPY.healthLevelOk,
+  warning: COPY.healthLevelWarning,
+  error: COPY.healthLevelError,
+  unknown: COPY.healthLevelUnknown,
 };
 
 function formatLastChecked(value?: string | null): string {
   if (!value) {
-    return 'Pendiente';
+    return COPY.healthLastCheckedPending;
   }
 
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return 'Pendiente';
+    return COPY.healthLastCheckedPending;
   }
 
   return new Intl.DateTimeFormat('es-CO', {
@@ -67,7 +70,7 @@ function formatLastChecked(value?: string | null): string {
 
 export function SystemStatusPanel({
   indicators,
-  title = 'Salud de plataforma',
+  title = COPY.healthTitle,
   summary,
   lastCheckedAt,
   isLoading = false,
@@ -81,16 +84,16 @@ export function SystemStatusPanel({
       )}
     >
       <div className="border-b border-gray-100 pb-4 dark:border-dark-border">
-        <p className="portal-eyebrow">Monitoreo</p>
+        <p className="portal-eyebrow">{COPY.healthEyebrow}</p>
         <div className="mt-1 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
-            <h3 className="text-base font-semibold text-gray-900 dark:text-white">{title}</h3>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-white">{title}</h2>
             {summary && (
               <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">{summary}</p>
             )}
           </div>
           <div className="rounded-2xl bg-iwana-surface-soft px-3 py-2 text-xs text-gray-600 dark:bg-dark-surface-3 dark:text-gray-300">
-            Última lectura
+            {COPY.healthLastChecked}
             <p className="mt-1 font-semibold text-iwana-primary dark:text-white">
               {formatLastChecked(lastCheckedAt)}
             </p>

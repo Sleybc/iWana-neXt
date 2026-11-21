@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -114,19 +115,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // L-13: la sesión se valida una sola vez al montar; navegar no repite /auth/me.
+  const initialPathnameRef = useRef(pathname);
+
   useEffect(() => {
     let mounted = true;
 
     const bootstrap = async () => {
       try {
-        if (pathname.startsWith('/auth')) {
-          // Rutas públicas de autenticación: sin sesión visible en el shell.
+        const initialPathname = initialPathnameRef.current;
+        if (!initialPathname || initialPathname.startsWith('/auth')) {
+          // Rutas públicas de autenticación (o fuera del router): sin sesión y sin pedir al servidor.
           setUser(null);
           return;
         }
 
         // La sesión vive en la cookie httpOnly y el cliente ya no puede
-        // validarla localmente (ADR-081): siempre se pregunta al servidor.
+        // validarla localmente (ADR-081): se pregunta al servidor una vez.
         // Si la cookie no existe o expiró, /auth/me responde 401 y el flujo de
         // refresh (o la redirección a login) resuelve el estado.
         const profile = await authApi.me();
@@ -149,11 +154,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    bootstrap();
+    void bootstrap();
 
     return () => {
       mounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if (pathname?.startsWith('/auth')) {
+      // Al volver a una ruta de autenticación se limpia el shell sin pedir al servidor.
+      setUser(null);
+    }
   }, [pathname]);
 
   const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {

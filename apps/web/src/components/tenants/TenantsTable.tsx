@@ -1,4 +1,4 @@
-// apps/web/src/components/dashboard/TenantsTable.tsx
+// apps/web/src/components/tenants/TenantsTable.tsx
 'use client';
 import { useEffect, useMemo, useState, type Ref } from 'react';
 import {
@@ -23,6 +23,7 @@ import { Search, ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal } from '
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { TenantStatusBadge } from '@/components/tenants/TenantStatusBadge';
+import type { TenantListItem } from '@/lib/api-client';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 import { labelForTenantStatus, type TenantStatus } from '@/lib/tenant-status-label';
 
@@ -41,15 +42,8 @@ const STATUS_ORDER: TenantStatus[] = [
   'MARKED_FOR_DELETION',
 ];
 
-interface Tenant {
-  id: string;
-  name: string;
-  slug: string;
-  status: TenantStatus;
-  contactEmail?: string;
-  updatedAt?: string;
-  createdAt: string;
-}
+type Tenant = Pick<TenantListItem, 'id' | 'name' | 'slug' | 'status' | 'createdAt'> &
+  Partial<Pick<TenantListItem, 'contactEmail' | 'updatedAt'>>;
 
 interface TenantsTableProps {
   tenants: Tenant[];

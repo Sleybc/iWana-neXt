@@ -3,25 +3,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Bell } from 'lucide-react';
-import { tenantApi, type TenantListItem } from '@/lib/api-client';
+import type { TenantStatusSummary } from '@iwana/shared';
+import { tenantApi } from '@/lib/api-client';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
-import {
-  labelForTenantStatus,
-  tenantNeedsDirectoryReview,
-  variantForTenantStatus,
-} from '@/lib/tenant-status-label';
-import { cn, headerIconControlClassName, interactiveFocusClassName } from '@iwana/ui';
+import { labelForTenantStatus, variantForTenantStatus } from '@/lib/tenant-status-label';
+import { Button, cn, headerIconControlClassName, interactiveFocusClassName } from '@iwana/ui';
+
+type AttentionTenant = TenantStatusSummary['attention'][number];
 
 type NotificationTone = 'error' | 'warning' | 'info' | 'success';
 
 interface OperationalNotification {
   id: string;
-  href?: string;
+  href: string;
   title: string;
   detail: string;
   meta: string;
   tone: NotificationTone;
-  updatedAt: string;
 }
 
 const VARIANT_TONE: Record<ReturnType<typeof variantForTenantStatus>, NotificationTone> = {
@@ -29,13 +27,6 @@ const VARIANT_TONE: Record<ReturnType<typeof variantForTenantStatus>, Notificati
   warning: 'warning',
   error: 'error',
   neutral: 'info',
-};
-
-const TONE_PRIORITY: Record<NotificationTone, number> = {
-  error: 4,
-  warning: 3,
-  info: 2,
-  success: 1,
 };
 
 // info no tiene escala info-* en globals.css; se usa azul de marca (token DS existente).
@@ -60,7 +51,7 @@ function formatUpdatedAt(value: string): string {
   }).format(updatedAt);
 }
 
-function toNotification(tenant: TenantListItem): OperationalNotification {
+function toNotification(tenant: AttentionTenant): OperationalNotification {
   const statusLabel = labelForTenantStatus(tenant.status, { form: 'singular' });
 
   return {
@@ -70,7 +61,6 @@ function toNotification(tenant: TenantListItem): OperationalNotification {
     detail: statusLabel,
     meta: `${PLATFORM_UI_COPY.tenants.notificationsUpdated} ${formatUpdatedAt(tenant.updatedAt)}`,
     tone: VARIANT_TONE[variantForTenantStatus(tenant.status)],
-    updatedAt: tenant.updatedAt,
   };
 }
 
@@ -80,41 +70,22 @@ export function NotificationBell() {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const [loadFailed, setLoadFailed] = useState(false);
+
   const loadNotifications = useCallback(async () => {
     try {
-      const tenants = await tenantApi.list({ limit: 100, offset: 0 });
-      // Copy: «Empresas que conviene revisar ahora.» Activa/inactiva no son avisos.
-      const nextNotifications = tenants
-        .filter((tenant) => tenantNeedsDirectoryReview(tenant.status))
-        .map(toNotification)
-        .sort((left, right) => {
-          const priorityDelta = TONE_PRIORITY[right.tone] - TONE_PRIORITY[left.tone];
-          if (priorityDelta !== 0) {
-            return priorityDelta;
-          }
-
-          return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
-        })
-        .slice(0, 5);
-
-      setNotifications(nextNotifications);
+      // El servidor ya filtra, ordena por severidad y limita a 5 (TenantStatusSummary.attention).
+      const summary = await tenantApi.summary();
+      setNotifications(summary.attention.map(toNotification));
+      setLoadFailed(false);
     } catch {
-      setNotifications([
-        {
-          id: 'notifications-load-error',
-          title: PLATFORM_UI_COPY.tenants.notificationsError,
-          detail: PLATFORM_UI_COPY.dashboard.retry,
-          meta: PLATFORM_UI_COPY.tenants.notificationsUpdated,
-          tone: 'error',
-          updatedAt: new Date().toISOString(),
-        },
-      ]);
+      setLoadFailed(true);
     }
   }, []);
 
   useEffect(() => {
-    loadNotifications();
-    const intervalId = window.setInterval(loadNotifications, 60_000);
+    void loadNotifications();
+    const intervalId = window.setInterval(() => void loadNotifications(), 60_000);
     return () => window.clearInterval(intervalId);
   }, [loadNotifications]);
 
@@ -210,15 +181,30 @@ export function NotificationBell() {
           </p>
         </div>
 
-        <ul className="max-h-72 overflow-auto py-2">
-          {count === 0 ? (
-            <li className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
-              {PLATFORM_UI_COPY.tenants.notificationsEmpty}
-            </li>
-          ) : (
-            notifications.map((notification) => (
-              <li key={notification.id} className="px-4 py-2">
-                {notification.href ? (
+        {loadFailed ? (
+          <div role="alert" className="px-4 py-3">
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              {PLATFORM_UI_COPY.tenants.notificationsError}
+            </p>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="mt-3"
+              onClick={() => void loadNotifications()}
+            >
+              {PLATFORM_UI_COPY.dashboard.retry}
+            </Button>
+          </div>
+        ) : (
+          <ul className="max-h-72 overflow-auto py-2">
+            {count === 0 ? (
+              <li className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                {PLATFORM_UI_COPY.tenants.notificationsEmpty}
+              </li>
+            ) : (
+              notifications.map((notification) => (
+                <li key={notification.id} className="px-4 py-2">
                   <Link
                     href={notification.href}
                     className={cn(
@@ -246,32 +232,11 @@ export function NotificationBell() {
                       </span>
                     </span>
                   </Link>
-                ) : (
-                  <div className="flex gap-3 rounded-lg px-3 py-2">
-                    <span
-                      className={cn(
-                        'mt-1 h-2 w-2 shrink-0 rounded-full',
-                        toneClasses[notification.tone],
-                      )}
-                      aria-hidden="true"
-                    />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium text-gray-800 dark:text-white">
-                        {notification.title}
-                      </span>
-                      <span className="block text-xs text-gray-500 dark:text-gray-400">
-                        {notification.detail}
-                      </span>
-                      <span className="mt-1 block text-xs font-mono tabular-nums text-gray-400 dark:text-gray-400">
-                        {notification.meta}
-                      </span>
-                    </span>
-                  </div>
-                )}
-              </li>
-            ))
-          )}
-        </ul>
+                </li>
+              ))
+            )}
+          </ul>
+        )}
       </div>
     </div>
   );

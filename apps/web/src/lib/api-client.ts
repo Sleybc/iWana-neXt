@@ -1,5 +1,7 @@
 // apps/web/src/lib/api-client.ts
 
+import type { TenantStatusSummary } from '@iwana/shared';
+
 /**
  * Cliente HTTP para @iwana/web — Portal Administrativo.
  * Conecta con la API en /api/v1 (proxy Next.js o directo en dev).
@@ -748,6 +750,9 @@ export const tenantApi = {
     const query = searchParams.toString();
     return request<TenantListItem[]>(`/tenants${query ? `?${query}` : ''}`);
   },
+
+  /** Conteo por estado y avisos del directorio completo (TenantStatusSummary v1.0). */
+  summary: () => request<TenantStatusSummary>('/tenants/summary'),
 
   getOne: (id: string, options?: { signal?: AbortSignal }) =>
     request<TenantListItem>(

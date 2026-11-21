@@ -2,6 +2,7 @@ import '@testing-library/jest-dom';
 import type { AnchorHTMLAttributes, ReactNode } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { makeTenantStatusSummary } from '@/test-utils/tenant-status-summary';
 import { DashboardClient } from './DashboardClient';
 
 type Deferred<T> = {
@@ -100,7 +101,7 @@ jest.mock('@/lib/api-client', () => {
   return {
     ApiError,
     tenantApi: {
-      list: jest.fn(),
+      summary: jest.fn(),
     },
     platformAuditApi: {
       list: jest.fn(),
@@ -110,27 +111,6 @@ jest.mock('@/lib/api-client', () => {
     },
   };
 });
-
-function makeTenant(
-  overrides: Partial<{
-    id: string;
-    name: string;
-    slug: string;
-    status: string;
-    updatedAt: string;
-  }>,
-) {
-  return {
-    id: 'tenant-1',
-    name: 'Empresa Demo',
-    slug: 'demo',
-    status: 'ACTIVE',
-    contactEmail: 'ops@demo.co',
-    createdAt: '2026-06-01T10:00:00.000Z',
-    updatedAt: '2026-06-24T10:00:00.000Z',
-    ...overrides,
-  };
-}
 
 function makeAuditEntry(
   overrides: Partial<{
@@ -163,7 +143,7 @@ describe('DashboardClient', () => {
     '@/lib/api-client',
   ) as {
     ApiError: new (status: number, code: string, message: string) => Error;
-    tenantApi: { list: jest.Mock };
+    tenantApi: { summary: jest.Mock };
     platformAuditApi: { list: jest.Mock };
     healthApi: { get: jest.Mock };
   };
@@ -177,14 +157,14 @@ describe('DashboardClient', () => {
       timestamp: '2026-06-26T10:00:00.000Z',
     });
     platformAuditApi.list.mockResolvedValue({ data: [] });
-    tenantApi.list.mockResolvedValue([]);
+    tenantApi.summary.mockResolvedValue(makeTenantStatusSummary());
   });
 
   it('CA-PS-03: no pinta ceros en chips ni en el desglose mientras carga', async () => {
     const tenantsDeferred = createDeferred<unknown>();
     const auditDeferred = createDeferred<unknown>();
     const healthDeferred = createDeferred<unknown>();
-    tenantApi.list.mockReturnValue(tenantsDeferred.promise);
+    tenantApi.summary.mockReturnValue(tenantsDeferred.promise);
     platformAuditApi.list.mockReturnValue(auditDeferred.promise);
     healthApi.get.mockReturnValue(healthDeferred.promise);
 
@@ -194,7 +174,7 @@ describe('DashboardClient', () => {
     expect(screen.queryByText('0')).not.toBeInTheDocument();
     expect(screen.queryByText('Activas')).not.toBeInTheDocument();
 
-    tenantsDeferred.resolve([]);
+    tenantsDeferred.resolve(makeTenantStatusSummary());
     auditDeferred.resolve({ data: [] });
     healthDeferred.resolve({
       status: 'ok',
@@ -209,61 +189,22 @@ describe('DashboardClient', () => {
   });
 
   it('CA-PS-01/02/04/05/07/08/09: portada de señal sin tabla y con destinos canónicos', async () => {
-    const recentIso = new Date().toISOString();
-    tenantApi.list.mockResolvedValue([
-      makeTenant({
-        id: 't-active-1',
-        name: 'Empresa Activa',
-        slug: 'activa',
-        status: 'ACTIVE',
-        updatedAt: recentIso,
-      }),
-      makeTenant({
-        id: 't-active-2',
-        name: 'Empresa Sur',
-        slug: 'sur',
-        status: 'ACTIVE',
-        updatedAt: '2025-01-01T10:00:00.000Z',
-      }),
-      makeTenant({
-        id: 't-prov',
-        name: 'Empresa Alta',
-        slug: 'alta',
-        status: 'PROVISIONING',
-        updatedAt: '2025-01-01T10:00:00.000Z',
-      }),
-      makeTenant({
-        id: 't-failed',
-        name: 'Empresa Error',
-        slug: 'error',
-        status: 'PROVISIONING_FAILED',
-        updatedAt: '2025-01-01T10:00:00.000Z',
-      }),
-      makeTenant({
-        id: 't-suspended',
-        name: 'Empresa Pausa',
-        slug: 'pausa',
-        status: 'SUSPENDED',
-        updatedAt: '2025-01-01T10:00:00.000Z',
-      }),
-      makeTenant({
-        id: 't-inactive',
-        name: 'Empresa Inactiva',
-        slug: 'inactiva',
-        status: 'INACTIVE',
-        updatedAt: '2025-01-01T10:00:00.000Z',
-      }),
-      makeTenant({
-        id: 't-delete',
-        name: 'Empresa Baja',
-        slug: 'baja',
-        status: 'MARKED_FOR_DELETION',
-        updatedAt: '2025-01-01T10:00:00.000Z',
-      }),
-    ]);
+    tenantApi.summary.mockResolvedValue(
+      makeTenantStatusSummary(
+        {
+          ACTIVE: 2,
+          PROVISIONING: 1,
+          PROVISIONING_FAILED: 1,
+          SUSPENDED: 1,
+          INACTIVE: 1,
+          MARKED_FOR_DELETION: 1,
+        },
+        { updatedLast7Days: 1 },
+      ),
+    );
 
     platformAuditApi.list.mockResolvedValue({
-      data: Array.from({ length: 6 }, (_, index) =>
+      data: Array.from({ length: 5 }, (_, index) =>
         makeAuditEntry({
           id: `audit-${index + 1}`,
           displayName: `Operador ${index + 1}`,
@@ -294,6 +235,11 @@ describe('DashboardClient', () => {
     expect(screen.getAllByText('En configuración').length).toBeGreaterThan(0);
     expect(screen.getByText('Requieren atención')).toBeInTheDocument();
     expect(screen.getByText('Cambios esta semana')).toBeInTheDocument();
+    expect(tenantApi.summary).toHaveBeenCalledTimes(1);
+    // G0-2: «Requieren atención» suma TENANT_ATTENTION_STATUSES (sin INACTIVE).
+    expect(screen.getByRole('button', { name: 'Ver el desglose por estado' })).toHaveTextContent(
+      '3',
+    );
 
     expect(screen.getByRole('link', { name: 'Ver empresas activas' })).toHaveAttribute(
       'href',
@@ -384,7 +330,7 @@ describe('DashboardClient', () => {
   });
 
   it('CA-PS-06: parque vacío muestra empty de D y CTA a alta, sin tabla', async () => {
-    tenantApi.list.mockResolvedValue([]);
+    tenantApi.summary.mockResolvedValue(makeTenantStatusSummary());
     platformAuditApi.list.mockResolvedValue({ data: [] });
 
     render(<DashboardClient />);
@@ -406,9 +352,7 @@ describe('DashboardClient', () => {
   });
 
   it('CA-PS-05: tramo en cero no es control y D-5/D-6 se omiten', async () => {
-    tenantApi.list.mockResolvedValue([
-      makeTenant({ id: 'only-active', name: 'Solo activa', status: 'ACTIVE' }),
-    ]);
+    tenantApi.summary.mockResolvedValue(makeTenantStatusSummary({ ACTIVE: 1 }));
 
     render(<DashboardClient />);
 
@@ -423,7 +367,7 @@ describe('DashboardClient', () => {
   });
 
   it('CA-PS-10: un contrato caído no sustituye la página', async () => {
-    tenantApi.list.mockRejectedValue(
+    tenantApi.summary.mockRejectedValue(
       new ApiError(503, 'UNAVAILABLE', 'Servicio de empresas no disponible.'),
     );
     platformAuditApi.list.mockResolvedValue({
@@ -450,9 +394,7 @@ describe('DashboardClient', () => {
   });
 
   it('CA-PS-10: el fallo de health degrada solo el monitoreo', async () => {
-    tenantApi.list.mockResolvedValue([
-      makeTenant({ id: 't-1', name: 'Empresa Demo', status: 'ACTIVE' }),
-    ]);
+    tenantApi.summary.mockResolvedValue(makeTenantStatusSummary({ ACTIVE: 1 }));
     platformAuditApi.list.mockResolvedValue({
       data: [makeAuditEntry()],
     });
@@ -473,9 +415,7 @@ describe('DashboardClient', () => {
   });
 
   it('CA-PS-10: el fallo de auditoría degrada solo la actividad', async () => {
-    tenantApi.list.mockResolvedValue([
-      makeTenant({ id: 't-1', name: 'Empresa Demo', status: 'ACTIVE' }),
-    ]);
+    tenantApi.summary.mockResolvedValue(makeTenantStatusSummary({ ACTIVE: 1 }));
     platformAuditApi.list.mockRejectedValue(new Error('Audit timeout'));
 
     render(<DashboardClient />);
@@ -485,5 +425,45 @@ describe('DashboardClient', () => {
     expect(screen.getByText('Empresas por estado')).toBeInTheDocument();
     expect(screen.getByText('Salud de plataforma')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+  });
+
+  it('E-1: los chips y el desglose leen el resumen completo, no una página de 100', async () => {
+    tenantApi.summary.mockResolvedValue(
+      makeTenantStatusSummary(
+        { ACTIVE: 180, PROVISIONING: 40, SUSPENDED: 13 },
+        { updatedLast7Days: 57 },
+      ),
+    );
+
+    render(<DashboardClient />);
+
+    expect(await screen.findByRole('link', { name: 'Ver empresas activas' })).toHaveTextContent(
+      '180',
+    );
+    expect(screen.getByRole('link', { name: 'Ver empresas en configuración' })).toHaveTextContent(
+      '40',
+    );
+    expect(screen.getByRole('button', { name: 'Ver el desglose por estado' })).toHaveTextContent(
+      '13',
+    );
+    expect(screen.getByText('57')).toBeInTheDocument();
+    expect(screen.getByText('233 empresas')).toBeInTheDocument();
+  });
+
+  it('L-10: los indicadores de servicio no dependen del directorio ni de las altas', async () => {
+    tenantApi.summary.mockRejectedValue(new Error('boom'));
+
+    const { unmount } = render(<DashboardClient />);
+
+    expect(
+      await screen.findByText('API de plataforma: Disponible para el equipo interno.'),
+    ).toBeInTheDocument();
+    unmount();
+
+    tenantApi.summary.mockResolvedValue(makeTenantStatusSummary({ PROVISIONING: 4 }));
+    render(<DashboardClient />);
+
+    expect(await screen.findByText('Redis y colas: Sin acumulación visible.')).toBeInTheDocument();
+    expect(screen.getByText('Base de datos: Responde correctamente.')).toBeInTheDocument();
   });
 });

@@ -133,6 +133,8 @@ describe('UsersPage', () => {
       screen.getByText('Revisa el criterio de búsqueda o crea un usuario interno para continuar.'),
     ).toBeInTheDocument();
     expect(usersApi.list).toHaveBeenCalledWith('empresa-demo', { limit: 20, search: 'ana' });
+    // L-12: el selector pide solo empresas activas al servidor.
+    expect(tenantApi.list).toHaveBeenCalledWith(expect.objectContaining({ status: 'ACTIVE' }));
   });
 
   it('muestra el error visible y permite reintentar la carga', async () => {

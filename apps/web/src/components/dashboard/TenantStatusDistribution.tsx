@@ -10,19 +10,12 @@ import {
 } from '@iwana/ui';
 import { describeTenantDirectorySummary } from '@/lib/tenant-directory-summary';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
-
-export type TenantStatusKey =
-  | 'ACTIVE'
-  | 'PROVISIONING'
-  | 'PROVISIONING_FAILED'
-  | 'SUSPENDED'
-  | 'INACTIVE'
-  | 'MARKED_FOR_DELETION';
+import type { TenantStatus } from '@/lib/tenant-status-label';
 
 export type StatusTone = 'success' | 'warning' | 'error' | 'neutral';
 
 export interface StatusSegment {
-  key: TenantStatusKey;
+  key: TenantStatus;
   label: string;
   count: number;
   tone: StatusTone;
@@ -61,7 +54,7 @@ const TILE_BG_CLASS: Record<StatusTone, string> = {
 const tileShellClassName =
   'flex h-full min-h-24 flex-col rounded-2xl border border-transparent p-3';
 
-const STATUS_HINT: Record<TenantStatusKey, string> = {
+const STATUS_HINT: Record<TenantStatus, string> = {
   ACTIVE: PLATFORM_UI_COPY.dashboard.statusHintActive,
   PROVISIONING: PLATFORM_UI_COPY.dashboard.statusHintProvisioning,
   PROVISIONING_FAILED: PLATFORM_UI_COPY.dashboard.statusHintFailed,
@@ -78,7 +71,7 @@ export function TenantStatusDistribution({
   titleRef,
 }: TenantStatusDistributionProps) {
   const total = segments.reduce((sum, segment) => sum + segment.count, 0);
-  const countByKey = (key: TenantStatusKey) =>
+  const countByKey = (key: TenantStatus) =>
     segments.find((segment) => segment.key === key)?.count ?? 0;
   const summary = describeTenantDirectorySummary(
     {
@@ -107,14 +100,14 @@ export function TenantStatusDistribution({
         <p className="portal-eyebrow">{PLATFORM_UI_COPY.dashboard.statusEyebrow}</p>
         <div className="mt-1 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
-            <h3
+            <h2
               id="empresas-por-estado"
               ref={titleRef}
               tabIndex={-1}
               className="text-base font-semibold text-iwana-primary outline-none dark:text-white"
             >
               {PLATFORM_UI_COPY.dashboard.statusTitle}
-            </h3>
+            </h2>
             {showReading ? (
               <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">{summary}</p>
             ) : null}

@@ -10,7 +10,7 @@ import {
   type SortDir,
   type SortField,
   type StatusFilterValue,
-} from '@/components/dashboard/TenantsTable';
+} from '@/components/tenants/TenantsTable';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { ApiError, tenantApi, type TenantListItem } from '@/lib/api-client';

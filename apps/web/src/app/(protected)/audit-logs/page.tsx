@@ -251,8 +251,7 @@ export default function AuditLogsPage() {
   useEffect(() => {
     const loadTenants = async () => {
       try {
-        const list = await tenantApi.list({ limit: 100, offset: 0 });
-        const active = list.filter((item) => item.status === 'ACTIVE');
+        const active = await tenantApi.list({ limit: 100, offset: 0, status: 'ACTIVE' });
         setTenants(active);
         const requestedSlug = searchParams.get('tenant')?.trim() ?? '';
         const fromUrl = active.find((item) => item.slug === requestedSlug);
