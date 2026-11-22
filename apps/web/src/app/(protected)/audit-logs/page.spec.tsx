@@ -281,9 +281,52 @@ function mockHappyPath() {
 }
 
 describe('AuditLogsPage', () => {
+  let historySpy: jest.SpyInstance | null = null;
+  const spyHistory = () => {
+    historySpy = jest.spyOn(window.history, 'replaceState');
+    return historySpy;
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     searchParamsMock = new URLSearchParams();
+  });
+
+  afterEach(() => {
+    // Solo el espía de history: los jest.fn() de módulo siguen vivos.
+    historySpy?.mockRestore();
+    historySpy = null;
+    window.history.replaceState(null, '', '/');
+  });
+
+  it('ámbito plataforma: no fija empresa en la URL ni navega por RSC (head sin título en E2E)', async () => {
+    mockHappyPath();
+    const history = spyHistory();
+    render(<AuditLogsPage />);
+
+    await screen.findByText('Tabla de plataforma');
+    await waitFor(() => expect(tenantListMock).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(replaceMock).not.toHaveBeenCalled();
+    const urls = history.mock.calls.map((call) => String(call[2] ?? ''));
+    expect(urls.filter((url) => url.includes('tenant='))).toEqual([]);
+  });
+
+  it('sincroniza la query con history.replaceState, sin router.replace', async () => {
+    mockHappyPath();
+    const history = spyHistory();
+    render(<AuditLogsPage />);
+    await screen.findByText('Tabla de plataforma');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Cambios por empresa' }));
+
+    await waitFor(() =>
+      expect(history.mock.calls.map((call) => String(call[2]))).toContainEqual(
+        expect.stringContaining('scope=empresa'),
+      ),
+    );
+    expect(replaceMock).not.toHaveBeenCalled();
   });
 
   it('CA-AUD-06: un H1 y sin párrafos de subtítulo de sección bajo tabs', async () => {
@@ -397,6 +440,7 @@ describe('AuditLogsPage', () => {
     });
     auditListMock.mockResolvedValue({ data: [], nextCursor: null });
 
+    const history = spyHistory();
     render(<AuditLogsPage />);
     await screen.findByText('Entradas tabla: 2');
 
@@ -416,10 +460,12 @@ describe('AuditLogsPage', () => {
     expect(screen.queryByText('fila:row-2:LOGIN:User')).not.toBeInTheDocument();
 
     // URL action no se contamina (CA-FR-08)
-    expect(replaceMock).not.toHaveBeenCalledWith(
-      expect.stringContaining('action='),
-      expect.anything(),
-    );
+    expect(
+      history.mock.calls
+        .map((call) => String(call[2] ?? ''))
+        .filter((url) => url.includes('action=')),
+    ).toEqual([]);
+    expect(window.location.search).not.toContain('action=');
 
     fireEvent.click(screen.getByRole('button', { name: 'Quitar filtro' }));
 

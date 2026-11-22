@@ -278,3 +278,12 @@ Retirados de Redis de desarrollo: los 6 de octubre, 200 de repetibles huérfanos
 - `admin-bootstrap.spec.ts:416` falló una vez con la suite en curso mientras otros agentes editaban: clase entorno según `e2e-triage`. Se añade `waitForURL` como diagnóstico.
 
 Omitido: E2E web contra un servidor dedicado (hoy usa `next dev` compartido). Sin verificar en este informe: la CI de estos commits. Riesgo: la historia de «Activas al cierre» anterior a hoy sale `null` porque la activación no se auditaba.
+
+**Residuo de empresas de prueba (verificación de la sesión principal):**
+- `web-tenant-create-happy-path` creaba una empresa real en `dbiw` por corrida, y R7 no puede purgarla antes de 30 días ni sin constancia del ISP.
+- Ahora solo corre con `E2E_ALLOW_REAL_TENANT_CREATE=1`, contra un API con `DB_NAME=test` (`8492417a`).
+- En dos corridas seguidas de la suite web, ninguna empresa nueva.
+- Quedan 4 marcadas para borrado, pendientes de decisión del usuario (esperar a R7 el 2026-12-22 o purga excepcional): `srqa-web-alta-719ee44d166b`, `srqa-web-alta-fd8ba8fce5be`, `srqa-web-alta-11484ef2c56c` y `srqa-web-alta-043566029740`.
+- La celda de disponibilidad en 94,94 % es la medición real de las caídas del API de hoy en desarrollo.
+
+**Título vacío en `/audit-logs`:** con ámbito plataforma la página fijaba una empresa y navegaba a `?tenant=…` por RSC. El `<head>` quedaba unos 90 ms sin `<title>` y axe fallaba de forma intermitente. Ahora no se escribe `?tenant=` en ámbito plataforma y la query se sincroniza con `history.replaceState`. La E2E pasa 100/100 y web jest 351/351. CA-FR-08 se reapunta a `history`, aprobado por test-change-reviewer.

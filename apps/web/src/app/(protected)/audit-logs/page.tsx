@@ -2,7 +2,7 @@
 
 // Página Historial de cambios — alineada a UX/DS congelados (CA-AUD / CA-FR).
 import { ApiError } from '@/lib/api-client';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -157,7 +157,6 @@ function useAuditTable(initialEntries: BaseAuditEntry[] = []) {
 }
 
 export default function AuditLogsPage() {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const tableTitleRef = useRef<HTMLHeadingElement>(null);
@@ -222,7 +221,8 @@ export default function AuditLogsPage() {
 
   useEffect(() => {
     const query = mergeUrlSearchParams(searchParams, {
-      tenant: tenantSlug || null,
+      // La empresa solo es parte de la URL en el ámbito empresa: en plataforma nadie la eligió.
+      tenant: scope === 'tenant' ? tenantSlug || null : null,
       view: viewMode === 'technical' ? 'technical' : null,
       action: actionFilter || null,
       from: dateFrom || null,
@@ -234,7 +234,9 @@ export default function AuditLogsPage() {
     if (query === current) {
       return;
     }
-    router.replace(withSearchParams(pathname, query), { scroll: false });
+    // Reflejo de estado, no navegación: `router.replace` dispara un viaje RSC que remonta el
+    // <head> (~90 ms sin <title>). Next integra `history.replaceState` con `useSearchParams`.
+    window.history.replaceState(window.history.state, '', withSearchParams(pathname, query));
   }, [
     actionFilter,
     dateFrom,
@@ -242,7 +244,6 @@ export default function AuditLogsPage() {
     pageSize,
     scope,
     pathname,
-    router,
     searchParams,
     tenantSlug,
     viewMode,
