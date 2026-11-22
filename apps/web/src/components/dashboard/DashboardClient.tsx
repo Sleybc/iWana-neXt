@@ -495,7 +495,7 @@ export function DashboardClient() {
           <AttentionQueue
             state={queueLoading ? 'loading' : 'ready'}
             rows={queueRows}
-            partial={summary.error || health.error}
+            partial={summary.error || health.error || team.error}
             onRetry={() => {
               if (summary.error) summary.reload();
               if (health.error) health.reload();

@@ -340,6 +340,14 @@ describe('DashboardClient', () => {
     ).toBeNull();
   });
 
+  it('F2-D3: con el resumen de usuarios caído la cola no dice «Todo al día»', async () => {
+    platformUsersApi.summary.mockRejectedValue(new Error('caído'));
+    platformHealthApi.history.mockResolvedValue(makePlatformHealthHistory({ queues: [] }));
+    render(<DashboardClient />);
+    expect(await screen.findByText('No pudimos revisar todas las fuentes.')).toBeInTheDocument();
+    expect(screen.queryByText('Todo al día')).not.toBeInTheDocument();
+  });
+
   it('CA-PP-04: el resumen caído degrada pulso, Empresas y cola, sin ceros ni «Todo al día»', async () => {
     tenantApi.summary.mockRejectedValue(new ApiError(503, 'UNAVAILABLE', 'Servicio caído crudo'));
     platformAuditApi.list.mockResolvedValue({ data: [makeAuditEntry()] });
