@@ -109,7 +109,7 @@
 | # | Deuda | Severidad |
 | --- | --- | --- |
 | F3-D1 | Umbrales de color de disponibilidad (100 % verde, desde 99 % ámbar) fijados por fe-platform: confirmar con prod-ux | P2 |
-| F3-D2 | No se observó en vivo que el worker de `pnpm dev` escriba muestras (el rol MCP no lee la tabla) | P2 |
+| ~~F3-D2~~ | Cerrada 2026-11-22: el worker de `pnpm dev` escribió la muestra de salud al arrancar (`db_ok` y `redis_ok` en verdadero, 19 colas) y la consola la pinta. En local `api_ok` queda nulo porque `.env` no define `API_INTERNAL_URL` (está en `.env.example`): el API no se mide y el tracker marca el día sin dato | — |
 | F3-D3 | Sonda HTTP del muestreador a `API_INTERNAL_URL`: revisión de `sec-eng` antes de G7 | P2 |
 | F3-D4 | Tracker local de `apps/web`; candidato a `@iwana/ui` (ds-owner) | P3 |
 | F3-D5 | `PlatformQueueSnapshot` y `PlatformHealthSampleQueue` sin `satisfies` entre sí; nombres de cola en copy a mano | P3 |
@@ -157,4 +157,4 @@
 | F4-D4 | Umbrales de color del uso (90 % / 95 %) tomados del prototipo; confirmar con prod-ux | P3 |
 | F4-D5 | Una fila por empresa sin tope; límite o «Ver más» por decidir (prod-ux) | P3 |
 | F4-D6 | La cascada se probó borrando la empresa directo, no con la función de purga R7 | P3 |
-| F4-D7 | El worker de `pnpm dev` no midió en vivo (colas y uso sin muestras); ligado a F3-D2 | P2 |
+| ~~F4-D7~~ | Cerrada 2026-11-22: el worker midió iWana (1 suscriptor activo, cupo 10 000) y la consola lo muestra en «Uso por empresa» | — |
