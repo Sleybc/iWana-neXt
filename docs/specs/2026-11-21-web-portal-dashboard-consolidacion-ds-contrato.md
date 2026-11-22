@@ -1,7 +1,7 @@
 # SPEC — Consolidación DS web + portal del dashboard (contrato DS)
 
-**Estado:** Congelada — 2026-11-21 (U-1 a U-4); §7bis (v1.3) congelada 2026-11-21. La §6 (U-5) queda aprobada por el CTO (G0-4 ✅ 2026-11-21) y entra en 3B/3C.
-**Versión de contrato:** 1.3 — congelada 2026-11-21 (aditiva sobre 1.2; ver §7bis, §4.1, §5.5, §2.1 y changelog)
+**Estado:** Congelada — 2026-11-21 (U-1 a U-4); §7bis (v1.3) congelada 2026-11-21; §7ter (v1.4) congelada 2026-11-22. La §6 (U-5) queda aprobada por el CTO (G0-4 ✅ 2026-11-21) y entra en 3B/3C.
+**Versión de contrato:** 1.4 — 2026-11-22 (aditiva sobre 1.3; ver §7ter, §7bis, §4.1, §5.5, §2.1 y changelog)
 **Autoridad:** AI-DS-OWNER
 **Ejecutor:** AI-FE-PLATFORM (bloque 3C) · **Validador:** AI-SR-QA · **Orquestador:** AI-EM-ARCH
 **Origen:** [informe de auditoría](../informes/INFORME-WEB-DASHBOARD-AUDITORIA-v1.0.md) §2 (U-1 a U-5) · [plan](../plans/2026-11-21-web-dashboard-auditoria-remediacion.md), fila 3A
@@ -514,6 +514,74 @@ Diferencias visibles aceptadas: cola sobre `Card` (§5.1: sin `border-gray-200` 
 
 ---
 
+## 7ter. v1.4 — Veredictos de cierre del centro de control (aditiva, 2026-11-22)
+
+Sin tokens nuevos ni pares de contraste nuevos. Rigen R1–R8.
+
+### 7ter.1 `PulseStrip`: carga por celda (F1-D5)
+
+| Caso | Regla |
+| --- | --- |
+| Franja en carga (`loading`) | `aria-busy` en la `section` (sin cambio). |
+| Celda en `state: 'loading'` | La celda de esqueleto es `article` con `aria-label={cell.label}` y `aria-busy="true"`; la `section` **no** lleva `aria-busy` (las demás celdas ya tienen dato y siguen legibles). |
+| Celda `updating` | Sin `aria-busy`: mantiene la cifra y anuncia por su `aria-live` (un `aria-busy` silenciaría el anuncio). |
+
+Cambio en la primitive (aditivo: la celda de esqueleto gana semántica, ninguna API cambia).
+
+### 7ter.2 `DashboardBars` del portal (F1-D6)
+
+`DashboardBarRow.tone` pasa de `'default' | 'warning' | 'danger'` a `tone?: Tone` + `emphasis?: FillEmphasis`, pintado con `toneFillVariants`; se borra `barToneClassName`. Equivalencias: `default` → `primary`/`strong` (misma clase de hoy), `danger` → `error`/`strong` (misma clase), `warning` → `warning` (`amber-500` → `warning-500`, §6). `Tone` no cambia: `danger` ya no forma parte de él.
+
+### 7ter.3 Envoltorio de gráfica por app (F2-D1)
+
+`WebChart` y `PortalChart` se mantienen, uno por app. Lo que repiten es la frontera `next/dynamic` (ADR-112 D4), que debe vivir en la app que la consume; `@iwana/ui` no depende de `next` (peers: `react`, `react-dom`; §3 `asChild`, §7bis `linkComponent`). Recharts y el marco `Chart` ya están en `@iwana/ui` (ADR-112 D1-D2). Ninguna API nueva.
+
+### 7ter.4 Tracker de disponibilidad (F3-D4)
+
+Se queda local en `apps/web` (un solo consumidor). Consumidor previsto: área Red del portal (dirección 2026-11-16, N4; Firma 3.4). La promoción a `@iwana/ui` se hace en el mismo cambio que construya esa área, con esta API (reservada; no se implementa antes):
+
+```ts
+export interface TrackerSegment {
+  key: string;
+  tone: Extract<Tone, 'success' | 'warning' | 'error' | 'neutral'>;
+  missing?: boolean;   // sin dato: tono neutral + opacity-40, nunca success
+  title?: string;      // texto por segmento, del catálogo del consumidor (R1)
+}
+export interface TrackerProps {
+  segments: readonly TrackerSegment[];
+  ariaLabel: string;   // resumen agregado: role="img"
+  size?: 'sm' | 'md';  // h-4 / h-5
+  className?: string;
+}
+```
+
+Estados: sin segmentos → no renderiza; carga → `SkeletonBlock` en el consumidor; el color no es el único portador (resumen en `aria-label`, §5.5).
+
+### 7ter.5 `DashboardMetricStrip` de `/tenants` (F1-D1)
+
+Es la franja de §3 («composición en cada app») y ya compone `MetricCard`: se mantiene. Obligaciones pendientes: cifra 0 → `tone="neutral"` y no interactiva (§3, empty); fallo del resumen → `error` + `onRetry` (§3, error), nunca ceros.
+
+### 7ter.6 Selector de periodo (F2-D2)
+
+Sin primitive nueva. Se usa la composición que ya publica el portal (`DashboardClient`, «Periodo de tendencia»): `div role="group"` con `aria-label` del catálogo y `rounded-xl bg-gray-100 p-1 dark:bg-dark-surface-3` › un `Button` por periodo, `size="sm"`, `className="min-h-11"`, `variant={activo ? 'primary' : 'ghost'}`, `aria-pressed`. `Tabs` no aplica (el periodo filtra la misma vista; no hay paneles) y `Select` oculta dos opciones tras un clic. Diferencia aceptada con el prototipo: el activo va en `primary`, como en el portal.
+
+### 7ter.7 Tarjeta Tendencia del centro de control: dos gráficas (F2-D2)
+
+Se aprueba la opción A: dos `WebChart` en la misma `Card`. Se descarta la gráfica mixta: exigiría enmendar ADR-112 D5 y mezclar escalas (saldo frente a flujo) en un mismo eje Y. Contrato de gráficas (`2026-11-17-portal-graficas-ds-contrato.md`) sin cambio.
+
+| Orden | Pieza | Regla |
+| --- | --- | --- |
+| 1 | Cabecera de la tarjeta | `h2` actual (`text-base font-semibold text-iwana-primary dark:text-white`) + descripción + selector de periodo (§7ter.6), que gobierna las dos gráficas: mismo eje X. |
+| 2 | Rejilla (v1.4, CA-PP2-06) | `mt-4 grid grid-cols-1 gap-6 xl:grid-cols-2`: lado a lado desde `xl`, activas a la izquierda; apiladas por debajo de `xl`. Cada columna es un bloque `h3` › gráfica, sin margen superior propio (lo da `gap-6`). |
+| 2a | Gráfica de saldo | `h3` «Activas al cierre» (`text-sm font-semibold text-gray-900 dark:text-white`) › `WebChart kind="line"`, una serie `chart-1` `solid`, `height={200}`; `null` corta la línea y en la tabla es «Sin dato». |
+| 2b | Gráfica de flujo | `h3` «Altas y bajas» (mismas clases) › `WebChart kind="grouped-bar"`, Altas `chart-2` `progress` `solid`, Bajas `chart-4` `outline` (D6: se distinguen por trazo, no solo por color; hoy Bajas va `solid`), `height={200}`. |
+
+Cada gráfica conserva su leyenda, `summary`, `tableCaption` propio y su conmutador «Ver como tabla» (contrato de gráficas §4). La altura es la prop en px del contrato de gráficas (mínimo 160): no hay token de altura de gráfica y no se crea. Rótulos del catálogo `PLATFORM_UI_COPY` (R1). Estados por gráfica: si falta la serie de activas, la gráfica 2a muestra su estado vacío o de error y la 2b sigue visible. Si las dos están vacías, un único `EmptyState` (§5.3) con `xl:col-span-2` sustituye a ambas (texto de prod-ux, `A-prod-ux.md` §8.3).
+
+**Último valor de la leyenda y CA-PP-02.** La leyenda de «Activas al cierre» conserva su último valor (= `byStatus.ACTIVE` del mes en curso): `Chart` no tiene API para ocultarlo y no se añade. Ocultarlo no cumpliría una lectura estricta de CA-PP-02, porque la misma cifra sigue en la tabla alternativa y en el tooltip; y quitarla le resta a la gráfica su lectura principal. Una serie temporal es otro dato que un conteo por estado: CA-PP-02 rige para los bloques de conteo y **excluye la tarjeta Tendencia** (leyenda, tooltip y tabla). Cambiar el texto del criterio en el encargo lo decide el orquestador.
+
+---
+
 ## 8. Criterios de aceptación (sr-qa)
 
 1. `rg "rose-|rounded-3xl|\[[0-9]+px\]" ` sobre las piezas de §3–§5 y los archivos de §7 tras la migración: 0 coincidencias en lo migrado.
@@ -530,3 +598,4 @@ Diferencias visibles aceptadas: cola sobre `Card` (§5.1: sin `border-gray-200` 
 - v1.1 (2026-11-21) — aditiva, carril rápido DS: §5.5 `emphasis` en `toneFillVariants`/`StackedBarSegment` para escalas ordinales (salida del [BLOQUEO] de fe-platform sobre `DashboardStackBar`); §2.1 `toneMutedTextVariants` publicado en `@iwana/ui`. Sin tokens nuevos ni cambio de los valores v1.0 salvo el atenuado de `success` en `MetricCard`. Notificar a fe-platform y sr-qa vía orquestador.
 - v1.2 (2026-11-21) — aditiva, decisión del orquestador sobre el [BLOQUEO] T-2: §4.1 `StatusIndicator.kind` (`service` | `business`, por defecto `service`); `error` sustituye solo a los indicadores de servicio, los de negocio siguen visibles, `summary` se oculta con `error` (mensaje único). Sin cambio de API del panel. Notificar a fe-platform y sr-qa vía orquestador.
 - v1.3 (2026-11-21) — aditiva, congelada: §7bis `PulseStrip` y `AttentionQueue` promovidas a `@iwana/ui` desde el portal (veredicto D4: procede), `danger` → `error`, `progress` exclusivo del delta, cola en escala `warning`; `density="compact"` en `TenantStatusDistribution` y `SystemStatusPanel` (web). Sin tokens ni pares de contraste nuevos. Notificar a fe-platform y sr-qa vía orquestador.
+- v1.4 (2026-11-22) — aditiva, carril rápido DS: §7ter. `PulseStrip` con `aria-busy` y nombre en la celda que carga; `DashboardBars` del portal a `Tone` + `emphasis` (`danger` → `error`/`strong`); `WebChart`/`PortalChart` justificados por app; tracker local con API reservada para el área Red del portal; `DashboardMetricStrip` se mantiene (composición de §3) con 0 en neutral y error del resumen; selector de periodo = composición `Button` + `aria-pressed` del portal; tendencia en dos gráficas (`line` de activas y `grouped-bar` de altas/bajas, Bajas en `outline`), sin enmendar ADR-112; CA-PP-02 excluye la tarjeta Tendencia (la leyenda de activas conserva su último valor, sin cambio en `Chart`). Ratificada la disposición de prod-ux: gráficas lado a lado desde `xl` (`xl:grid-cols-2`, `gap-6`), apiladas debajo, `EmptyState` único `xl:col-span-2` si ambas están vacías (CA-PP2-06). Sin tokens ni pares nuevos. Notificar a fe-platform y sr-qa vía orquestador.

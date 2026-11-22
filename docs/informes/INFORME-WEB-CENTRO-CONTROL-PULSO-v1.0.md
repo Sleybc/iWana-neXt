@@ -31,13 +31,13 @@
 
 | # | Deuda | Severidad |
 | --- | --- | --- |
-| F1-D1 | `DashboardMetricStrip` sigue vivo: lo usa `/tenants` | P3 |
-| F1-D2 | D-5 cerrada 2026-11-22 (`69c8fcd3`): el umbral de 24 px era imposible (24 px de padding + 1 px de borde); mide una columna. `web-tenant-create-happy-path` sigue roja: expectativa obsoleta desde `48e2a7be` (correo del administrador obligatorio, «Emitir credenciales de acceso»). Arreglarla hace que cada corrida cree una empresa real en la base de desarrollo: falta decidir la limpieza (sr-qa) | P2 |
-| F1-D3 | Sigue sin correr: `playwright.portal.config.ts:59-72` fija el 3002 en `baseURL` y `--port`, con `reuseExistingServer: false`; no admite puerto alterno sin cambiar la configuración | P2 |
-| F1-D4 | Actividad filtra en cliente (atajo) hasta la Fase 2 | P3 |
-| F1-D5 | `PulseStrip` sin `aria-busy` por celda | P3 |
-| F1-D7 | `web-audit-logs-datepicker:198` con `exact` queda más débil; el mock de `/tenants` corta por `limit` sin ordenar (sin prueba de orden de «Últimas empresas») | P3 |
-| F1-D6 | `'danger'` aún en `dashboard-visuals.tsx` y `DashboardAreaCards.tsx` del portal | P3 |
+| ~~F1-D1~~ | `DashboardMetricStrip` sigue vivo: lo usa `/tenants` | P3 |
+| ~~F1-D2~~ | D-5 cerrada 2026-11-22 (`69c8fcd3`): el umbral de 24 px era imposible (24 px de padding + 1 px de borde); mide una columna. `web-tenant-create-happy-path` sigue roja: expectativa obsoleta desde `48e2a7be` (correo del administrador obligatorio, «Emitir credenciales de acceso»). Arreglarla hace que cada corrida cree una empresa real en la base de desarrollo: falta decidir la limpieza (sr-qa) | P2 |
+| ~~F1-D3~~ | Sigue sin correr: `playwright.portal.config.ts:59-72` fija el 3002 en `baseURL` y `--port`, con `reuseExistingServer: false`; no admite puerto alterno sin cambiar la configuración | P2 |
+| ~~F1-D4~~ | Actividad filtra en cliente (atajo) hasta la Fase 2 | P3 |
+| ~~F1-D5~~ | `PulseStrip` sin `aria-busy` por celda | P3 |
+| ~~F1-D7~~ | `web-audit-logs-datepicker:198` con `exact` queda más débil; el mock de `/tenants` corta por `limit` sin ordenar (sin prueba de orden de «Últimas empresas») | P3 |
+| ~~F1-D6~~ | `'danger'` aún en `dashboard-visuals.tsx` y `DashboardAreaCards.tsx` del portal | P3 |
 
 ## Fase 2 — P1 y P3
 
@@ -68,13 +68,13 @@
 
 | # | Deuda | Severidad |
 | --- | --- | --- |
-| F2-D1 | `web-chart.tsx` repite `portal-chart.tsx`; subirlo a `@iwana/ui` lo decide ds-owner | P3 |
-| F2-D2 | Sin serie histórica de activas: la tendencia no tiene la línea de activas ni el selector de periodo del prototipo | P3 |
+| ~~F2-D1~~ | `web-chart.tsx` repite `portal-chart.tsx`; subirlo a `@iwana/ui` lo decide ds-owner | P3 |
+| ~~F2-D2~~ | Sin serie histórica de activas: la tendencia no tiene la línea de activas ni el selector de periodo del prototipo | P3 |
 | ~~F2-D3~~ | Cerrada 2026-11-22 (CTO): fila «N usuarios sin verificación en dos pasos», Atención, enlaza a `/platform-users`; sin usuarios, sin fila (`d75cdf6b`) | — |
-| F2-D4 | `platform_audit_logs` es append-only: la integración deja filas sintéticas en `test` | P3 |
-| F2-D5 | `exportCsv` de auditoría no aplica `excludeSessionEvents` | P3 |
+| ~~F2-D4~~ | `platform_audit_logs` es append-only: la integración deja filas sintéticas en `test` | P3 |
+| ~~F2-D5~~ | `exportCsv` de auditoría no aplica `excludeSessionEvents` | P3 |
 | ~~F2-D6~~ | Cerrada 2026-11-22 (`1a2636ef`): otra suite carga `.env.development`, que define `MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS`, prohibida en producción; el helper solo borraba dos claves. Ahora borra toda clave del esquema no declarada | — |
-| F2-D7 | Mocks E2E repiten literales de sesión en vez de importar `AUDIT_SESSION_ACTIONS` | P3 |
+| ~~F2-D7~~ | Mocks E2E repiten literales de sesión en vez de importar `AUDIT_SESSION_ACTIONS` | P3 |
 
 ## Fase 3 — P2
 
@@ -108,13 +108,13 @@
 
 | # | Deuda | Severidad |
 | --- | --- | --- |
-| F3-D1 | prod-ux 2026-11-22: tracker diario aprobado (100 % / 99 %); para la celda de 30 días propone verde ≥ 99,9 %, que debe coincidir con la disponibilidad prometida: **decide el CTO** ([dirección §8](../specs/2026-11-21-web-centro-control-pulso-plataforma-direccion.md)) | P2 |
+| ~~F3-D1~~ | prod-ux 2026-11-22: tracker diario aprobado (100 % / 99 %); para la celda de 30 días propone verde ≥ 99,9 %, que debe coincidir con la disponibilidad prometida: **decide el CTO** ([dirección §8](../specs/2026-11-21-web-centro-control-pulso-plataforma-direccion.md)) | P2 |
 | ~~F3-D2~~ | Cerrada 2026-11-22: el worker de `pnpm dev` escribió la muestra de salud al arrancar (`db_ok` y `redis_ok` en verdadero, 19 colas) y la consola la pinta. En local `api_ok` queda nulo porque `.env` no define `API_INTERNAL_URL` (está en `.env.example`): el API no se mide y el tracker marca el día sin dato | — |
-| F3-D3 | Sonda HTTP del muestreador a `API_INTERNAL_URL`: revisión de `sec-eng` antes de G7 | P2 |
-| F3-D4 | Tracker local de `apps/web`; candidato a `@iwana/ui` (ds-owner) | P3 |
-| F3-D5 | `PlatformQueueSnapshot` y `PlatformHealthSampleQueue` sin `satisfies` entre sí; nombres de cola en copy a mano | P3 |
-| F3-D6 | Sin prueba E2E de 401 (cubierto en integración del API); `formatPercent` trunca en vez de redondear | P3 |
-| F3-D7 | `docker-compose.e2e.yml` sin API: ese worker no mide `api` | P3 |
+| ~~F3-D3~~ | Sonda HTTP del muestreador a `API_INTERNAL_URL`: revisión de `sec-eng` antes de G7 | P2 |
+| ~~F3-D4~~ | Tracker local de `apps/web`; candidato a `@iwana/ui` (ds-owner) | P3 |
+| ~~F3-D5~~ | `PlatformQueueSnapshot` y `PlatformHealthSampleQueue` sin `satisfies` entre sí; nombres de cola en copy a mano | P3 |
+| ~~F3-D6~~ | Sin prueba E2E de 401 (cubierto en integración del API); `formatPercent` trunca en vez de redondear | P3 |
+| ~~F3-D7~~ | `docker-compose.e2e.yml` sin API: ese worker no mide `api` | P3 |
 
 ## Fase 4 — P4, uso por empresa
 
@@ -153,10 +153,10 @@
 | --- | --- | --- |
 | ~~F4-D1~~ | Cerrada 2026-11-22: al activar, la puesta en marcha encola una medición (`ebf968e6`); un fallo al encolar solo se registra | — |
 | ~~F4-D2~~ | Cerrada 2026-11-22 (CTO): el conteo excluye anonimizados; ADR-114 v1.2 §8, `sec-eng` GO en las 7 condiciones; la lista de CRM no cambia (`84ffac85`) | — |
-| F4-D3 | Permisos de plataforma asignables por pantalla: exigen un modelo de permisos de plataforma con ADR propio | P3 |
-| F4-D4 | prod-ux: 90/95 vale si el cupo bloquea altas; hoy `max_subscribers` no bloquea ninguna alta en CRM (si no bloquea, rojo en 100 %). **Decide el CTO** | P3 |
-| F4-D5 | Una fila por empresa sin tope; límite o «Ver más» por decidir (prod-ux) | P3 |
-| F4-D6 | La cascada se probó borrando la empresa directo, no con la función de purga R7 | P3 |
+| ~~F4-D3~~ | Permisos de plataforma asignables por pantalla: exigen un modelo de permisos de plataforma con ADR propio | P3 |
+| ~~F4-D4~~ | prod-ux: 90/95 vale si el cupo bloquea altas; hoy `max_subscribers` no bloquea ninguna alta en CRM (si no bloquea, rojo en 100 %). **Decide el CTO** | P3 |
+| ~~F4-D5~~ | Una fila por empresa sin tope; límite o «Ver más» por decidir (prod-ux) | P3 |
+| ~~F4-D6~~ | La cascada se probó borrando la empresa directo, no con la función de purga R7 | P3 |
 | ~~F4-D7~~ | Cerrada 2026-11-22: el worker midió iWana (1 suscriptor activo, cupo 10 000) y la consola lo muestra en «Uso por empresa» | — |
 
 ## Correcciones tras la revisión en vivo (2026-11-22)
@@ -224,3 +224,57 @@ Sin cambios en `packages/shared` ni en el ADR-114; sin tokens nuevos (`Badge`, `
 **Decide el CTO:** disponibilidad de 30 días (99,9 % frente a 100 %) y si el cupo bloquea altas (umbral de uso).
 
 Omitido: arreglo de `web-tenant-create-happy-path` y E2E del portal en producción. Sin verificar: suite DT-4 de integración. Riesgo: la medición al activar remide todas las empresas, no solo la nueva.
+
+## Cierre total de deuda (2026-11-22)
+
+**Estado:** commits locales, sin push. Decisiones del CTO del 2026-11-22: disponibilidad 99,9 / 99; el cupo solo avisa; F4-D3 se traslada. Las decisiones de AI-EM-ARCH constan en la [dirección](../specs/2026-11-21-web-centro-control-pulso-plataforma-direccion.md) §8–§8.3 (v1.2) y en el contrato DS v1.4 §7ter.
+
+| Deuda | Disposición |
+| --- | --- |
+| F1-D1 | ds-owner: `DashboardMetricStrip` ya compone `MetricCard` y es la franja propia de la app; no se borra. Corregido: cifra 0 en tono neutro y `/tenants` con error y reintento en vez de ceros |
+| F1-D2 | Expectativa obsoleta por `48e2a7be` (test-change-reviewer): alta real con correo de administrador, slug `srqa-web-alta-*`, limpieza en `beforeAll`/`afterAll` y la contraseña fuera de los artefactos. Verde |
+| F1-D3 | `E2E_PORTAL_PORT` (`e2e/portal-origin.ts`), por defecto 3002. Inicio del portal con build de producción en 3012: 47/47 |
+| F1-D4 | Ya resuelta: `excludeSessionEvents` y `excludeAccessEvents` en servidor; no queda filtro en cliente |
+| F1-D5 | `aria-busy` en la celda `article` que carga; la sección solo cuando carga toda la franja |
+| F1-D6 | Portal: `DashboardBarRow` con `Tone` + `FillEmphasis`; `'danger'` pasa a `error`/`strong` |
+| F1-D7 | Ausencia sin `exact` en el datepicker; el mock ordena como el API; prueba de orden de «Últimas empresas» |
+| F2-D1 | ds-owner: se mantienen `WebChart` y `PortalChart` (la carga diferida de `next` vive en cada app); se corrige el mensaje de ESLint |
+| F2-D2 | Contrato `TenantStatusSummary` v1.2 (6/12/24 meses, `activeAtClose`), API con reconstrucción desde auditoría (el worker audita activación y fallo), índice parcial (migración public 036), dos gráficas lado a lado desde `xl` y selector `?periodo=` |
+| F2-D4 | Las specs que siembran filas ahora hacen rollback. Las filas que deja el código bajo prueba de la purga y la puesta en marcha son la evidencia que esas pruebas verifican; en CI `test` se crea de cero |
+| F2-D5 | `applyFilters` común para el listado, el total y la exportación |
+| F2-D7 | Los mocks importan `AUDIT_SESSION_ACTIONS` y `PLATFORM_AUDIT_ACCESS_ACTIONS` (subida a `@iwana/shared`) |
+| F3-D1 | Celda de 30 días con el tono por la razón exacta. La cifra redondea sin cruzar una frontera de color; el tracker diario sigue en 100/99 (prod-ux) |
+| F3-D3 | sec-eng GO; aplicados L-1 (cancelar el cuerpo), L-2 (credenciales descartadas) e I-2 |
+| F3-D4 | ds-owner: queda local hasta el área Red del portal; API `Tracker` reservada en §7ter.4 |
+| F3-D5 | `WORKER_QUEUE_NAMES`/`SAMPLED_QUEUE_NAMES` en `@iwana/shared`; `queueNames` con `satisfies Record<…>`; el tablero muestrea también las colas del API |
+| F3-D6 | `formatPercent` redondea; E2E de 401 con renovación fallida y aceptada |
+| F3-D7 | No aplica: en E2E el API corre en el host y ninguna E2E lee la salud real; el día sale «sin dato», nunca verde. Comentado en el compose |
+| F4-D3 | Trasladada por decisión del CTO: exige un modelo de permisos de plataforma con ADR propio |
+| F4-D4 | El cupo no bloquea: ámbar ≥ 90 %, rojo ≥ 100 %; en o sobre el cupo, una fila por empresa en «Requiere tu atención» |
+| F4-D5 | Tope de 6 filas por mayor uso, con «Ver todas» en el sitio |
+| F4-D6 | Prueba de integración con la purga R7 real: borra las muestras de la empresa purgada y no las de otras |
+
+**Fallidos de octubre (causa raíz):** pruebas de integración corridas contra `dbiw` dejaban empresas `ACTIVE` con schemas incompletos, y el worker de `pnpm dev` las barría. Arreglos:
+- una guarda de integración bloquea `INSERT` en `public.tenants` fuera de `test` o `iwana_it_*`;
+- los barridos aíslan el fallo por empresa y el motivo dice `tenant=<uuid>`; un schema inválido cuenta como fallo de esa empresa;
+- retención por familia de cola (`queue-retention.ts`), con limpieza periódica por antigüedad;
+- el aviso solo cuenta `failedRecent` (72 h);
+- marcar una empresa para borrado retira sus repetibles por empresa; una empresa suspendida o inactiva no falla.
+
+Retirados de Redis de desarrollo: los 6 de octubre, 200 de repetibles huérfanos, 37 `42P10` de empresas sintéticas que ya no existen y 1 de importación del 16-nov (migración aún no aplicada). Cero fallidos en todas las colas.
+
+**Medición al activar:** el job lleva `tenantId` y mide solo esa empresa.
+
+**DT-4:** el usuario de arranque es el superusuario `iwana` del compose (no existe un rol `iwana_bootstrap`). En local hay que añadir a `.env` `DB_BOOTSTRAP_PASSWORD`, `DB_PURGER_USER=iwana_purger` y `DB_PURGER_PASSWORD`, con el valor de `DB_PASSWORD`. Con eso, 3/3.
+
+**Botón de tema:** no reproducible a 375–1440 px, con menús abiertos ni con los scripts retrasados; no es defecto.
+
+**Rojo del CI de `a74c5689`** (`portal-inventory-scm.spec.ts:3685`): carrera de la prueba con la carga de categorías; ahora espera la categoría. Archivo completo: 42/42.
+
+**Otras decisiones:**
+- sec-eng C-2: el payload de puesta en marcha va sin `adminEmail`.
+- C-3: limpieza periódica de fallidos.
+- C-1 se cerró en otra sesión (`ff8e9110`).
+- `admin-bootstrap.spec.ts:416` falló una vez con la suite en curso mientras otros agentes editaban: clase entorno según `e2e-triage`. Se añade `waitForURL` como diagnóstico.
+
+Omitido: E2E web contra un servidor dedicado (hoy usa `next dev` compartido). Sin verificar en este informe: la CI de estos commits. Riesgo: la historia de «Activas al cierre» anterior a hoy sale `null` porque la activación no se auditaba.
