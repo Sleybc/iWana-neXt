@@ -136,7 +136,7 @@ describe('AssuranceFieldServiceProcessor', () => {
   });
 
   it('ignora asunto y notas de un job antiguo que todavía los traiga', async () => {
-    const { processor, manager, query } = buildProcessor();
+    const { processor, manager } = buildProcessor();
     const legacy = { ...buildPayload(), subject: 'texto viejo', notes: 'nota vieja' };
 
     await processor.process({ name: 'request-field-service', data: legacy } as never);

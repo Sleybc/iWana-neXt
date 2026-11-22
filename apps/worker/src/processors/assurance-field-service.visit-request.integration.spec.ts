@@ -10,10 +10,16 @@
 import { randomUUID } from 'crypto';
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
-import { DataSource } from 'typeorm';
+import { DataSource, type EntityManager } from 'typeorm';
 import type { Job } from 'bullmq';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
-import { resolveMigrationDbCredentials } from '@iwana/db';
+import {
+  grantTenantSchemaAppPrivileges,
+  resolveAppDbRole,
+  resolveMigrationDbCredentials,
+  runInTenantSchema,
+  TicketWorkOrderLink,
+} from '@iwana/db';
 import type { FieldServiceRequest } from '@iwana/shared';
 import { WORKER_ENTITIES } from '../worker-entities';
 import { AssuranceFieldServiceProcessor } from './assurance-field-service.processor';
@@ -48,8 +54,12 @@ runIt('AssuranceFieldServiceProcessor con PostgreSQL real', () => {
 
   /** Siembra un ticket y su solicitud de visita como lo hace el API; devuelve ids. */
   async function seedTicket(
-    linkExec: { query: DataSource['query'] } = dataSource,
+    linkManager?: EntityManager,
   ): Promise<{ ticketId: string; linkId: string }> {
+    if (!linkManager) {
+      // Sin transacción del llamador: una propia y confirmada, con search_path del tenant.
+      return runInTenantSchema(dataSource, schemaName, (qr) => seedTicket(qr.manager));
+    }
     const ticketId = randomUUID();
     const linkId = randomUUID();
     ticketIds.push(ticketId);
@@ -61,11 +71,18 @@ runIt('AssuranceFieldServiceProcessor con PostgreSQL real', () => {
                'Prueba de integración: visita desde ticket', 'INTERNAL_USER', $4)`,
       [ticketId, tenantId, `TK-IT-${ticketId.slice(0, 8)}`, requestedByUserId],
     );
-    await linkExec.query(
-      `INSERT INTO "${schemaName}".ticket_work_order_links
-         (id, ticket_id, tenant_id, requested_at, requested_by_user_id, notes)
-       VALUES ($1, $2, $3, now(), $4, 'Creada por la prueba de integración del worker.')`,
-      [linkId, ticketId, tenantId, requestedByUserId],
+    // Como el API: por la entidad, con el id preasignado que viaja en el job (H1).
+    await linkManager.save(
+      TicketWorkOrderLink,
+      linkManager.create(TicketWorkOrderLink, {
+        id: linkId,
+        ticketId,
+        tenantId,
+        workOrderId: null,
+        requestedAt: new Date(),
+        requestedByUserId,
+        notes: 'Creada por la prueba de integración del worker.',
+      }),
     );
     return { ticketId, linkId };
   }
@@ -89,7 +106,8 @@ runIt('AssuranceFieldServiceProcessor con PostgreSQL real', () => {
       username: migrator.username,
       password: migrator.password,
       database: process.env.DB_NAME ?? 'test',
-      entities: WORKER_ENTITIES,
+      // TicketWorkOrderLink: la siembra guarda la solicitud por la entidad, como el API.
+      entities: [...WORKER_ENTITIES, TicketWorkOrderLink],
       synchronize: false,
     });
     await dataSource.initialize();
@@ -128,6 +146,13 @@ runIt('AssuranceFieldServiceProcessor con PostgreSQL real', () => {
     const processor = new AssuranceFieldServiceProcessor(dataSource);
     const ids = await seedTicket();
 
+    // H1: TypeORM conserva el id preasignado; es el que el job lleva como linkId.
+    const [persisted] = await dataSource.query(
+      `SELECT id FROM "${schemaName}".ticket_work_order_links WHERE ticket_id = $1`,
+      [ids.ticketId],
+    );
+    expect(persisted).toEqual({ id: ids.linkId });
+
     await processor.process(jobFor(ids));
     await processor.process(jobFor(ids));
 
@@ -154,9 +179,11 @@ runIt('AssuranceFieldServiceProcessor con PostgreSQL real', () => {
     const api = dataSource.createQueryRunner();
     await api.connect();
     await api.startTransaction();
+    // Como runInTenantSchema en el API: la entidad se resuelve en el schema tenant.
+    await api.query(`SET LOCAL search_path TO "${schemaName}"`);
     let ids: { ticketId: string; linkId: string };
     try {
-      ids = await seedTicket(api);
+      ids = await seedTicket(api.manager);
       await api.query(`SELECT 1 FROM "${schemaName}".support_tickets WHERE id = $1 FOR UPDATE`, [
         ids.ticketId,
       ]);
@@ -174,5 +201,53 @@ runIt('AssuranceFieldServiceProcessor con PostgreSQL real', () => {
       [ids!.ticketId],
     );
     expect(rows).toEqual([{ description: 'Creada por la prueba de integración del worker.' }]);
+  });
+
+  it('si la transacción del API no confirma en 10 s, el job falla por tope de espera sin crear visita', async () => {
+    const processor = new AssuranceFieldServiceProcessor(dataSource);
+    const ids = await seedTicket();
+    const api = dataSource.createQueryRunner();
+    await api.connect();
+    await api.startTransaction();
+    try {
+      await api.query(`SELECT 1 FROM "${schemaName}".support_tickets WHERE id = $1 FOR UPDATE`, [
+        ids.ticketId,
+      ]);
+      // 55P03 lock_not_available: BullMQ lo registra como fallido con el motivo saneado
+      // (sin texto del ticket); el payload solo lleva ids.
+      await expect(processor.process(jobFor(ids))).rejects.toThrow(/sqlstate=55P03$/);
+    } finally {
+      await api.rollbackTransaction();
+      await api.release();
+    }
+
+    const rows = await dataSource.query(
+      `SELECT 1 FROM "${schemaName}".visit_requests WHERE ticket_id = $1`,
+      [ids.ticketId],
+    );
+    expect(rows).toEqual([]);
+  }, 30_000);
+
+  it('el rol de runtime puede leer el contexto: FOR SHARE exige UPDATE en support_tickets', async () => {
+    const appRole = resolveAppDbRole();
+    const [role] = await dataSource.query('SELECT 1 FROM pg_roles WHERE rolname = $1', [appRole]);
+    if (!role) throw new Error(`[BLOCKED] No existe el rol de runtime «${appRole}».`);
+    // Mismos grants que el aprovisionamiento del schema (idempotentes); en CI la integración
+    // del worker corre antes del paso de mínimo privilegio.
+    await grantTenantSchemaAppPrivileges(dataSource, schemaName);
+
+    const [privileges] = await dataSource.query(
+      `SELECT has_schema_privilege($1, $2, 'USAGE') AS usage,
+              has_table_privilege($1, format('%I.support_tickets', $2::text), 'SELECT') AS ticket_select,
+              has_table_privilege($1, format('%I.support_tickets', $2::text), 'UPDATE') AS ticket_update,
+              has_table_privilege($1, format('%I.ticket_work_order_links', $2::text), 'SELECT') AS link_select`,
+      [appRole, schemaName],
+    );
+    expect(privileges).toEqual({
+      usage: true,
+      ticket_select: true,
+      ticket_update: true,
+      link_select: true,
+    });
   });
 });
