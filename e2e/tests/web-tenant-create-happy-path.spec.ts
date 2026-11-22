@@ -15,6 +15,15 @@ const RUN_ID = randomUUID().replace(/-/gu, '').slice(0, 12);
 /** El barrido previo no toca altas recientes: pueden ser de otra corrida en curso. */
 const STALE_AFTER_MS = 30 * 60_000;
 
+// Cómo correrla: API levantado con DB_NAME=test y
+// `E2E_ALLOW_REAL_TENANT_CREATE=1 pnpm exec playwright test -c e2e/playwright.web.config.ts --workers=1 e2e/tests/web-tenant-create-happy-path.spec.ts`.
+const allowRealTenantCreate = process.env['E2E_ALLOW_REAL_TENANT_CREATE'] === '1';
+
+test.skip(
+  !allowRealTenantCreate,
+  'Crea una empresa real que R7 no puede purgar antes de 30 días: solo con E2E_ALLOW_REAL_TENANT_CREATE=1 y un API con DB_NAME=test.',
+);
+
 test.skip(
   !platformEmail || !platformPassword,
   'Configura E2E_PLATFORM_EMAIL y E2E_PLATFORM_PASSWORD para ejecutar contra infraestructura real.',
