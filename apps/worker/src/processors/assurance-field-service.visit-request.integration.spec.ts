@@ -4,7 +4,10 @@
  * Regresión del 2026-11-17: sin `VisitRequest` registrada, el job fallaba con
  * EntityMetadataNotFoundError y el ticket quedaba sin visita.
  *
- * Ejecutar: NODE_ENV=test DB_NAME=test E2E_TENANT_SLUG=test
+ * Crea y retira su propia empresa (schema efímero con la cadena tenant vigente): no depende de
+ * ninguna siembra previa.
+ *
+ * Ejecutar: NODE_ENV=test DB_NAME=test
  *   pnpm --filter @iwana/worker exec jest -c jest.integration.config.js assurance-field-service.visit-request
  */
 import { randomUUID } from 'crypto';
@@ -23,6 +26,11 @@ import {
 import type { FieldServiceRequest } from '@iwana/shared';
 import { WORKER_ENTITIES } from '../worker-entities';
 import { AssuranceFieldServiceProcessor } from './assurance-field-service.processor';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../packages/database/src/migrations/tenant/runner';
+import { ephemeralSchemaName } from '../../../../packages/database/test/ephemeral-schema';
 
 /** Mismo patrón que execution-order-relay.integration.spec: DB_* del .env raíz si no vienen dadas. */
 function loadWorkspaceEnv(): void {
@@ -50,7 +58,6 @@ runIt('AssuranceFieldServiceProcessor con PostgreSQL real', () => {
   let tenantId: string;
   let schemaName: string;
   let requestedByUserId: string;
-  const ticketIds: string[] = [];
 
   /** Siembra un ticket y su solicitud de visita como lo hace el API; devuelve ids. */
   async function seedTicket(
@@ -62,7 +69,6 @@ runIt('AssuranceFieldServiceProcessor con PostgreSQL real', () => {
     }
     const ticketId = randomUUID();
     const linkId = randomUUID();
-    ticketIds.push(ticketId);
     await dataSource.query(
       `INSERT INTO "${schemaName}".support_tickets
          (id, tenant_id, ticket_number, type, status, priority, subject, requester_type,
@@ -111,33 +117,32 @@ runIt('AssuranceFieldServiceProcessor con PostgreSQL real', () => {
       synchronize: false,
     });
     await dataSource.initialize();
-    const slug = process.env.E2E_TENANT_SLUG ?? 'test';
-    const [tenant] = await dataSource.query(
-      'SELECT id::text AS id, schema_name FROM public.tenants WHERE slug = $1',
-      [slug],
+    // Empresa propia: fila canónica en public.tenants (la exige la migración 092) y schema
+    // efímero con la cadena tenant vigente. El globalSetup barre los que queden de un corte.
+    tenantId = randomUUID();
+    schemaName = ephemeralSchemaName('tenant_itfs_');
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $2, 'ACTIVE', 'visita-it@example.invalid')`,
+      [tenantId, schemaName, schemaName.replace(/_/gu, '-')],
     );
-    if (!tenant) throw new Error(`[BLOCKED] No existe el tenant de pruebas «${slug}».`);
-    tenantId = tenant.id;
-    schemaName = tenant.schema_name;
+    await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
+    const migrations = createTenantDataSource(dataSource, schemaName, `visita-${schemaName}`);
+    await migrations.initialize();
+    try {
+      await applyTenantMigrationsInOrder(migrations);
+    } finally {
+      await migrations.destroy();
+    }
     // Columnas de usuario sin FK: basta un uuid propio.
     requestedByUserId = randomUUID();
   });
 
   afterAll(async () => {
     if (!dataSource?.isInitialized) return;
-    if (ticketIds.length) {
-      await dataSource.query(
-        `DELETE FROM "${schemaName}".visit_requests WHERE ticket_id = ANY($1::text[])`,
-        [ticketIds],
-      );
-      await dataSource.query(
-        `DELETE FROM "${schemaName}".ticket_work_order_links WHERE ticket_id = ANY($1::uuid[])`,
-        [ticketIds],
-      );
-      await dataSource.query(
-        `DELETE FROM "${schemaName}".support_tickets WHERE id = ANY($1::uuid[])`,
-        [ticketIds],
-      );
+    if (schemaName) {
+      await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
     }
     await dataSource.destroy();
   });
