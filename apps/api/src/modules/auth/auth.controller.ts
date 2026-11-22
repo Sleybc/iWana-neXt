@@ -355,6 +355,8 @@ export class AuthController {
    * RF-AUTH-05 (JTI blacklist)
    */
   @Post('logout')
+  // El servicio ya audita LOGOUT; sin esto el interceptor duplicaba CREATE/Auth (C-D3).
+  @SkipAudit()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cerrar sesion — invalida JTI y revoca refresh token' })
   @ApiResponse({ status: 200, description: 'Sesion cerrada.' })

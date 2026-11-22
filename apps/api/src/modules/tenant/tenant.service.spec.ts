@@ -1535,6 +1535,27 @@ describe('TenantService', () => {
       expect(summary.oldestProvisioningAt).toBe('2026-11-18T05:00:00.000Z');
     });
 
+    it('C-D1: generatedAt es el mismo instante con el que se pide la serie mensual', async () => {
+      jest.useFakeTimers({ now: new Date('2026-11-22T11:26:47.480Z') });
+      try {
+        query
+          .mockResolvedValueOnce([
+            { status: 'ACTIVE', count: '1', recent: '0', oldest_created_at: null },
+          ])
+          .mockResolvedValueOnce([]);
+        platformAuditServiceMock.countEntityLifecycleByMonth.mockImplementationOnce(async () => {
+          jest.advanceTimersByTime(5);
+          return [];
+        });
+
+        const summary = await service.getStatusSummary();
+
+        expect(summary.generatedAt).toBe('2026-11-22T11:26:47.480Z');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('v1.1: sin PROVISIONING oldestProvisioningAt es null; la serie se pide al módulo audit', async () => {
       query
         .mockResolvedValueOnce([

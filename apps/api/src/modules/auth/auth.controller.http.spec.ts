@@ -1,4 +1,5 @@
 import { INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common';
+import { SKIP_AUDIT_KEY } from '../audit/decorators/skip-audit.decorator';
 import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -225,6 +226,11 @@ describe('AuthController HTTP', () => {
     await request(app.getHttpServer()).post('/api/v1/auth/logout').expect(401);
 
     expect(mockAuthService.logout).not.toHaveBeenCalled();
+  });
+
+  it('C-D3: POST /auth/logout lleva @SkipAudit (el servicio ya audita LOGOUT; sin duplicar CREATE/Auth)', () => {
+    const handler = Object.getOwnPropertyDescriptor(AuthController.prototype, 'logout')?.value;
+    expect(Reflect.getMetadata(SKIP_AUDIT_KEY, handler)).toBe(true);
   });
 
   it('expone POST /api/v1/auth/logout, revoca sesion y limpia la cookie', async () => {

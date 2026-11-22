@@ -185,6 +185,10 @@ Sin cambios en `packages/shared` ni en el ADR-114; sin tokens nuevos (`Badge`, `
 
 | # | Deuda | Severidad |
 | --- | --- | --- |
-| C-D1 | `tenant.service.spec.ts:1553` compara fechas con precisión de ms: intermitente | P3 |
-| C-D2 | La espera momentánea también avisa; un umbral de antigüedad lo decide prod-ux | P3 |
-| C-D3 | Filas «registró un acceso» (`CREATE`/`Auth`) son de origen dudoso; revisar quién las escribe | P3 |
+| ~~C-D1~~ | Cerrada 2026-11-22: la causa era el servicio, no la prueba. `getStatusSummary` sellaba `generatedAt` con un segundo `new Date()` distinto del que usaba para pedir la serie; ahora reutiliza el mismo instante. Prueba nueva con reloj simulado, roja antes del arreglo | — |
+| ~~C-D2~~ | Cerrada 2026-11-22: la espera avisa solo si el trabajo más antiguo lleva ≥ 5 min (`QUEUE_BACKLOG_ALERT_SECONDS`); una espera más corta se lista sin aviso. Umbral provisional, a confirmar por prod-ux (C-D4) | — |
+| ~~C-D3~~ | Cerrada 2026-11-22: `POST /auth/logout` no llevaba `@SkipAudit()`. El servicio ya audita `LOGOUT` y el interceptor genérico añadía otra fila `CREATE`/`Auth` con el mensaje de respuesta. Las filas viejas siguen en el historial | — |
+| C-D4 | Confirmar el umbral de 5 min de C-D2 | P3 |
+| C-D5 | `app.config.production-urls.spec.ts` sigue intermitente bajo carga (Fase 2; pasa aislada 29/29) | P3 |
+
+**Evidencia del cierre de deuda:** las 4 pruebas nuevas (C-D1, C-D3 y dos de C-D2) fallan con el código anterior: C-D1, C-D3 y la de espera reciente de C-D2; la de espera de ≥ 5 min ya pasaba. Las 4 pasan con el arreglo. `@iwana/web`: 40 suites, 313 tests; typecheck y lint sin errores. `@iwana/api`: 8391/8392 tests; la roja es C-D5. Typecheck y lint sin errores. E2E `web-centro-control`: 38/38.

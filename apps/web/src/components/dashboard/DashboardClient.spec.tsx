@@ -893,6 +893,37 @@ describe('DashboardClient', () => {
       expect(screen.queryByText('Todo al día')).not.toBeInTheDocument();
     });
 
+    it('C-D2: una espera reciente (< 5 min) se lista pero no avisa ni entra en atención', async () => {
+      platformHealthApi.history.mockResolvedValue(
+        makePlatformHealthHistory({
+          queues: [{ name: 'search-index', waiting: 2, failed: 0, oldestWaitingSeconds: 30 }],
+        }),
+      );
+      await renderReady();
+
+      const queues = screen.getByRole('region', { name: 'Colas de trabajo' });
+      expect(within(queues).getByRole('row', { name: /Índice de búsqueda/ })).toBeInTheDocument();
+      expect(within(queues).queryByText('Acumulación')).toBeNull();
+      expect(await screen.findByText('Todo al día')).toBeInTheDocument();
+    });
+
+    it('C-D2: una espera de 5 min o más avisa «Acumulación» y entra en atención', async () => {
+      platformHealthApi.history.mockResolvedValue(
+        makePlatformHealthHistory({
+          queues: [{ name: 'search-index', waiting: 2, failed: 0, oldestWaitingSeconds: 300 }],
+        }),
+      );
+      await renderReady();
+
+      const queues = screen.getByRole('region', { name: 'Colas de trabajo' });
+      expect(within(queues).getByText('Acumulación')).toBeInTheDocument();
+      expect(
+        await screen.findByRole('link', {
+          name: 'Atención: 2 trabajos en espera. Colas de trabajo · 1 cola',
+        }),
+      ).toHaveAttribute('href', '#colas-de-trabajo');
+    });
+
     it('defecto 3: sin colas con novedad, una línea «sin novedad» y sin rótulo de aviso', async () => {
       platformHealthApi.history.mockResolvedValue(
         makePlatformHealthHistory({

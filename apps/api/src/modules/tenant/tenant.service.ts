@@ -362,7 +362,7 @@ export class TenantService {
         status: row.status,
         updatedAt: new Date(row.updated_at).toISOString(),
       })),
-      generatedAt: new Date().toISOString(),
+      generatedAt: generatedAt.toISOString(),
       period: monthly[monthly.length - 1] ?? {
         month: currentBogotaMonth(),
         created: 0,

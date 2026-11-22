@@ -91,8 +91,15 @@ export interface WorkQueuesSummary {
 }
 
 /**
+ * Antigüedad mínima del trabajo en espera para avisar (C-D2). Provisional: 5 min,
+ * a confirmar por prod-ux. Una espera más corta es tránsito normal.
+ */
+export const QUEUE_BACKLOG_ALERT_SECONDS = 300;
+
+/**
  * Regla única de Colas de trabajo (área y «Requiere tu atención»): hay aviso si
- * alguna cola tiene fallidos (`failed`) o trabajos en espera (`backlog`);
+ * alguna cola tiene fallidos (`failed`) o espera de al menos
+ * `QUEUE_BACKLOG_ALERT_SECONDS` (`backlog`);
  * los fallidos mandan sobre la espera.
  */
 export function summarizeWorkQueues(
@@ -102,8 +109,13 @@ export function summarizeWorkQueues(
   const withNews = rows.filter((q) => q.waiting > 0 || q.failed > 0);
   const failedTotal = rows.reduce((sum, q) => sum + q.failed, 0);
   const waitingTotal = rows.reduce((sum, q) => sum + q.waiting, 0);
-  const state: WorkQueuesState =
-    failedTotal > 0 ? 'failed' : waitingTotal > 0 ? 'backlog' : 'clear';
+  const staleBacklog = rows.some(
+    (q) =>
+      q.waiting > 0 &&
+      q.oldestWaitingSeconds !== null &&
+      q.oldestWaitingSeconds >= QUEUE_BACKLOG_ALERT_SECONDS,
+  );
+  const state: WorkQueuesState = failedTotal > 0 ? 'failed' : staleBacklog ? 'backlog' : 'clear';
   return { state, withNews, quietCount: rows.length - withNews.length, failedTotal, waitingTotal };
 }
 
