@@ -32,8 +32,8 @@
 | # | Deuda | Severidad |
 | --- | --- | --- |
 | F1-D1 | `DashboardMetricStrip` sigue vivo: lo usa `/tenants` | P3 |
-| F1-D2 | `web-empresas-directorio` D-5 (25 vs 24 px a 375) y `web-tenant-create-happy-path` (backend real) rojas preexistentes | P2 |
-| F1-D3 | E2E del portal con build de producción no corrida: 3002 ocupado por `pnpm dev` (CA-PP-09 verificado en dev) | P2 |
+| F1-D2 | D-5 cerrada 2026-11-22 (`69c8fcd3`): el umbral de 24 px era imposible (24 px de padding + 1 px de borde); mide una columna. `web-tenant-create-happy-path` sigue roja: expectativa obsoleta desde `48e2a7be` (correo del administrador obligatorio, «Emitir credenciales de acceso»). Arreglarla hace que cada corrida cree una empresa real en la base de desarrollo: falta decidir la limpieza (sr-qa) | P2 |
+| F1-D3 | Sigue sin correr: `playwright.portal.config.ts:59-72` fija el 3002 en `baseURL` y `--port`, con `reuseExistingServer: false`; no admite puerto alterno sin cambiar la configuración | P2 |
 | F1-D4 | Actividad filtra en cliente (atajo) hasta la Fase 2 | P3 |
 | F1-D5 | `PulseStrip` sin `aria-busy` por celda | P3 |
 | F1-D7 | `web-audit-logs-datepicker:198` con `exact` queda más débil; el mock de `/tenants` corta por `limit` sin ordenar (sin prueba de orden de «Últimas empresas») | P3 |
@@ -70,10 +70,10 @@
 | --- | --- | --- |
 | F2-D1 | `web-chart.tsx` repite `portal-chart.tsx`; subirlo a `@iwana/ui` lo decide ds-owner | P3 |
 | F2-D2 | Sin serie histórica de activas: la tendencia no tiene la línea de activas ni el selector de periodo del prototipo | P3 |
-| F2-D3 | Fila «usuarios sin verificación en dos pasos» en la cola: no pedida; decide prod-ux | P3 |
+| ~~F2-D3~~ | Cerrada 2026-11-22 (CTO): fila «N usuarios sin verificación en dos pasos», Atención, enlaza a `/platform-users`; sin usuarios, sin fila (`d75cdf6b`) | — |
 | F2-D4 | `platform_audit_logs` es append-only: la integración deja filas sintéticas en `test` | P3 |
 | F2-D5 | `exportCsv` de auditoría no aplica `excludeSessionEvents` | P3 |
-| F2-D6 | `app.config.production-urls.spec.ts` intermitente bajo carga | P2 |
+| ~~F2-D6~~ | Cerrada 2026-11-22 (`1a2636ef`): otra suite carga `.env.development`, que define `MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS`, prohibida en producción; el helper solo borraba dos claves. Ahora borra toda clave del esquema no declarada | — |
 | F2-D7 | Mocks E2E repiten literales de sesión en vez de importar `AUDIT_SESSION_ACTIONS` | P3 |
 
 ## Fase 3 — P2
@@ -108,7 +108,7 @@
 
 | # | Deuda | Severidad |
 | --- | --- | --- |
-| F3-D1 | Umbrales de color de disponibilidad (100 % verde, desde 99 % ámbar) fijados por fe-platform: confirmar con prod-ux | P2 |
+| F3-D1 | prod-ux 2026-11-22: tracker diario aprobado (100 % / 99 %); para la celda de 30 días propone verde ≥ 99,9 %, que debe coincidir con la disponibilidad prometida: **decide el CTO** ([dirección §8](../specs/2026-11-21-web-centro-control-pulso-plataforma-direccion.md)) | P2 |
 | ~~F3-D2~~ | Cerrada 2026-11-22: el worker de `pnpm dev` escribió la muestra de salud al arrancar (`db_ok` y `redis_ok` en verdadero, 19 colas) y la consola la pinta. En local `api_ok` queda nulo porque `.env` no define `API_INTERNAL_URL` (está en `.env.example`): el API no se mide y el tracker marca el día sin dato | — |
 | F3-D3 | Sonda HTTP del muestreador a `API_INTERNAL_URL`: revisión de `sec-eng` antes de G7 | P2 |
 | F3-D4 | Tracker local de `apps/web`; candidato a `@iwana/ui` (ds-owner) | P3 |
@@ -151,10 +151,10 @@
 
 | # | Deuda | Severidad |
 | --- | --- | --- |
-| F4-D1 | Medición «bajo demanda tras activar una empresa» (ADR-114 D2) no implementada: una empresa nueva sale «sin dato» hasta una hora | P2 |
-| F4-D2 | El conteo incluye anonimizados (regla de la lista CRM); el conteo de colas de CRM los excluye. Decide el CTO | P2 |
+| ~~F4-D1~~ | Cerrada 2026-11-22: al activar, la puesta en marcha encola una medición (`ebf968e6`); un fallo al encolar solo se registra | — |
+| ~~F4-D2~~ | Cerrada 2026-11-22 (CTO): el conteo excluye anonimizados; ADR-114 v1.2 §8, `sec-eng` GO en las 7 condiciones; la lista de CRM no cambia (`84ffac85`) | — |
 | F4-D3 | Permisos de plataforma asignables por pantalla: exigen un modelo de permisos de plataforma con ADR propio | P3 |
-| F4-D4 | Umbrales de color del uso (90 % / 95 %) tomados del prototipo; confirmar con prod-ux | P3 |
+| F4-D4 | prod-ux: 90/95 vale si el cupo bloquea altas; hoy `max_subscribers` no bloquea ninguna alta en CRM (si no bloquea, rojo en 100 %). **Decide el CTO** | P3 |
 | F4-D5 | Una fila por empresa sin tope; límite o «Ver más» por decidir (prod-ux) | P3 |
 | F4-D6 | La cascada se probó borrando la empresa directo, no con la función de purga R7 | P3 |
 | ~~F4-D7~~ | Cerrada 2026-11-22: el worker midió iWana (1 suscriptor activo, cupo 10 000) y la consola lo muestra en «Uso por empresa» | — |
@@ -188,7 +188,39 @@ Sin cambios en `packages/shared` ni en el ADR-114; sin tokens nuevos (`Badge`, `
 | ~~C-D1~~ | Cerrada 2026-11-22: la causa era el servicio, no la prueba. `getStatusSummary` sellaba `generatedAt` con un segundo `new Date()` distinto del que usaba para pedir la serie; ahora reutiliza el mismo instante. Prueba nueva con reloj simulado, roja antes del arreglo | — |
 | ~~C-D2~~ | Cerrada 2026-11-22: la espera avisa solo si el trabajo más antiguo lleva ≥ 5 min (`QUEUE_BACKLOG_ALERT_SECONDS`); una espera más corta se lista sin aviso. Umbral provisional, a confirmar por prod-ux (C-D4) | — |
 | ~~C-D3~~ | Cerrada 2026-11-22: `POST /auth/logout` no llevaba `@SkipAudit()`. El servicio ya audita `LOGOUT` y el interceptor genérico añadía otra fila `CREATE`/`Auth` con el mensaje de respuesta. Las filas viejas siguen en el historial | — |
-| C-D4 | Confirmar el umbral de 5 min de C-D2 | P3 |
-| C-D5 | `app.config.production-urls.spec.ts` sigue intermitente bajo carga (Fase 2; pasa aislada 29/29) | P3 |
+| ~~C-D4~~ | Cerrada 2026-11-22: prod-ux aprueba ≥ 5 min; cuenta solo `waiting`, no `delayed` | — |
+| ~~C-D5~~ | Cerrada con F2-D6 | — |
 
 **Evidencia del cierre de deuda:** las 4 pruebas nuevas (C-D1, C-D3 y dos de C-D2) fallan con el código anterior: C-D1, C-D3 y la de espera reciente de C-D2; la de espera de ≥ 5 min ya pasaba. Las 4 pasan con el arreglo. `@iwana/web`: 40 suites, 313 tests; typecheck y lint sin errores. `@iwana/api`: 8391/8392 tests; la roja es C-D5. Typecheck y lint sin errores. E2E `web-centro-control`: 38/38.
+
+## Cierre de pendientes (2026-11-22)
+
+**Estado:** commits locales, sin push. Commits: `84ffac85` (F4-D2), `d75cdf6b` y `b62e071c` (F2-D3), `6f35ffe7` (umbrales), `ebf968e6` (F4-D1), `1a2636ef` (F2-D6), `69c8fcd3` (F1-D2 D-5).
+
+**Trabajos fallidos en colas (14 en desarrollo):**
+
+| Cola | N | Motivo | Disposición |
+| --- | --- | --- | --- |
+| Documentos de contrato | 6 | Empresa `2408d3a2…`, purgada. 4 por «Cannot set property name… only a getter», defecto ya corregido en `4e9d1334` (2026-11-11 13:00, con prueba); 1 `42703` y 1 `UnrecoverableError` del mismo día | Retirados con `Queue.remove` |
+| Puesta en marcha de empresas | 2 | Empresas `e2e-mod13-f1-*` y `srqa-bf-*`, purgadas | Retirados |
+| Revisión de la agenda | 5 | `expired-sweep` del 14 al 24 oct: «Fallaron 1 tenant(s)» y `AggregateError`. El payload no trae empresa | Se dejan: no se puede probar que sean residuo; las corridas de hoy terminan bien |
+| Revisión de evidencias | 1 | 14 oct: `relation "execution_order_evidence" does not exist` en algún schema. Sin empresa en el payload | Se deja, mismo motivo |
+
+**Árbol:** los cuatro archivos de `apps/api/src/modules/audit/` tenían el mismo blob que el índice; el índice guardaba el tamaño de una copia CRLF (2040 frente a 1996 bytes) y `update-index --refresh` no lo resolvía. `git add` de esos mismos blobs refrescó la caché; contenido intacto.
+
+**Revisores:** `sec-eng` GO (ADR-114 v1.2, 7 condiciones). `boundary-reviewer` GO en F4-D2 y F4-D1. `prod-ux`: [dirección §8](../specs/2026-11-21-web-centro-control-pulso-plataforma-direccion.md). `e2e-triage`: las 2 rojas de F1-D2 son expectativas obsoletas. `test-change-reviewer`: ajustes OK; señaló que sin el resumen de usuarios la cola decía «Todo al día» → `b62e071c`.
+
+**Evidencia (conteo real, jest directo sin turbo):**
+
+| Comando | Resultado |
+| --- | --- |
+| `@iwana/db` jest | 85 suites · 463 tests |
+| `@iwana/worker` typecheck · lint · jest | 0 errores · 0 errores · 30 suites, 318 tests |
+| `@iwana/api` typecheck · lint · jest | 0 errores · 0 errores · 630 suites, 8393 tests (sin rojas) |
+| `@iwana/web` typecheck · lint · jest | 0 errores · 0 errores (8 avisos previos) · 40 suites, 315 tests |
+| Integración `DB_NAME=test` | muestreador de uso 2/2 (con caso anonimizado, rojo antes); DT-4 de puesta en marcha no corre en local: `.env` sin `DB_BOOTSTRAP_PASSWORD` |
+| `playwright.web.config.ts --workers=1` | 58/59; la roja es `web-tenant-create-happy-path` (F1-D2) |
+
+**Decide el CTO:** disponibilidad de 30 días (99,9 % frente a 100 %) y si el cupo bloquea altas (umbral de uso).
+
+Omitido: arreglo de `web-tenant-create-happy-path` y E2E del portal en producción. Sin verificar: suite DT-4 de integración. Riesgo: la medición al activar remide todas las empresas, no solo la nueva.
