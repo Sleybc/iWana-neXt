@@ -310,7 +310,8 @@ describe('DashboardClient', () => {
     unmount();
 
     healthApi.get.mockResolvedValue(HEALTH_OK);
-    // Regla de colas: con fallidos o espera hay fila; «Todo al día» exige colas sin novedad.
+    // «Todo al día» exige colas sin novedad y todo el equipo con verificación en dos pasos.
+    platformUsersApi.summary.mockResolvedValue(makePlatformUsersSummary({ withoutMfa: 0 }));
     platformHealthApi.history.mockResolvedValue(
       makePlatformHealthHistory({
         queues: [{ name: 'search-index', waiting: 0, failed: 0, oldestWaitingSeconds: null }],
@@ -318,6 +319,25 @@ describe('DashboardClient', () => {
     );
     render(<DashboardClient />);
     expect(await screen.findByText('Todo al día')).toBeInTheDocument();
+  });
+
+  it('F2-D3: usuarios internos sin verificación en dos pasos entran como Atención', async () => {
+    platformUsersApi.summary.mockResolvedValue(makePlatformUsersSummary({ withoutMfa: 3 }));
+    const { unmount } = render(<DashboardClient />);
+    expect(
+      await screen.findByRole('link', {
+        name: 'Atención: 3 usuarios sin verificación en dos pasos. Usuarios internos',
+      }),
+    ).toHaveAttribute('href', '/platform-users');
+    unmount();
+
+    platformUsersApi.summary.mockResolvedValue(makePlatformUsersSummary({ withoutMfa: 0 }));
+    platformHealthApi.history.mockResolvedValue(makePlatformHealthHistory({ queues: [] }));
+    render(<DashboardClient />);
+    expect(await screen.findByText('Todo al día')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /sin verificación en dos pasos\. Usuarios internos/ }),
+    ).toBeNull();
   });
 
   it('CA-PP-04: el resumen caído degrada pulso, Empresas y cola, sin ceros ni «Todo al día»', async () => {
@@ -899,6 +919,8 @@ describe('DashboardClient', () => {
           queues: [{ name: 'search-index', waiting: 2, failed: 0, oldestWaitingSeconds: 30 }],
         }),
       );
+      // Sin usuarios sin verificación: esa fila (F2-D3) también impediría «Todo al día».
+      platformUsersApi.summary.mockResolvedValue(makePlatformUsersSummary({ withoutMfa: 0 }));
       await renderReady();
 
       const queues = screen.getByRole('region', { name: 'Colas de trabajo' });

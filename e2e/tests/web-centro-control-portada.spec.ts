@@ -15,6 +15,7 @@ import {
   buildHealthHistoryMock,
   buildIsoAt,
   buildMonthlyMock,
+  buildPlatformUsersSummaryMock,
   buildTenantSummaryMock,
   loginToDashboard,
   setupWebApiMocks,
@@ -321,6 +322,7 @@ test.describe('Centro de control — cola vacía', () => {
   test.beforeEach(
     setupWebApiMocks({
       tenants: [tenant('emp-c', 'Empresa Gama', 'ACTIVE', 3)],
+      platformUsersSummary: buildPlatformUsersSummaryMock({ withoutMfa: 0 }),
       onUnhandledApiRoute: '404',
     }),
   );

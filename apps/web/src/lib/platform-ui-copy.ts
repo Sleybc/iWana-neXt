@@ -168,6 +168,11 @@ export const PLATFORM_UI_COPY = {
         : `${new Intl.NumberFormat('es-CO').format(n)} trabajos en espera`,
     queueWorkArea: (queues: number) =>
       queues === 1 ? 'Colas de trabajo · 1 cola' : `Colas de trabajo · ${queues} colas`,
+    queueUsersWithoutMfa: (n: number) =>
+      n === 1
+        ? '1 usuario sin verificación en dos pasos'
+        : `${n} usuarios sin verificación en dos pasos`,
+    queueUsersArea: 'Usuarios internos',
     latestTitle: 'Últimas empresas',
     latestFooter: 'Ver todas',
     latestError: 'No pudimos cargar las últimas empresas.',

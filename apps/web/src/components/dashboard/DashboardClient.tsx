@@ -432,12 +432,22 @@ export function DashboardClient() {
         href: `#${QUEUES_ANCHOR}`,
       });
     }
+    const withoutMfa = team.data?.withoutMfa ?? 0;
+    if (withoutMfa > 0) {
+      rows.push({
+        id: 'users-without-mfa',
+        severity: 'attention',
+        title: COPY.queueUsersWithoutMfa(withoutMfa),
+        area: COPY.queueUsersArea,
+        href: '/platform-users',
+      });
+    }
     // En riesgo antes que Atención; estable dentro de cada severidad.
     return [
       ...rows.filter((row) => row.severity === 'at-risk'),
       ...rows.filter((row) => row.severity === 'attention'),
     ];
-  }, [summary.data, health.data, history.data]);
+  }, [summary.data, health.data, history.data, team.data]);
 
   const queueLoading = (summary.loading && !summary.data) || (health.loading && !health.data);
 
