@@ -81,3 +81,12 @@ Un bloque sin contrato no se monta: ni ceros ni series de muestra.
 | D2 | Arrancar por Fase 1 sin backend | Sí — **aprobada 2026-11-21** |
 | D3 | P4: la consola de plataforma muestra conteos de cada empresa | Sí, solo conteos y con ADR — **aprobada 2026-11-21** (ADR-114) |
 | D4 | Promover la celda de pulso del portal a `@iwana/ui` | Sí, por DS-OWNER |
+
+## 8. Umbrales (prod-ux, 2026-11-22)
+
+| Umbral | Valor | Estado y motivo |
+| --- | --- | --- |
+| Disponibilidad, tracker diario | Verde 100 %; ámbar ≥ 99 %; rojo < 99 % | Aprobado. Una muestra caída en el día marca «ese día pasó algo»; rojo desde unos 15 min caídos |
+| Disponibilidad, celda de 30 días | Hoy igual que el tracker (`DEGRADED_FLOOR`) | prod-ux propone verde ≥ 99,9 %: con 100 % una sola muestra caída deja la celda en ámbar 30 días. **Decide el CTO**: el 99,9 % debe ser la disponibilidad que se promete a las empresas |
+| Uso por empresa | Ámbar ≥ 90 %; rojo ≥ 95 % | Vigente, condicionado: vale si el cupo bloquea altas. Hoy `max_subscribers` no bloquea ninguna alta en CRM; si el exceso no bloquea, rojo debería empezar en 100 %. **Decide el CTO** |
+| Espera en colas | ≥ 5 min del trabajo más antiguo; fallidos siempre | Aprobado. Cuenta solo `waiting` (no `delayed`), verificado en `platform-health-sampler.processor.ts:189-194` |
