@@ -283,7 +283,8 @@ Omitido: E2E web contra un servidor dedicado (hoy usa `next dev` compartido). Si
 - `web-tenant-create-happy-path` creaba una empresa real en `dbiw` por corrida, y R7 no puede purgarla antes de 30 días ni sin constancia del ISP.
 - Ahora solo corre con `E2E_ALLOW_REAL_TENANT_CREATE=1`, contra un API con `DB_NAME=test` (`8492417a`).
 - En dos corridas seguidas de la suite web, ninguna empresa nueva.
-- Quedan 4 marcadas para borrado, pendientes de decisión del usuario (esperar a R7 el 2026-12-22 o purga excepcional): `srqa-web-alta-719ee44d166b`, `srqa-web-alta-fd8ba8fce5be`, `srqa-web-alta-11484ef2c56c` y `srqa-web-alta-043566029740`.
+- Las 4 que quedaban (`srqa-web-alta-719ee44d166b`, `srqa-web-alta-fd8ba8fce5be`, `srqa-web-alta-11484ef2c56c` y `srqa-web-alta-043566029740`) se purgaron el 2026-11-22 por excepción autorizada por el usuario. Se usó el superusuario de desarrollo con los mismos pasos de la función R7 (auditoría `TENANT_PURGE_STARTED`/`COMPLETED` con `purgedBy: manual-exception`, `DROP SCHEMA` y borrado de la fila), una transacción por empresa.
+- Resultado: `dbiw` queda solo con iWana, sin schemas `tenant_srqa_web_alta_*`; el tablero, con «Requieren atención 0» y «1 en el directorio».
 - La celda de disponibilidad en 94,94 % es la medición real de las caídas del API de hoy en desarrollo.
 
 **Título vacío en `/audit-logs`:** con ámbito plataforma la página fijaba una empresa y navegaba a `?tenant=…` por RSC. El `<head>` quedaba unos 90 ms sin `<title>` y axe fallaba de forma intermitente. Ahora no se escribe `?tenant=` en ámbito plataforma y la query se sincroniza con `history.replaceState`. La E2E pasa 100/100 y web jest 351/351. CA-FR-08 se reapunta a `history`, aprobado por test-change-reviewer.
