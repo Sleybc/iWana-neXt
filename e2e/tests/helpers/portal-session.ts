@@ -1,5 +1,7 @@
 import type { Page } from '@playwright/test';
 
+import { portalOrigin } from '../../portal-origin';
+
 /**
  * Siembra de sesión del portal por cookie httpOnly (ADR-081, condición C-9).
  *
@@ -20,7 +22,7 @@ import type { Page } from '@playwright/test';
 export const PORTAL_ACCESS_TOKEN_COOKIE = 'portalAccessToken';
 
 /** Origen de portal para crear cookie host-only y evitar duplicados por dominio. */
-export const PORTAL_COOKIE_URL = 'http://127.0.0.1:3002';
+export const PORTAL_COOKIE_URL = portalOrigin();
 
 export interface PortalSessionSeed {
   /** Access token sintético (JWT de prueba, sin firma válida ni PII real). */

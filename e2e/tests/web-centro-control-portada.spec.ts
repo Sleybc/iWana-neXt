@@ -12,13 +12,17 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { evidenceDir } from './helpers/evidence';
 import {
+  AUDIT_SESSION_ACTIONS,
+  AuditAction,
   buildHealthHistoryMock,
   buildIsoAt,
   buildMonthlyMock,
+  type MonthlyMockValue,
   buildPlatformUsersSummaryMock,
   buildTenantSummaryMock,
   loginToDashboard,
   setupWebApiMocks,
+  submitPlatformLogin,
   type WebPlatformAuditEntryMock,
   type WebTenantMock,
 } from './helpers/web-api-mocks';
@@ -101,15 +105,15 @@ function audit(id: string, action: string, hour: number): WebPlatformAuditEntryM
 
 /** 4 de sesión intercaladas + 7 de negocio: se ven exactamente 5 y ninguna de sesión. */
 const AUDIT: WebPlatformAuditEntryMock[] = [
-  audit('a1', 'LOGIN', 23),
+  audit('a1', AuditAction.LOGIN, 23),
   audit('a2', 'TENANT_ACTIVATED', 22),
-  audit('a3', 'REFRESH', 21),
+  audit('a3', AuditAction.REFRESH, 21),
   audit('a4', 'TENANT_SUSPENDED', 20),
   audit('a5', 'TENANT_CREATED', 19),
-  audit('a6', 'LOGOUT', 18),
+  audit('a6', AuditAction.LOGOUT, 18),
   audit('a7', 'TENANT_UPDATED', 17),
   audit('a8', 'TENANT_ACTIVATED', 16),
-  audit('a9', 'LOGIN_FAILED', 15),
+  audit('a9', AuditAction.LOGIN_FAILED, 15),
   audit('a10', 'TENANT_CREATED', 14),
   audit('a11', 'TENANT_UPDATED', 13),
 ];
@@ -132,6 +136,16 @@ function blocks(page: Page) {
     trend: page.getByRole('region', { name: 'Tendencia' }),
     users: page.getByRole('region', { name: 'Usuarios internos' }),
   };
+}
+
+/** Gráfica de barras «Altas y bajas» de la tendencia (su leyenda dice «Bajas»). */
+function flowFigure(trend: Locator): Locator {
+  return trend.locator('figure').filter({ hasText: 'Bajas' });
+}
+
+/** Gráfica de línea «Activas al cierre» de la tendencia. */
+function activeFigure(trend: Locator): Locator {
+  return trend.locator('figure').filter({ hasText: 'Activas al cierre' });
 }
 
 async function loginToPulse(page: Page) {
@@ -224,9 +238,13 @@ test.describe('Centro de control — pulso de plataforma (datos completos)', () 
       blocks(page).pulse.getByText('Disponibilidad, 30 días', { exact: true }),
     ).toBeVisible();
     await expect(page.getByRole('main').getByText(/vs\.? (semana|mes) anterior/i)).toHaveCount(0);
-    // Una sola gráfica en la portada: la tendencia (P1).
-    await expect(page.locator('.recharts-wrapper')).toHaveCount(1);
-    await expect(blocks(page).trend.locator('.recharts-wrapper')).toHaveCount(1);
+    // Las únicas gráficas de la portada son las dos de la tendencia (P1, v1.2): la línea de
+    // activas al cierre y las barras de altas y bajas.
+    const trend = blocks(page).trend;
+    await expect(page.locator('.recharts-wrapper')).toHaveCount(2);
+    await expect(trend.locator('.recharts-wrapper')).toHaveCount(2);
+    await expect(activeFigure(trend).locator('.recharts-wrapper')).toHaveCount(1);
+    await expect(flowFigure(trend).locator('.recharts-wrapper')).toHaveCount(1);
   });
 
   test('CA-PP2-01: la tendencia muestra los 12 meses del contrato con altas y bajas', async ({
@@ -235,8 +253,9 @@ test.describe('Centro de control — pulso de plataforma (datos completos)', () 
     await loginToPulse(page);
     const { trend } = blocks(page);
     await expect(trend.getByRole('img', { name: /52 altas y 14 bajas en total/ })).toBeVisible();
-    await trend.getByRole('button', { name: 'Ver como tabla' }).click();
-    const rows = trend.locator('tbody tr');
+    const flow = flowFigure(trend);
+    await flow.getByRole('button', { name: 'Ver como tabla' }).click();
+    const rows = flow.locator('tbody tr');
     await expect(rows).toHaveCount(12);
     const cells = await rows.evaluateAll((trs) =>
       trs.map((tr) => Array.from(tr.querySelectorAll('td')).map((td) => td.textContent?.trim())),
@@ -447,11 +466,21 @@ test.describe('Centro de control — tendencia sin eventos (CA-PP2-01)', () => {
     }),
   );
 
-  test('12 meses en 0: estado vacío, sin serie de muestra ni delta', async ({ page }) => {
+  test('12 meses sin altas ni bajas: línea de activas y barras vacías, sin delta', async ({
+    page,
+  }) => {
     await loginToPulse(page);
     const { trend, pulse } = blocks(page);
+    // Regla AI-EM-ARCH (2026-11-22): con activas al cierre conocidas se dibuja la línea y solo
+    // las barras dicen el vacío; el vacío único es para activas y flujos en 0.
     await expect(trend.getByText('Sin altas ni bajas en los últimos 12 meses')).toBeVisible();
-    await expect(trend.locator('.recharts-wrapper, table')).toHaveCount(0);
+    await expect(
+      trend.getByText('Sin empresas activas, altas ni bajas en los últimos 12 meses'),
+    ).toHaveCount(0);
+    await expect(
+      activeFigure(trend).getByRole('img', { name: /Empresas activas al cierre de cada mes/ }),
+    ).toBeVisible();
+    await expect(flowFigure(trend).locator('.recharts-wrapper, table')).toHaveCount(0);
     await expect(
       pulse.getByRole('link', { name: 'Empresas activas' }).getByText(/^[+-]\d+ este mes$/),
     ).toHaveCount(0);
@@ -494,7 +523,9 @@ test.describe('Centro de control — P3 en error (CA-PP2-03)', () => {
     await expect(users.getByText('No pudimos cargar el equipo interno.')).toBeVisible();
     await expect(users.getByRole('button', { name: 'Reintentar' })).toBeVisible();
     await expect(users.getByRole('definition')).toHaveCount(0);
-    await expect(trend.locator('.recharts-wrapper')).toHaveCount(1);
+    await expect(trend.locator('.recharts-wrapper')).toHaveCount(2);
+    await expect(activeFigure(trend).locator('.recharts-wrapper')).toHaveCount(1);
+    await expect(flowFigure(trend).locator('.recharts-wrapper')).toHaveCount(1);
     await expect(activity.getByRole('listitem')).toHaveCount(5);
   });
 });
@@ -560,12 +591,18 @@ test.describe('Centro de control — disponibilidad y colas P2 (CA-PP3-01/02/03)
 
   test('CA-PP3-02: el % sale solo de muestras reales (peor componente)', async ({ page }) => {
     await loginToPulse(page);
-    // db: 26 días a 1 y uno a 0,5, 288 muestras cada uno → 26,5/27 = 98,148 %, truncado a 98,14 %. Si los días
-    // sin muestras contaran como disponibles daría 29,5/30 = 98,33 %.
+    // db: 26 días a 1 y uno a 0,5, 288 muestras cada uno → 26,5/27 = 98,148 %, redondeado a 98,15 %
+    // (F3-D6, redondeo decidido por el CTO). Si los días sin muestras contaran como disponibles daría
+    // 29,5/30 = 98,33 %.
     const pulse = blocks(page).pulse;
-    await expect(pulse).toContainText('98,14 %');
-    await expect(pulse).toContainText('Con fallas');
+    await expect(pulse).toContainText('98,15 %');
     await expect(pulse).not.toContainText('98,33 %');
+    // Por debajo de 99 % es rojo (CTO, dirección §8): rótulo grave y variante de error del Badge,
+    // que no expone `data-tone`; «Con fallas» (ámbar) no debe aparecer.
+    const critical = pulse.getByText('Con fallas graves', { exact: true });
+    await expect(critical).toBeVisible();
+    await expect(critical).toHaveClass(/(^|\s)bg-error-50(\s|$)/);
+    await expect(pulse.getByText('Con fallas', { exact: true })).toHaveCount(0);
   });
 
   test('CA-PP3-03: colas con espera, fallidos y antigüedad, nombres en español', async ({
@@ -574,8 +611,8 @@ test.describe('Centro de control — disponibilidad y colas P2 (CA-PP3-01/02/03)
     await loginToPulse(page);
     const area = page.getByRole('region', { name: 'Colas de trabajo' });
     const table = area.getByRole('table', { name: 'Colas de trabajo' });
-    for (const header of ['Cola', 'En espera', 'Fallidos', 'Más antiguo']) {
-      await expect(table.getByRole('columnheader', { name: header })).toBeVisible();
+    for (const header of ['Cola', 'En espera', 'Fallidos (72 h)', 'Más antiguo']) {
+      await expect(table.getByRole('columnheader', { name: header, exact: true })).toBeVisible();
     }
     const provisioning = table.getByRole('row', { name: /Puesta en marcha de empresas/ });
     await expect(provisioning).toContainText('437');
@@ -594,7 +631,9 @@ test.describe('Centro de control — disponibilidad y colas P2 (CA-PP3-01/02/03)
     // Hay fallidos: el rótulo es «Con fallos» y la cola de atención enlaza al bloque.
     await expect(area.getByText('Con fallos', { exact: true })).toBeVisible();
     await expect(
-      page.getByRole('link', { name: /389 trabajos fallidos\. Colas de trabajo · 2 colas/ }),
+      page.getByRole('link', {
+        name: /389 trabajos fallidos en 72 h\. Colas de trabajo · 2 colas/,
+      }),
     ).toHaveAttribute('href', '#colas-de-trabajo');
   });
 });
@@ -679,7 +718,7 @@ test.describe('Centro de control — historia P2 durante la carga (CA-PP3-02)', 
       page.getByRole('region', { name: 'Colas de trabajo' }).getByRole('table'),
     ).toHaveCount(0);
     await loginToPulse(page);
-    await expect(pulse).toContainText('98,14 %');
+    await expect(pulse).toContainText('98,15 %');
   });
 });
 
@@ -721,4 +760,325 @@ test.describe('Centro de control — axe WCAG 2.2 AA (CA-PP-08)', () => {
       });
     }
   }
+});
+
+test.describe('Centro de control — fixture de sesión (F2-D7)', () => {
+  test('la fixture de actividad cubre cada acción de sesión del contrato', () => {
+    // Si `AUDIT_SESSION_ACTIONS` crece, CA-PP2-04 debe probar también la nueva acción.
+    const actions = new Set(AUDIT.map((entry) => entry.action));
+    for (const sessionAction of AUDIT_SESSION_ACTIONS) {
+      expect(actions.has(sessionAction), `falta ${sessionAction} en AUDIT`).toBe(true);
+    }
+  });
+});
+
+/**
+ * Llegada desordenada a propósito. Orden del API (createdAt DESC, id DESC):
+ * Uno, Dos, Tres, Cuatro (ord-d2) y Cinco (ord-d1, mismo instante que ord-d2); Seis y Siete
+ * quedan fuera del corte de 5.
+ */
+const LATEST_SHUFFLED: WebTenantMock[] = [
+  tenant('ord-g', 'Orden Siete', 'ACTIVE', 7),
+  tenant('ord-d1', 'Orden Cinco', 'ACTIVE', 4),
+  tenant('ord-b', 'Orden Dos', 'ACTIVE', 2),
+  tenant('ord-f', 'Orden Seis', 'ACTIVE', 6),
+  tenant('ord-a', 'Orden Uno', 'ACTIVE', 1),
+  tenant('ord-d2', 'Orden Cuatro', 'ACTIVE', 4),
+  tenant('ord-c', 'Orden Tres', 'ACTIVE', 3),
+];
+
+test.describe('Centro de control — orden de «Últimas empresas» (F1-D7)', () => {
+  test.beforeEach(setupWebApiMocks({ tenants: LATEST_SHUFFLED, onUnhandledApiRoute: '404' }));
+
+  test('pide 5 y muestra las altas más recientes en el orden del servidor', async ({ page }) => {
+    const latestRequest = page.waitForRequest(
+      (req) => req.method() === 'GET' && /\/api\/v1\/tenants(\?|$)/.test(req.url()),
+    );
+    await loginToPulse(page);
+    const params = new URL((await latestRequest).url()).searchParams;
+    expect(params.get('limit')).toBe('5');
+
+    const names = blocks(page).latest.locator('tbody').getByRole('link');
+    await expect(names).toHaveText([
+      'Orden Uno',
+      'Orden Dos',
+      'Orden Tres',
+      'Orden Cuatro',
+      'Orden Cinco',
+    ]);
+    await expect(blocks(page).latest).not.toContainText('Orden Seis');
+    await expect(blocks(page).latest).not.toContainText('Orden Siete');
+  });
+});
+
+test.describe('Centro de control — sesión expirada (F3-D6)', () => {
+  test.beforeEach(
+    setupWebApiMocks({ tenants: TENANTS, tenantSummary: SUMMARY, onUnhandledApiRoute: '404' }),
+  );
+
+  test('401 en la historia y renovación rechazada: vuelve al inicio de sesión con el motivo', async ({
+    page,
+  }) => {
+    let historyRejected = false;
+    await page.route('**/api/v1/platform/health/history**', async (route) => {
+      historyRejected = true;
+      await route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'UNAUTHORIZED', message: 'Token expirado' }),
+      });
+    });
+    // Solo se rechaza la renovación que sigue al 401: el ingreso previo no depende de ella.
+    await page.route('**/api/v1/auth/refresh', async (route) => {
+      if (!historyRejected) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'UNAUTHORIZED', message: 'Sesión expirada' }),
+      });
+    });
+
+    await page.goto('/auth/login');
+    await submitPlatformLogin(page);
+
+    await expect(page).toHaveURL(/\/auth\/login\?next=%2Fdashboard&reason=session-expired$/);
+    expect(historyRejected).toBe(true);
+    await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible();
+  });
+
+  test('401 en la historia con renovación aceptada: reintenta y sigue en la portada', async ({
+    page,
+  }) => {
+    let historyCalls = 0;
+    await page.route('**/api/v1/platform/health/history**', async (route) => {
+      historyCalls += 1;
+      if (historyCalls > 1) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'UNAUTHORIZED', message: 'Token expirado' }),
+      });
+    });
+    const refreshed = page.waitForResponse(
+      (res) => res.url().endsWith('/api/v1/auth/refresh') && res.status() === 200,
+    );
+
+    await loginToPulse(page);
+    await refreshed;
+
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(
+      blocks(page).health.getByRole('img', {
+        name: /Disponibilidad diaria de los últimos 30 días/,
+      }),
+    ).toBeVisible();
+    // El primer pedido recibió 401; los siguientes (reintento tras renovar) respondieron.
+    expect(historyCalls).toBeGreaterThanOrEqual(2);
+  });
+});
+
+test.describe('Centro de control — tendencia todo en 0 (regla AI-EM-ARCH)', () => {
+  const ZERO_TENANTS = TENANTS.map((t) => ({ ...t, status: 'SUSPENDED' }));
+  test.beforeEach(
+    setupWebApiMocks({
+      tenants: ZERO_TENANTS,
+      tenantSummary: buildTenantSummaryMock(ZERO_TENANTS, {
+        monthly: buildMonthlyMock(),
+        byStatus: {
+          ACTIVE: 0,
+          PROVISIONING: 0,
+          PROVISIONING_FAILED: 0,
+          SUSPENDED: 7,
+          INACTIVE: 0,
+          MARKED_FOR_DELETION: 0,
+        },
+      }),
+      onUnhandledApiRoute: '404',
+    }),
+  );
+
+  test('activas al cierre y flujos en 0: un solo estado vacío, sin gráficas', async ({ page }) => {
+    await loginToPulse(page);
+    const { trend } = blocks(page);
+    await expect(
+      trend.getByText('Sin empresas activas, altas ni bajas en los últimos 12 meses'),
+    ).toBeVisible();
+    await expect(trend.locator('figure')).toHaveCount(0);
+  });
+});
+
+/** Activas al cierre con dos meses sin historia reconstruible (null) y el resto conocido. */
+const ACTIVE_WITH_GAPS: MonthlyMockValue[] = MONTHLY_VALUES.map(([created, removed], index) =>
+  index === 2 || index === 3 ? [created, removed, null] : [created, removed],
+);
+
+test.describe('Centro de control — línea «Activas al cierre» (contrato v1.2)', () => {
+  test.beforeEach(
+    setupWebApiMocks({
+      tenants: TENANTS,
+      tenantSummary: buildTenantSummaryMock(TENANTS, {
+        ...SUMMARY,
+        monthly: buildMonthlyMock(ACTIVE_WITH_GAPS),
+      }),
+      onUnhandledApiRoute: '404',
+    }),
+  );
+
+  test('visible, mes en curso = empresas activas y «Sin dato» en los meses null', async ({
+    page,
+  }) => {
+    await loginToPulse(page);
+    const active = activeFigure(blocks(page).trend);
+    await expect(
+      active.getByRole('img', { name: /Empresas activas al cierre de cada mes/ }),
+    ).toBeVisible();
+    await expect(blocks(page).trend.getByText('Sin dato en algunos meses.')).toBeVisible();
+    await active.getByRole('button', { name: 'Ver como tabla' }).click();
+    const table = active.getByRole('table', { name: 'Empresas activas al cierre de cada mes' });
+    const rows = table.locator('tbody tr');
+    await expect(rows).toHaveCount(12);
+    await expect(rows.nth(2).locator('td')).toHaveText('Sin dato');
+    await expect(rows.nth(3).locator('td')).toHaveText('Sin dato');
+    // Mes en curso = byStatus.ACTIVE del resumen (247).
+    await expect(rows.last().locator('td')).toHaveText('247');
+    await expect(rows.last().locator('th')).toContainText('(en curso)');
+    const known = await rows.locator('td').allTextContents();
+    expect(known.filter((text) => text === 'Sin dato')).toHaveLength(2);
+  });
+});
+
+test.describe('Centro de control — selector de periodo (contrato v1.2)', () => {
+  test.beforeEach(
+    setupWebApiMocks({
+      tenants: TENANTS,
+      tenantSummary: SUMMARY,
+      onUnhandledApiRoute: '404',
+    }),
+  );
+
+  test('«24 meses» pide months=24, fija ?periodo=24m, pinta 24 puntos y sobrevive a la recarga', async ({
+    page,
+  }) => {
+    await loginToPulse(page);
+    const { trend } = blocks(page);
+    const period = trend.getByRole('group', { name: 'Periodo' });
+    await expect(period.getByRole('button', { name: '12 meses' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    const summary24 = page.waitForRequest(
+      (req) =>
+        req.method() === 'GET' &&
+        new URL(req.url()).pathname.endsWith('/tenants/summary') &&
+        new URL(req.url()).searchParams.get('months') === '24',
+    );
+    await period.getByRole('button', { name: '24 meses' }).click();
+    await summary24;
+    await expect(page).toHaveURL(/[?&]periodo=24m(&|$)/);
+    await expect(period.getByRole('button', { name: '24 meses' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(trend.getByText('Empresas por mes, últimos 24 meses')).toBeVisible();
+    const flow = flowFigure(trend);
+    await flow.getByRole('button', { name: 'Ver como tabla' }).click();
+    await expect(flow.locator('tbody tr')).toHaveCount(24);
+
+    const reloaded = page.waitForRequest(
+      (req) =>
+        req.method() === 'GET' &&
+        new URL(req.url()).pathname.endsWith('/tenants/summary') &&
+        new URL(req.url()).searchParams.get('months') === '24',
+    );
+    await page.reload();
+    await reloaded;
+    await expect(page).toHaveURL(/[?&]periodo=24m(&|$)/);
+    await expect(
+      blocks(page).trend.getByRole('group', { name: 'Periodo' }).getByRole('button', {
+        name: '24 meses',
+      }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await expect(blocks(page).trend.getByText('Empresas por mes, últimos 24 meses')).toBeVisible();
+  });
+});
+
+/** Fallidos recientes menores que el total: el aviso cuenta 72 h y la tabla muestra el total. */
+const HISTORY_RECENT = buildHealthHistoryMock({
+  queues: [
+    {
+      name: 'crm-contract-pdf',
+      waiting: 0,
+      failed: 389,
+      failedRecent: 12,
+      oldestWaitingSeconds: null,
+    },
+  ],
+});
+
+/** Solo fallidos históricos: la cola no es novedad. */
+const HISTORY_ONLY_OLD = buildHealthHistoryMock({
+  queues: [
+    {
+      name: 'crm-contract-pdf',
+      waiting: 0,
+      failed: 389,
+      failedRecent: 0,
+      oldestWaitingSeconds: null,
+    },
+  ],
+});
+
+test.describe('Centro de control — fallidos en 72 h menores que el total (§8.0)', () => {
+  test.beforeEach(
+    setupWebApiMocks({
+      tenants: TENANTS,
+      tenantSummary: SUMMARY,
+      healthHistory: HISTORY_RECENT,
+      onUnhandledApiRoute: '404',
+    }),
+  );
+
+  test('el aviso dice 12 en 72 h y la fila muestra «389 en total»', async ({ page }) => {
+    await loginToPulse(page);
+    await expect(
+      page.getByRole('link', {
+        name: /12 trabajos fallidos en 72 h\. Colas de trabajo · 1 cola/,
+      }),
+    ).toHaveAttribute('href', '#colas-de-trabajo');
+    await expect(page.getByRole('link', { name: /389 trabajos fallidos/ })).toHaveCount(0);
+    const area = page.getByRole('region', { name: 'Colas de trabajo' });
+    const row = area
+      .getByRole('table', { name: 'Colas de trabajo' })
+      .getByRole('row', { name: /Documentos de contrato/ });
+    await expect(row.getByRole('cell').nth(1)).toHaveText(/^12389 en total$/);
+    await expect(row.getByText('389 en total', { exact: true })).toBeVisible();
+    await expect(area.getByText('Con fallos', { exact: true })).toBeVisible();
+  });
+});
+
+test.describe('Centro de control — solo fallidos históricos (§8.0)', () => {
+  test.beforeEach(
+    setupWebApiMocks({
+      tenants: TENANTS,
+      tenantSummary: SUMMARY,
+      healthHistory: HISTORY_ONLY_OLD,
+      onUnhandledApiRoute: '404',
+    }),
+  );
+
+  test('failedRecent 0 con failed > 0: «Sin novedad» y sin fila de atención', async ({ page }) => {
+    await loginToPulse(page);
+    const area = page.getByRole('region', { name: 'Colas de trabajo' });
+    await expect(area.getByText('Sin novedad en la única cola.', { exact: true })).toBeVisible();
+    await expect(area.getByText('Con fallos', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /trabajos? fallidos?/ })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /Colas de trabajo ·/ })).toHaveCount(0);
+  });
 });

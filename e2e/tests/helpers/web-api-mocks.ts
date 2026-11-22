@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import { expect, type Page } from '@playwright/test';
 import type {
   PlatformHealthComponent,
@@ -87,8 +88,21 @@ export interface WebHealthMockOptions {
   redis?: WebHealthLevel;
 }
 
-/** Acciones de sesión que filtra `excludeSessionEvents=true` (espejo de `AUDIT_SESSION_ACTIONS`). */
-const AUDIT_SESSION_ACTION_KEYS = ['LOGIN', 'LOGOUT', 'LOGIN_FAILED', 'REFRESH'] as const;
+// `@iwana/shared` no se resuelve en runtime desde e2e/ y es CommonJS (mismo patrón que
+// portal-dashboard-empresa.spec.ts): se carga la fuente con el transformador de Playwright.
+const requireShared = createRequire(import.meta.url);
+
+export const { AuditAction } = requireShared(
+  '../../../packages/shared/src/enums/audit-action.enum',
+) as typeof import('../../../packages/shared/src/enums/audit-action.enum');
+
+/**
+ * Acciones que filtra el API: `excludeSessionEvents=true` (sesión) y `excludeAccessEvents=true`
+ * (lecturas auditadas). Mismas listas que usa el servidor.
+ */
+export const { AUDIT_SESSION_ACTIONS, PLATFORM_AUDIT_ACCESS_ACTIONS } = requireShared(
+  '../../../packages/shared/src/enums/audit-session-actions.enum',
+) as typeof import('../../../packages/shared/src/enums/audit-session-actions.enum');
 
 /** `YYYY-MM` de `date` desplazado `offset` meses (calendario local del runner). */
 function monthKey(date: Date, offset: number): string {
@@ -96,18 +110,90 @@ function monthKey(date: Date, offset: number): string {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}`;
 }
 
+type SummaryMonth = TenantStatusSummary['monthly'][number];
+
+/** `[altas, bajas]` o `[altas, bajas, activas al cierre]` (número o `null` = sin dato). */
+export type MonthlyMockValue = readonly [number, number] | readonly [number, number, number | null];
+
+/** Largos de serie admitidos por `GET /tenants/summary?months=` (contrato v1.2). */
+const SUMMARY_PERIODS = ['6', '12', '24'] as const;
+
 /**
- * Serie de 12 meses (antiguo → actual) de `TenantStatusSummary` v1.1. `values[i]`
- * es `[altas, bajas]` del mes i; si faltan valores, el mes queda en 0.
+ * Meses cuyo `activeAtClose` no se fijó a mano: `buildTenantSummaryMock` los recalcula
+ * desde `byStatus.ACTIVE` para que el mes en curso cumpla el contrato v1.2.
+ */
+const DERIVED_ACTIVE = new WeakSet<SummaryMonth>();
+
+/**
+ * Activas al cierre hacia atrás desde las de hoy: cierre(i) = cierre(i+1) − altas(i+1) +
+ * bajas(i+1), nunca negativo. El mes en curso vale `activeNow` (= `byStatus.ACTIVE`). Los
+ * meses fijados a mano (número o `null`) se respetan.
+ */
+function deriveActiveAtClose(monthly: SummaryMonth[], activeNow: number): void {
+  let running = activeNow;
+  for (let index = monthly.length - 1; index >= 0; index -= 1) {
+    const month = monthly[index]!;
+    if (index === monthly.length - 1) month.activeAtClose = activeNow;
+    else if (DERIVED_ACTIVE.has(month)) month.activeAtClose = running;
+    running = Math.max(0, running - month.created + month.removed);
+  }
+}
+
+/**
+ * Serie de `months` meses (antiguo → actual) de `TenantStatusSummary` v1.2. `values[i]` es
+ * `[altas, bajas]` o `[altas, bajas, activas al cierre]` del mes i; si faltan, el mes queda en
+ * 0. Sin tercer valor, las activas al cierre se derivan de `activeNow`;
+ * `buildTenantSummaryMock` las vuelve a anclar en `byStatus.ACTIVE`.
  */
 export function buildMonthlyMock(
-  values: ReadonlyArray<readonly [number, number]> = [],
+  values: ReadonlyArray<MonthlyMockValue> = [],
+  options: { months?: number; activeNow?: number } = {},
 ): TenantStatusSummary['monthly'] {
   const now = new Date();
-  return Array.from({ length: 12 }, (_, index) => {
-    const [created, removed] = values[index] ?? [0, 0];
-    return { month: monthKey(now, index - 11), created, removed };
+  const length = options.months ?? 12;
+  const monthly = Array.from({ length }, (_, index): SummaryMonth => {
+    const value = values[index];
+    const [created, removed] = value ?? [0, 0];
+    const explicit = value !== undefined && value.length === 3;
+    const month: SummaryMonth = {
+      month: monthKey(now, index - (length - 1)),
+      created,
+      removed,
+      activeAtClose: explicit ? (value[2] ?? null) : 0,
+    };
+    if (!explicit) DERIVED_ACTIVE.add(month);
+    return month;
   });
+  deriveActiveAtClose(monthly, options.activeNow ?? 0);
+  return monthly;
+}
+
+/**
+ * Resumen con la serie al largo pedido (`?months=`), como hace el API: recorta los meses
+ * más antiguos o antepone meses sin eventos con activas al cierre derivadas.
+ */
+function resizeSummary(summary: TenantStatusSummary, months: number): TenantStatusSummary {
+  const current = summary.monthly;
+  if (current.length === months) return summary;
+  if (current.length > months) {
+    const monthly = current.slice(current.length - months);
+    return { ...summary, monthly, period: monthly[monthly.length - 1]! };
+  }
+  const now = new Date();
+  const missing = months - current.length;
+  const oldest = current[0]!;
+  let running = Math.max(0, (oldest.activeAtClose ?? 0) - oldest.created + oldest.removed);
+  const prefix: SummaryMonth[] = [];
+  for (let index = missing - 1; index >= 0; index -= 1) {
+    prefix.unshift({
+      month: monthKey(now, index - (months - 1)),
+      created: 0,
+      removed: 0,
+      activeAtClose: running,
+    });
+  }
+  const monthly = [...prefix, ...current];
+  return { ...summary, monthly, period: monthly[monthly.length - 1]! };
 }
 
 /** Resumen de usuarios internos `PlatformUsersSummary` v1.0. Solo conteos, sin PII. */
@@ -168,11 +254,18 @@ export function buildTenantSummaryMock(
     .filter((tenant) => tenant.status === 'PROVISIONING')
     .map((tenant) => tenant.createdAt)
     .sort();
-  const effectiveMonthly = overrides.monthly ?? monthly;
+  const effectiveByStatus = (overrides.byStatus ?? byStatus) as TenantStatusSummary['byStatus'];
+  // Copia: la misma serie puede servir a resúmenes con distinto `byStatus.ACTIVE`.
+  const effectiveMonthly = (overrides.monthly ?? monthly).map((month) => {
+    const copy = { ...month };
+    if (DERIVED_ACTIVE.has(month)) DERIVED_ACTIVE.add(copy);
+    return copy;
+  });
+  // v1.2: el mes en curso vale `byStatus.ACTIVE`; los meses derivados se recalculan desde ahí.
+  deriveActiveAtClose(effectiveMonthly, effectiveByStatus.ACTIVE);
+  const period = effectiveMonthly[effectiveMonthly.length - 1]!;
   return {
     total: tenants.length,
-    period: effectiveMonthly[effectiveMonthly.length - 1]!,
-    monthly: effectiveMonthly,
     oldestProvisioningAt: provisioning[0] ?? null,
     byStatus: byStatus as TenantStatusSummary['byStatus'],
     updatedLast7Days: tenants.filter((tenant) => new Date(tenant.updatedAt).getTime() >= weekAgo)
@@ -180,6 +273,8 @@ export function buildTenantSummaryMock(
     attention,
     generatedAt: new Date().toISOString(),
     ...overrides,
+    monthly: effectiveMonthly,
+    period,
   };
 }
 
@@ -556,10 +651,22 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
       }
 
       if (new URL(url).pathname.endsWith('/tenants/summary') && method === 'GET') {
+        // Contrato v1.2: `months` = 6, 12 o 24 (12 si falta); otro valor → 400.
+        const monthsParam = new URL(url).searchParams.get('months');
+        if (monthsParam !== null && !(SUMMARY_PERIODS as readonly string[]).includes(monthsParam)) {
+          await route.fulfill({
+            status: 400,
+            contentType: 'application/json',
+            body: JSON.stringify({ code: 'VALIDATION_ERROR', message: 'months inválido' }),
+          });
+          return;
+        }
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ data: tenantSummary }),
+          body: JSON.stringify({
+            data: resizeSummary(tenantSummary, Number(monthsParam ?? '12')),
+          }),
         });
         return;
       }
@@ -568,8 +675,13 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
         const searchParams = new URL(url).searchParams;
         const status = searchParams.get('status');
         const search = searchParams.get('search')?.trim().toLowerCase();
-        // Orden del servidor: alta más reciente primero.
-        let filtered = [...tenants].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        // Orden del API real (TenantService.findAll, DEF-1): createdAt DESC y, a igual
+        // instante, id DESC; el corte por `limit` se aplica después de ordenar.
+        let filtered = [...tenants].sort(
+          (a, b) =>
+            Date.parse(b.createdAt) - Date.parse(a.createdAt) ||
+            (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+        );
         if (status) {
           filtered = filtered.filter((tenant) => tenant.status === status);
         }
@@ -603,7 +715,12 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
         let filtered = platformAuditData;
         if (searchParams.get('excludeSessionEvents') === 'true') {
           filtered = filtered.filter(
-            (entry) => !(AUDIT_SESSION_ACTION_KEYS as readonly string[]).includes(entry.action),
+            (entry) => !(AUDIT_SESSION_ACTIONS as readonly string[]).includes(entry.action),
+          );
+        }
+        if (searchParams.get('excludeAccessEvents') === 'true') {
+          filtered = filtered.filter(
+            (entry) => !(PLATFORM_AUDIT_ACCESS_ACTIONS as readonly string[]).includes(entry.action),
           );
         }
         if (fromParam) {

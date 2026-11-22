@@ -145,8 +145,14 @@ test.describe('Uso por empresa — en error (CA-PP4-04)', () => {
     await expect(area).not.toContainText(/\d+ %|Sin dato/);
     // Único Reintentar de la portada: ninguna otra área degradó.
     await expect(page.getByRole('button', { name: 'Reintentar' })).toHaveCount(1);
+    // La tendencia conserva sus dos gráficas (v1.2, contrato DS §7ter.7): activas y altas/bajas.
+    const trend = page.getByRole('region', { name: 'Tendencia' });
+    await expect(trend.locator('.recharts-wrapper')).toHaveCount(2);
     await expect(
-      page.getByRole('region', { name: 'Tendencia' }).locator('.recharts-wrapper'),
+      trend.locator('figure').filter({ hasText: 'Activas al cierre' }).locator('.recharts-wrapper'),
+    ).toHaveCount(1);
+    await expect(
+      trend.locator('figure').filter({ hasText: 'Bajas' }).locator('.recharts-wrapper'),
     ).toHaveCount(1);
   });
 });

@@ -201,7 +201,9 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
     await page.getByRole('option', { name: 'Fibernet Colombia' }).click();
 
     await expect(tenantSection.getByText('Operador fibernet', { exact: true })).toBeVisible();
-    await expect(tenantSection.getByText('Operador demo', { exact: true })).toHaveCount(0);
+    // Sin `exact`: la ausencia se comprueba contra cualquier texto que contenga el actor
+    // (celda, título o descripción); con `exact` bastaría con que cambiara el envoltorio.
+    await expect(tenantSection.getByText('Operador demo')).toHaveCount(0);
 
     await selectDateFromPickerByPlaceholder(
       page,

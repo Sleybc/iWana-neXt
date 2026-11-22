@@ -447,6 +447,8 @@ test.describe('Bootstrap operativo admin', () => {
 
     await page.getByRole('link', { name: 'Empresas' }).click();
     await page.getByRole('link', { name: 'Nueva empresa' }).click();
+    // Navegación real antes del encabezado: el dev server compartido puede recargar en medio.
+    await page.waitForURL(/\/tenants\/new/);
     await expect(page.getByRole('heading', { name: 'Nueva empresa' })).toBeVisible();
     await page.locator('#tenant-name').fill('Empresa Demo');
     await page.locator('#tenant-slug').fill('empresa-demo');

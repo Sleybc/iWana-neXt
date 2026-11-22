@@ -3696,6 +3696,9 @@ test.describe('Portal Inventario / SCM', () => {
     await main.getByRole('button', { name: 'Nuevo producto' }).click();
     const drawer = page.getByRole('dialog');
     await drawer.getByLabel('Nombre').fill('Patch cord 24m');
+    // Las categorías llegan al activar «Catálogo»: sin la categoría por defecto el drawer
+    // rechaza el envío (CI 45021428513).
+    await expect(drawer.getByRole('combobox', { name: 'Categoría' })).toContainText('CPE');
     await drawer.getByRole('button', { name: 'Crear producto' }).click();
 
     await expect(main.getByText('Patch cord 24m').first()).toBeVisible();

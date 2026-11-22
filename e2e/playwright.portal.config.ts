@@ -4,6 +4,7 @@ import { platform } from 'node:os';
 import { defineConfig, devices } from '@playwright/test';
 
 import { loadWorkspaceEnv } from './load-env';
+import { portalOrigin, portalPort } from './portal-origin';
 
 // Antes de leer cualquier process.env: sin esto las specs que dependen de
 // variables de entorno se saltaban siempre (ver load-env.ts).
@@ -41,6 +42,7 @@ function shouldUseSystemChrome(): boolean {
 const useSystemChrome = shouldUseSystemChrome();
 const markerReporterPath = process.env.E2E_MARKER_REPORTER_PATH;
 const jsonReportPath = process.env.PLAYWRIGHT_JSON_OUTPUT_NAME;
+const PORTAL_ORIGIN = portalOrigin();
 
 export default defineConfig({
   testDir: './tests',
@@ -56,7 +58,7 @@ export default defineConfig({
       ? [['list'], ['json', { outputFile: jsonReportPath }], [markerReporterPath]]
       : [['list']],
   use: {
-    baseURL: 'http://127.0.0.1:3002',
+    baseURL: PORTAL_ORIGIN,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: useSystemChrome ? 'off' : 'retain-on-failure',
@@ -65,8 +67,8 @@ export default defineConfig({
     // La suite corre contra un build standalone de producción. Así, los mocks
     // page.route no activan el indicador de caché de Next dev en las capturas.
     // El wrapper conserva el bind a loopback y copia los assets al standalone.
-    command: 'node ../scripts/next-standalone-e2e.mjs --port 3002',
-    url: 'http://127.0.0.1:3002',
+    command: `node ../scripts/next-standalone-e2e.mjs --port ${portalPort()}`,
+    url: PORTAL_ORIGIN,
     // No se reutiliza un servidor existente: podría ser next dev y contaminar
     // las capturas con el indicador de desarrollo.
     reuseExistingServer: false,

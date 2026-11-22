@@ -606,7 +606,7 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
   test('guarda, persiste y permite limpiar altContactName y altContactPhone', async ({ page }) => {
     const mocks = await setupContactSectionMocks(page);
     await setAuthSession(page);
-    await page.goto(`http://127.0.0.1:3002/dashboard/crm/expedientes/${mockExpediente.id}`);
+    await page.goto(`/dashboard/crm/expedientes/${mockExpediente.id}`);
     await page.waitForLoadState('networkidle');
     await page.getByRole('tab', { name: 'Gestión' }).click();
     await expect(page.getByRole('tablist', { name: 'Secciones de la oportunidad' })).toBeVisible();
@@ -666,7 +666,7 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
   test('altContactPhone tiene maxLength de 10 caracteres', async ({ page }) => {
     await setupContactSectionMocks(page);
     await setAuthSession(page);
-    await page.goto(`http://127.0.0.1:3002/dashboard/crm/expedientes/${mockExpediente.id}`);
+    await page.goto(`/dashboard/crm/expedientes/${mockExpediente.id}`);
     await page.waitForLoadState('networkidle');
     await page.getByRole('tab', { name: 'Gestión' }).click();
     await expect(page.getByRole('tablist', { name: 'Secciones de la oportunidad' })).toBeVisible();

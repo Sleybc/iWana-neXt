@@ -90,6 +90,8 @@ services:
       MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-}
       PII_HASH_KEY: ${PII_HASH_KEY:?PII_HASH_KEY is required}
       EXECUTION_ORDER_IDEMPOTENCY_SECRET: ${EXECUTION_ORDER_IDEMPOTENCY_SECRET:-}
+      # Sin API_INTERNAL_URL a propósito: el API de R4.1 corre en el host en
+      # 127.0.0.1 y la red `data` no lo alcanza. El muestreador guarda api_ok NULL.
     depends_on:
       postgres:
         condition: service_healthy
