@@ -29,36 +29,59 @@ jest.mock('@iwana/db', () => {
 
 function buildPayload(overrides: Partial<FieldServiceRequest> = {}): FieldServiceRequest {
   return {
-    ticketId: 'ticket-001',
-    ticketNumber: 'TK-20261117-003',
+    ticketId: '00000000-0000-4000-8000-000000000001',
+    linkId: '00000000-0000-4000-8000-000000000002',
     tenantId: 'tenant-001',
     schemaName: 'tenant_test_ops',
-    priority: 'CRITICAL',
-    subject: 'Visita técnica requerida por caída de servicio',
     requestedByUserId: 'user-001',
-    notes: 'Coordinar con soporte NOC antes de salir.',
     ...overrides,
   };
 }
 
-function buildProcessor(managerOverrides: Record<string, jest.Mock> = {}) {
+const TICKET_ROW = {
+  ticket_number: 'TK-20261117-003',
+  subject: 'Visita técnica requerida por caída de servicio',
+  priority: 'CRITICAL',
+};
+const LINK_ROW = { notes: 'Coordinar con soporte NOC antes de salir.' };
+
+interface Rows {
+  ticket?: unknown;
+  link?: unknown;
+  duplicate?: unknown;
+}
+
+function buildProcessor(rows: Rows = {}) {
+  const ticket = 'ticket' in rows ? rows.ticket : TICKET_ROW;
+  const link = 'link' in rows ? rows.link : LINK_ROW;
+  const query = jest.fn().mockImplementation(async (sql: string) => {
+    if (sql.startsWith('SET LOCAL lock_timeout')) return [];
+    if (sql.includes('FROM support_tickets')) return ticket ? [ticket] : [];
+    if (sql.includes('FROM ticket_work_order_links')) return link ? [link] : [];
+    throw new Error(`SQL inesperado: ${sql}`);
+  });
+  const andWhere = jest.fn().mockReturnThis();
   const manager = {
-    createQueryBuilder: jest.fn(),
+    createQueryBuilder: jest.fn().mockReturnValue({
+      where: jest.fn().mockReturnThis(),
+      andWhere,
+      orderBy: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue(rows.duplicate ?? null),
+    }),
     create: jest.fn().mockImplementation((_entity, data) => data),
     save: jest.fn().mockResolvedValue(undefined),
-    ...managerOverrides,
   };
 
   mockRunInTenantSchema.mockImplementation(
     async (
       _ds: unknown,
       _schemaName: string,
-      callback: (qr: { manager: typeof manager }) => Promise<unknown>,
-    ) => callback({ manager }),
+      callback: (qr: { manager: typeof manager; query: jest.Mock }) => Promise<unknown>,
+    ) => callback({ manager, query }),
   );
 
   const processor = new AssuranceFieldServiceProcessor({} as DataSource);
-  return { processor, manager };
+  return { processor, manager, andWhere, query };
 }
 
 describe('AssuranceFieldServiceProcessor', () => {
@@ -70,16 +93,8 @@ describe('AssuranceFieldServiceProcessor', () => {
     jest.clearAllMocks();
   });
 
-  it('materializa una VisitRequest NEEDS_CONTEXT para Assurance', async () => {
-    const getOne = jest.fn().mockResolvedValue(null);
-    const createQueryBuilder = jest.fn().mockReturnValue({
-      where: jest.fn().mockReturnThis(),
-      andWhere: jest.fn().mockReturnThis(),
-      orderBy: jest.fn().mockReturnThis(),
-      getOne,
-    });
-
-    const { processor, manager } = buildProcessor({ createQueryBuilder });
+  it('materializa una VisitRequest NEEDS_CONTEXT con asunto y notas leídos del schema tenant', async () => {
+    const { processor, manager, query } = buildProcessor();
     const payload = buildPayload();
 
     await processor.process({ name: 'request-field-service', data: payload } as never);
@@ -89,6 +104,18 @@ describe('AssuranceFieldServiceProcessor', () => {
       payload.schemaName,
       expect.any(Function),
     );
+    // sec-eng C-1: el texto libre se lee en la transacción, no del payload. El ticket se toma
+    // FOR SHARE para esperar el commit de la transacción del API que encoló el job.
+    expect(query).toHaveBeenCalledWith(expect.stringMatching(/^SET LOCAL lock_timeout/));
+    expect(query).toHaveBeenCalledWith(expect.stringMatching(/FOR SHARE/), [
+      payload.ticketId,
+      payload.tenantId,
+    ]);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('ticket_work_order_links'), [
+      payload.linkId,
+      payload.ticketId,
+      payload.tenantId,
+    ]);
     expect(manager.create).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -99,22 +126,46 @@ describe('AssuranceFieldServiceProcessor', () => {
         originLabel: 'Ticket TK-20261117-003',
         workType: WfmWorkType.SUPPORT,
         priority: WorkOrderPriority.URGENT,
+        title: TICKET_ROW.subject,
+        description: LINK_ROW.notes,
+        ticketId: payload.ticketId,
+        requestedByUserId: payload.requestedByUserId,
       }),
     );
     expect(manager.save).toHaveBeenCalledTimes(1);
   });
 
-  it('job encolado sin número de ticket: rótulo genérico, nunca el identificador interno', async () => {
-    const createQueryBuilder = jest.fn().mockReturnValue({
-      where: jest.fn().mockReturnThis(),
-      andWhere: jest.fn().mockReturnThis(),
-      orderBy: jest.fn().mockReturnThis(),
-      getOne: jest.fn().mockResolvedValue(null),
-    });
-    const { processor, manager } = buildProcessor({ createQueryBuilder });
-    const { ticketNumber: _omit, ...legacy } = buildPayload();
+  it('ignora asunto y notas de un job antiguo que todavía los traiga', async () => {
+    const { processor, manager, query } = buildProcessor();
+    const legacy = { ...buildPayload(), subject: 'texto viejo', notes: 'nota vieja' };
 
     await processor.process({ name: 'request-field-service', data: legacy } as never);
+
+    expect(manager.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ title: TICKET_ROW.subject, description: LINK_ROW.notes }),
+    );
+  });
+
+  it('job antiguo sin linkId: toma las notas de la última solicitud del ticket', async () => {
+    const { processor, manager, query } = buildProcessor();
+    const { linkId: _omit, ...legacy } = buildPayload();
+
+    await processor.process({ name: 'request-field-service', data: legacy } as never);
+
+    expect(query).toHaveBeenCalledWith(expect.stringMatching(/ORDER BY requested_at DESC/), [
+      legacy.ticketId,
+      legacy.tenantId,
+    ]);
+    expect(manager.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('ticket sin número: rótulo genérico, nunca el identificador interno', async () => {
+    const { processor, manager } = buildProcessor({
+      ticket: { ...TICKET_ROW, ticket_number: null },
+    });
+
+    await processor.process({ name: 'request-field-service', data: buildPayload() } as never);
 
     expect(manager.create).toHaveBeenCalledWith(
       expect.anything(),
@@ -122,16 +173,8 @@ describe('AssuranceFieldServiceProcessor', () => {
     );
   });
 
-  it('omite jobs duplicados cuando ya existe una solicitud activa', async () => {
-    const getOne = jest.fn().mockResolvedValue({ id: 'vr-001' });
-    const createQueryBuilder = jest.fn().mockReturnValue({
-      where: jest.fn().mockReturnThis(),
-      andWhere: jest.fn().mockReturnThis(),
-      orderBy: jest.fn().mockReturnThis(),
-      getOne,
-    });
-
-    const { processor, manager } = buildProcessor({ createQueryBuilder });
+  it('sin el vínculo (transacción del API revertida) no crea visita', async () => {
+    const { processor, manager } = buildProcessor({ link: null });
 
     await processor.process({ name: 'request-field-service', data: buildPayload() } as never);
 
@@ -139,21 +182,18 @@ describe('AssuranceFieldServiceProcessor', () => {
     expect(manager.save).not.toHaveBeenCalled();
   });
 
-  it('no crea segunda visita Assurance si ya existe una activa para el mismo ticket', async () => {
-    const andWhere = jest.fn().mockReturnThis();
-    const getOne = jest.fn().mockResolvedValue({
-      id: 'vr-legacy-001',
-      workType: WfmWorkType.TECHNICAL_VISIT,
-      ticketId: 'ticket-001',
-    });
-    const createQueryBuilder = jest.fn().mockReturnValue({
-      where: jest.fn().mockReturnThis(),
-      andWhere,
-      orderBy: jest.fn().mockReturnThis(),
-      getOne,
-    });
+  it('sin el ticket en el schema no crea visita', async () => {
+    const { processor, manager } = buildProcessor({ ticket: null });
 
-    const { processor, manager } = buildProcessor({ createQueryBuilder });
+    await processor.process({ name: 'request-field-service', data: buildPayload() } as never);
+
+    expect(manager.create).not.toHaveBeenCalled();
+  });
+
+  it('no crea segunda visita Assurance si ya existe una activa para el mismo ticket', async () => {
+    const { processor, manager, andWhere } = buildProcessor({
+      duplicate: { id: 'vr-legacy-001', workType: WfmWorkType.TECHNICAL_VISIT },
+    });
 
     await processor.process({ name: 'request-field-service', data: buildPayload() } as never);
 

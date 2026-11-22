@@ -44,7 +44,39 @@ runIt('AssuranceFieldServiceProcessor con PostgreSQL real', () => {
   let tenantId: string;
   let schemaName: string;
   let requestedByUserId: string;
-  const ticketId = `TK-IT-${randomUUID()}`;
+  const ticketIds: string[] = [];
+
+  /** Siembra un ticket y su solicitud de visita como lo hace el API; devuelve ids. */
+  async function seedTicket(
+    linkExec: { query: DataSource['query'] } = dataSource,
+  ): Promise<{ ticketId: string; linkId: string }> {
+    const ticketId = randomUUID();
+    const linkId = randomUUID();
+    ticketIds.push(ticketId);
+    await dataSource.query(
+      `INSERT INTO "${schemaName}".support_tickets
+         (id, tenant_id, ticket_number, type, status, priority, subject, requester_type,
+          created_by_user_id)
+       VALUES ($1, $2, $3, 'CUSTOMER_INCIDENT', 'IN_PROGRESS', 'HIGH',
+               'Prueba de integración: visita desde ticket', 'INTERNAL_USER', $4)`,
+      [ticketId, tenantId, `TK-IT-${ticketId.slice(0, 8)}`, requestedByUserId],
+    );
+    await linkExec.query(
+      `INSERT INTO "${schemaName}".ticket_work_order_links
+         (id, ticket_id, tenant_id, requested_at, requested_by_user_id, notes)
+       VALUES ($1, $2, $3, now(), $4, 'Creada por la prueba de integración del worker.')`,
+      [linkId, ticketId, tenantId, requestedByUserId],
+    );
+    return { ticketId, linkId };
+  }
+
+  function jobFor(ids: { ticketId: string; linkId: string }): Job<FieldServiceRequest> {
+    // Solo ids (sec-eng C-1): asunto y notas los lee el procesador del schema tenant.
+    return {
+      name: 'request-field-service',
+      data: { ...ids, tenantId, schemaName, requestedByUserId },
+    } as unknown as Job<FieldServiceRequest>;
+  }
 
   beforeAll(async () => {
     // Rol migrador, como el resto de la integración del worker: en CI `iwana_app` no
@@ -69,43 +101,78 @@ runIt('AssuranceFieldServiceProcessor con PostgreSQL real', () => {
     if (!tenant) throw new Error(`[BLOCKED] No existe el tenant de pruebas «${slug}».`);
     tenantId = tenant.id;
     schemaName = tenant.schema_name;
-    // visit_requests.requested_by_user_id no tiene FK: basta un uuid propio.
+    // Columnas de usuario sin FK: basta un uuid propio.
     requestedByUserId = randomUUID();
   });
 
   afterAll(async () => {
     if (!dataSource?.isInitialized) return;
-    await dataSource.query(`DELETE FROM "${schemaName}".visit_requests WHERE ticket_id = $1`, [
-      ticketId,
-    ]);
+    if (ticketIds.length) {
+      await dataSource.query(
+        `DELETE FROM "${schemaName}".visit_requests WHERE ticket_id = ANY($1::text[])`,
+        [ticketIds],
+      );
+      await dataSource.query(
+        `DELETE FROM "${schemaName}".ticket_work_order_links WHERE ticket_id = ANY($1::uuid[])`,
+        [ticketIds],
+      );
+      await dataSource.query(
+        `DELETE FROM "${schemaName}".support_tickets WHERE id = ANY($1::uuid[])`,
+        [ticketIds],
+      );
+    }
     await dataSource.destroy();
   });
 
-  it('crea la solicitud de visita del ticket y no la duplica al reintentar', async () => {
+  it('crea la solicitud de visita con asunto y notas del schema y no la duplica al reintentar', async () => {
     const processor = new AssuranceFieldServiceProcessor(dataSource);
-    const job = {
-      name: 'request-field-service',
-      data: {
-        ticketId,
-        tenantId,
-        schemaName,
-        priority: 'HIGH',
-        subject: 'Prueba de integración: visita desde ticket',
-        requestedByUserId,
-        notes: 'Creada por la prueba de integración del worker.',
-      },
-    } as unknown as Job<FieldServiceRequest>;
+    const ids = await seedTicket();
 
-    await processor.process(job);
-    await processor.process(job);
+    await processor.process(jobFor(ids));
+    await processor.process(jobFor(ids));
 
     const rows = await dataSource.query(
-      `SELECT status, origin_context, ticket_id FROM "${schemaName}".visit_requests
-        WHERE ticket_id = $1 AND deleted_at IS NULL`,
-      [ticketId],
+      `SELECT status, origin_context, origin_label, priority, title, description
+         FROM "${schemaName}".visit_requests WHERE ticket_id = $1 AND deleted_at IS NULL`,
+      [ids.ticketId],
     );
     expect(rows).toEqual([
-      { status: 'NEEDS_CONTEXT', origin_context: 'ASSURANCE', ticket_id: ticketId },
+      {
+        status: 'NEEDS_CONTEXT',
+        origin_context: 'ASSURANCE',
+        origin_label: `Ticket TK-IT-${ids.ticketId.slice(0, 8)}`,
+        priority: 'HIGH',
+        title: 'Prueba de integración: visita desde ticket',
+        description: 'Creada por la prueba de integración del worker.',
+      },
     ]);
+  });
+
+  it('espera el commit de la transacción del API que encoló el job y ve la solicitud', async () => {
+    const processor = new AssuranceFieldServiceProcessor(dataSource);
+    // Como el API: transacción abierta con el ticket bloqueado y la solicitud sin confirmar.
+    const api = dataSource.createQueryRunner();
+    await api.connect();
+    await api.startTransaction();
+    let ids: { ticketId: string; linkId: string };
+    try {
+      ids = await seedTicket(api);
+      await api.query(`SELECT 1 FROM "${schemaName}".support_tickets WHERE id = $1 FOR UPDATE`, [
+        ids.ticketId,
+      ]);
+      const processing = processor.process(jobFor(ids));
+      await new Promise((r) => setTimeout(r, 300));
+      await api.commitTransaction();
+      await processing;
+    } finally {
+      await api.release();
+    }
+
+    const rows = await dataSource.query(
+      `SELECT description FROM "${schemaName}".visit_requests
+        WHERE ticket_id = $1 AND deleted_at IS NULL`,
+      [ids!.ticketId],
+    );
+    expect(rows).toEqual([{ description: 'Creada por la prueba de integración del worker.' }]);
   });
 });

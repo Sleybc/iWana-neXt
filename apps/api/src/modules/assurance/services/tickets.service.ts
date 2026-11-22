@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { ticketTitularReferences } from '../privacy/ticket-titular-references';
 import {
   BadRequestException,
@@ -1117,6 +1118,8 @@ export class TicketsService {
       }
 
       const link = qr.manager.create(TicketWorkOrderLink, {
+        // Id propio: viaja en el job para que el worker lea estas notas (sec-eng C-1).
+        id: randomUUID(),
         ticketId: id,
         tenantId,
         workOrderId: null,
@@ -1148,15 +1151,13 @@ export class TicketsService {
         actorUserId: actor.sub,
       });
 
+      // Solo ids (sec-eng C-1): el worker lee asunto y notas del schema tenant.
       await this.fieldServicePort.requestFieldService({
         ticketId: id,
-        ticketNumber: ticket.ticketNumber ?? null,
+        linkId: link.id,
         tenantId,
         schemaName,
-        priority: ticket.priority,
-        subject: ticket.subject,
         requestedByUserId: actor.sub,
-        notes: validated.notes ?? null,
       });
 
       return qr.manager.findOneByOrFail(SupportTicket, { id, tenantId });

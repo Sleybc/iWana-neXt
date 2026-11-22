@@ -25,6 +25,10 @@ export { SafeTypeOrmLogger } from './safe-typeorm.logger';
 export type { SafeTypeOrmLogSink } from './safe-typeorm.logger';
 export { summarizeErrorForLog } from './summarize-error-for-log';
 export { LISTED_SUBSCRIBER_SCOPE_SQL, countUsageSubscribers } from './crm/listed-subscribers';
+export {
+  readFieldServiceTicketContext,
+  type FieldServiceTicketContext,
+} from './assurance/field-service-ticket-context';
 
 // Grants post-DDL de provisioning (SEC-04) — schema tenant → rol app
 export {

@@ -5,7 +5,12 @@ import { Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import { UnrecoverableError } from 'bullmq';
 import { DataSource } from 'typeorm';
-import { isValidSchemaName, runInTenantSchema, VisitRequest } from '@iwana/db';
+import {
+  isValidSchemaName,
+  readFieldServiceTicketContext,
+  runInTenantSchema,
+  VisitRequest,
+} from '@iwana/db';
 import {
   ASSURANCE_FIELD_SERVICE_QUEUE,
   type FieldServiceRequest,
@@ -39,6 +44,17 @@ export class AssuranceFieldServiceProcessor extends WorkerHost {
     }
 
     await runInTenantSchema(this.dataSource, payload.schemaName, async (qr) => {
+      // sec-eng C-1: el job solo lleva ids; asunto, prioridad y notas los lee el lector de
+      // Assurance publicado en @iwana/db (ADR-076 D6), que espera el commit del API.
+      const ticket = await readFieldServiceTicketContext(qr, payload);
+      if (!ticket) {
+        // Sin ticket o sin solicitud: la transacción del API se revirtió después de encolar.
+        this.logger.warn(
+          `request-field-service sin solicitud confirmada: ticketId=${payload.ticketId}`,
+        );
+        return;
+      }
+
       const duplicate = await qr.manager
         .createQueryBuilder(VisitRequest, 'vr')
         .where('vr.tenant_id = :tenantId', { tenantId: payload.tenantId })
@@ -68,13 +84,13 @@ export class AssuranceFieldServiceProcessor extends WorkerHost {
         originContext: WorkOrderSourceContext.ASSURANCE,
         originRef: payload.ticketId,
         // Rótulo visible en Programación: el número del ticket, nunca su identificador interno.
-        originLabel: payload.ticketNumber
-          ? `Ticket ${payload.ticketNumber}`
+        originLabel: ticket.ticketNumber
+          ? `Ticket ${ticket.ticketNumber}`
           : 'Ticket de Mesa de ayuda',
         workType: WfmWorkType.SUPPORT,
-        priority: this.mapPriority(payload.priority),
-        title: payload.subject.slice(0, 160),
-        description: payload.notes,
+        priority: this.mapPriority(ticket.priority),
+        title: ticket.subject.slice(0, 160),
+        description: ticket.notes,
         ticketId: payload.ticketId,
         requestedByUserId: payload.requestedByUserId,
       });

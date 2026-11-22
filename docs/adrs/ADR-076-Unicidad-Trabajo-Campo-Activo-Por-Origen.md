@@ -162,6 +162,10 @@ mantenga `fieldDecision = FIELD_SERVICE_REQUIRED`. Por lo tanto:
 - La comunicacion es por el puerto existente MOD10 -> MOD09
   (`AssuranceFieldServicePort`), ampliado con la operacion de retiro. No se permite
   lectura cruzada de tablas.
+  - Enmienda 2026-11-22 (sec-eng C-1, decisión AI-EM-ARCH): el job solo lleva ids. El worker
+    lee asunto y notas con `readFieldServiceTicketContext`, un lector propiedad de Assurance
+    publicado en `@iwana/db` (precedente: `countUsageSubscribers` de CRM, ADR-114 §7). No se
+    acepta SQL suelto en el worker ni una excepción general.
 - `requestFieldService` debe ser idempotente respecto a solicitudes de campo abiertas:
   no puede acumular `TicketWorkOrderLink` append-only sin verificar si ya existe un
   vinculo vivo.

@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { runInTenantSchema, TenantContext } from '@iwana/db';
+import { runInTenantSchema, TenantContext, TicketWorkOrderLink } from '@iwana/db';
 import {
   SlaBreachStatus,
   TicketFieldDecision,
@@ -700,7 +700,7 @@ describe('TicketsService', () => {
     expect(fieldServicePort.requestFieldService).toHaveBeenCalledWith(
       expect.objectContaining({
         ticketId: 'ticket-002',
-        ticketNumber: 'TK-20260509-002',
+        linkId: expect.any(String),
         tenantId: 'tenant-001',
         schemaName: 'tenant_001',
       }),
@@ -711,6 +711,17 @@ describe('TicketsService', () => {
         eventType: TicketTimelineEventType.FIELD_SERVICE_REQUESTED,
       }),
     );
+    // sec-eng C-1: el payload queda en Redis; solo ids, nunca asunto ni notas.
+    const payload = fieldServicePort.requestFieldService.mock.calls[0]![0] as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(Object.keys(payload).sort()).toEqual(
+      ['linkId', 'requestedByUserId', 'schemaName', 'tenantId', 'ticketId'].sort(),
+    );
+    expect(JSON.stringify(payload)).not.toMatch(/Revisar nodo|Visita técnica/);
+    const savedLink = saveMock.mock.calls.find(([entity]) => entity === TicketWorkOrderLink);
+    expect(savedLink?.[1]).toEqual(expect.objectContaining({ id: payload.linkId }));
   });
 
   it('links a logical work order without reading WFM tables', async () => {
