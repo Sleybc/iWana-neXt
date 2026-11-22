@@ -120,7 +120,11 @@ test.describe('Web Empresas — directorio', () => {
 
     expect(chipsBox.y, 'chips debajo del H1').toBeGreaterThan(headingBox.y);
     expect(tableBox.y, 'tabla debajo de chips').toBeGreaterThan(chipsBox.y + chipsBox.height - 8);
-    expect(Math.abs(chipsBox.x - tableBox.x), 'una columna chips/tabla').toBeLessThan(24);
+    // Una columna: la tabla arranca bajo los chips con el inset de su tarjeta (24 px de
+    // padding + 1 px de borde, `TenantsTable.tsx`); dos columnas la correrían ≥ ½ ancho.
+    const offset = tableBox.x - chipsBox.x;
+    expect(offset, 'una columna chips/tabla').toBeGreaterThanOrEqual(0);
+    expect(offset, 'una columna chips/tabla').toBeLessThan(chipsBox.width / 4);
 
     const chipBoxes = [];
     for (const label of DIRECTORY_CHIPS) {
