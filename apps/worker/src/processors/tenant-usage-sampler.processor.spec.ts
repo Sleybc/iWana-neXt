@@ -1,8 +1,8 @@
 const runInTenantSchema = jest.fn();
-const countListedSubscribers = jest.fn();
+const countUsageSubscribers = jest.fn();
 jest.mock('@iwana/db', () => ({
   runInTenantSchema: (...args: unknown[]) => runInTenantSchema(...args),
-  countListedSubscribers: (...args: unknown[]) => countListedSubscribers(...args),
+  countUsageSubscribers: (...args: unknown[]) => countUsageSubscribers(...args),
   summarizeErrorForLog: () => 'class=QueryFailedError sqlstate=42P01',
 }));
 
@@ -41,7 +41,7 @@ describe('TenantUsageSamplerProcessor', () => {
       { id: 't2', schemaName: 'tenant_dos' },
       { id: 't3', schemaName: 'tenant_tres' },
     ]);
-    countListedSubscribers
+    countUsageSubscribers
       .mockResolvedValueOnce(5)
       .mockRejectedValueOnce(
         Object.assign(new Error('relation "tenant_dos.subscribers"'), { code: '42P01' }),

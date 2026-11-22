@@ -2,7 +2,7 @@
  * Muestreador de uso por empresa contra PostgreSQL real (ADR-114, PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE4 §A.5).
  *
  * - Cuenta con la definición de CRM: primera activación o contrato activado; el prospecto sin
- *   servicio y el borrado quedan fuera.
+ *   servicio, el borrado y el anonimizado (ADR-114 v1.2) quedan fuera.
  * - Fallo aislado: una empresa cuyo schema no tiene `subscribers` falla sin detener a la otra
  *   y conserva su medición anterior (nunca escribe 0).
  * - Cascada: borrar la empresa borra su medición (FK de la migración 035, purga R7).
@@ -70,20 +70,21 @@ describeWithInfra('TenantUsageSamplerProcessor — PostgreSQL real', () => {
     await dataSource.query(`
       CREATE TABLE "${healthy.schema}".subscribers (
         id uuid PRIMARY KEY, tenant_id uuid NOT NULL, status text NOT NULL,
-        activated_at timestamptz, deleted_at timestamptz)`);
+        activated_at timestamptz, deleted_at timestamptz, anonymized_at timestamptz)`);
     await dataSource.query(`
       CREATE TABLE "${healthy.schema}".contracts (
         id uuid PRIMARY KEY, tenant_id uuid NOT NULL, subscriber_id uuid NOT NULL,
         status text NOT NULL, deleted_at timestamptz)`);
-    const sub = (status: string, activated: boolean, deleted = false) =>
+    const sub = (status: string, activated: boolean, deleted = false, anonymized = false) =>
       dataSource.query(
-        `INSERT INTO "${healthy.schema}".subscribers VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        `INSERT INTO "${healthy.schema}".subscribers VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
         [
           randomUUID(),
           healthy.id,
           status,
           activated ? new Date() : null,
           deleted ? new Date() : null,
+          anonymized ? new Date() : null,
         ],
       ) as Promise<Array<{ id: string }>>;
     await sub('ACTIVE', true); // cuenta: primera activación
@@ -94,6 +95,7 @@ describeWithInfra('TenantUsageSamplerProcessor — PostgreSQL real', () => {
     );
     await sub('PROSPECT', false); // fuera: prospecto sin servicio
     await sub('ACTIVE', true, true); // fuera: borrado
+    await sub('CANCELLED', true, false, true); // fuera: anonimizado (CTO 2026-11-22, ADR-114 v1.2)
     // Medición previa de la empresa rota: el fallo no debe pisarla con 0.
     await dataSource.query(
       `INSERT INTO public.tenant_usage_snapshots VALUES ($1, 7, now() - interval '3 hours')`,
@@ -112,7 +114,7 @@ describeWithInfra('TenantUsageSamplerProcessor — PostgreSQL real', () => {
     await dataSource.destroy();
   });
 
-  it('mide con la definición de CRM y aísla el fallo de otra empresa', async () => {
+  it('mide con la definición de CRM sin anonimizados y aísla el fallo de otra empresa', async () => {
     const result = await processor.sample();
 
     expect(result.failed).toBeGreaterThanOrEqual(1);

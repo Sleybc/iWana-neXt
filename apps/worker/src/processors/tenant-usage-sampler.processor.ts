@@ -3,7 +3,7 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import type { Job, Queue } from 'bullmq';
 import type { DataSource } from 'typeorm';
-import { countListedSubscribers, runInTenantSchema, summarizeErrorForLog } from '@iwana/db';
+import { countUsageSubscribers, runInTenantSchema, summarizeErrorForLog } from '@iwana/db';
 import { TenantStatus } from '@iwana/shared';
 import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
 import { TENANT_USAGE_SAMPLER_QUEUE } from '../worker-queues';
@@ -24,7 +24,7 @@ export interface TenantUsageSampleResult {
  * Muestreador de uso por empresa (ADR-114 D2, PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE4 §A.3).
  *
  * Cada hora, por cada empresa `ACTIVE` de `public.tenants`, cuenta sus suscriptores con la
- * definición de CRM (`countListedSubscribers`) dentro de `runInTenantSchema` con
+ * definición de CRM sin anonimizados (`countUsageSubscribers`, ADR-114 §8) dentro de `runInTenantSchema` con
  * `statement_timeout`, y guarda solo el número en `public.tenant_usage_snapshots`. Consultas
  * secuenciales; el fallo de una empresa no detiene a las demás ni escribe 0: su medición
  * anterior queda y envejece. Usa la conexión por defecto del worker (`DB_USER`), nunca
@@ -75,7 +75,7 @@ export class TenantUsageSamplerProcessor extends WorkerHost implements OnApplica
       try {
         const count = await runInTenantSchema(this.dataSource, tenant.schemaName, async (qr) => {
           await qr.query(`SET LOCAL statement_timeout = ${TENANT_USAGE_STATEMENT_TIMEOUT_MS}`);
-          return countListedSubscribers(qr, tenant.id);
+          return countUsageSubscribers(qr, tenant.id);
         });
         await this.dataSource.query(
           `INSERT INTO public.tenant_usage_snapshots (tenant_id, active_subscribers, measured_at)

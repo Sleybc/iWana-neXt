@@ -8,7 +8,7 @@ import { ACTIVATED_SUBSCRIBER_STATUSES } from '@iwana/shared';
  *
  * Dueño: CRM. Vive en `@iwana/db` porque el worker no puede importar `apps/api` (ADR-114 §7
  * condición 1): CRM lo usa en su lista, búsquedas y conteos, y el muestreador de uso por
- * empresa lo usa vía {@link countListedSubscribers}. Una sola definición, sin copia.
+ * empresa parte de él en {@link countUsageSubscribers}. Una sola definición, sin copia.
  * Requiere el alias `s` sobre `subscribers`.
  */
 export const LISTED_SUBSCRIBER_SCOPE_SQL = `((s.activated_at IS NOT NULL AND s.status IN (${ACTIVATED_SUBSCRIBER_STATUSES.map((status) => "'" + status + "'").join(', ')})) OR EXISTS (
@@ -21,16 +21,18 @@ export const LISTED_SUBSCRIBER_SCOPE_SQL = `((s.activated_at IS NOT NULL AND s.s
 ))`;
 
 /**
- * Cuenta los suscriptores que la lista de CRM muestra sin filtros (no borrados y dentro de
- * {@link LISTED_SUBSCRIBER_SCOPE_SQL}). Solo devuelve el número; ninguna fila sale.
+ * Suscriptores para «Uso por empresa» (ADR-114 v1.2): los que la lista de CRM muestra sin
+ * filtros (no borrados y dentro de {@link LISTED_SUBSCRIBER_SCOPE_SQL}) menos los anonimizados,
+ * que no ocupan cupo (CTO, 2026-11-22). La lista de CRM no cambia. Solo devuelve el número.
  * El llamador fija `search_path` con `runInTenantSchema`.
  */
-export async function countListedSubscribers(qr: QueryRunner, tenantId: string): Promise<number> {
+export async function countUsageSubscribers(qr: QueryRunner, tenantId: string): Promise<number> {
   const rows = (await qr.query(
     `SELECT count(*)::int AS total
        FROM subscribers s
       WHERE s.tenant_id = $1
         AND s.deleted_at IS NULL
+        AND s.anonymized_at IS NULL
         AND ${LISTED_SUBSCRIBER_SCOPE_SQL}`,
     [tenantId],
   )) as Array<{ total: number | string }>;

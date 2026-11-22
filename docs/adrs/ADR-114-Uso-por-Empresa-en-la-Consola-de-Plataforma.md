@@ -1,6 +1,6 @@
 # ADR-114: Uso por empresa en la consola de plataforma (conteos leídos desde schemas de empresa)
 
-**Versión:** 1.1
+**Versión:** 1.2 (2026-11-22: anonimizados fuera del conteo, §8)
 **Estado:** Aprobado
 **Aprobación:** CTO, 2026-11-21 («Aprobar ADR-114»), junto con D3 de la dirección; obligan las condiciones 1–7 de §7
 **Fecha:** 2026-11-21
@@ -17,7 +17,7 @@ El Centro de control quiere mostrar, por empresa, los suscriptores activos frent
 | # | Decisión |
 | --- | --- |
 | D1 | El API de plataforma **no lee schemas de empresa**. Lee una tabla de `public`, `tenant_usage_snapshots` (`tenant_id`, `active_subscribers`, `measured_at`), sin otra columna. |
-| D2 | La tabla la llena un job repetible de `apps/worker` (cada hora y bajo demanda tras activar una empresa) que, por cada empresa `ACTIVE`, ejecuta **una sola consulta fija** `SELECT count(*)` sobre su schema con `search_path` acotado por `runInTenantSchema`, con la definición de «suscriptor activo» de CRM (primera activación o contrato activado). Ninguna fila ni identificador sale del schema: solo el número. |
+| D2 | La tabla la llena un job repetible de `apps/worker` (cada hora y bajo demanda tras activar una empresa) que, por cada empresa `ACTIVE`, ejecuta **una sola consulta fija** `SELECT count(*)` sobre su schema con `search_path` acotado por `runInTenantSchema`, con la definición de «suscriptor activo» de CRM (primera activación o contrato activado), sin los anonimizados (§8). Ninguna fila ni identificador sale del schema: solo el número. |
 | D3 | El job usa el rol de base de datos del worker; no se crea rol nuevo ni se amplían grants del API. |
 | D4 | El endpoint `GET /api/v1/tenants/usage` (solo roles de plataforma, envuelto en `{ data }`) devuelve `{ tenantId, name, activeSubscribers, maxSubscribers, measuredAt }` por empresa. Sin nombres de suscriptores, sin montos. |
 | D5 | Una empresa sin medición se muestra «sin dato», nunca 0. Una medición de más de 2 h se marca desactualizada. |
@@ -54,7 +54,7 @@ Hallazgo de contexto: API y worker conectan con el **mismo** rol `DB_APP_USER`, 
 
 STRIDE: **S** — D4 hereda JWT RS256 + guard de plataforma; un token de empresa no debe alcanzar la ruta. **T** — solo el worker escribe la tabla; el API no tiene ruta de escritura. **R** — D6 cubre la lectura; la medición no es acción de usuario. **I** — riesgo principal: que el conteo arrastre filas o que el payload filtre datos de otra empresa; mitigado por D1/D4. **D** — N empresas por hora; consultas secuenciales con tiempo límite. **E** — la consulta fija no admite entrada externa; el nombre de schema sale de `public.tenants`, nunca de la petición.
 
-Tenancy: aceptable; ningún dato de empresa vuelve al contexto de empresa ni cruza entre empresas. PII/Ley 1581: un conteo agregado no es dato personal; sí es dato comercial reservado del ISP (requiere verificación con fuente oficial si el contrato de servicio lo regula). Los suscriptores anonimizados o con DATOS_BLOQUEADOS (ADR-094) cuentan según la regla CRM vigente, sin leer sus columnas.
+Tenancy: aceptable; ningún dato de empresa vuelve al contexto de empresa ni cruza entre empresas. PII/Ley 1581: un conteo agregado no es dato personal; sí es dato comercial reservado del ISP (requiere verificación con fuente oficial si el contrato de servicio lo regula). Los suscriptores anonimizados o con DATOS_BLOQUEADOS (ADR-094) cuentan según la regla CRM vigente, sin leer sus columnas (superado por §8: los anonimizados no cuentan).
 
 Condiciones:
 1. El conteo lo expone CRM (función o puerto con la misma definición de `subscribers.controller` «primera activación o contrato activado»); el job no duplica el SQL ni lee tablas de CRM directamente (boundary).
@@ -73,6 +73,16 @@ Condiciones:
 5. Cumple: `tenant.controller.ts:799-800` `@Roles(...PLATFORM_TENANT_USAGE_ROLES)` = `SYSTEM_ADMIN`; `tenant-usage.postgres.integration.spec.ts:195-207` prueba 403 para `IWANA_SUPPORT`, `ADMIN` y `SUPPORT` de empresa, y `:154` solo campos del contrato.
 6. Cumple: `tenant-usage.service.ts:51-58` audita `userId`, `ipAddress` y `tenantsReturned`.
 7. Cumple: `035_tenant_usage_snapshots.ts:63-64` FK `ON DELETE CASCADE`. `iwana_purge_tenant_schema` (`029:195`) borra `public.tenants`; la acción referencial corre con el dueño de la tabla, así que `iwana_purger` no necesita grant. Prueba de cascada en `tenant-usage-sampler.integration.spec.ts:125` (con DELETE directo; informativo: no ejercita la función de purga).
-Conteo con anonimizados: conforme a la regla CRM vigente y a esta §7; solo agrega, no lee columnas.
+Conteo con anonimizados: conforme a la regla CRM vigente y a esta §7; solo agrega, no lee columnas (superado por §8).
 
 **Nota de implementación de la condición 1 (2026-11-21, AI-EM-ARCH).** El worker no puede importar módulos de `apps/api`, así que la definición de «suscriptor listado» vive en `packages/database/src/crm/listed-subscribers.ts` como única copia: CRM (`subscribers.service.ts`) y el job la importan de `@iwana/db`. El dueño del dato sigue siendo CRM; un cambio a esa definición se revisa como cambio de CRM. Líneas de la verificación corregidas tras `boundary-reviewer`.
+
+## 8. Enmienda v1.2 — anonimizados fuera del conteo
+
+**Decisión del CTO (2026-11-22):** el conteo de «Uso por empresa» excluye a los suscriptores anonimizados (`anonymized_at` no nulo); un titular anonimizado no ocupa cupo. Cierra la deuda F4-D2.
+
+- La lista de CRM no cambia: `LISTED_SUBSCRIBER_SCOPE_SQL` sigue siendo la definición única y la comparten CRM y el job.
+- El job usa `countUsageSubscribers` (`packages/database/src/crm/listed-subscribers.ts`, antes `countListedSubscribers`): esa definición más `s.anonymized_at IS NULL`. Solo lee la columna en el `WHERE`; sigue saliendo un número.
+- La frase de §7 «cuentan según la regla CRM vigente» queda superada por esta enmienda.
+
+**Verificación de AI-SEC-ENG (2026-11-22):** las 7 condiciones de §7 siguen cumpliéndose; GO. `anonymized_at` solo se lee en el `WHERE` y sale un número. Un schema anterior a la migración tenant 150 fallaría con 42703, aislado y sin escribir 0.
