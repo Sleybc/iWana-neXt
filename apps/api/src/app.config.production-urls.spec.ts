@@ -209,17 +209,20 @@ describe('ConfigModule.forRoot — fail-fast de arranque en perfil producción',
    * el objeto completo: Jest y Node leen otras variables del proceso durante la
    * ejecución. Las claves con `undefined` se eliminan para simular su ausencia.
    */
+  const CONFIG_SCHEMA_KEYS = Object.keys(
+    (createAppConfigurationSchema().describe() as { keys: Record<string, unknown> }).keys,
+  );
+
   async function bootConfigModule(env: Record<string, string | undefined>): Promise<void> {
     const snapshot = { ...process.env };
 
     try {
-      // La credencial de arranque de plataforma está prohibida en perfil
-      // producción (MOD01 §3.2). Como este helper superpone el entorno sobre el
-      // `process.env` real en vez de sustituirlo, un `.env` de desarrollo ya
-      // cargado por otra suite del mismo worker la colaría aquí y haría fallar
-      // el escenario de arranque correcto de forma intermitente.
-      delete process.env['PLATFORM_SUPER_ADMIN_EMAIL'];
-      delete process.env['PLATFORM_SUPER_ADMIN_PASSWORD'];
+      // Este helper superpone el entorno sobre el `process.env` real: un `.env.development`
+      // cargado por otra suite del mismo worker colaba claves prohibidas en producción
+      // (credencial de plataforma, MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS) y el arranque
+      // correcto fallaba solo bajo carga. Se borra toda clave del esquema que el escenario
+      // no declare, no una lista a mano.
+      for (const key of CONFIG_SCHEMA_KEYS) delete process.env[key];
 
       for (const [key, value] of Object.entries(env)) {
         if (value === undefined) {
@@ -264,6 +267,16 @@ describe('ConfigModule.forRoot — fail-fast de arranque en perfil producción',
 
   it('arranca cuando ambas están presentes y no apuntan a localhost', async () => {
     await expect(bootConfigModule(buildProductionEnv())).resolves.toBeUndefined();
+  });
+
+  it('F2-D6: una clave prohibida en producción heredada del entorno de desarrollo no se cuela', async () => {
+    process.env['MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS'] = '127.0.0.1';
+    try {
+      await expect(bootConfigModule(buildProductionEnv())).resolves.toBeUndefined();
+      expect(process.env['MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS']).toBe('127.0.0.1');
+    } finally {
+      delete process.env['MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS'];
+    }
   });
 
   it('restaura NODE_ENV=test tras cada arranque simulado', () => {
