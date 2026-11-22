@@ -1,8 +1,8 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
 import { Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Job, UnrecoverableError } from 'bullmq';
+import { Job, Queue, UnrecoverableError } from 'bullmq';
 import { Pool } from 'pg';
 import { DataSource } from 'typeorm';
 import {
@@ -18,6 +18,8 @@ import {
 import { TENANT_PROVISIONING_QUEUE } from '@iwana/shared';
 import type { ProvisioningJobPayload } from '@iwana/shared';
 import { TenantSeedService } from '../services/tenant-seed.service';
+import { TENANT_USAGE_SAMPLER_QUEUE } from '../worker-queues';
+import { TENANT_USAGE_SAMPLER_JOB } from './tenant-usage-sampler.processor';
 
 /** DT-4: código estable del rechazo de un job sobre un tenant no aprovisionable. */
 export const TENANT_NOT_PROVISIONABLE = 'TENANT_NOT_PROVISIONABLE';
@@ -77,6 +79,7 @@ export class TenantProvisioningProcessor extends WorkerHost {
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly tenantSeedService: TenantSeedService,
+    @InjectQueue(TENANT_USAGE_SAMPLER_QUEUE) private readonly usageQueue?: Queue,
   ) {
     super();
     // Pool DDL: SEC-04 migrator cuando DB_MIGRATOR_USER está definido;
@@ -277,7 +280,30 @@ export class TenantProvisioningProcessor extends WorkerHost {
       );
       return false;
     }
+    await this.requestUsageSample(tenantId);
     return true;
+  }
+
+  /**
+   * ADR-114 D2 (F4-D1): medición de uso bajo demanda al activar, para que la empresa nueva no
+   * salga «sin dato» hasta el muestreo horario. Un fallo al encolar no revierte la activación.
+   */
+  private async requestUsageSample(tenantId: string): Promise<void> {
+    try {
+      await this.usageQueue?.add(
+        TENANT_USAGE_SAMPLER_JOB,
+        {},
+        {
+          jobId: `usage-on-activate-${tenantId}`,
+          removeOnComplete: true,
+          removeOnFail: { count: 24 },
+        },
+      );
+    } catch (error) {
+      this.logger.warn(
+        `[provisioning] tenant_usage.request tenantId=${tenantId} result=failed ${summarizeErrorForLog(error)}`,
+      );
+    }
   }
 
   /**

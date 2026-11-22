@@ -214,6 +214,49 @@ describe('TenantProvisioningProcessor', () => {
     expect(mockClient.release).toHaveBeenCalledTimes(1);
   });
 
+  it('F4-D1: al activar encola una medición de uso; si encolar falla, la activación sigue', async () => {
+    mockPool.query.mockResolvedValue({ rowCount: 0 });
+    const updateBuilder = {
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    const dataSource = {
+      getRepository: jest.fn().mockReturnValue(buildTenantRepository()),
+      createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+    } as unknown as DataSource;
+    const tenantSeedService = {
+      seedInitialAdmin: jest.fn().mockResolvedValue({ created: true }),
+      seedTaxPresets: jest.fn().mockResolvedValue(undefined),
+    } as unknown as TenantSeedService;
+    const usageQueue = { add: jest.fn().mockResolvedValue(undefined) };
+    const job = {
+      data: { tenantId: 'tenant-uuid-1', schemaName: 'tenant_isp_test', tenantSlug: 'isp-test' },
+    } as never;
+
+    const processor = new TenantProvisioningProcessor(
+      dataSource,
+      tenantSeedService,
+      usageQueue as never,
+    );
+    await processor.process(job);
+    expect(usageQueue.add).toHaveBeenCalledWith(
+      'sample',
+      {},
+      expect.objectContaining({ jobId: 'usage-on-activate-tenant-uuid-1' }),
+    );
+
+    usageQueue.add.mockRejectedValueOnce(new Error('redis caído'));
+    await expect(processor.process(job)).resolves.toBeUndefined();
+
+    // Sin activación (el estado cambió durante la puesta en marcha) no se encola.
+    usageQueue.add.mockClear();
+    updateBuilder.execute.mockResolvedValueOnce({ affected: 0 });
+    await processor.process(job);
+    expect(usageQueue.add).not.toHaveBeenCalled();
+  });
+
   it('aborta el provisioning si falla el GRANT SEC-04 (no siembra a ciegas)', async () => {
     process.env['DB_USER'] = 'iwana_app';
     process.env['DB_MIGRATOR_USER'] = 'iwana_migrator';
