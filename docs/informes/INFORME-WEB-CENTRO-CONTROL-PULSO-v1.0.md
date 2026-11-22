@@ -158,3 +158,33 @@
 | F4-D5 | Una fila por empresa sin tope; límite o «Ver más» por decidir (prod-ux) | P3 |
 | F4-D6 | La cascada se probó borrando la empresa directo, no con la función de purga R7 | P3 |
 | ~~F4-D7~~ | Cerrada 2026-11-22: el worker midió iWana (1 suscriptor activo, cupo 10 000) y la consola lo muestra en «Uso por empresa» | — |
+
+## Correcciones tras la revisión en vivo (2026-11-22)
+
+**Estado:** G6 local · commit local, sin push. Tres defectos vistos como administrador de plataforma en `localhost:3001/dashboard`.
+
+| # | Defecto | Causa raíz | Arreglo |
+| --- | --- | --- | --- |
+| C1 | Actividad reciente: cinco filas «registró un cambio en un registro», «ahora» | Cada carga deja una fila `LIST_ACCESS`/`TenantUsage` en `platform_audit_logs` (auditoría de `GET tenants/usage`, ADR-114; 29 en 2 días). El feed solo excluía sesión, y el vocabulario no tenía verbo ni frase para esa acción | Filtro en servidor `excludeAccessEvents` (`LIST_ACCESS`, `RECORD_ACCESS`) en `QueryPlatformAuditLogsDto`; el tablero lo pide. La auditoría se conserva (verificado: siguen creándose filas). Vocabulario: «consultó», «el uso por empresa», «un acceso» |
+| C2 | Colas: «Acumulación» con 0 en espera y 14 fallidos; atención «Todo al día» | El área calculaba el aviso por su cuenta (`waiting > 0 \|\| failed > 0` → «Acumulación») y la cola de atención no leía las colas | Regla única `summarizeWorkQueues` (`platform-health.ts`): aviso si hay fallidos o espera; rótulo «Con fallos» si hay fallidos, «Acumulación» si solo espera; en aviso, fila «N trabajos fallidos» / «N trabajos en espera» que enlaza a `#colas-de-trabajo` |
+| C3 | Tabla con las 19 colas | Se pintaban todas | Solo colas con novedad, «N colas sin novedad» y «Ver todas»; sin novedad, una línea «Sin novedad en las N colas.» |
+
+Sin cambios en `packages/shared` ni en el ADR-114; sin tokens nuevos (`Badge`, `Button` de `@iwana/ui`).
+
+**Evidencia (conteo real, jest directo sin turbo):**
+
+| Comando | Resultado |
+| --- | --- |
+| Pruebas nuevas con el código anterior | 6 rojas (C1 API y vocabulario, CA-PP2-04, CA-PP3-03, C2, C3); verdes tras el arreglo |
+| `@iwana/web` typecheck · lint · jest | 0 errores · 0 errores (8 avisos previos) · 40 suites, 311 tests |
+| `@iwana/api` typecheck · lint · jest | 0 errores · 0 errores (6 avisos previos) · 629/630 suites, 8389/8390 tests; la roja (`tenant.service.spec.ts:1553`, 1 ms entre `generatedAt` y la llamada) pasa aislada 114/114: intermitente, ajena |
+| `playwright.web.config.ts --workers=1` | 57/59; las 2 rojas son las preexistentes F1-D2 (`web-empresas-directorio`, `web-tenant-create-happy-path`) |
+| Vivo 1440×900, claro y oscuro | Actividad sin lecturas; «Con fallos», 4 colas y «15 colas sin novedad»; atención «14 trabajos fallidos · Colas de trabajo · 4 colas» |
+
+**Deuda:**
+
+| # | Deuda | Severidad |
+| --- | --- | --- |
+| C-D1 | `tenant.service.spec.ts:1553` compara fechas con precisión de ms: intermitente | P3 |
+| C-D2 | La espera momentánea también avisa; un umbral de antigüedad lo decide prod-ux | P3 |
+| C-D3 | Filas «registró un acceso» (`CREATE`/`Auth`) son de origen dudoso; revisar quién las escribe | P3 |

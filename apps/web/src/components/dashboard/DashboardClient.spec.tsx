@@ -310,6 +310,12 @@ describe('DashboardClient', () => {
     unmount();
 
     healthApi.get.mockResolvedValue(HEALTH_OK);
+    // Regla de colas: con fallidos o espera hay fila; «Todo al día» exige colas sin novedad.
+    platformHealthApi.history.mockResolvedValue(
+      makePlatformHealthHistory({
+        queues: [{ name: 'search-index', waiting: 0, failed: 0, oldestWaitingSeconds: null }],
+      }),
+    );
     render(<DashboardClient />);
     expect(await screen.findByText('Todo al día')).toBeInTheDocument();
   });
@@ -369,7 +375,11 @@ describe('DashboardClient', () => {
     });
     await renderReady();
 
-    expect(platformAuditApi.list).toHaveBeenCalledWith({ excludeSessionEvents: true, limit: 5 });
+    expect(platformAuditApi.list).toHaveBeenCalledWith({
+      excludeSessionEvents: true,
+      excludeAccessEvents: true,
+      limit: 5,
+    });
     const activity = screen.getByRole('region', { name: 'Actividad reciente' });
     expect(await within(activity).findAllByRole('listitem')).toHaveLength(5);
     expect(within(activity).getByText('Operador 1 actualizó una empresa')).toBeInTheDocument();
@@ -835,26 +845,70 @@ describe('DashboardClient', () => {
       expect(platformHealthApi.history).toHaveBeenCalledTimes(2);
     });
 
-    it('CA-PP3-03: colas con espera, fallidos y antigüedad, nombres en español', async () => {
+    it('CA-PP3-03: solo colas con novedad, resumen de las demás y «Ver todas»', async () => {
       platformHealthApi.history.mockResolvedValue(
         makePlatformHealthHistory({
           queues: [
             { name: 'search-index', waiting: 3, failed: 1, oldestWaitingSeconds: 420 },
             { name: 'cola-nueva-x', waiting: 0, failed: 0, oldestWaitingSeconds: null },
+            { name: 'tenant-provisioning', waiting: 0, failed: 0, oldestWaitingSeconds: null },
+          ],
+        }),
+      );
+      const user = userEvent.setup();
+      await renderReady();
+
+      const queues = screen.getByRole('region', { name: 'Colas de trabajo' });
+      const row = within(queues).getByRole('row', { name: /Índice de búsqueda/ });
+      expect(row).toHaveTextContent('Índice de búsqueda317 min');
+      expect(within(queues).queryByRole('row', { name: /Proceso interno/ })).toBeNull();
+      expect(queues).toHaveTextContent('2 colas sin novedad');
+      await user.click(within(queues).getByRole('button', { name: 'Ver todas' }));
+      expect(within(queues).getByRole('row', { name: /Proceso interno/ })).toHaveTextContent(
+        'Sin espera',
+      );
+      expect(queues).not.toHaveTextContent('search-index');
+      expect(queues).not.toHaveTextContent('cola-nueva-x');
+    });
+
+    it('defecto 2: fallidos sin espera se rotulan «Con fallos» y entran en «Requiere tu atención»', async () => {
+      platformHealthApi.history.mockResolvedValue(
+        makePlatformHealthHistory({
+          queues: [
+            { name: 'search-index', waiting: 0, failed: 14, oldestWaitingSeconds: null },
+            { name: 'tenant-provisioning', waiting: 0, failed: 0, oldestWaitingSeconds: null },
           ],
         }),
       );
       await renderReady();
 
       const queues = screen.getByRole('region', { name: 'Colas de trabajo' });
-      const row = within(queues).getByRole('row', { name: /Índice de búsqueda/ });
-      expect(row).toHaveTextContent('Índice de búsqueda317 min');
-      expect(within(queues).getByRole('row', { name: /Proceso interno/ })).toHaveTextContent(
-        'Sin espera',
+      expect(within(queues).getByText('Con fallos')).toBeInTheDocument();
+      expect(within(queues).queryByText('Acumulación')).toBeNull();
+      expect(
+        await screen.findByRole('link', {
+          name: 'Atención: 14 trabajos fallidos. Colas de trabajo · 1 cola',
+        }),
+      ).toHaveAttribute('href', '#colas-de-trabajo');
+      expect(screen.queryByText('Todo al día')).not.toBeInTheDocument();
+    });
+
+    it('defecto 3: sin colas con novedad, una línea «sin novedad» y sin rótulo de aviso', async () => {
+      platformHealthApi.history.mockResolvedValue(
+        makePlatformHealthHistory({
+          queues: [
+            { name: 'search-index', waiting: 0, failed: 0, oldestWaitingSeconds: null },
+            { name: 'tenant-provisioning', waiting: 0, failed: 0, oldestWaitingSeconds: null },
+          ],
+        }),
       );
-      expect(within(queues).getByText('Acumulación')).toBeInTheDocument();
-      expect(queues).not.toHaveTextContent('search-index');
-      expect(queues).not.toHaveTextContent('cola-nueva-x');
+      await renderReady();
+
+      const queues = screen.getByRole('region', { name: 'Colas de trabajo' });
+      expect(queues).toHaveTextContent('Sin novedad en las 2 colas.');
+      expect(within(queues).queryByRole('table')).toBeNull();
+      expect(within(queues).queryByText('Con fallos')).toBeNull();
+      expect(within(queues).queryByText('Acumulación')).toBeNull();
     });
   });
 

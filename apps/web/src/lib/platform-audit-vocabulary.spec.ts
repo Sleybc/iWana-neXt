@@ -5,6 +5,17 @@ import {
 } from './platform-audit-vocabulary';
 
 describe('describePlatformActivityLine', () => {
+  it('defecto 1: la lectura auditada del uso por empresa no cae en la frase genérica', () => {
+    const line = describePlatformActivityLine({
+      action: 'LIST_ACCESS',
+      entityType: 'TenantUsage',
+      actor: { displayName: 'Ana Ruiz' },
+    });
+    expect(line).toBe('Ana Ruiz consultó el uso por empresa');
+    expect(line).not.toContain('registró un cambio');
+    expect(line).not.toContain('un registro');
+  });
+
   it('arma una frase con verbo y sin enum', () => {
     expect(
       describePlatformActivityLine({

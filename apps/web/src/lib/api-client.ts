@@ -1100,6 +1100,8 @@ export interface AuditLogQueryParams {
   toDate?: string;
   /** Excluye en servidor las acciones de sesión (`AUDIT_SESSION_ACTIONS`). */
   excludeSessionEvents?: boolean;
+  /** Excluye en servidor las lecturas auditadas (LIST_ACCESS, RECORD_ACCESS). */
+  excludeAccessEvents?: boolean;
 }
 
 /** Filtros de export CSV (sin cursor/limit; máx. 5000 filas en servidor). */
@@ -1142,6 +1144,9 @@ function appendAuditFilterParams(
   }
   if ('excludeSessionEvents' in params && params.excludeSessionEvents) {
     searchParams.set('excludeSessionEvents', 'true');
+  }
+  if ('excludeAccessEvents' in params && params.excludeAccessEvents) {
+    searchParams.set('excludeAccessEvents', 'true');
   }
 }
 

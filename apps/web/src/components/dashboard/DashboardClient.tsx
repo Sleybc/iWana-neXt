@@ -48,10 +48,11 @@ import {
 } from '@/lib/api-client';
 import { describePlatformActivityLine } from '@/lib/platform-audit-vocabulary';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
-import { formatPercent, summarizeAvailability } from '@/lib/platform-health';
+import { formatPercent, summarizeAvailability, summarizeWorkQueues } from '@/lib/platform-health';
 
 const COPY = PLATFORM_UI_COPY.dashboard;
 const HEALTH_ANCHOR = 'salud-de-plataforma';
+const QUEUES_ANCHOR = 'colas-de-trabajo';
 const ACTIVITY_VISIBLE = 5;
 
 interface Remote<T> {
@@ -99,7 +100,11 @@ const fetchSummary = () => tenantApi.summary();
 const fetchLatest = () => tenantApi.list({ limit: 5 });
 // Las acciones de sesión se excluyen en servidor (CA-PP2-04).
 const fetchActivity = () =>
-  platformAuditApi.list({ excludeSessionEvents: true, limit: ACTIVITY_VISIBLE });
+  platformAuditApi.list({
+    excludeSessionEvents: true,
+    excludeAccessEvents: true,
+    limit: ACTIVITY_VISIBLE,
+  });
 const fetchTeam = () => platformUsersApi.summary();
 const fetchHealth = () => healthApi.get();
 const fetchHistory = () => platformHealthApi.history();
@@ -414,12 +419,25 @@ export function DashboardClient() {
         });
       }
     }
+    const work = summarizeWorkQueues(history.data?.queues);
+    if (work.state !== 'clear') {
+      rows.push({
+        id: 'work-queues',
+        severity: 'attention',
+        title:
+          work.state === 'failed'
+            ? COPY.queueWorkFailed(work.failedTotal)
+            : COPY.queueWorkBacklog(work.waitingTotal),
+        area: COPY.queueWorkArea(work.withNews.length),
+        href: `#${QUEUES_ANCHOR}`,
+      });
+    }
     // En riesgo antes que Atención; estable dentro de cada severidad.
     return [
       ...rows.filter((row) => row.severity === 'at-risk'),
       ...rows.filter((row) => row.severity === 'attention'),
     ];
-  }, [summary.data, health.data]);
+  }, [summary.data, health.data, history.data]);
 
   const queueLoading = (summary.loading && !summary.data) || (health.loading && !health.data);
 

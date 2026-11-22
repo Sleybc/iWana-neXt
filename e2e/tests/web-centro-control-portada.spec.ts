@@ -581,11 +581,19 @@ test.describe('Centro de control — disponibilidad y colas P2 (CA-PP3-01/02/03)
     const pdf = table.getByRole('row', { name: /Documentos de contrato/ });
     await expect(pdf).toContainText('389');
     await expect(pdf).toContainText('Sin espera');
+    // Solo colas con novedad; la cola en cero queda tras «Ver todas».
+    await expect(table.getByRole('row', { name: /Proceso interno/ })).toHaveCount(0);
+    await expect(area).toContainText('1 cola sin novedad');
+    await area.getByRole('button', { name: 'Ver todas' }).click();
     await expect(table.getByRole('row', { name: /Proceso interno/ })).toBeVisible();
     for (const technical of ['tenant-provisioning', 'crm-contract-pdf', 'cola-interna']) {
       await expect(area).not.toContainText(technical);
     }
-    await expect(area.getByText('Acumulación', { exact: true })).toBeVisible();
+    // Hay fallidos: el rótulo es «Con fallos» y la cola de atención enlaza al bloque.
+    await expect(area.getByText('Con fallos', { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: /389 trabajos fallidos\. Colas de trabajo · 2 colas/ }),
+    ).toHaveAttribute('href', '#colas-de-trabajo');
   });
 });
 

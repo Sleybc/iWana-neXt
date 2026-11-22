@@ -2,7 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Brackets, DataSource } from 'typeorm';
 import { PlatformAuditLog, summarizeErrorForLog } from '@iwana/db';
-import { AUDIT_SESSION_ACTIONS } from '@iwana/shared';
+import { AUDIT_SESSION_ACTIONS, AuditAction } from '@iwana/shared';
+
+/**
+ * Lecturas auditadas (p. ej. `GET tenants/usage`, ADR-114): se conservan en el
+ * historial, pero no son actividad; `excludeAccessEvents` las saca del feed.
+ */
+export const PLATFORM_AUDIT_ACCESS_ACTIONS = [
+  AuditAction.LIST_ACCESS,
+  AuditAction.RECORD_ACCESS,
+] as const;
 import type { TenantStatusSummaryMonth } from '@iwana/shared';
 import { sanitizeAuditPayload } from './audit-sanitize.policy';
 import { AuditEntryInput } from './interfaces/audit-entry.interface';
@@ -102,6 +111,11 @@ export class PlatformAuditService {
         sessionActions: [...AUDIT_SESSION_ACTIONS],
       });
     }
+    if (dto.excludeAccessEvents) {
+      qb.andWhere('audit.action NOT IN (:...accessActions)', {
+        accessActions: [...PLATFORM_AUDIT_ACCESS_ACTIONS],
+      });
+    }
 
     applyCreatedAtFilter(qb, 'audit', dto.fromDate, dto.toDate);
 
@@ -131,6 +145,11 @@ export class PlatformAuditService {
     if (dto.excludeSessionEvents) {
       countQb.andWhere('audit.action NOT IN (:...sessionActions)', {
         sessionActions: [...AUDIT_SESSION_ACTIONS],
+      });
+    }
+    if (dto.excludeAccessEvents) {
+      countQb.andWhere('audit.action NOT IN (:...accessActions)', {
+        accessActions: [...PLATFORM_AUDIT_ACCESS_ACTIONS],
       });
     }
     applyCreatedAtFilter(countQb, 'audit', dto.fromDate, dto.toDate);

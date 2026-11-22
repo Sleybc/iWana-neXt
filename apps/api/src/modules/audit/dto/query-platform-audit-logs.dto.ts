@@ -90,4 +90,20 @@ export class QueryPlatformAuditLogsDto {
   )
   @IsBoolean()
   excludeSessionEvents?: boolean = false;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    default: false,
+    description: 'Excluye las lecturas auditadas (LIST_ACCESS, RECORD_ACCESS).',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    value === true || value === 'true'
+      ? true
+      : value === false || value === 'false'
+        ? false
+        : value,
+  )
+  @IsBoolean()
+  excludeAccessEvents?: boolean = false;
 }

@@ -158,6 +158,16 @@ export const PLATFORM_UI_COPY = {
     queueTenantDeletion: 'Empresa en eliminación',
     queueServiceDown: (service: string) => `${service} sin servicio`,
     queueHealthArea: 'Salud de plataforma',
+    queueWorkFailed: (n: number) =>
+      n === 1
+        ? '1 trabajo fallido'
+        : `${new Intl.NumberFormat('es-CO').format(n)} trabajos fallidos`,
+    queueWorkBacklog: (n: number) =>
+      n === 1
+        ? '1 trabajo en espera'
+        : `${new Intl.NumberFormat('es-CO').format(n)} trabajos en espera`,
+    queueWorkArea: (queues: number) =>
+      queues === 1 ? 'Colas de trabajo · 1 cola' : `Colas de trabajo · ${queues} colas`,
     latestTitle: 'Últimas empresas',
     latestFooter: 'Ver todas',
     latestError: 'No pudimos cargar las últimas empresas.',
@@ -205,6 +215,12 @@ export const PLATFORM_UI_COPY = {
     queuesEmpty: 'Aún no hay muestras de las colas.',
     queuesError: 'No pudimos cargar las colas de trabajo.',
     queuesBacklog: 'Acumulación',
+    queuesFailed: 'Con fallos',
+    queuesQuiet: (n: number) => (n === 1 ? '1 cola sin novedad' : `${n} colas sin novedad`),
+    queuesAllQuiet: (n: number) =>
+      n === 1 ? 'Sin novedad en la única cola.' : `Sin novedad en las ${n} colas.`,
+    queuesShowAll: 'Ver todas',
+    queuesShowNews: 'Ver solo con novedad',
     queuesUnknown: 'Proceso interno',
     queueNames: {
       'tenant-provisioning': 'Puesta en marcha de empresas',
@@ -346,6 +362,8 @@ export const PLATFORM_UI_COPY = {
       retry: 'Reintento',
       refresh: 'Renovación de sesión',
       email_verified: 'Correo verificado',
+      list_access: 'Consulta',
+      record_access: 'Consulta',
     },
     entityTypeLabels: {
       tenant: 'empresa',
@@ -382,6 +400,8 @@ export const PLATFORM_UI_COPY = {
       retry: 'reintentó',
       refresh: 'renovó la sesión',
       email_verified: 'verificó el correo',
+      list_access: 'consultó',
+      record_access: 'consultó',
     },
     entityPhrases: {
       tenant: 'una empresa',
@@ -396,6 +416,8 @@ export const PLATFORM_UI_COPY = {
       expedienterecord: 'una oportunidad',
       session: 'la sesión',
       auditlog: 'el historial',
+      tenantusage: 'el uso por empresa',
+      auth: 'un acceso',
     },
   },
   settings: {

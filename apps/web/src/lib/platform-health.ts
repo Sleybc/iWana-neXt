@@ -2,6 +2,7 @@ import type {
   PlatformHealthComponent,
   PlatformHealthDay,
   PlatformHealthHistory,
+  PlatformQueueSnapshot,
 } from '@iwana/shared';
 import type { Tone } from '@iwana/ui';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
@@ -76,6 +77,34 @@ export function summarizeAvailability(history: PlatformHealthHistory): Availabil
     daysWithoutData: days.filter((d) => d.availability === null).length,
     days,
   };
+}
+
+export type WorkQueuesState = 'failed' | 'backlog' | 'clear';
+
+export interface WorkQueuesSummary {
+  state: WorkQueuesState;
+  /** Colas con trabajos en espera o fallidos, en el orden recibido. */
+  withNews: PlatformQueueSnapshot[];
+  quietCount: number;
+  failedTotal: number;
+  waitingTotal: number;
+}
+
+/**
+ * Regla única de Colas de trabajo (área y «Requiere tu atención»): hay aviso si
+ * alguna cola tiene fallidos (`failed`) o trabajos en espera (`backlog`);
+ * los fallidos mandan sobre la espera.
+ */
+export function summarizeWorkQueues(
+  queues: readonly PlatformQueueSnapshot[] | null | undefined,
+): WorkQueuesSummary {
+  const rows = queues ?? [];
+  const withNews = rows.filter((q) => q.waiting > 0 || q.failed > 0);
+  const failedTotal = rows.reduce((sum, q) => sum + q.failed, 0);
+  const waitingTotal = rows.reduce((sum, q) => sum + q.waiting, 0);
+  const state: WorkQueuesState =
+    failedTotal > 0 ? 'failed' : waitingTotal > 0 ? 'backlog' : 'clear';
+  return { state, withNews, quietCount: rows.length - withNews.length, failedTotal, waitingTotal };
 }
 
 /** Nombre visible de una cola; nunca el técnico. */

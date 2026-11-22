@@ -299,6 +299,17 @@ describe('PlatformAuditService', () => {
       }
     });
 
+    it('excludeAccessEvents=true saca las lecturas auditadas (ADR-114) en datos y total', async () => {
+      await service.query({ limit: 5, excludeAccessEvents: true });
+      const calls = qbMock['andWhere']!.mock.calls.filter(
+        ([sql]) => sql === 'audit.action NOT IN (:...accessActions)',
+      );
+      expect(calls).toHaveLength(2);
+      for (const [, params] of calls) {
+        expect(params).toEqual({ accessActions: ['LIST_ACCESS', 'RECORD_ACCESS'] });
+      }
+    });
+
     it('sin excludeSessionEvents no filtra acciones de sesión', async () => {
       await service.query({ limit: 5 });
       expect(
