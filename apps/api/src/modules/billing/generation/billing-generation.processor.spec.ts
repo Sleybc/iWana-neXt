@@ -1,3 +1,4 @@
+import { UnrecoverableError } from 'bullmq';
 import { TenantStatus } from '@iwana/shared';
 import { BillingGenerationProcessor } from './billing-generation.processor';
 import { BILLING_GENERATION_JOB } from './billing-generation.constants';
@@ -11,7 +12,10 @@ describe('BR-2.1 programación y ejecución', () => {
     deletedAt: null,
   };
   function fixture() {
-    const queue = { upsertJobScheduler: jest.fn().mockResolvedValue(undefined) };
+    const queue = {
+      upsertJobScheduler: jest.fn().mockResolvedValue(undefined),
+      removeJobScheduler: jest.fn().mockResolvedValue(true),
+    };
     const tenants = {
       listActiveTenantContexts: jest.fn().mockResolvedValue([tenant]),
       findTenantLifecycleById: jest.fn().mockResolvedValue(tenant),
@@ -45,6 +49,84 @@ describe('BR-2.1 programación y ejecución', () => {
     generation.automaticGenerationEnabled.mockResolvedValue(true);
     await processor.process(job as never);
     expect(generation.generate).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    ['inexistente', null],
+    ['retirada', { ...tenant, status: TenantStatus.MARKED_FOR_DELETION, deletedAt: new Date() }],
+  ])(
+    'K: con una empresa %s el programador se retira a sí mismo y el job no falla',
+    async (_case, lifecycle) => {
+      const { processor, tenants, queue, generation } = fixture();
+      tenants.findTenantLifecycleById.mockResolvedValue(lifecycle);
+      const job = {
+        name: BILLING_GENERATION_JOB,
+        data: { tenantId: tenant.id, schemaName: tenant.schemaName, localDate: '2026-11-05' },
+      };
+
+      await expect(processor.process(job as never)).resolves.toBeUndefined();
+      expect(queue.removeJobScheduler).toHaveBeenCalledWith(
+        `billing-generation:${tenant.schemaName}`,
+      );
+      expect(generation.generate).not.toHaveBeenCalled();
+    },
+  );
+  it.each([TenantStatus.SUSPENDED, TenantStatus.INACTIVE])(
+    'una empresa %s termina sin trabajo, sin fallar, y conserva su programador',
+    async (status) => {
+      const { processor, tenants, queue, generation } = fixture();
+      tenants.findTenantLifecycleById.mockResolvedValue({ ...tenant, status });
+      const job = {
+        name: BILLING_GENERATION_JOB,
+        data: { tenantId: tenant.id, schemaName: tenant.schemaName, localDate: '2026-11-05' },
+      };
+      await expect(processor.process(job as never)).resolves.toBeUndefined();
+      expect(queue.removeJobScheduler).not.toHaveBeenCalled();
+      expect(generation.generate).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    ['PROVISIONING', { status: TenantStatus.PROVISIONING }],
+    ['PROVISIONING_FAILED', { status: TenantStatus.PROVISIONING_FAILED }],
+    ['schema del job distinto', { schemaName: 'tenant_otro' }],
+    ['schema inválido en una empresa ACTIVE', { schemaName: 'public; DROP TABLE x' }],
+  ])('rechaza sin reintento: %s', async (_case, override) => {
+    const { processor, tenants, queue, generation } = fixture();
+    tenants.findTenantLifecycleById.mockResolvedValue({ ...tenant, ...override });
+    const job = {
+      name: BILLING_GENERATION_JOB,
+      data: { tenantId: tenant.id, schemaName: tenant.schemaName, localDate: '2026-11-05' },
+    };
+    await expect(processor.process(job as never)).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(queue.removeJobScheduler).not.toHaveBeenCalled();
+    expect(generation.generate).not.toHaveBeenCalled();
+  });
+  it('al retirar el programador de una empresa marcada usa el schema de la fila', async () => {
+    const { processor, tenants, queue } = fixture();
+    tenants.findTenantLifecycleById.mockResolvedValue({
+      ...tenant,
+      schemaName: 'tenant_de_la_fila',
+      status: TenantStatus.MARKED_FOR_DELETION,
+      deletedAt: new Date(),
+    });
+    const job = {
+      name: BILLING_GENERATION_JOB,
+      data: { tenantId: tenant.id, schemaName: tenant.schemaName, localDate: '2026-11-05' },
+    };
+    await processor.process(job as never);
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith('billing-generation:tenant_de_la_fila');
+  });
+  it('K: al marcar una empresa se retira su programador; al restaurarla se vuelve a programar', async () => {
+    const { processor, queue } = fixture();
+    await processor.onTenantRetired({ tenantId: tenant.id, schemaName: tenant.schemaName });
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(
+      `billing-generation:${tenant.schemaName}`,
+    );
+    await processor.onTenantRestored();
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      `billing-generation:${tenant.schemaName}`,
+      expect.anything(),
+      expect.anything(),
+    );
   });
   it('reemplaza el horario con el mismo scheduler estable', async () => {
     const { processor, queue, generation } = fixture();

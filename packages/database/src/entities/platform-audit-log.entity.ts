@@ -16,6 +16,8 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 
 @Index('idx_pal_user_created', ['userId', 'createdAt'])
 @Index('idx_pal_action_created', ['action', 'createdAt'])
 @Index('idx_pal_created_id', ['createdAt', 'id'])
+// Migración public 036: eventos de empresa para «Activas al cierre».
+@Index('idx_pal_tenant_created_id', ['createdAt', 'id'], { where: `"entity_type" = 'Tenant'` })
 @Entity({ schema: 'public', name: 'platform_audit_logs' })
 export class PlatformAuditLog {
   @PrimaryGeneratedColumn('uuid')

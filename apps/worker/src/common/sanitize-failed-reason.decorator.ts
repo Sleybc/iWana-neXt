@@ -1,4 +1,4 @@
-import { summarizeErrorForLog } from '@iwana/db';
+import { describeErrorForLog } from './tenant-sweep';
 
 type AsyncMethod = (this: unknown, ...args: unknown[]) => Promise<unknown>;
 
@@ -17,7 +17,9 @@ export function SanitizeFailedReason(): MethodDecorator {
         try {
           return await processMethod.apply(this, args);
         } catch (error: unknown) {
-          const summary = summarizeErrorForLog(error);
+          // El fallo de un barrido multiempresa ya trae un mensaje armado solo con partes
+          // seguras (id de empresa y resumen saneado): se conserva para que identifique la empresa.
+          const summary = describeErrorForLog(error);
           const safeError = new Error(summary);
           if (error instanceof Error) {
             // Preserva instanceof (p. ej. UnrecoverableError de BullMQ) para que

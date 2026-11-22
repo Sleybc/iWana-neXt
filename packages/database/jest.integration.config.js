@@ -29,6 +29,8 @@ module.exports = {
   testEnvironment: 'node',
   // Decide si hay PostgreSQL alcanzable y publica la bandera en process.env.
   globalSetup: '<rootDir>/../test/integration-db-probe.js',
+  // B(a): ninguna prueba registra empresas fuera de `test` o de un clon iwana_it_*.
+  setupFiles: ['<rootDir>/../test/integration-tenant-guard.js'],
   // Los schemas efímeros tienen nombre fijo: sin paralelismo no hay colisión.
   maxWorkers: 1,
   // 17 × CREATE INDEX CONCURRENTLY + verificaciones sobre catálogo real.

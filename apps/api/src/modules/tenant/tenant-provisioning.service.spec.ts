@@ -1,3 +1,4 @@
+import { PROVISIONING_JOB_REMOVE_ON_FAIL } from '@iwana/shared';
 import { ConflictException } from '@nestjs/common';
 import type { Queue } from 'bullmq';
 import { TenantStatus } from '@iwana/shared';
@@ -13,7 +14,8 @@ import { tenantStatusTransitionConflict } from './tenant-status-transitions';
  */
 describe('TenantProvisioningService.retryProvisioning (DT-4 v1.1 §8.2)', () => {
   const tenantId = 'tenant-uuid-1';
-  const args = [tenantId, 'tenant_isp_test', 'isp-test', 'admin@isptest.invalid'] as const;
+  // sec-eng C-2: el email del administrador ya no se pasa ni viaja por la cola.
+  const args = [tenantId, 'tenant_isp_test', 'isp-test'] as const;
 
   function build(status: TenantStatus, removeResult: number | Error = 1) {
     const queue = {
@@ -73,7 +75,6 @@ describe('TenantProvisioningService.retryProvisioning (DT-4 v1.1 §8.2)', () => 
           tenantId,
           schemaName: 'tenant_isp_test',
           tenantSlug: 'isp-test',
-          adminEmail: 'admin@isptest.invalid',
         },
         expect.objectContaining({ jobId: `provision-${tenantId}` }),
       );
@@ -136,12 +137,21 @@ describe('TenantProvisioningService.retryProvisioning (DT-4 v1.1 §8.2)', () => 
         tenantId,
         schemaName: 'tenant_isp_test',
         tenantSlug: 'isp-test',
-        adminEmail: 'admin@isptest.invalid',
       }),
     ).rejects.toThrow('cola caída');
     expect(tenantService.setProvisioningStatus).toHaveBeenCalledWith(
       tenantId,
       'PROVISIONING_FAILED',
+    );
+  });
+
+  it('B(b) familia P: el reencolado conserva los fallidos 30 días (antes, para siempre)', async () => {
+    const { service, queue } = build(TenantStatus.PROVISIONING_FAILED, 1);
+    await service.retryProvisioning(...args);
+    expect(queue.add).toHaveBeenCalledWith(
+      'provision-schema',
+      expect.anything(),
+      expect.objectContaining({ removeOnFail: PROVISIONING_JOB_REMOVE_ON_FAIL }),
     );
   });
 });

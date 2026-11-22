@@ -1,10 +1,17 @@
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
+import { registerMaintenanceRepeatable } from '../common/maintenance-repeatable';
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
 import { Pool, PoolClient } from 'pg';
 import { ConfigService } from '@nestjs/config';
-import { isValidSchemaName, summarizeErrorForLog } from '@iwana/db';
+import { summarizeErrorForLog } from '@iwana/db';
+import {
+  listSweepableTenants,
+  type SweepTenant,
+  runTenantSweep,
+  throwIfTenantSweepFailed,
+} from '../common/tenant-sweep';
 import { SCHEDULE_EVENTS_SWEEP_QUEUE } from '@iwana/shared';
 
 /**
@@ -63,17 +70,12 @@ export class ExpiredScheduleEventsProcessor extends WorkerHost implements OnAppl
     // Se retira antes de registrarlo: cada ejecución hereda las opciones de la
     // anterior, así que sin este paso la retención no llegaría a un repetible
     // ya programado. Sin retención, cada ejecución completada queda en Redis.
-    const repeat = { pattern: '*/15 * * * *' };
-    await this.queue.removeRepeatable('expired-sweep', repeat, 'expired-schedule-events-sweep');
-    await this.queue.add(
+    // B(b) familia M.
+    await registerMaintenanceRepeatable(
+      this.queue,
       'expired-sweep',
-      {},
-      {
-        repeat,
-        jobId: 'expired-schedule-events-sweep',
-        removeOnComplete: { count: 50 },
-        removeOnFail: { count: 100 },
-      },
+      { pattern: '*/15 * * * *' },
+      'expired-schedule-events-sweep',
     );
     this.logger.log(
       `[expired-schedule-events-sweep] Job repetible registrado (cron: */15 * * * * — cada 15 min; gracia=${this.graceMinutes}m)`,
@@ -84,32 +86,13 @@ export class ExpiredScheduleEventsProcessor extends WorkerHost implements OnAppl
   async process(_job: Job): Promise<void> {
     const client = await this.pool.connect();
     try {
-      const tenants = await client.query<{ schema_name: string }>(
-        `SELECT schema_name FROM public.tenants WHERE status = 'ACTIVE' AND deleted_at IS NULL ORDER BY schema_name`,
+      const tenants = await listSweepableTenants(client);
+
+      const { results, failures } = await runTenantSweep(tenants, (tenant) =>
+        this.processTenant(client, tenant),
       );
-
-      const tenantErrors: Error[] = [];
-      let totalMarked = 0;
-      for (const tenant of tenants.rows) {
-        if (!isValidSchemaName(tenant.schema_name)) {
-          this.logger.warn(`[expired-sweep] Schema inválido omitido: "${tenant.schema_name}"`);
-          continue;
-        }
-        try {
-          const count = await this.processTenant(client, tenant.schema_name);
-          totalMarked += count;
-        } catch (error: unknown) {
-          const reason = summarizeErrorForLog(error);
-          tenantErrors.push(new Error(`schema=${tenant.schema_name}: ${reason}`));
-        }
-      }
-
-      if (tenantErrors.length > 0) {
-        throw new AggregateError(
-          tenantErrors,
-          `Fallaron ${tenantErrors.length} tenant(s) durante el barrido de eventos vencidos`,
-        );
-      }
+      const totalMarked = results.reduce((sum, count) => sum + count, 0);
+      throwIfTenantSweepFailed('el barrido de eventos vencidos', failures);
 
       this.logger.log(
         `[expired-sweep] Barrido completado. Eventos marcados EXPIRED: ${totalMarked}`,
@@ -119,7 +102,8 @@ export class ExpiredScheduleEventsProcessor extends WorkerHost implements OnAppl
     }
   }
 
-  private async processTenant(client: PoolClient, schemaName: string): Promise<number> {
+  private async processTenant(client: PoolClient, tenant: SweepTenant): Promise<number> {
+    const { schemaName } = tenant;
     await client.query('BEGIN');
     try {
       await client.query(`SET LOCAL search_path TO "${schemaName}"`);
@@ -147,14 +131,14 @@ export class ExpiredScheduleEventsProcessor extends WorkerHost implements OnAppl
       if (marked > 0) {
         // Sin PII: solo conteo, no IDs individuales.
         this.logger.log(
-          `[expired-sweep] schema=${schemaName}: ${marked} eventos marcados EXPIRED (gracia=${this.graceMinutes}m)`,
+          `[expired-sweep] tenant=${tenant.id}: ${marked} eventos marcados EXPIRED (gracia=${this.graceMinutes}m)`,
         );
       }
       return marked;
     } catch (error) {
       await client.query('ROLLBACK');
       const errorSummary = summarizeErrorForLog(error);
-      this.logger.error(`[expired-sweep] Fallo procesando schema=${schemaName}: ${errorSummary}`);
+      this.logger.error(`[expired-sweep] Fallo procesando tenant=${tenant.id}: ${errorSummary}`);
       throw error;
     }
   }

@@ -70,6 +70,13 @@ describe('PlatformHealthHistoryService', () => {
           queues: [
             { name: 'search-index', waiting: 2, failed: 1, oldestWaitingSeconds: 40 },
             { name: 'refresh-token-purge', waiting: 0, failed: 0, oldestWaitingSeconds: null },
+            {
+              name: 'schedule-events-sweep',
+              waiting: 0,
+              failed: 5,
+              failedRecent: 0,
+              oldestWaitingSeconds: null,
+            },
             { waiting: 1 },
           ],
         },
@@ -84,9 +91,23 @@ describe('PlatformHealthHistoryService', () => {
     expect(history.days).toHaveLength(30);
     expect(history.days[29]?.components.api).toEqual({ samples: 2, availability: 0.5 });
     expect(history.days[0]?.components.db.availability).toBeNull();
+    // B(b): sin `failedRecent` (muestra previa al despliegue) se usa el total; con él, el suyo.
     expect(history.queues).toEqual([
-      { name: 'search-index', waiting: 2, failed: 1, oldestWaitingSeconds: 40 },
-      { name: 'refresh-token-purge', waiting: 0, failed: 0, oldestWaitingSeconds: null },
+      { name: 'search-index', waiting: 2, failed: 1, failedRecent: 1, oldestWaitingSeconds: 40 },
+      {
+        name: 'refresh-token-purge',
+        waiting: 0,
+        failed: 0,
+        failedRecent: 0,
+        oldestWaitingSeconds: null,
+      },
+      {
+        name: 'schedule-events-sweep',
+        waiting: 0,
+        failed: 5,
+        failedRecent: 0,
+        oldestWaitingSeconds: null,
+      },
     ]);
     expect(history.queuesSampledAt).toBe('2026-11-21T02:55:00.000Z');
     expect(history.generatedAt).toBe(now.toISOString());

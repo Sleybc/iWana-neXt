@@ -1,3 +1,4 @@
+import { BUSINESS_JOB_REMOVE_ON_FAIL } from '@iwana/shared';
 import { BadRequestException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { MediaAsset } from '@iwana/db';
@@ -360,5 +361,14 @@ describe('EvidenceAssetProvider', () => {
         createProvider().claimAsset('asset-001', 'tenant_test', 'eo-001'),
       ).rejects.toMatchObject({ response: { code: 'EVIDENCE_ASSET_NOT_FOUND' } });
     });
+  });
+
+  it('B(b) familia N: el análisis conserva los fallidos 14 días (antes, para siempre)', async () => {
+    await createProvider().createUploadIntent('tenant_test', buildFile(), 'actor-001');
+    expect(queue.add).toHaveBeenCalledWith(
+      'analyze-evidence-asset',
+      expect.anything(),
+      expect.objectContaining({ removeOnFail: BUSINESS_JOB_REMOVE_ON_FAIL }),
+    );
   });
 });

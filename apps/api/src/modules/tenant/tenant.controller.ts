@@ -41,7 +41,17 @@ import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { AuthService } from '../auth/auth.service';
-import { PLATFORM_TENANT_USAGE_ROLES, PlatformRole, TenantStatus, UserRole } from '@iwana/shared';
+import {
+  PLATFORM_TENANT_USAGE_ROLES,
+  PlatformRole,
+  TENANT_STATUS_SUMMARY_DEFAULT_PERIOD_MONTHS,
+  TENANT_STATUS_SUMMARY_PERIOD_MONTHS,
+  TenantStatus,
+  TenantStatusSummaryQuerySchema,
+  UserRole,
+} from '@iwana/shared';
+import type { TenantStatusSummaryQuery } from '@iwana/shared';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { TenantService } from './tenant.service';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { DashboardSummaryService } from './dashboard-summary.service';
@@ -141,13 +151,6 @@ const MEDIA_ASSET_RESPONSE_EXAMPLE = {
  * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 2, Seccion 4
  * HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §3.2 (contratos self-service)
  */
-/**
- * Email con el que se sembraba el ADMIN de **todas** las empresas antes de que
- * `adminEmail` fuese un campo del alta. Solo se usa como respaldo al reintentar
- * el provisioning de un tenant anterior al campo, para que conserve su email
- * original en vez de estrenar uno distinto.
- */
-const LEGACY_SEED_ADMIN_EMAIL = 'admin@iwana.co';
 
 @Controller('tenants')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -725,15 +728,14 @@ export class TenantController {
   async create(@Body() dto: CreateTenantDto): Promise<{ data: TenantResponseDto }> {
     const tenant = await this.tenantService.create(dto);
 
-    // Encolar provisioning del schema PostgreSQL (BullMQ worker).
-    // `adminEmail` viaja en el payload; la credencial NO — el seed crea el
-    // ADMIN bloqueado y la contraseña se emite después con
-    // regenerate-admin-credentials, que la muestra una sola vez.
+    // Encolar provisioning del schema PostgreSQL (BullMQ worker). Ni el email del
+    // administrador (el worker lo lee de `tenants.admin_email`, sec-eng C-2) ni la
+    // credencial viajan por la cola: el seed crea el ADMIN bloqueado y la contraseña se
+    // emite después con regenerate-admin-credentials, que la muestra una sola vez.
     await this.provisioningService.enqueue({
       tenantId: tenant.id,
       schemaName: tenant.schemaName,
       tenantSlug: tenant.slug,
-      adminEmail: dto.adminEmail,
     });
 
     return { data: tenant };
@@ -774,21 +776,34 @@ export class TenantController {
 
   /**
    * GET /api/v1/tenants/summary
-   * Resumen de estados de empresas (`TenantStatusSummary` v1.1).
+   * Resumen de estados de empresas (`TenantStatusSummary` v1.2).
    * Declarado antes de `:id` para que no lo capture ParseUUIDPipe.
    */
   @Get('summary')
   @Roles(PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
   @ApiOperation({ summary: 'Resumen de estados de empresas para la portada de plataforma' })
+  @ApiQuery({
+    name: 'months',
+    required: false,
+    enum: TENANT_STATUS_SUMMARY_PERIOD_MONTHS.map(String),
+    example: String(TENANT_STATUS_SUMMARY_DEFAULT_PERIOD_MONTHS),
+    description: `Largo de la serie mensual (v1.2); ${TENANT_STATUS_SUMMARY_DEFAULT_PERIOD_MONTHS} si se omite.`,
+  })
   @ApiResponse({
     status: 200,
     description: 'Resumen de estados.',
     type: TenantStatusSummaryResponseDto,
   })
+  @ApiResponse({
+    status: 400,
+    description: '`months` distinto de 6, 12 o 24, o parámetro desconocido.',
+  })
   @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
   @ApiResponse({ status: 403, description: 'Requiere un token de plataforma.' })
-  async getStatusSummary(): Promise<TenantStatusSummaryResponseDto> {
-    return { data: await this.tenantService.getStatusSummary() };
+  async getStatusSummary(
+    @Query(new ZodValidationPipe(TenantStatusSummaryQuerySchema)) query: TenantStatusSummaryQuery,
+  ): Promise<TenantStatusSummaryResponseDto> {
+    return { data: await this.tenantService.getStatusSummary(query.months) };
   }
 
   /**
@@ -1049,9 +1064,6 @@ export class TenantController {
       tenant.id,
       tenant.schemaName,
       tenant.slug,
-      // Los tenants anteriores al campo `adminEmail` no lo tienen: se sembraron
-      // con la constante, así que reintentar conserva su email original.
-      tenant.adminEmail ?? LEGACY_SEED_ADMIN_EMAIL,
     );
     return { data: updatedTenant };
   }

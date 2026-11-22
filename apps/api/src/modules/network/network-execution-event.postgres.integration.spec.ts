@@ -63,9 +63,14 @@ import { ephemeralSchemaName } from '../../../../../packages/database/test/ephem
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const redisAvailable = process.env['IWANA_REDIS_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithServices = dbAvailable && redisAvailable ? describe : describe.skip;
-const allowedDatabase = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
-if (dbAvailable && !allowedDatabase.test(process.env['DB_NAME'] ?? 'dbiw')) {
-  throw new Error('MOD13 B3 solo permite fixtures sintéticas en dbiw, test o iwana_it_*');
+// B(a): la fixture registra una empresa ACTIVE con schema parcial. En dbiw la ve el worker de
+// desarrollo y tumba sus barridos: solo en `test` o en un clon iwana_it_* de la CI.
+const { isDisposableIntegrationDatabase } =
+  require('../../../../../packages/database/test/integration-tenant-guard') as {
+    isDisposableIntegrationDatabase: (name: string | undefined) => boolean;
+  };
+if (dbAvailable && !isDisposableIntegrationDatabase(process.env['DB_NAME'])) {
+  throw new Error('MOD13 B3 solo permite fixtures sintéticas en test o iwana_it_*');
 }
 const tenantId = randomUUID();
 const schemaName = ephemeralSchemaName('tenant_mod13_b3_');
@@ -748,6 +753,9 @@ describeWithServices(
         new IpamService(dataSource),
         executionOrderReadPort as never,
         {
+          // Puerto de CRM (c1b56c83, privacidad): el titular de la fixture no está anonimizado ni
+          // bloqueado, así que el adaptador real deja escribir; el doble lo refleja.
+          assertWritableReferences: jest.fn().mockResolvedValue(undefined),
           getForSubscriber: jest.fn().mockResolvedValue({
             expedienteId: null,
             planId: null,

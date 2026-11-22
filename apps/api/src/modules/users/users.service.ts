@@ -858,6 +858,8 @@ export class UsersService {
       attempts: 3,
       backoff: { type: 'exponential', delay: 2000 },
       removeOnComplete: { age: BULK_RESULT_TTL_SECONDS },
+      // Fuera de las familias de B(b), a propósito: el resultado lleva datos de los usuarios
+      // creados y debe expirar en 24 h; un fallido no se conserva más que el resultado.
       removeOnFail: { age: BULK_RESULT_TTL_SECONDS },
     });
 

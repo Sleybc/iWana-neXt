@@ -1,3 +1,4 @@
+import { MAINTENANCE_JOB_RETENTION } from '@iwana/shared';
 import { UnrecoverableError, type Job } from 'bullmq';
 import { migrationMappingTargetError } from '@iwana/shared';
 import { MigrationImportProcessor } from './migration-import.processor';
@@ -17,7 +18,8 @@ function job(name: string, data: unknown, attemptsMade = 0, attempts = 5): Job<u
 }
 
 describe('MigrationImportProcessor', () => {
-  const queue = { add: jest.fn() };
+  // B(b): el repetible se retira antes de registrarlo con la retención de mantenimiento.
+  const queue = { add: jest.fn(), removeRepeatable: jest.fn() };
   const simulation = {
     simulate: jest.fn(),
     markFailed: jest.fn().mockResolvedValue(undefined),
@@ -50,6 +52,20 @@ describe('MigrationImportProcessor', () => {
       'purge-sweep',
       {},
       expect.objectContaining({ repeat: { pattern: '30 3 * * *', tz: 'America/Bogota' } }),
+    );
+  });
+
+  it('B(b) familia M: retira el repetible de purga antes de registrarlo con la retención', async () => {
+    await processor.onApplicationBootstrap();
+    const repeat = { pattern: '30 3 * * *', tz: 'America/Bogota' };
+    expect(queue.removeRepeatable).toHaveBeenCalledWith('purge-sweep', repeat, expect.any(String));
+    expect(queue.add).toHaveBeenCalledWith(
+      'purge-sweep',
+      {},
+      expect.objectContaining({ repeat, ...MAINTENANCE_JOB_RETENTION }),
+    );
+    expect(queue.removeRepeatable.mock.invocationCallOrder[0]).toBeLessThan(
+      queue.add.mock.invocationCallOrder[0] as number,
     );
   });
 

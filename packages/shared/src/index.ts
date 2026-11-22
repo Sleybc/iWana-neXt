@@ -60,6 +60,7 @@ export * from './constants/inventory-source-retention';
 
 // Contratos de payload entre procesos (API productor / Worker consumidor)
 export * from './contracts/queue-payloads';
+export * from './contracts/queue-retention';
 export * from './contracts/users-bulk-create.contract';
 export * from './contracts/retention-expiry.contract';
 export * from './contracts/operations/execution-orders';

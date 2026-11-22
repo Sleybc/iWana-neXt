@@ -25,7 +25,8 @@ export class PlatformAuditController {
   @ApiOperation({
     summary: 'Consultar audit log de plataforma con filtros y paginación cursor-based',
     description:
-      'Filtros: action, entityType, userId, fromDate, toDate (ISO 8601). Paginación cursor-based.',
+      'Filtros: action, entityType, userId, fromDate, toDate (ISO 8601), excludeSessionEvents, ' +
+      'excludeAccessEvents. Paginación cursor-based.',
   })
   @ApiResponse({
     status: 200,
@@ -40,7 +41,8 @@ export class PlatformAuditController {
   @ApiOperation({
     summary: 'Exportar audit log de plataforma a CSV',
     description:
-      'Mismos filtros que el listado (sin cursor/limit). Máximo 5000 filas. ' +
+      'Mismos filtros que el listado, incluidos excludeSessionEvents y excludeAccessEvents ' +
+      '(sin cursor/limit). Máximo 5000 filas. ' +
       'Si se trunca, responde con header X-Export-Truncated: true y una fila comentario en el CSV.',
   })
   @ApiProduces('text/csv')

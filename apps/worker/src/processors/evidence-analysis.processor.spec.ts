@@ -64,6 +64,42 @@ describe('EvidenceAnalysisProcessor', () => {
     expect(client.release).toHaveBeenCalledTimes(1);
   });
 
+  it('B(b): reencolar el mismo jobId tras expirar un fallido no reprocesa un activo ya analizado', async () => {
+    // Con la retención de 14 días, el `jobId` determinista vuelve a poder encolarse. El
+    // consumidor solo actúa sobre un activo en cuarentena (FOR UPDATE + compare-and-set): si ya
+    // quedó AVAILABLE/REJECTED, el SELECT no devuelve filas y el job termina sin tocar nada.
+    const client = {
+      query: jest
+        .fn()
+        .mockResolvedValueOnce(undefined) // BEGIN
+        .mockResolvedValueOnce({ rows: [] }) // ya no está QUARANTINED
+        .mockResolvedValueOnce(undefined), // COMMIT
+      release: jest.fn(),
+    };
+    const storage = { getObject: jest.fn() };
+    const processor = new EvidenceAnalysisProcessor({ get: jest.fn() } as unknown as ConfigService);
+    (processor as unknown as { storage: typeof storage }).storage = storage;
+    (processor as unknown as { pool: { connect: jest.Mock } }).pool = {
+      connect: jest.fn().mockResolvedValue(client),
+    };
+
+    await processor.process({
+      data: {
+        tenantSchema: 'tenant_test',
+        mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        correlationId: 'asset-correlation',
+      },
+    } as Job<{ tenantSchema: string; mediaAssetId: string; correlationId: string }>);
+
+    expect(storage.getObject).not.toHaveBeenCalled();
+    expect(client.query).not.toHaveBeenCalledWith(
+      expect.stringContaining('SET asset_status'),
+      expect.anything(),
+    );
+    expect(client.query).toHaveBeenLastCalledWith('COMMIT');
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
+
   it('rechaza sin promover cuando el objeto no contiene bytes reales', async () => {
     const client = {
       query: jest

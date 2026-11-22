@@ -7,20 +7,34 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Redis from 'ioredis';
 import { DataSource, Repository } from 'typeorm';
 import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
-import { MediaUsage, Tenant, runInTenantSchema } from '@iwana/db';
+import {
+  MediaUsage,
+  TENANT_AUDIT_ENTITY,
+  Tenant,
+  runInTenantSchema,
+  summarizeErrorForLog,
+} from '@iwana/db';
 import type { MediaThemeVariant } from '@iwana/db';
 import {
   AuditAction,
   AdditionalProductCategory,
+  isTenantStatusSummaryPeriodMonths,
   TENANT_ATTENTION_STATUSES,
+  TENANT_STATUS_SUMMARY_DEFAULT_PERIOD_MONTHS,
   TenantStatus,
 } from '@iwana/shared';
-import type { TenantStatusSummary } from '@iwana/shared';
+import type { TenantStatusSummary, TenantStatusSummaryPeriodMonths } from '@iwana/shared';
 import { clampPage } from '../../common/pagination/clamp-page';
+import {
+  TENANT_RESTORED_EVENT,
+  TENANT_RETIRED_EVENT,
+  type TenantLifecycleEvent,
+} from './events/tenant-lifecycle.events';
 import { AuditService } from '../audit/audit.service';
 import { PlatformAuditService } from '../audit/platform-audit.service';
 import { MediaService } from '../media/media.service';
@@ -61,6 +75,7 @@ import {
 import { CommercialNode } from './entities/commercial-node.entity';
 import { CoverageZone } from './entities/coverage-zone.entity';
 import { PlanCatalogItem } from './entities/plan-catalog-item.entity';
+import { reconstructActiveAtClose, TENANT_STATUS_EVENT_ACTIONS } from './tenant-active-at-close';
 import {
   assertTenantStatusTransition,
   tenantStatusTransitionConflict,
@@ -71,11 +86,14 @@ const TENANT_CACHE_TTL_SECONDS = 5 * 60;
 
 /** Zona del mes calendario del resumen de plataforma (contrato v1.1). */
 const SUMMARY_TIME_ZONE = 'America/Bogota';
-/** `entity_type` de las altas y bajas de empresa en `public.platform_audit_logs`. */
-const TENANT_AUDIT_ENTITY_TYPE = 'Tenant';
+/**
+ * `entity_type` de las altas, bajas y cambios de estado de empresa en `public.platform_audit_logs`.
+ * Una sola constante con el aprovisionador del worker (`@iwana/db`, F2-D2).
+ */
+const TENANT_AUDIT_ENTITY_TYPE = TENANT_AUDIT_ENTITY;
 
 /** `YYYY-MM` del mes en curso en {@link SUMMARY_TIME_ZONE}. */
-function currentBogotaMonth(now: Date = new Date()): string {
+function currentBogotaMonth(now: Date): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: SUMMARY_TIME_ZONE,
     year: 'numeric',
@@ -219,6 +237,9 @@ export class TenantService {
     private readonly mediaService: MediaService,
     private readonly searchQueueService: SearchQueueService,
     private readonly platformAuditService: PlatformAuditService,
+    // `EventEmitterModule.forRoot()` es global (CrmModule): la app siempre lo resuelve. El `?`
+    // solo deja construir el servicio a mano en pruebas que no lo usan.
+    private readonly eventEmitter?: EventEmitter2,
   ) {}
 
   /**
@@ -293,9 +314,16 @@ export class TenantService {
 
   /**
    * Resumen de estados de empresas para la portada de plataforma
-   * (`TenantStatusSummary` v1.0). Dos consultas fijas, sin N+1.
+   * (`TenantStatusSummary` v1.2). Tres consultas fijas sobre `public.tenants` más
+   * dos lecturas del módulo audit, sin N+1, todas ancladas al mismo `generatedAt`.
+   * `months` ya validado por `TenantStatusSummaryQuerySchema` (6, 12 o 24).
    */
-  async getStatusSummary(): Promise<TenantStatusSummary> {
+  async getStatusSummary(
+    months: TenantStatusSummaryPeriodMonths = TENANT_STATUS_SUMMARY_DEFAULT_PERIOD_MONTHS,
+  ): Promise<TenantStatusSummary> {
+    if (!isTenantStatusSummaryPeriodMonths(months)) {
+      throw new RangeError(`Periodo no admitido: ${months}`);
+    }
     const generatedAt = new Date();
     const countRows: Array<{
       status: string;
@@ -331,9 +359,24 @@ export class TenantService {
       [[...TENANT_ATTENTION_STATUSES]],
     );
     // v1.1: altas y bajas por mes (America/Bogota), propiedad del módulo audit.
-    const monthly = await this.platformAuditService.countEntityLifecycleByMonth(
+    const lifecycle = await this.platformAuditService.countEntityLifecycleByMonth(
       TENANT_AUDIT_ENTITY_TYPE,
       generatedAt,
+      months,
+    );
+    // v1.2: activas al cierre = estado actual de cada empresa + sus cambios de estado auditados.
+    const tenantRows: Array<{ id: string; status: TenantStatus; created_at: Date | string }> =
+      await this.dataSource.query(
+        `SELECT id, status, created_at
+           FROM public.tenants
+          WHERE created_at <= $1::timestamptz`,
+        [generatedAt.toISOString()],
+      );
+    const statusEvents = await this.platformAuditService.listEntityStatusEvents(
+      TENANT_AUDIT_ENTITY_TYPE,
+      TENANT_STATUS_EVENT_ACTIONS,
+      generatedAt,
+      months,
     );
 
     const byStatus = Object.fromEntries(
@@ -352,6 +395,21 @@ export class TenantService {
       if (row.status in byStatus) byStatus[row.status as TenantStatus] = count;
     }
 
+    const activeAtClose = reconstructActiveAtClose({
+      months: lifecycle.map((month) => month.month),
+      events: statusEvents,
+      tenants: tenantRows.map((row) => ({
+        id: row.id,
+        status: row.status,
+        createdAt: new Date(row.created_at),
+      })),
+      currentActive: byStatus[TenantStatus.ACTIVE],
+    });
+    const monthly = lifecycle.map((month, index) => ({
+      ...month,
+      activeAtClose: activeAtClose[index] ?? null,
+    }));
+
     return {
       total,
       byStatus,
@@ -364,9 +422,10 @@ export class TenantService {
       })),
       generatedAt: generatedAt.toISOString(),
       period: monthly[monthly.length - 1] ?? {
-        month: currentBogotaMonth(),
+        month: currentBogotaMonth(generatedAt),
         created: 0,
         removed: 0,
+        activeAtClose: byStatus[TenantStatus.ACTIVE],
       },
       monthly,
       oldestProvisioningAt,
@@ -2156,11 +2215,12 @@ export class TenantService {
         schemaName: updated.schemaName,
         userId: null,
         action: AuditAction.UPDATE,
-        entityType: 'Tenant',
+        entityType: TENANT_AUDIT_ENTITY_TYPE,
         entityId: updated.id,
         oldValue,
         newValue: this.toResponseDto(updated) as unknown as Record<string, unknown>,
       });
+      await this.emitLifecycle(TENANT_RESTORED_EVENT, updated);
     }
 
     this.logger.log(`Tenant ${status.toLowerCase()}: id=${updated.id} status=${updated.status}`);
@@ -2219,12 +2279,32 @@ export class TenantService {
       schemaName: saved.schemaName,
       userId: null,
       action: AuditAction.DELETE,
-      entityType: 'Tenant',
+      entityType: TENANT_AUDIT_ENTITY_TYPE,
       entityId: saved.id,
       oldValue,
       newValue: this.toResponseDto(saved) as unknown as Record<string, unknown>,
     });
 
     this.logger.log(`Tenant marcado para eliminacion: id=${id} schema=${tenant.schemaName}`);
+    await this.emitLifecycle(TENANT_RETIRED_EVENT, saved);
+  }
+
+  /**
+   * Avisa a los módulos con repetibles por empresa. Un fallo del oyente no revierte el cambio de
+   * estado: el procesador del repetible se defiende solo (retira el suyo si la empresa ya no
+   * está vigente).
+   */
+  private async emitLifecycle(event: string, tenant: Tenant): Promise<void> {
+    const payload: TenantLifecycleEvent = {
+      tenantId: tenant.id,
+      schemaName: tenant.schemaName,
+    };
+    try {
+      await this.eventEmitter?.emitAsync(event, payload);
+    } catch (error) {
+      this.logger.warn(
+        `tenant_lifecycle.listener_failed event=${event} tenantId=${tenant.id} ${summarizeErrorForLog(error)}`,
+      );
+    }
   }
 }

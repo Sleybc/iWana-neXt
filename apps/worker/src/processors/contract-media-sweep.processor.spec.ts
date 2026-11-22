@@ -26,7 +26,8 @@ describe('ContractMediaSweepProcessor (SEC-1)', () => {
   let base: string;
   let storage: LocalFsStorageAdapter;
   const dataSource = { query: jest.fn() } as unknown as jest.Mocked<DataSource>;
-  const queue = { add: jest.fn() } as unknown as Queue;
+  // B(b): el repetible se retira antes de registrarlo con la retención de mantenimiento.
+  const queue = { add: jest.fn(), removeRepeatable: jest.fn() } as unknown as Queue;
 
   const put = async (key: string, modified: Date) => {
     await storage.putObject(key, Buffer.from('cifrado'), { contentType: 'x' });

@@ -1,3 +1,4 @@
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -109,7 +110,10 @@ describe('TenantService', () => {
     softDelete: jest.Mock;
     upload: jest.Mock;
   };
-  const platformAuditServiceMock = { countEntityLifecycleByMonth: jest.fn() };
+  const platformAuditServiceMock = {
+    countEntityLifecycleByMonth: jest.fn(),
+    listEntityStatusEvents: jest.fn(),
+  };
   let searchQueueServiceMock: {
     enqueueTenantUpsert: jest.Mock;
     enqueueNavigationRebuild: jest.Mock;
@@ -187,6 +191,7 @@ describe('TenantService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TenantService,
+        { provide: EventEmitter2, useValue: { emitAsync: jest.fn().mockResolvedValue([]) } },
         {
           provide: getRepositoryToken(Tenant),
           useValue: mockRepo,
@@ -264,6 +269,8 @@ describe('TenantService', () => {
           slug: 'isp-test',
           schemaName: 'tenant_isp_test',
           status: TenantStatus.PROVISIONING,
+          // sec-eng C-2: el email del ADMIN se guarda en la fila; el worker lo lee de ahí.
+          adminEmail: dto.adminEmail,
         }),
       );
       expect(result.id).toBe('tenant-uuid-001');
@@ -1023,6 +1030,50 @@ describe('TenantService', () => {
       expect(auditServiceMock.log).not.toHaveBeenCalled();
     });
 
+    it('K: marcar una empresa avisa a los módulos con repetibles (tenant.retired, solo ids)', async () => {
+      const emitAsync = jest.fn().mockResolvedValue([]);
+      (service as unknown as { eventEmitter: unknown }).eventEmitter = { emitAsync };
+      const tenant = buildTenant({ status: TenantStatus.ACTIVE, deletedAt: null });
+      repo.findOne.mockResolvedValue({ ...tenant });
+      repo.save.mockImplementation(async (updated) => updated as Tenant);
+
+      await service.delete(tenant.id);
+
+      expect(emitAsync).toHaveBeenCalledWith('tenant.retired', {
+        tenantId: tenant.id,
+        schemaName: tenant.schemaName,
+      });
+    });
+
+    it('K: un oyente que falla no revierte el marcado', async () => {
+      const emitAsync = jest.fn().mockRejectedValue(new Error('redis caído'));
+      (service as unknown as { eventEmitter: unknown }).eventEmitter = { emitAsync };
+      const tenant = buildTenant({ status: TenantStatus.ACTIVE, deletedAt: null });
+      repo.findOne.mockResolvedValue({ ...tenant });
+      repo.save.mockImplementation(async (updated) => updated as Tenant);
+
+      await expect(service.delete(tenant.id)).resolves.toBeUndefined();
+      expect(repo.save).toHaveBeenCalled();
+    });
+
+    it('K: restaurar una empresa marcada avisa para volver a programar (tenant.restored)', async () => {
+      const emitAsync = jest.fn().mockResolvedValue([]);
+      (service as unknown as { eventEmitter: unknown }).eventEmitter = { emitAsync };
+      useStatefulRow(
+        buildTenant({
+          status: TenantStatus.MARKED_FOR_DELETION,
+          deletedAt: new Date('2026-10-01T00:00:00.000Z'),
+        }),
+      );
+
+      await service.activate('tenant-uuid-001');
+
+      expect(emitAsync).toHaveBeenCalledWith(
+        'tenant.restored',
+        expect.objectContaining({ tenantId: 'tenant-uuid-001' }),
+      );
+    });
+
     it('T5: activate desde MARKED_FOR_DELETION restaura, limpia deletedAt y audita el cambio', async () => {
       const state = useStatefulRow(
         buildTenant({
@@ -1434,9 +1485,134 @@ describe('TenantService', () => {
     let query: jest.Mock;
 
     beforeEach(() => {
-      query = jest.fn();
+      // v1.2: tercera consulta (estado actual de cada empresa); sin filas por defecto.
+      query = jest.fn().mockResolvedValue([]);
       (dataSource as unknown as { query: jest.Mock }).query = query;
       platformAuditServiceMock.countEntityLifecycleByMonth.mockReset().mockResolvedValue([]);
+      platformAuditServiceMock.listEntityStatusEvents.mockReset().mockResolvedValue([]);
+    });
+
+    describe('v1.2 — periodo y activas al cierre', () => {
+      const A = '00000000-0000-4000-8000-00000000000a';
+      const B = '00000000-0000-4000-8000-00000000000b';
+      const lifecycle = (months: string[]) =>
+        months.map((month) => ({ month, created: 0, removed: 0 }));
+
+      it('pide la serie y los eventos de estado con el periodo y el mismo instante', async () => {
+        jest.useFakeTimers({ now: new Date('2026-11-22T11:26:47.480Z') });
+        try {
+          query
+            .mockResolvedValueOnce([{ status: 'ACTIVE', count: '1', recent: '0' }])
+            .mockResolvedValueOnce([]);
+
+          const summary = await service.getStatusSummary(24);
+
+          const now = new Date('2026-11-22T11:26:47.480Z');
+          expect(summary.generatedAt).toBe(now.toISOString());
+          expect(platformAuditServiceMock.countEntityLifecycleByMonth).toHaveBeenCalledWith(
+            'Tenant',
+            now,
+            24,
+          );
+          expect(platformAuditServiceMock.listEntityStatusEvents).toHaveBeenCalledWith(
+            'Tenant',
+            expect.arrayContaining(['CREATE', 'UPDATE', 'DELETE', 'TENANT_PURGE_COMPLETED']),
+            now,
+            24,
+          );
+          // Estado actual de todas las empresas, en public.tenants y sin SQL de auditoría.
+          expect(query).toHaveBeenCalledTimes(3);
+          expect(query.mock.calls[2][0]).toMatch(
+            /SELECT id, status, created_at\s+FROM public\.tenants/,
+          );
+          expect(
+            query.mock.calls.some(([sql]) => String(sql).includes('platform_audit_logs')),
+          ).toBe(false);
+        } finally {
+          jest.useRealTimers();
+        }
+      });
+
+      it('sin periodo usa 12 meses', async () => {
+        await service.getStatusSummary();
+
+        expect(platformAuditServiceMock.countEntityLifecycleByMonth.mock.calls[0][2]).toBe(12);
+        expect(platformAuditServiceMock.listEntityStatusEvents.mock.calls[0][3]).toBe(12);
+      });
+
+      it('cada punto lleva activeAtClose; el mes en curso es byStatus.ACTIVE y period es el último', async () => {
+        query
+          .mockResolvedValueOnce([
+            { status: 'ACTIVE', count: '1', recent: '0' },
+            { status: 'SUSPENDED', count: '1', recent: '0' },
+          ])
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([
+            { id: A, status: 'ACTIVE', created_at: new Date('2026-07-01T00:00:00.000Z') },
+            { id: B, status: 'SUSPENDED', created_at: new Date('2026-07-01T00:00:00.000Z') },
+          ]);
+        platformAuditServiceMock.countEntityLifecycleByMonth.mockResolvedValue(
+          lifecycle(['2026-08', '2026-09', '2026-10', '2026-11']),
+        );
+        platformAuditServiceMock.listEntityStatusEvents.mockResolvedValue([
+          { entityId: A, action: 'UPDATE', status: 'ACTIVE', at: new Date('2026-07-02T00:00:00Z') },
+          { entityId: B, action: 'UPDATE', status: 'ACTIVE', at: new Date('2026-07-02T00:00:00Z') },
+          {
+            entityId: B,
+            action: 'UPDATE',
+            status: 'SUSPENDED',
+            at: new Date('2026-10-10T00:00:00Z'),
+          },
+        ]);
+
+        const summary = await service.getStatusSummary(6);
+
+        expect(summary.monthly.map((m) => m.activeAtClose)).toEqual([2, 2, 1, 1]);
+        expect(summary.period).toEqual(summary.monthly[3]);
+        expect(summary.period.activeAtClose).toBe(summary.byStatus.ACTIVE);
+      });
+
+      it('mes sin historia reconstruible → null, nunca 0', async () => {
+        query
+          .mockResolvedValueOnce([{ status: 'ACTIVE', count: '1', recent: '0' }])
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([
+            { id: A, status: 'ACTIVE', created_at: new Date('2024-01-01T00:00:00.000Z') },
+          ]);
+        platformAuditServiceMock.countEntityLifecycleByMonth.mockResolvedValue(
+          lifecycle(['2026-10', '2026-11']),
+        );
+
+        const summary = await service.getStatusSummary(6);
+
+        expect(summary.monthly.map((m) => m.activeAtClose)).toEqual([null, 1]);
+      });
+
+      it('rechaza un periodo fuera de 6/12/24 sin consultar', async () => {
+        await expect(service.getStatusSummary(13 as never)).rejects.toThrow(RangeError);
+        expect(query).not.toHaveBeenCalled();
+      });
+
+      it('sin serie del módulo audit, period es el mes en curso del mismo instante con las activas de hoy', async () => {
+        jest.useFakeTimers({ now: new Date('2026-12-01T04:59:59.000Z') });
+        try {
+          query
+            .mockResolvedValueOnce([{ status: 'ACTIVE', count: '3', recent: '0' }])
+            .mockResolvedValueOnce([]);
+
+          const summary = await service.getStatusSummary();
+
+          // 30-nov 23:59:59 en Bogotá.
+          expect(summary.period).toEqual({
+            month: '2026-11',
+            created: 0,
+            removed: 0,
+            activeAtClose: 3,
+          });
+        } finally {
+          jest.useRealTimers();
+        }
+      });
     });
 
     it('suma conteos por estado y rellena con 0 los estados sin empresas', async () => {
@@ -1478,12 +1654,14 @@ describe('TenantService', () => {
       expect(Number.isNaN(Date.parse(summary.generatedAt))).toBe(false);
     });
 
-    it('hace exactamente dos consultas: GROUP BY y atención con LIMIT 5 parametrizada', async () => {
+    it('hace exactamente tres consultas: GROUP BY, atención con LIMIT 5 y estado actual (v1.2)', async () => {
       query.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
       const summary = await service.getStatusSummary();
 
-      expect(query).toHaveBeenCalledTimes(2);
+      expect(query).toHaveBeenCalledTimes(3);
+      // v1.2: estado actual de cada empresa, anclado al mismo generatedAt.
+      expect(query.mock.calls[2][1]).toEqual([summary.generatedAt]);
       // `recent` anclado al mismo generatedAt de JS, por parámetro.
       expect(query.mock.calls[0][1]).toEqual([summary.generatedAt]);
       expect(query.mock.calls[0][0]).toMatch(/GROUP BY status/);
@@ -1523,15 +1701,46 @@ describe('TenantService', () => {
           },
           { status: 'ACTIVE', count: '5', recent: '0', oldest_created_at: new Date('2020-01-01') },
         ])
-        .mockResolvedValueOnce([]);
+        .mockResolvedValueOnce([])
+        // TCR H6: la consulta de empresas es coherente con el conteo (5 ACTIVE desde 2020 y 2 en
+        // PROVISIONING desde el 18-nov). Sin eventos auditados, la historia no se conoce.
+        .mockResolvedValueOnce([
+          ...Array.from({ length: 5 }, (_, n) => ({
+            id: `00000000-0000-4000-8000-00000000000${n}`,
+            status: 'ACTIVE',
+            created_at: new Date('2020-01-01T05:00:00.000Z'),
+          })),
+          ...Array.from({ length: 2 }, (_, n) => ({
+            id: `00000000-0000-4000-8000-00000000001${n}`,
+            status: 'PROVISIONING',
+            created_at: new Date('2026-11-18T05:00:00.000Z'),
+          })),
+        ]);
       platformAuditServiceMock.countEntityLifecycleByMonth.mockResolvedValue(months);
 
       const summary = await service.getStatusSummary();
 
       expect(summary.monthly).toHaveLength(12);
-      expect(summary.monthly[0]).toEqual({ month: '2026-01', created: 0, removed: 0 });
-      expect(summary.monthly[10]).toEqual({ month: '2026-11', created: 0, removed: 1 });
-      expect(summary.period).toEqual({ month: '2026-12', created: 3, removed: 0 });
+      // v1.2: hay empresas sin eventos auditados al cierre de cada mes pasado: la historia no
+      // se conoce (null), nunca 0. El mes en curso usa el conteo de hoy (5).
+      expect(summary.monthly[0]).toEqual({
+        month: '2026-01',
+        created: 0,
+        removed: 0,
+        activeAtClose: null,
+      });
+      expect(summary.monthly[10]).toEqual({
+        month: '2026-11',
+        created: 0,
+        removed: 1,
+        activeAtClose: null,
+      });
+      expect(summary.period).toEqual({
+        month: '2026-12',
+        created: 3,
+        removed: 0,
+        activeAtClose: 5,
+      });
       expect(summary.oldestProvisioningAt).toBe('2026-11-18T05:00:00.000Z');
     });
 
@@ -1570,10 +1779,12 @@ describe('TenantService', () => {
         month: expect.stringMatching(/^\d{4}-\d{2}$/),
         created: 0,
         removed: 0,
+        activeAtClose: 1,
       });
       expect(platformAuditServiceMock.countEntityLifecycleByMonth).toHaveBeenCalledWith(
         'Tenant',
         new Date(summary.generatedAt),
+        12,
       );
       expect(query.mock.calls.some(([sql]) => String(sql).includes('platform_audit_logs'))).toBe(
         false,

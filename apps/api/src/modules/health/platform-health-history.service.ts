@@ -67,10 +67,15 @@ function toQueueSnapshot(value: unknown): PlatformQueueSnapshot | null {
   const count = (field: unknown): number =>
     typeof field === 'number' && Number.isFinite(field) ? field : 0;
   const oldest = raw['oldestWaitingSeconds'];
+  const failed = count(raw['failed']);
+  const recent = raw['failedRecent'];
   return {
     name: raw['name'],
     waiting: count(raw['waiting']),
-    failed: count(raw['failed']),
+    failed,
+    // B(b): una muestra anterior al despliegue no trae `failedRecent`: se usa el total
+    // (conservador; solo afecta a la última muestra previa).
+    failedRecent: typeof recent === 'number' && Number.isFinite(recent) ? recent : failed,
     oldestWaitingSeconds: typeof oldest === 'number' && Number.isFinite(oldest) ? oldest : null,
   };
 }

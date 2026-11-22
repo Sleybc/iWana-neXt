@@ -1,3 +1,4 @@
+import { BUSINESS_JOB_REMOVE_ON_FAIL } from '@iwana/shared';
 import { ServiceUnavailableException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import type { Queue } from 'bullmq';
@@ -174,6 +175,16 @@ describe('TicketAttachmentMediaProvider', () => {
     expect(managerQuery.mock.calls[0]?.[0]).toContain('SET deleted_at');
     await expect(provider.readStatuses('public', [ASSET])).rejects.toThrow(
       'TICKET_ATTACHMENT_INVALID_TENANT_SCHEMA',
+    );
+  });
+
+  it('B(b) familia N: el análisis de adjuntos conserva los fallidos 14 días', async () => {
+    const { provider, queue } = build();
+    await provider.startAnalysis(SCHEMA, [ASSET]);
+    expect(queue.add).toHaveBeenCalledWith(
+      'analyze-evidence-asset',
+      expect.anything(),
+      expect.objectContaining({ removeOnFail: BUSINESS_JOB_REMOVE_ON_FAIL }),
     );
   });
 });

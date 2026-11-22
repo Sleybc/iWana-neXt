@@ -29,6 +29,15 @@ export {
   readFieldServiceTicketContext,
   type FieldServiceTicketContext,
 } from './assurance/field-service-ticket-context';
+// Auditoría de transiciones de estado de empresa hechas por el sistema (F2-D2).
+export {
+  INSERT_TENANT_STATUS_TRANSITION_AUDIT_SQL,
+  TENANT_AUDIT_ENTITY,
+  TENANT_PROVISIONING_AUDIT_ACTOR,
+  buildTenantStatusTransitionAudit,
+  insertTenantStatusTransitionAudit,
+} from './tenant-status-audit';
+export type { TenantStatusTransitionAudit } from './tenant-status-audit';
 
 // Grants post-DDL de provisioning (SEC-04) — schema tenant → rol app
 export {

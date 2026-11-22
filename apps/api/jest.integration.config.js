@@ -29,7 +29,11 @@ module.exports = {
   },
   testEnvironment: 'node',
   globalSetup: '<rootDir>/../../../packages/database/test/integration-db-probe.js',
-  setupFiles: ['<rootDir>/../../../packages/database/test/integration-worker-db.js'],
+  setupFiles: [
+    '<rootDir>/../../../packages/database/test/integration-worker-db.js',
+    // B(a): ninguna prueba registra empresas fuera de `test` o de un clon iwana_it_*.
+    '<rootDir>/../../../packages/database/test/integration-tenant-guard.js',
+  ],
   maxWorkers: integrationWorkers,
   testTimeout: 180_000,
 };

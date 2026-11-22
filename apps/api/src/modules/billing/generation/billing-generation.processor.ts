@@ -13,6 +13,17 @@ import {
   BILLING_GENERATION_RETRY_LIMIT,
 } from './billing-generation.constants';
 import { SanitizeFailedReason } from '../../../common/sanitize-failed-reason.decorator';
+import {
+  TENANT_RESTORED_EVENT,
+  TENANT_RETIRED_EVENT,
+  isRetiredTenant,
+  type TenantLifecycleEvent,
+} from '../../tenant/events/tenant-lifecycle.events';
+
+/** Id del programador diario de facturación de una empresa. */
+export function billingGenerationSchedulerId(schemaName: string): string {
+  return `billing-generation:${schemaName}`;
+}
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
@@ -66,7 +77,7 @@ export class BillingGenerationProcessor extends WorkerHost implements OnApplicat
         if (hour === null) continue;
         const settings = await this.tenantSettings.getSnapshot({ tenantId: tenant.id });
         await this.queue.upsertJobScheduler(
-          `billing-generation:${tenant.schemaName}`,
+          billingGenerationSchedulerId(tenant.schemaName),
           { pattern: `0 ${hour} * * *`, tz: settings.timezone },
           {
             name: BILLING_GENERATION_JOB,
@@ -94,17 +105,52 @@ export class BillingGenerationProcessor extends WorkerHost implements OnApplicat
     await this.onApplicationBootstrap();
   }
 
+  /** Una empresa restaurada vuelve a tener su programación (si tiene horario). */
+  @OnEvent(TENANT_RESTORED_EVENT, { async: true })
+  async onTenantRestored(): Promise<void> {
+    await this.onApplicationBootstrap();
+  }
+
+  /** Una empresa marcada para eliminación deja de generar: se retira su programador. */
+  @OnEvent(TENANT_RETIRED_EVENT, { async: true })
+  async onTenantRetired(event: TenantLifecycleEvent): Promise<void> {
+    await this.removeTenantScheduler(event.tenantId, event.schemaName);
+  }
+
+  private async removeTenantScheduler(tenantId: string, schemaName: string): Promise<void> {
+    await this.queue.removeJobScheduler(billingGenerationSchedulerId(schemaName));
+    this.logger.log(`billing_generation.scheduler_removed tenantId=${tenantId}`);
+  }
+
   @SanitizeFailedReason()
   async process(job: Job<unknown>): Promise<void> {
     if (job.name !== BILLING_GENERATION_JOB)
       throw new UnrecoverableError('Job de facturación desconocido.');
     const payload = parsePayload(job.data);
     const tenant = await this.tenants.findTenantLifecycleById(payload.tenantId);
+    // Defensa (K): el programador de una empresa que ya no existe o está retirada no falla en
+    // cada vuelta; se retira a sí mismo y termina.
+    if (isRetiredTenant(tenant)) {
+      // El id del programador sale del schema de la fila si existe (no del payload).
+      await this.removeTenantScheduler(payload.tenantId, tenant?.schemaName ?? payload.schemaName);
+      return;
+    }
+    // Suspendida o inactiva: sin trabajo y sin fallar; el programador se conserva y la
+    // generación se reanuda al reactivarla (AI-EM-ARCH, 2026-11-22).
+    if (
+      tenant &&
+      (tenant.status === TenantStatus.SUSPENDED || tenant.status === TenantStatus.INACTIVE)
+    ) {
+      this.logger.log(`billing_generation.skipped_inactive tenantId=${payload.tenantId}`);
+      return;
+    }
+    // PROVISIONING / PROVISIONING_FAILED con programador, o schema distinto del job (incluido uno
+    // inválido en la fila): se rechaza sin reintento.
     if (
       !tenant ||
       tenant.status !== TenantStatus.ACTIVE ||
-      tenant.deletedAt ||
-      tenant.schemaName !== payload.schemaName
+      tenant.schemaName !== payload.schemaName ||
+      !isValidSchemaName(tenant.schemaName)
     ) {
       throw new UnrecoverableError('El tenant del job de facturación no está activo.');
     }

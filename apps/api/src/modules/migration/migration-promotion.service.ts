@@ -33,6 +33,7 @@ import {
   type MigrationReconciliationReport,
   type MigrationRejectionReason,
   type MigrationTicketAttachmentsReport,
+  BUSINESS_JOB_REMOVE_ON_FAIL,
 } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
 import { SubscriberTagAssignmentPort } from '../crm/ports/subscriber-tag-assignment.port';
@@ -289,7 +290,7 @@ export class MigrationPromotionService {
           attempts: MIGRATION_PROMOTE_ATTEMPTS,
           backoff: { type: 'exponential', delay: 2_000 },
           removeOnComplete: 1_000,
-          removeOnFail: 1_000,
+          removeOnFail: BUSINESS_JOB_REMOVE_ON_FAIL, // B(b) familia N: 14 días
         });
       } catch (error) {
         this.logger.error(

@@ -1,11 +1,17 @@
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
+import { registerMaintenanceRepeatable } from '../common/maintenance-repeatable';
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
 import { Pool, PoolClient } from 'pg';
 import { ConfigService } from '@nestjs/config';
 import { OPERATIONS_EXECUTION_TOMBSTONE_QUEUE } from '@iwana/shared';
-import { isValidSchemaName, summarizeErrorForLog } from '@iwana/db';
+import { summarizeErrorForLog } from '@iwana/db';
+import {
+  listSweepableTenants,
+  runTenantSweep,
+  throwIfTenantSweepFailed,
+} from '../common/tenant-sweep';
 
 /**
  * Fila de conteos que devuelve `purge_execution_order_retention_batch`
@@ -76,10 +82,12 @@ export class ExecutionOrderTombstoneProcessor extends WorkerHost implements OnAp
   }
 
   async onApplicationBootstrap(): Promise<void> {
-    await this.queue.add(
+    // B(b) familia M.
+    await registerMaintenanceRepeatable(
+      this.queue,
       'compact-execution-tombstones',
-      {},
-      { repeat: { pattern: '0 4 * * *' }, jobId: 'execution-tombstone-daily' },
+      { pattern: '0 4 * * *' },
+      'execution-tombstone-daily',
     );
   }
 
@@ -91,43 +99,29 @@ export class ExecutionOrderTombstoneProcessor extends WorkerHost implements OnAp
       // migraciones tenant (getActiveTenants), que crea las tablas del módulo y
       // la función purge_execution_order_retention_batch. Estados intermedios
       // (PROVISIONING, SUSPENDED, INACTIVE, ...) pueden tener schema sin migrar.
-      const tenants = await client.query<{ schema_name: string }>(
-        `SELECT schema_name FROM public.tenants WHERE status = 'ACTIVE' AND deleted_at IS NULL ORDER BY schema_name`,
-      );
+      const tenants = await listSweepableTenants(client);
 
-      const tenantErrors: Error[] = [];
       const totals: PurgeRetentionCounts = { ...EMPTY_PURGE_COUNTS };
-      let tenantsProcessed = 0;
-      for (const tenant of tenants.rows) {
-        if (!isValidSchemaName(tenant.schema_name)) {
-          this.logger.warn(
-            `[execution-tombstone] Schema inválido omitido: "${tenant.schema_name}"`,
-          );
-          continue;
-        }
-        try {
-          const counts = await this.processTenant(client, tenant.schema_name);
-          tenantsProcessed += 1;
-          totals.idempotency_records_deleted += counts.idempotency_records_deleted;
-          totals.outbox_events_deleted += counts.outbox_events_deleted;
-          totals.inbox_events_deleted += counts.inbox_events_deleted;
-          totals.audit_intents_deleted += counts.audit_intents_deleted;
-          totals.evidence_upload_intents_deleted += counts.evidence_upload_intents_deleted;
-          totals.status_transitions_anonymized += counts.status_transitions_anonymized;
-          this.logger.debug(
-            `[execution-tombstone] schema=${tenant.schema_name}: ` +
-              `idempotency_records_deleted=${counts.idempotency_records_deleted}, ` +
-              `outbox_events_deleted=${counts.outbox_events_deleted}, ` +
-              `inbox_events_deleted=${counts.inbox_events_deleted}, ` +
-              `audit_intents_deleted=${counts.audit_intents_deleted}, ` +
-              `evidence_upload_intents_deleted=${counts.evidence_upload_intents_deleted}, ` +
-              `status_transitions_anonymized=${counts.status_transitions_anonymized}`,
-          );
-        } catch (error: unknown) {
-          const reason = summarizeErrorForLog(error);
-          tenantErrors.push(new Error(`schema=${tenant.schema_name}: ${reason}`));
-        }
-      }
+      const { results, failures } = await runTenantSweep(tenants, async (tenant) => {
+        const counts = await this.processTenant(client, tenant.schemaName, tenant.id);
+        totals.idempotency_records_deleted += counts.idempotency_records_deleted;
+        totals.outbox_events_deleted += counts.outbox_events_deleted;
+        totals.inbox_events_deleted += counts.inbox_events_deleted;
+        totals.audit_intents_deleted += counts.audit_intents_deleted;
+        totals.evidence_upload_intents_deleted += counts.evidence_upload_intents_deleted;
+        totals.status_transitions_anonymized += counts.status_transitions_anonymized;
+        this.logger.debug(
+          `[execution-tombstone] tenant=${tenant.id}: ` +
+            `idempotency_records_deleted=${counts.idempotency_records_deleted}, ` +
+            `outbox_events_deleted=${counts.outbox_events_deleted}, ` +
+            `inbox_events_deleted=${counts.inbox_events_deleted}, ` +
+            `audit_intents_deleted=${counts.audit_intents_deleted}, ` +
+            `evidence_upload_intents_deleted=${counts.evidence_upload_intents_deleted}, ` +
+            `status_transitions_anonymized=${counts.status_transitions_anonymized}`,
+        );
+        return counts;
+      });
+      const tenantsProcessed = results.length;
 
       // La línea se emite SIEMPRE, incluso con todos los conteos en cero:
       // «no purgó nada» y «no corrió» deben distinguirse en los logs.
@@ -141,12 +135,7 @@ export class ExecutionOrderTombstoneProcessor extends WorkerHost implements OnAp
           `status_transitions_anonymized=${totals.status_transitions_anonymized}`,
       );
 
-      if (tenantErrors.length > 0) {
-        throw new AggregateError(
-          tenantErrors,
-          `Fallaron ${tenantErrors.length} tenant(s) durante el tombstone de órdenes de ejecución`,
-        );
-      }
+      throwIfTenantSweepFailed('el tombstone de órdenes de ejecución', failures);
     } finally {
       client.release();
     }
@@ -155,6 +144,7 @@ export class ExecutionOrderTombstoneProcessor extends WorkerHost implements OnAp
   private async processTenant(
     client: PoolClient,
     schemaName: string,
+    tenantId: string,
   ): Promise<PurgeRetentionCounts> {
     await client.query('BEGIN');
     try {
@@ -178,9 +168,9 @@ export class ExecutionOrderTombstoneProcessor extends WorkerHost implements OnAp
     } catch (error) {
       await client.query('ROLLBACK');
       const errorSummary = summarizeErrorForLog(error);
-      // Sin PII: solo schema_name, clase y códigos estructurados del error.
+      // Sin PII: solo el id de la empresa, clase y códigos estructurados del error.
       this.logger.error(
-        `[execution-tombstone] Fallo procesando schema=${schemaName}: ${errorSummary}`,
+        `[execution-tombstone] Fallo procesando tenant=${tenantId}: ${errorSummary}`,
       );
       throw error;
     }

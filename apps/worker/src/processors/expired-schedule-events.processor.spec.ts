@@ -26,7 +26,11 @@ jest.mock('@iwana/db', () => ({
     .fn()
     .mockImplementation((name: string) => /^[a-z][a-z0-9_]*$/i.test(name)),
   summarizeErrorForLog: (error: unknown) =>
-    `class=${error instanceof Error ? error.constructor.name : 'UnknownError'} sqlstate=none`,
+    `class=${error instanceof Error ? error.constructor.name : 'UnknownError'} sqlstate=none` +
+    (typeof (error as { code?: unknown })?.code === 'string' &&
+    /^[A-Z][A-Z0-9_]{2,63}$/u.test((error as { code: string }).code)
+      ? ` code=${(error as { code: string }).code}`
+      : ''),
 }));
 
 // Mock del cliente pg — se reutiliza entre tests
@@ -100,8 +104,9 @@ describe('ExpiredScheduleEventsProcessor', () => {
         {
           repeat: { pattern: '*/15 * * * *' },
           jobId: 'expired-schedule-events-sweep',
+          // B(b) familia M: 7 días y 50 fallidos (antes, solo 100 por cantidad).
           removeOnComplete: { count: 50 },
-          removeOnFail: { count: 100 },
+          removeOnFail: { age: 7 * 86_400, count: 50 },
         },
       );
       expect(queue.removeRepeatable.mock.invocationCallOrder[0]).toBeLessThan(
@@ -123,13 +128,18 @@ describe('ExpiredScheduleEventsProcessor', () => {
       expect(mockConnect).toHaveBeenCalledTimes(1);
       expect(mockClient.release).toHaveBeenCalledTimes(1);
       expect(mockClient.query).toHaveBeenCalledWith(
-        expect.stringContaining('SELECT schema_name FROM public.tenants'),
+        "SELECT id::text AS id, schema_name FROM public.tenants WHERE status = 'ACTIVE' AND deleted_at IS NULL ORDER BY schema_name",
       );
     });
 
-    it('debe omitir schemas inválidos', async () => {
+    it('un schema inválido no se interpola: barre las demás y el job falla nombrando la empresa', async () => {
+      // Regla AI-EM-ARCH (2026-11-22): un schema inválido nunca se omite en silencio; cuenta
+      // como fallo de esa empresa (antes se omitía con aviso y el job terminaba bien).
       mockClient.query.mockResolvedValueOnce({
-        rows: [{ schema_name: 'tenant_001' }, { schema_name: "'; DROP TABLE --" }],
+        rows: [
+          { id: 'tenant-ok', schema_name: 'tenant_001' },
+          { id: 'tenant-evil', schema_name: "'; DROP TABLE --" },
+        ],
         rowCount: 2,
       });
       mockTenantSweep({ rows: [], rowCount: 0 });
@@ -140,13 +150,15 @@ describe('ExpiredScheduleEventsProcessor', () => {
       };
       isValidSchemaName.mockImplementation((name: string) => name === 'tenant_001');
 
-      await processor.process({} as never);
+      const thrown = await processor.process({} as never).catch((error: unknown) => error);
 
-      // tenants + BEGIN + SET + UPDATE + COMMIT (sin query de timezone)
+      // tenants + BEGIN + SET + UPDATE + COMMIT de la empresa válida; nada de la inválida
       expect(mockClient.query).toHaveBeenCalledTimes(5);
-      expect(Logger.prototype.warn).toHaveBeenCalledWith(
-        expect.stringContaining('Schema inválido omitido'),
-      );
+      const sqls = mockClient.query.mock.calls.map(([sql]) => String(sql));
+      expect(sqls.some((sql) => sql.includes('DROP TABLE'))).toBe(false);
+      expect(thrown).toBeInstanceOf(AggregateError);
+      expect((thrown as Error).message).toContain('tenant=tenant-evil');
+      expect((thrown as Error).message).toContain('code=TENANT_SCHEMA_INVALID');
     });
 
     it('debe marcar como EXPIRED eventos SCHEDULED y DRAFT vencidos', async () => {
@@ -312,6 +324,46 @@ describe('ExpiredScheduleEventsProcessor', () => {
 
       const processor = buildProcessor();
       await expect(processor.process({} as never)).rejects.toThrow(AggregateError);
+    });
+
+    it('un schema incompleto no detiene a las demás y el motivo del job nombra la empresa', async () => {
+      const incompleta = '22222222-2222-4222-8222-222222222222';
+      const { isValidSchemaName } = jest.requireMock('@iwana/db') as {
+        isValidSchemaName: jest.Mock;
+      };
+      isValidSchemaName.mockImplementation((name: string) => /^[a-z][a-z0-9_]*$/i.test(name));
+      mockClient.query.mockResolvedValueOnce({
+        rows: [
+          { id: '11111111-1111-4111-8111-111111111111', schema_name: 'tenant_001' },
+          { id: incompleta, schema_name: 'tenant_incompleto' },
+          { id: '33333333-3333-4333-8333-333333333333', schema_name: 'tenant_003' },
+        ],
+        rowCount: 3,
+      });
+      mockTenantSweep({ rows: [{ id: 'ev-a' }], rowCount: 1 });
+      // tenant_incompleto: BEGIN + SET + UPDATE falla (sin schedule_events) + ROLLBACK
+      mockClient.query.mockResolvedValueOnce({ rowCount: 0 });
+      mockClient.query.mockResolvedValueOnce({ rowCount: 0 });
+      mockClient.query.mockRejectedValueOnce(
+        Object.assign(new Error('relation "schedule_events" does not exist'), { code: '42P01' }),
+      );
+      mockClient.query.mockResolvedValueOnce({ rowCount: 0 });
+      mockTenantSweep({ rows: [{ id: 'ev-c' }], rowCount: 1 });
+
+      const processor = buildProcessor();
+      const thrown = await processor.process({} as never).catch((error: unknown) => error);
+
+      // La empresa siguiente se barrió (BEGIN/SET/UPDATE/COMMIT) pese al fallo anterior.
+      const updates = mockClient.query.mock.calls.filter(([sql]) =>
+        String(sql).includes('UPDATE schedule_events'),
+      );
+      expect(updates).toHaveLength(3);
+      expect(mockClient.query).toHaveBeenCalledWith('SET LOCAL search_path TO "tenant_003"');
+      // Lo que BullMQ guarda como failedReason identifica la empresa sin el texto del driver.
+      expect(thrown).toBeInstanceOf(AggregateError);
+      expect((thrown as Error).message).toContain(`tenant=${incompleta}`);
+      expect((thrown as Error).message).not.toContain('schedule_events');
+      expect(mockClient.release).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -1,12 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { TenantStatus } from '@iwana/shared';
+import { TENANT_STATUS_SUMMARY_PERIOD_MONTHS, TenantStatus } from '@iwana/shared';
 import type {
   TenantStatusSummary,
   TenantStatusSummaryAttentionItem,
   TenantStatusSummaryMonth,
 } from '@iwana/shared';
 
-/** Documentación OpenAPI de `TenantStatusSummary` v1.1 (el tipo vive en `@iwana/shared`). */
+/** Documentación OpenAPI de `TenantStatusSummary` v1.2 (el tipo vive en `@iwana/shared`). */
 export class TenantStatusSummaryAttentionItemDto implements TenantStatusSummaryAttentionItem {
   @ApiProperty({ format: 'uuid' })
   id: string;
@@ -25,11 +25,24 @@ export class TenantStatusSummaryMonthDto implements TenantStatusSummaryMonth {
   @ApiProperty({ example: '2026-11', pattern: '^[0-9]{4}-[0-9]{2}$' })
   month: string;
 
-  @ApiProperty({ description: 'Altas (CREATE de Tenant) del mes, America/Bogota.' })
+  @ApiProperty({
+    description:
+      'Altas del mes (primer CREATE de cada Tenant), America/Bogota. Un CREATE posterior de la misma empresa (p. ej. de branding) no es un alta.',
+  })
   created: number;
 
   @ApiProperty({ description: 'Bajas (DELETE de Tenant, empresa distinta) del mes.' })
   removed: number;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'v1.2 — empresas ACTIVE al último instante del mes (America/Bogota); en el mes en curso, ' +
+      'las de hoy (= byStatus.ACTIVE). null (nunca 0) si el estado al cierre de alguna empresa ' +
+      'no se puede reconstruir con certeza desde los cambios de estado auditados.',
+  })
+  activeAtClose: number | null;
 }
 
 export class TenantStatusSummaryDto implements TenantStatusSummary {
@@ -63,9 +76,11 @@ export class TenantStatusSummaryDto implements TenantStatusSummary {
 
   @ApiProperty({
     type: [TenantStatusSummaryMonthDto],
-    minItems: 12,
-    maxItems: 12,
-    description: '12 meses, del más antiguo al actual; meses sin eventos en 0.',
+    minItems: Math.min(...TENANT_STATUS_SUMMARY_PERIOD_MONTHS),
+    maxItems: Math.max(...TENANT_STATUS_SUMMARY_PERIOD_MONTHS),
+    description:
+      'v1.2 — `months` meses (6, 12 o 24; 12 por defecto), del más antiguo al actual; ' +
+      'meses sin eventos en 0.',
   })
   monthly: TenantStatusSummaryMonthDto[];
 

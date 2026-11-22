@@ -2,32 +2,30 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Job, UnrecoverableError } from 'bullmq';
+import { Job } from 'bullmq';
 import { Pool } from 'pg';
-import { isValidSchemaName } from '@iwana/db';
+import {
+  listSweepableTenants,
+  runTenantSweep,
+  throwIfTenantSweepFailed,
+} from '../common/tenant-sweep';
 import { REFRESH_TOKEN_PURGE_QUEUE } from '@iwana/shared';
-
-/**
- * Fila de resultado interno para la query de tenants activos.
- */
-interface TenantRow {
-  id: string;
-  schema_name: string;
-}
 
 /**
  * Processor BullMQ para la purga diaria de refresh tokens expirados.
  *
  * Responsabilidad:
- * 1. Obtener todos los tenants con status ACTIVE del schema público.
- * 2. Por cada tenant, eliminar de su schema los refresh_tokens que cumplan:
+ * 1. Obtener los tenants ACTIVE y no retirados del schema público (`listSweepableTenants`).
+ * 2. Por cada tenant, en su transacción con `SET LOCAL search_path`, eliminar los
+ *    refresh_tokens que cumplan:
  *    - expires_at < NOW() (ya expiró)
  *    - revoked_at IS NOT NULL (además fue revocado explícitamente)
- * 3. Loguear el total de tokens purgados.
+ * 3. Loguear el total de tokens purgados. Una empresa que falla (o con schema inválido) no
+ *    detiene a las demás; el job termina fallido nombrándola (`TenantSweepFailedError`).
  *
  * SEGURIDAD:
- * - schema_name se valida con isValidSchemaName() ANTES de interpolarlo en SQL.
- *   Si la validación falla → UnrecoverableError (no reintentar).
+ * - schema_name se valida con isValidSchemaName() ANTES de interpolarlo en SQL
+ *   (`listSweepableTenants`): una empresa con schema inválido se omite con aviso.
  * - Nunca interpolar datos de DB sin validar (previene SQL injection en DDL/DML).
  *
  * IDEMPOTENCIA:
@@ -74,39 +72,39 @@ export class RefreshTokenPurgeProcessor extends WorkerHost {
     let totalPurgados = 0;
 
     try {
-      // Obtener todos los tenants activos con su schema name
-      const { rows: tenants } = await client.query<TenantRow>(
-        "SELECT id, schema_name FROM public.tenants WHERE status = 'ACTIVE'",
-      );
+      // Empresas ACTIVE y no retiradas (filtro compartido de los barridos del worker).
+      const tenants = await listSweepableTenants(client);
 
       this.logger.log(`[purge] Tenants activos encontrados: ${tenants.length}`);
 
-      for (const tenant of tenants) {
-        // Validar schema_name con la regla canonica de @iwana/db antes de interpolarlo.
-        if (!isValidSchemaName(tenant.schema_name)) {
-          throw new UnrecoverableError(
-            `[purge] schema_name inválido detectado: "${tenant.schema_name}" — abortando purga por seguridad`,
+      // `listSweepableTenants` omite con aviso una empresa con schema inválido (nunca se
+      // interpola) y el fallo de una empresa (p. ej. schema sin `refresh_tokens`) no detiene a
+      // las demás. Cada empresa en su transacción, con `SET LOCAL search_path` como los demás.
+      const { results, failures } = await runTenantSweep(tenants, async (tenant) => {
+        await client.query('BEGIN');
+        try {
+          await client.query(`SET LOCAL search_path TO "${tenant.schemaName}"`);
+          // Eliminar tokens que ya expiraron Y fueron revocados explícitamente
+          const result = await client.query(
+            'DELETE FROM refresh_tokens WHERE expires_at < NOW() AND revoked_at IS NOT NULL',
           );
+          await client.query('COMMIT');
+          const eliminados = result.rowCount ?? 0;
+          if (eliminados > 0) {
+            this.logger.debug(`[purge] Tenant ${tenant.id}: ${eliminados} tokens eliminados`);
+          }
+          return eliminados;
+        } catch (error) {
+          await client.query('ROLLBACK').catch(() => undefined);
+          throw error;
         }
-
-        // Eliminar tokens que ya expiraron Y fueron revocados explícitamente
-        const result = await client.query(
-          `DELETE FROM ${tenant.schema_name}.refresh_tokens WHERE expires_at < NOW() AND revoked_at IS NOT NULL`,
-        );
-
-        const eliminados = result.rowCount ?? 0;
-        totalPurgados += eliminados;
-
-        if (eliminados > 0) {
-          this.logger.debug(
-            `[purge] Tenant ${tenant.id} (${tenant.schema_name}): ${eliminados} tokens eliminados`,
-          );
-        }
-      }
+      });
+      totalPurgados = results.reduce((sum, count) => sum + count, 0);
 
       this.logger.log(
-        `[purge] Purga completada: ${totalPurgados} refresh tokens eliminados de ${tenants.length} tenants`,
+        `[purge] Purga completada: ${totalPurgados} refresh tokens eliminados de ${results.length} tenants`,
       );
+      throwIfTenantSweepFailed('la purga de refresh tokens', failures);
     } finally {
       // Siempre liberar el cliente al pool, incluso si hubo error
       client.release();

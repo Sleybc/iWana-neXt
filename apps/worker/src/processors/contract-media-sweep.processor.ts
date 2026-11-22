@@ -6,6 +6,7 @@ import type { DataSource } from 'typeorm';
 import { isValidSchemaName, runInTenantSchema, summarizeErrorForLog } from '@iwana/db';
 import { STORAGE_PORT, type StoragePort, type StoredObjectSummary } from '@iwana/storage';
 import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
+import { registerMaintenanceRepeatable } from '../common/maintenance-repeatable';
 
 export const CONTRACT_MEDIA_SWEEP_QUEUE = 'crm-contract-media-sweep';
 export const CONTRACT_MEDIA_SWEEP_JOB = 'sweep';
@@ -51,15 +52,12 @@ export class ContractMediaSweepProcessor extends WorkerHost implements OnApplica
   }
 
   async onApplicationBootstrap(): Promise<void> {
-    await this.queue.add(
+    // B(b) familia M: retira el repetible y lo registra con la retención de mantenimiento.
+    await registerMaintenanceRepeatable(
+      this.queue,
       CONTRACT_MEDIA_SWEEP_JOB,
-      {},
-      {
-        repeat: { pattern: '15 */6 * * *' },
-        jobId: 'crm-contract-media-sweep-recurring',
-        removeOnComplete: { count: 50 },
-        removeOnFail: { count: 50 },
-      },
+      { pattern: '15 */6 * * *' },
+      'crm-contract-media-sweep-recurring',
     );
   }
 
@@ -79,6 +77,8 @@ export class ContractMediaSweepProcessor extends WorkerHost implements OnApplica
       deletedOrphans: 0,
       failed: 0,
     };
+    // Filtro propio, no `listSweepableTenants`: el residuo de contratos anonimizados también
+    // existe en empresas suspendidas o inactivas, y debe limpiarse igual (solo excluye retiradas).
     const tenants = (await this.dataSource.query(
       `SELECT schema_name FROM public.tenants WHERE deleted_at IS NULL ORDER BY schema_name`,
     )) as Array<{ schema_name: string }>;

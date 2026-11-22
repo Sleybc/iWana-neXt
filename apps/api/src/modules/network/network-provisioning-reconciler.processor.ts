@@ -1,8 +1,8 @@
 import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import { AuditAction, TenantStatus } from '@iwana/shared';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import { AuditAction, TenantStatus, MAINTENANCE_JOB_RETENTION } from '@iwana/shared';
 import {
   IpAssignment,
   isValidSchemaName,
@@ -25,6 +25,12 @@ import { AuditService } from '../audit/audit.service';
 import { ServiceProvisioningActivatedEvent } from './events/service-provisioning-activated.event';
 import { SanitizeFailedReason } from '../../common/sanitize-failed-reason.decorator';
 import { IpamService } from './ipam.service';
+import {
+  TENANT_RESTORED_EVENT,
+  TENANT_RETIRED_EVENT,
+  isRetiredTenant,
+  type TenantLifecycleEvent,
+} from '../tenant/events/tenant-lifecycle.events';
 
 export const NETWORK_PROVISIONING_RECONCILE_QUEUE = 'network-provisioning-reconcile';
 export const NETWORK_PROVISIONING_RECONCILE_JOB = 'reconcile-network-provisioning';
@@ -105,19 +111,44 @@ export class NetworkProvisioningReconcilerProcessor
         );
         continue;
       }
+      // B(b) familia M: retira el repetible antes de registrarlo con la retención nueva.
+      const jobId = makeNetworkProvisioningReconcileJobId(tenant.schemaName);
+      const repeat = { every: NETWORK_PROVISIONING_RECONCILE_INTERVAL_MS };
+      await this.removeTenantRepeatable(tenant.schemaName);
       await this.queue.add(
         NETWORK_PROVISIONING_RECONCILE_JOB,
         { tenantId: tenant.id, tenantSlug: tenant.slug, schemaName: tenant.schemaName },
         {
-          jobId: makeNetworkProvisioningReconcileJobId(tenant.schemaName),
-          repeat: { every: NETWORK_PROVISIONING_RECONCILE_INTERVAL_MS },
+          jobId,
+          repeat,
           attempts: 3,
           backoff: { type: 'exponential', delay: 1_000 },
           removeOnComplete: true,
-          removeOnFail: 100,
+          removeOnFail: MAINTENANCE_JOB_RETENTION.removeOnFail,
         },
       );
     }
+  }
+
+  /** Una empresa restaurada vuelve a tener su repetible. */
+  @OnEvent(TENANT_RESTORED_EVENT, { async: true })
+  async onTenantRestored(): Promise<void> {
+    await this.onApplicationBootstrap();
+  }
+
+  /** Una empresa marcada para eliminación deja de reconciliarse: se retira su repetible. */
+  @OnEvent(TENANT_RETIRED_EVENT, { async: true })
+  async onTenantRetired(event: TenantLifecycleEvent): Promise<void> {
+    await this.removeTenantRepeatable(event.schemaName);
+    this.logger.log(`network_reconcile.repeatable_removed tenantId=${event.tenantId}`);
+  }
+
+  private async removeTenantRepeatable(schemaName: string): Promise<void> {
+    await this.queue.removeRepeatable(
+      NETWORK_PROVISIONING_RECONCILE_JOB,
+      { every: NETWORK_PROVISIONING_RECONCILE_INTERVAL_MS },
+      makeNetworkProvisioningReconcileJobId(schemaName),
+    );
   }
 
   @SanitizeFailedReason()
@@ -126,6 +157,24 @@ export class NetworkProvisioningReconcilerProcessor
       throw new UnrecoverableError('Job de reconciliación desconocido.');
     }
     const payload = parseTenantPayload(job.data);
+    // Defensa (K): el repetible de una empresa que ya no existe o está retirada no falla en
+    // cada vuelta; se retira a sí mismo y termina.
+    const lifecycle = await this.tenantLifecycleReadPort.findTenantLifecycleById(payload.tenantId);
+    if (isRetiredTenant(lifecycle)) {
+      // El id del repetible sale del schema de la fila si existe (no del payload).
+      await this.removeTenantRepeatable(lifecycle?.schemaName ?? payload.schemaName);
+      this.logger.log(`network_reconcile.repeatable_removed tenantId=${payload.tenantId}`);
+      return;
+    }
+    // Suspendida o inactiva: sin trabajo y sin fallar; el repetible se conserva y se reanuda al
+    // reactivarla (AI-EM-ARCH, 2026-11-22).
+    if (
+      lifecycle &&
+      (lifecycle.status === TenantStatus.SUSPENDED || lifecycle.status === TenantStatus.INACTIVE)
+    ) {
+      this.logger.log(`network_reconcile.skipped_inactive tenantId=${payload.tenantId}`);
+      return;
+    }
     const tenant = await this.resolveActiveTenant(payload.tenantId);
     if (tenant.slug !== payload.tenantSlug || tenant.schemaName !== payload.schemaName) {
       throw new UnrecoverableError('El tenant del job no coincide con el tenant activo.');

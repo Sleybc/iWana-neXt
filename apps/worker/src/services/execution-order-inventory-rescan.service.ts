@@ -88,6 +88,8 @@ export class ExecutionOrderInventoryRescanService {
     let tenants: TenantRow[];
     try {
       const result = await lookup.query<TenantRow>(
+        // Filtro propio, no `listSweepableTenants`: los consumos pendientes de una empresa
+        // suspendida o inactiva deben re-emitirse; solo se excluyen las retiradas o marcadas.
         `SELECT id, schema_name FROM public.tenants
          WHERE deleted_at IS NULL AND status <> 'MARKED_FOR_DELETION'`,
       );

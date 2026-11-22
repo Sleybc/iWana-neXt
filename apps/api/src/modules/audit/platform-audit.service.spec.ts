@@ -408,10 +408,37 @@ describe('PlatformAuditService', () => {
       expect(result).toEqual([{ month: '2026-11', created: 2, removed: 1 }]);
       expect(dataSource.query).toHaveBeenCalledTimes(1);
       const [sql, params] = dataSource.query.mock.calls[0] as [string, unknown[]];
-      expect(params).toEqual(['Tenant', asOf.toISOString()]);
+      // v1.2: el largo de la serie viaja por parámetro (12 por defecto).
+      expect(params).toEqual(['Tenant', asOf.toISOString(), 12]);
       expect(sql).toMatch(/COUNT\(DISTINCT l\.entity_id\) FILTER \(WHERE l\.action = 'DELETE'\)/);
       expect(sql).toMatch(/America\/Bogota/);
-      expect(sql).toMatch(/interval '11 months'/);
+      expect(sql).toMatch(/make_interval\(months => \$3::int - 1\)/);
+    });
+
+    it('v1.2: pide 6 o 24 meses por parámetro y rechaza otro largo sin consultar', async () => {
+      const dataSource = service['dataSource'] as unknown as { query: jest.Mock };
+      dataSource.query = jest.fn().mockResolvedValue([]);
+      const asOf = new Date('2026-11-21T12:00:00.000Z');
+
+      await service.countEntityLifecycleByMonth('Tenant', asOf, 24);
+      await service.countEntityLifecycleByMonth('Tenant', asOf, 6);
+
+      expect(dataSource.query.mock.calls.map(([, params]) => params[2])).toEqual([24, 6]);
+      await expect(
+        service.countEntityLifecycleByMonth('Tenant', asOf, 13 as never),
+      ).rejects.toThrow(RangeError);
+      expect(dataSource.query).toHaveBeenCalledTimes(2);
+    });
+
+    it('v1.2: el alta es el primer CREATE de cada entidad (un CREATE posterior no es otra alta)', async () => {
+      const dataSource = service['dataSource'] as unknown as { query: jest.Mock };
+      dataSource.query = jest.fn().mockResolvedValue([]);
+
+      await service.countEntityLifecycleByMonth('Tenant', new Date('2026-11-21T12:00:00.000Z'));
+
+      const [sql] = dataSource.query.mock.calls[0] as [string];
+      expect(sql).toMatch(/MIN\(l\.created_at\)/);
+      expect(sql).not.toMatch(/COUNT\(\*\) FILTER \(WHERE l\.action = 'CREATE'\)/);
     });
 
     it('propaga el error de la base (no es fire-and-forget)', async () => {
@@ -423,7 +450,76 @@ describe('PlatformAuditService', () => {
     });
   });
 
+  describe('listEntityStatusEvents', () => {
+    it('una consulta parametrizada: último evento previo a la ventana + los de la ventana, hasta asOf', async () => {
+      const dataSource = service['dataSource'] as unknown as { query: jest.Mock };
+      dataSource.query = jest.fn().mockResolvedValue([
+        {
+          entity_id: 'e1',
+          action: 'CREATE',
+          status: 'PROVISIONING',
+          created_at: new Date('2026-01-02T00:00:00.000Z'),
+        },
+        { entity_id: 'e1', action: 'DELETE', status: null, created_at: '2026-11-02T00:00:00.000Z' },
+      ]);
+      const asOf = new Date('2026-11-21T12:00:00.000Z');
+
+      const result = await service.listEntityStatusEvents('Tenant', ['CREATE', 'DELETE'], asOf, 24);
+
+      expect(result).toEqual([
+        {
+          entityId: 'e1',
+          action: 'CREATE',
+          status: 'PROVISIONING',
+          at: new Date('2026-01-02T00:00:00.000Z'),
+        },
+        {
+          entityId: 'e1',
+          action: 'DELETE',
+          status: null,
+          at: new Date('2026-11-02T00:00:00.000Z'),
+        },
+      ]);
+      expect(dataSource.query).toHaveBeenCalledTimes(1);
+      const [sql, params] = dataSource.query.mock.calls[0] as [string, unknown[]];
+      expect(params).toEqual(['Tenant', asOf.toISOString(), 24, ['CREATE', 'DELETE']]);
+      expect(sql).toMatch(/DISTINCT ON \(e\.entity_id\)/);
+      expect(sql).toMatch(/l\.created_at <= \$2::timestamptz/);
+      expect(sql).toMatch(/America\/Bogota/);
+    });
+
+    it('rechaza un largo fuera de 6/12/24 sin consultar', async () => {
+      const dataSource = service['dataSource'] as unknown as { query: jest.Mock };
+      dataSource.query = jest.fn();
+      await expect(
+        service.listEntityStatusEvents('Tenant', ['CREATE'], new Date(), 0 as never),
+      ).rejects.toThrow(RangeError);
+      expect(dataSource.query).not.toHaveBeenCalled();
+    });
+  });
+
   describe('exportCsv', () => {
+    let exportQb: Record<string, jest.Mock>;
+    let exportGetMany: jest.Mock;
+
+    beforeEach(() => {
+      exportGetMany = jest.fn().mockResolvedValue([]);
+      exportQb = buildMockQueryBuilder({ getMany: exportGetMany });
+      const dataSource = service['dataSource'] as unknown as { createQueryBuilder: jest.Mock };
+      dataSource.createQueryBuilder = jest.fn().mockReturnValue(exportQb);
+    });
+
+    it('F2-D5: aplica excludeSessionEvents y excludeAccessEvents igual que el listado', async () => {
+      await service.exportCsv({ excludeSessionEvents: true, excludeAccessEvents: true });
+
+      expect(exportQb.andWhere).toHaveBeenCalledWith('audit.action NOT IN (:...sessionActions)', {
+        sessionActions: ['LOGIN', 'LOGOUT', 'LOGIN_FAILED', 'REFRESH'],
+      });
+      expect(exportQb.andWhere).toHaveBeenCalledWith('audit.action NOT IN (:...accessActions)', {
+        accessActions: ['LIST_ACCESS', 'RECORD_ACCESS'],
+      });
+    });
+
     const mockEntry = {
       id: 'entry-uuid-1',
       userId: 'user-uuid-1',
@@ -439,7 +535,7 @@ describe('PlatformAuditService', () => {
     };
 
     it('genera CSV con headers en español y actor displayName', async () => {
-      find.mockResolvedValueOnce([mockEntry]);
+      exportGetMany.mockResolvedValueOnce([mockEntry]);
 
       const result = await service.exportCsv({ action: AuditAction.CREATE });
 
@@ -450,12 +546,12 @@ describe('PlatformAuditService', () => {
       expect(result.csv).toContain('Admin Plataforma');
       expect(result.csv).toContain('CREATE');
       expect(result.csv).not.toContain('Export limitado');
-      expect(find).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ action: AuditAction.CREATE }),
-          take: 5001,
-        }),
-      );
+      expect(exportQb.andWhere).toHaveBeenCalledWith('audit.action = :action', {
+        action: AuditAction.CREATE,
+      });
+      expect(exportQb.orderBy).toHaveBeenCalledWith('audit.createdAt', 'DESC');
+      expect(exportQb.addOrderBy).toHaveBeenCalledWith('audit.id', 'DESC');
+      expect(exportQb.take).toHaveBeenCalledWith(5001);
     });
 
     it('marca truncated y añade comentario cuando hay más de 5000 filas', async () => {
@@ -463,7 +559,7 @@ describe('PlatformAuditService', () => {
         ...mockEntry,
         id: `entry-uuid-${i}`,
       }));
-      find.mockResolvedValueOnce(rows);
+      exportGetMany.mockResolvedValueOnce(rows);
 
       const result = await service.exportCsv({});
 
@@ -473,19 +569,19 @@ describe('PlatformAuditService', () => {
     });
 
     it('aplica filtros de fecha en export sin cursor', async () => {
-      find.mockResolvedValueOnce([]);
       await service.exportCsv({
         fromDate: '2026-01-01T00:00:00.000Z',
         toDate: '2026-06-30T23:59:59.999Z',
         cursor: 'should-be-ignored',
       });
-      expect(find).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ createdAt: expect.anything() }),
-        }),
+      expect(exportQb.andWhere).toHaveBeenCalledWith(
+        'audit.createdAt BETWEEN :fromDate AND :toDate',
+        expect.objectContaining({ fromDate: expect.any(Date), toDate: expect.any(Date) }),
       );
-      const where = find.mock.calls[0]?.[0]?.where as Record<string, unknown>;
-      expect(where['id']).toBeUndefined();
+      // El cursor no se aplica en la exportación.
+      expect(exportQb['andWhere']!.mock.calls.some(([sql]) => String(sql).includes('cursor'))).toBe(
+        false,
+      );
     });
   });
 });

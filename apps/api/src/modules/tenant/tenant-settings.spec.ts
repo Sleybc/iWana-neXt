@@ -1,3 +1,4 @@
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -94,6 +95,7 @@ describe('Tenant settings', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TenantService,
+        { provide: EventEmitter2, useValue: { emitAsync: jest.fn().mockResolvedValue([]) } },
         {
           provide: getRepositoryToken(Tenant),
           useValue: {

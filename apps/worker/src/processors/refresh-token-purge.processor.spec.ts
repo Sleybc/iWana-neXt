@@ -1,4 +1,4 @@
-import { UnrecoverableError } from 'bullmq';
+import { Logger } from '@nestjs/common';
 import { Pool } from 'pg';
 import { RefreshTokenPurgeProcessor } from './refresh-token-purge.processor';
 
@@ -45,110 +45,145 @@ describe('RefreshTokenPurgeProcessor', () => {
     jest.clearAllMocks();
   });
 
-  it('elimina refresh tokens expirados de tenants activos', async () => {
-    // Simular: 1 tenant activo con 5 tokens a eliminar
+  /** Secuencia por empresa: BEGIN → SET LOCAL search_path → DELETE → COMMIT. */
+  function mockTenantPurge(deleted: number) {
     mockClient.query
-      .mockResolvedValueOnce({
-        rows: [{ id: 'tenant-uuid-1', schema_name: 'tenant_isp_co' }],
-      })
-      .mockResolvedValueOnce({ rowCount: 5 });
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({}) // SET LOCAL
+      .mockResolvedValueOnce({ rowCount: deleted }) // DELETE
+      .mockResolvedValueOnce({}); // COMMIT
+  }
+
+  it('elimina refresh tokens expirados de tenants activos', async () => {
+    mockClient.query.mockResolvedValueOnce({
+      rows: [{ id: 'tenant-uuid-1', schema_name: 'tenant_isp_co' }],
+    });
+    mockTenantPurge(5);
 
     const processor = buildProcessor();
     await processor.process({} as never);
 
-    // Verificar que se consultaron los tenants activos
     expect(mockClient.query).toHaveBeenNthCalledWith(
       1,
-      "SELECT id, schema_name FROM public.tenants WHERE status = 'ACTIVE'",
+      "SELECT id::text AS id, schema_name FROM public.tenants WHERE status = 'ACTIVE' AND deleted_at IS NULL ORDER BY schema_name",
     );
-
-    // Verificar que el DELETE usa el schema validado
+    // Revisión de boundaries: la empresa en su transacción con SET LOCAL, como los demás barridos.
+    expect(mockClient.query).toHaveBeenNthCalledWith(2, 'BEGIN');
+    expect(mockClient.query).toHaveBeenNthCalledWith(3, 'SET LOCAL search_path TO "tenant_isp_co"');
     expect(mockClient.query).toHaveBeenNthCalledWith(
-      2,
-      'DELETE FROM tenant_isp_co.refresh_tokens WHERE expires_at < NOW() AND revoked_at IS NOT NULL',
+      4,
+      'DELETE FROM refresh_tokens WHERE expires_at < NOW() AND revoked_at IS NOT NULL',
     );
-
-    // Verificar que el cliente siempre se libera al pool
+    expect(mockClient.query).toHaveBeenNthCalledWith(5, 'COMMIT');
     expect(mockClient.release).toHaveBeenCalledTimes(1);
-
-    // Verificar que Pool fue instanciado una vez al crear el processor
     expect(Pool).toHaveBeenCalledTimes(1);
   });
 
   it('no lanza error cuando no hay tokens que purgar (rowCount = 0)', async () => {
-    // Simular: 1 tenant activo, ningún token a eliminar
-    mockClient.query
-      .mockResolvedValueOnce({
-        rows: [{ id: 'tenant-uuid-2', schema_name: 'tenant_sin_tokens' }],
-      })
-      .mockResolvedValueOnce({ rowCount: 0 });
+    mockClient.query.mockResolvedValueOnce({
+      rows: [{ id: 'tenant-uuid-2', schema_name: 'tenant_sin_tokens' }],
+    });
+    mockTenantPurge(0);
 
     const processor = buildProcessor();
-
-    // No debe lanzar ningún error
     await expect(processor.process({} as never)).resolves.toBeUndefined();
 
-    expect(mockClient.query).toHaveBeenCalledTimes(2);
+    expect(mockClient.query).toHaveBeenCalledTimes(5);
     expect(mockClient.release).toHaveBeenCalledTimes(1);
   });
 
-  it('lanza UnrecoverableError si el schema_name es inválido', async () => {
-    // Simular: 1 tenant con schema_name malicioso (SQL injection attempt)
+  it('un schema_name malicioso no se interpola: purga las demás y el job falla nombrando la empresa', async () => {
+    // Antes: UnrecoverableError global que no purgaba a nadie. Regla AI-EM-ARCH (2026-11-22):
+    // el schema inválido cuenta como fallo de esa empresa; las demás se purgan.
     mockClient.query.mockResolvedValueOnce({
-      rows: [{ id: 'tenant-evil', schema_name: 'public; DROP TABLE users' }],
+      rows: [
+        { id: 'tenant-evil', schema_name: 'public; DROP TABLE users' },
+        { id: 'tenant-uuid-ok', schema_name: 'tenant_ok' },
+      ],
     });
+    mockTenantPurge(1);
 
     const processor = buildProcessor();
+    await expect(processor.process({} as never)).rejects.toMatchObject({
+      name: 'TenantSweepFailedError',
+      message:
+        'Fallaron 1 empresa(s) en la purga de refresh tokens: ' +
+        'tenant=tenant-evil (class=Error sqlstate=none code=TENANT_SCHEMA_INVALID)',
+    });
 
-    await expect(processor.process({} as never)).rejects.toBeInstanceOf(UnrecoverableError);
-
-    // El DELETE nunca debe ejecutarse si el schema_name falla la validación
-    expect(mockClient.query).toHaveBeenCalledTimes(1);
-
-    // El cliente debe liberarse incluso al lanzar UnrecoverableError (bloque finally)
+    const sqls = mockClient.query.mock.calls.map(([sql]) => String(sql));
+    expect(sqls.some((sql) => sql.includes('DROP TABLE'))).toBe(false);
+    expect(sqls).toContain('SET LOCAL search_path TO "tenant_ok"');
     expect(mockClient.release).toHaveBeenCalledTimes(1);
   });
 
   it('libera el cliente al pool aunque el DELETE falle con error transitorio', async () => {
-    // Simular: 1 tenant activo, el DELETE lanza un error de conexión
     mockClient.query
-      .mockResolvedValueOnce({
-        rows: [{ id: 'tenant-uuid-3', schema_name: 'tenant_error' }],
-      })
-      .mockRejectedValueOnce(new Error('connection reset'));
+      .mockResolvedValueOnce({ rows: [{ id: 'tenant-uuid-3', schema_name: 'tenant_error' }] })
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({}) // SET LOCAL
+      .mockRejectedValueOnce(new Error('connection reset')) // DELETE
+      .mockResolvedValueOnce({}); // ROLLBACK
 
     const processor = buildProcessor();
 
     await expect(processor.process({} as never)).rejects.toMatchObject({
-      name: 'Error',
-      message: 'class=Error sqlstate=none',
+      name: 'TenantSweepFailedError',
+      message:
+        'Fallaron 1 empresa(s) en la purga de refresh tokens: ' +
+        'tenant=tenant-uuid-3 (class=Error sqlstate=none)',
     });
-
-    // El cliente debe liberarse siempre (bloque finally garantiza esto)
+    expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
     expect(mockClient.release).toHaveBeenCalledTimes(1);
   });
 
   it('procesa múltiples tenants y acumula el total de tokens eliminados', async () => {
-    // Simular: 3 tenants activos con 2, 0 y 3 tokens respectivamente
-    mockClient.query
-      .mockResolvedValueOnce({
-        rows: [
-          { id: 'tenant-uuid-a', schema_name: 'tenant_a' },
-          { id: 'tenant-uuid-b', schema_name: 'tenant_b' },
-          { id: 'tenant-uuid-c', schema_name: 'tenant_c' },
-        ],
-      })
-      .mockResolvedValueOnce({ rowCount: 2 })
-      .mockResolvedValueOnce({ rowCount: 0 })
-      .mockResolvedValueOnce({ rowCount: 3 });
+    mockClient.query.mockResolvedValueOnce({
+      rows: [
+        { id: 'tenant-uuid-a', schema_name: 'tenant_a' },
+        { id: 'tenant-uuid-b', schema_name: 'tenant_b' },
+        { id: 'tenant-uuid-c', schema_name: 'tenant_c' },
+      ],
+    });
+    mockTenantPurge(2);
+    mockTenantPurge(0);
+    mockTenantPurge(3);
 
     const processor = buildProcessor();
-
-    // No debe lanzar error — los 5 tokens en total deben procesarse
     await expect(processor.process({} as never)).resolves.toBeUndefined();
 
-    // 1 query para obtener tenants + 3 DELETE (uno por tenant)
-    expect(mockClient.query).toHaveBeenCalledTimes(4);
+    // 1 query de tenants + 4 por empresa
+    expect(mockClient.query).toHaveBeenCalledTimes(13);
+    expect(mockClient.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('una empresa sin refresh_tokens no detiene la purga de las demás y el motivo la nombra', async () => {
+    mockClient.query.mockResolvedValueOnce({
+      rows: [
+        { id: 'tenant-uuid-a', schema_name: 'tenant_a' },
+        { id: 'tenant-uuid-incompleta', schema_name: 'tenant_incompleta' },
+        { id: 'tenant-uuid-c', schema_name: 'tenant_c' },
+      ],
+    });
+    mockTenantPurge(1);
+    mockClient.query
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({}) // SET LOCAL
+      .mockRejectedValueOnce(
+        Object.assign(new Error('relation "refresh_tokens" does not exist'), { code: '42P01' }),
+      )
+      .mockResolvedValueOnce({}); // ROLLBACK
+    mockTenantPurge(2);
+
+    const processor = buildProcessor();
+    const thrown = await processor.process({} as never).catch((error: unknown) => error);
+
+    expect(mockClient.query).toHaveBeenCalledWith('SET LOCAL search_path TO "tenant_c"');
+    expect(thrown).toMatchObject({
+      message:
+        'Fallaron 1 empresa(s) en la purga de refresh tokens: ' +
+        'tenant=tenant-uuid-incompleta (class=Error sqlstate=42P01)',
+    });
     expect(mockClient.release).toHaveBeenCalledTimes(1);
   });
 });

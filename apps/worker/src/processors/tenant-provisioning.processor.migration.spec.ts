@@ -2,6 +2,7 @@
 import { UnrecoverableError } from 'bullmq';
 import { Pool } from 'pg';
 import { DataSource } from 'typeorm';
+import { isValidSchemaName } from '@iwana/db';
 import { TenantProvisioningProcessor } from './tenant-provisioning.processor';
 import { TenantSeedService } from '../services/tenant-seed.service';
 
@@ -26,7 +27,14 @@ jest.mock('@iwana/db', () => {
     '../../../../packages/database/src/db-credentials',
   ) as typeof import('@iwana/db');
 
+  // F2-D2: la auditoría de la transición es la real (forma de la fila), sobre el doble del manager.
+  const tenantStatusAudit = jest.requireActual(
+    '../../../../packages/database/src/tenant-status-audit',
+  ) as typeof import('@iwana/db');
+
   return {
+    buildTenantStatusTransitionAudit: tenantStatusAudit.buildTenantStatusTransitionAudit,
+    insertTenantStatusTransitionAudit: tenantStatusAudit.insertTenantStatusTransitionAudit,
     Tenant: class Tenant {},
     TENANT_MIGRATIONS: [{ name: '000_initial' }, { name: '001_next' }],
     isValidSchemaName: jest.fn().mockReturnValue(true),
@@ -80,6 +88,11 @@ function createProcessor(): TenantProvisioningProcessor {
   const dataSource = {
     getRepository: jest.fn().mockReturnValue(buildTenantRepository()),
     createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+    // F2-D2: el cambio de estado y su auditoría van en una transacción sobre el mismo doble.
+    transaction: jest.fn(async function (this: unknown, work: (manager: unknown) => unknown) {
+      return work(this);
+    }),
+    query: jest.fn().mockResolvedValue([]),
   } as unknown as DataSource;
 
   const tenantSeedService = {
@@ -247,6 +260,32 @@ describe('TenantProvisioningProcessor - Migration Features', () => {
       }
     });
 
+    it('solo cuenta la flota vigente: ACTIVE y no retirada (deleted_at IS NULL)', async () => {
+      mockPool.query.mockResolvedValueOnce({ rows: [] });
+
+      await (createProcessor() as any).resolvePiiContractEnv();
+
+      const [fleetSql] = mockPool.query.mock.calls[0] as [string];
+      expect(fleetSql).toContain("status = 'ACTIVE'");
+      expect(fleetSql).toContain('deleted_at IS NULL');
+    });
+
+    it('falla cerrado (sin reintento) si la flota trae un schema inválido', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{ id: 't-1', schema_name: 'public; DROP TABLE users' }],
+      });
+      (isValidSchemaName as jest.Mock).mockReturnValueOnce(false);
+
+      const thrown = await (createProcessor() as any)
+        .resolvePiiContractEnv()
+        .catch((error: unknown) => error);
+      expect(thrown).toBeInstanceOf(UnrecoverableError);
+      // sec-eng: el código queda en el motivo saneado; el schema no se escribe en el mensaje.
+      expect(thrown).toMatchObject({ code: 'TENANT_SCHEMA_INVALID' });
+      expect(String((thrown as Error).message)).not.toContain('DROP');
+      expect(mockPool.query).toHaveBeenCalledTimes(1);
+    });
+
     it('falla cerrado si la consulta de flota no responde (R2-1)', async () => {
       mockPool.query.mockRejectedValueOnce(new Error('connection reset'));
 
@@ -268,6 +307,11 @@ describe('TenantProvisioningProcessor - Migration Features', () => {
       const dataSource = {
         getRepository: jest.fn().mockReturnValue(buildTenantRepository()),
         createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+        // F2-D2: el cambio de estado y su auditoría van en una transacción sobre el mismo doble.
+        transaction: jest.fn(async function (this: unknown, work: (manager: unknown) => unknown) {
+          return work(this);
+        }),
+        query: jest.fn().mockResolvedValue([]),
       } as unknown as DataSource;
 
       const tenantSeedService = {
@@ -306,6 +350,11 @@ describe('TenantProvisioningProcessor - Migration Features', () => {
       const dataSource = {
         getRepository: jest.fn().mockReturnValue(tenantRepository),
         createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+        // F2-D2: el cambio de estado y su auditoría van en una transacción sobre el mismo doble.
+        transaction: jest.fn(async function (this: unknown, work: (manager: unknown) => unknown) {
+          return work(this);
+        }),
+        query: jest.fn().mockResolvedValue([]),
       } as unknown as DataSource;
 
       const tenantSeedService = {
@@ -345,6 +394,11 @@ describe('TenantProvisioningProcessor - Migration Features', () => {
       const dataSource = {
         getRepository: jest.fn().mockReturnValue(tenantRepository),
         createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+        // F2-D2: el cambio de estado y su auditoría van en una transacción sobre el mismo doble.
+        transaction: jest.fn(async function (this: unknown, work: (manager: unknown) => unknown) {
+          return work(this);
+        }),
+        query: jest.fn().mockResolvedValue([]),
       } as unknown as DataSource;
 
       const tenantSeedService = {

@@ -2,7 +2,11 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { summarizeErrorForLog } from '@iwana/db';
-import { TenantStatus, TENANT_PROVISIONING_QUEUE } from '@iwana/shared';
+import {
+  TenantStatus,
+  TENANT_PROVISIONING_QUEUE,
+  PROVISIONING_JOB_REMOVE_ON_FAIL,
+} from '@iwana/shared';
 import type { ProvisioningJobPayload } from '@iwana/shared';
 import { TenantResponseDto } from './dto/tenant.dto';
 import { TenantService } from './tenant.service';
@@ -77,7 +81,8 @@ export class TenantProvisioningService {
         backoff: { type: 'exponential', delay: 5000 },
         // El job expira si no se procesa en 30 minutos
         removeOnComplete: { age: 24 * 3600 }, // conservar por 24h para auditoría
-        removeOnFail: false, // conservar jobs fallidos para diagnostico
+        // B(b) familia P: fallidos 30 días para diagnóstico (antes, para siempre).
+        removeOnFail: PROVISIONING_JOB_REMOVE_ON_FAIL,
         jobId: `provision-${payload.tenantId}`, // idempotencia: no duplicar jobs
       });
 
@@ -128,7 +133,6 @@ export class TenantProvisioningService {
     tenantId: string,
     schemaName: string,
     tenantSlug: string,
-    adminEmail: string,
   ): Promise<TenantResponseDto> {
     // El estado se lee aquí, de la base y no de la caché, y no se recibe del
     // llamador: la guarda no depende de que cada ruta lo pase bien.
@@ -158,7 +162,8 @@ export class TenantProvisioningService {
       throw error;
     }
 
-    await this.enqueue({ tenantId, schemaName, tenantSlug, adminEmail });
+    // El email del administrador no viaja: el worker lo lee de la fila (sec-eng C-2).
+    await this.enqueue({ tenantId, schemaName, tenantSlug });
     return tenant;
   }
 }

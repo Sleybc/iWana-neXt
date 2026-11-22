@@ -1,3 +1,5 @@
+import { UnrecoverableError } from 'bullmq';
+import { MAINTENANCE_JOB_RETENTION } from '@iwana/shared';
 import { DataSource, EntityManager } from 'typeorm';
 import {
   AuditAction,
@@ -40,7 +42,8 @@ function createProcessor(input?: {
   const dataSource = {
     query: jest.fn(),
   } as unknown as DataSource;
-  const queue = { add: jest.fn().mockResolvedValue({}) };
+  // B(b): el repetible se retira antes de registrarlo con la retención de mantenimiento.
+  const queue = { add: jest.fn().mockResolvedValue({}), removeRepeatable: jest.fn() };
   const manager = input?.manager ?? {
     find: jest.fn().mockResolvedValue([]),
     findOne: jest.fn().mockResolvedValue(null),
@@ -135,6 +138,17 @@ describe('NetworkProvisioningReconcilerProcessor', () => {
         repeat: { every: NETWORK_PROVISIONING_RECONCILE_INTERVAL_MS },
       }),
     );
+    // B(b) familia M: el repetible se retira antes y conserva 7 días de fallidos.
+    expect(queue.removeRepeatable).toHaveBeenCalledWith(
+      NETWORK_PROVISIONING_RECONCILE_JOB,
+      { every: NETWORK_PROVISIONING_RECONCILE_INTERVAL_MS },
+      makeNetworkProvisioningReconcileJobId(tenant.schema_name),
+    );
+    expect(queue.add).toHaveBeenCalledWith(
+      NETWORK_PROVISIONING_RECONCILE_JOB,
+      expect.anything(),
+      expect.objectContaining({ removeOnFail: MAINTENANCE_JOB_RETENTION.removeOnFail }),
+    );
     expect(NETWORK_PROVISIONING_RECONCILE_QUEUE).toBe('network-provisioning-reconcile');
   });
 
@@ -159,26 +173,95 @@ describe('NetworkProvisioningReconcilerProcessor', () => {
     expect(dataSource.query).not.toHaveBeenCalled();
   });
 
-  it('rechaza el procesamiento si el tenant dejó de estar ACTIVE o fue eliminado', async () => {
+  it.each(['SUSPENDED', 'INACTIVE'])(
+    'una empresa %s termina sin trabajo, sin fallar, y conserva su repetible',
+    async (status) => {
+      // Antes rechazaba el job (UnrecoverableError). AI-EM-ARCH 2026-11-22: se reanuda al
+      // reactivarla, así que no falla ni retira el repetible.
+      const tenantLifecycleReadPort = {
+        listActiveTenantContexts: jest.fn(),
+        findTenantLifecycleById: jest.fn().mockResolvedValue({
+          id: tenant.id,
+          slug: tenant.slug,
+          schemaName: tenant.schema_name,
+          status,
+          deletedAt: null,
+        }),
+      };
+      const { processor, queue } = createProcessor({ tenantLifecycleReadPort });
+
+      await expect(
+        processor.process({
+          name: NETWORK_PROVISIONING_RECONCILE_JOB,
+          data: { tenantId: tenant.id, tenantSlug: tenant.slug, schemaName: tenant.schema_name },
+        } as never),
+      ).resolves.toBeUndefined();
+      expect(queue.removeRepeatable).not.toHaveBeenCalled();
+      expect(runInTenant).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['PROVISIONING', { status: 'PROVISIONING' }],
+    ['PROVISIONING_FAILED', { status: 'PROVISIONING_FAILED' }],
+    ['slug del job distinto', { slug: 'otra-empresa' }],
+    ['schema del job distinto', { schemaName: 'tenant_otro' }],
+    ['schema inválido en una empresa ACTIVE', { schemaName: 'public; DROP TABLE x' }],
+  ])('rechaza sin reintento: %s', async (_case, override) => {
     const tenantLifecycleReadPort = {
       listActiveTenantContexts: jest.fn(),
       findTenantLifecycleById: jest.fn().mockResolvedValue({
         id: tenant.id,
         slug: tenant.slug,
         schemaName: tenant.schema_name,
-        status: 'SUSPENDED',
+        status: 'ACTIVE',
         deletedAt: null,
+        ...override,
       }),
     };
-    const { processor } = createProcessor({ tenantLifecycleReadPort });
-
+    const { processor, queue } = createProcessor({ tenantLifecycleReadPort });
     await expect(
       processor.process({
         name: NETWORK_PROVISIONING_RECONCILE_JOB,
         data: { tenantId: tenant.id, tenantSlug: tenant.slug, schemaName: tenant.schema_name },
       } as never),
-    ).rejects.toThrow();
-    expect(tenantLifecycleReadPort.findTenantLifecycleById).toHaveBeenCalledWith(tenant.id);
+    ).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(queue.removeRepeatable).not.toHaveBeenCalled();
+    expect(runInTenant).not.toHaveBeenCalled();
+  });
+
+  it('al retirar el repetible de una empresa marcada usa el schema de la fila', async () => {
+    const tenantLifecycleReadPort = {
+      listActiveTenantContexts: jest.fn(),
+      findTenantLifecycleById: jest.fn().mockResolvedValue({
+        id: tenant.id,
+        slug: tenant.slug,
+        schemaName: 'tenant_de_la_fila',
+        status: 'MARKED_FOR_DELETION',
+        deletedAt: new Date(),
+      }),
+    };
+    const { processor, queue } = createProcessor({ tenantLifecycleReadPort });
+    await processor.process({
+      name: NETWORK_PROVISIONING_RECONCILE_JOB,
+      data: { tenantId: tenant.id, tenantSlug: tenant.slug, schemaName: tenant.schema_name },
+    } as never);
+    expect(queue.removeRepeatable).toHaveBeenCalledWith(
+      NETWORK_PROVISIONING_RECONCILE_JOB,
+      { every: NETWORK_PROVISIONING_RECONCILE_INTERVAL_MS },
+      makeNetworkProvisioningReconcileJobId('tenant_de_la_fila'),
+    );
+  });
+
+  it('K: al marcar una empresa se retira su repetible', async () => {
+    const { processor, queue } = createProcessor();
+    await processor.onTenantRetired({ tenantId: tenant.id, schemaName: tenant.schema_name });
+    expect(queue.removeRepeatable).toHaveBeenCalledWith(
+      NETWORK_PROVISIONING_RECONCILE_JOB,
+      { every: NETWORK_PROVISIONING_RECONCILE_INTERVAL_MS },
+      makeNetworkProvisioningReconcileJobId(tenant.schema_name),
+    );
+    expect(queue.add).not.toHaveBeenCalled();
   });
 
   it('marca FAILED una reserva de OT cerrada como ejecutada y audita dentro de la transacción', async () => {

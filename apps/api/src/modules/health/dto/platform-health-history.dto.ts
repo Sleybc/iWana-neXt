@@ -45,8 +45,16 @@ export class PlatformQueueSnapshotDto implements PlatformQueueSnapshot {
   @ApiProperty()
   waiting: number;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Fallidos retenidos en la cola (total).' })
   failed: number;
+
+  @ApiProperty({
+    description:
+      'Fallidos de las últimas 72 h; decide el aviso. En muestras previas al campo, igual a failed.',
+  })
+  // Opcional en el tipo compartido solo por las muestras guardadas antes del campo; el servicio
+  // siempre lo rellena (con `failed` si falta), por eso el esquema lo declara requerido.
+  failedRecent?: number;
 
   @ApiProperty({ type: Number, nullable: true, description: 'null si no hay trabajos en espera.' })
   oldestWaitingSeconds: number | null;

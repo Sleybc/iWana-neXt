@@ -229,7 +229,7 @@ describe('DT-4 — aprovisionamiento de un tenant marcado (PostgreSQL real)', ()
     // 2. El job pendiente se procesa con el procesador real.
     const job = {
       id: `provision-${tenantId}`,
-      data: { tenantId, schemaName, tenantSlug, adminEmail: 'dt4-admin@invalid.test' },
+      data: { tenantId, schemaName, tenantSlug },
     } as unknown as Job<ProvisioningJobPayload>;
     const failure = await provisioning.process(job).then(
       () => undefined,
@@ -345,7 +345,6 @@ describe('DT-4 — aprovisionamiento de un tenant marcado (PostgreSQL real)', ()
         tenantId: w1TenantId,
         schemaName: w1Schema,
         tenantSlug: w1Slug,
-        adminEmail: 'dt4w-admin@invalid.test',
       },
     } as unknown as Job<ProvisioningJobPayload>;
 

@@ -1,14 +1,26 @@
 import { getQueueToken, InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ModuleRef } from '@nestjs/core';
 import { InjectDataSource } from '@nestjs/typeorm';
-import type { Job, Queue } from 'bullmq';
+import { Queue, type Job } from 'bullmq';
 import type { DataSource } from 'typeorm';
 import { PlatformHealthSample, summarizeErrorForLog } from '@iwana/db';
 import type { PlatformHealthSampleQueue } from '@iwana/db';
+import {
+  MAINTENANCE_JOB_RETENTION,
+  PLATFORM_API_QUEUE_NAMES,
+  QUEUE_FAILED_MAX_AGE_SECONDS,
+  QUEUE_FAILED_RECENT_WINDOW_MS,
+  SAMPLED_QUEUE_NAMES,
+} from '@iwana/shared';
 import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
-import { PLATFORM_HEALTH_SAMPLER_QUEUE, WORKER_QUEUE_NAMES } from '../worker-queues';
+import { PLATFORM_HEALTH_SAMPLER_QUEUE } from '../worker-queues';
+
+const API_QUEUE_NAMES = new Set<string>(PLATFORM_API_QUEUE_NAMES);
+
+/** Tope de fallidos retirados por cola en cada vuelta (cada 5 min). */
+const FAILED_CLEAN_BATCH = 1000;
 
 export const PLATFORM_HEALTH_SAMPLER_JOB = 'sample';
 /** Id fijo del programador: `upsertJobScheduler` lo reemplaza en cada arranque, no lo duplica. */
@@ -56,14 +68,19 @@ export function resolveApiHealthUrl(raw: string | undefined): string | null {
  *
  * Cada 5 min mide `SELECT 1`, `PING` a Redis, `GET /api/v1/health` del API (solo con
  * `API_INTERNAL_URL`) y, por cola registrada en el worker, espera, fallidos y antigüedad del
- * trabajo en espera más viejo. Guarda una fila en `public.platform_health_samples` y borra las
+ * trabajo en espera más viejo, y fallidos de las últimas 72 h (`failedRecent`). Guarda una fila en `public.platform_health_samples` y borra las
  * de más de 35 días. Sin datos de empresa: solo booleanos y conteos.
  */
 @Injectable()
 @Processor(PLATFORM_HEALTH_SAMPLER_QUEUE, { concurrency: 1 })
-export class PlatformHealthSamplerProcessor extends WorkerHost implements OnApplicationBootstrap {
+export class PlatformHealthSamplerProcessor
+  extends WorkerHost
+  implements OnApplicationBootstrap, OnModuleDestroy
+{
   private readonly logger = new Logger(PlatformHealthSamplerProcessor.name);
   private readonly apiHealthUrl: string | null;
+  /** Colas del API que el muestreador abre por su cuenta (el worker no las registra). */
+  private readonly apiQueues = new Map<string, Queue>();
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
@@ -77,7 +94,9 @@ export class PlatformHealthSamplerProcessor extends WorkerHost implements OnAppl
 
   async onApplicationBootstrap(): Promise<void> {
     if (!this.apiHealthUrl) {
-      this.logger.warn('platform_health.api_not_measured reason=API_INTERNAL_URL_missing');
+      this.logger.warn(
+        'platform_health.api_not_measured reason=API_INTERNAL_URL_missing_or_invalid',
+      );
     }
     await this.queue.upsertJobScheduler(
       PLATFORM_HEALTH_SAMPLER_SCHEDULER_ID,
@@ -85,7 +104,8 @@ export class PlatformHealthSamplerProcessor extends WorkerHost implements OnAppl
       {
         name: PLATFORM_HEALTH_SAMPLER_JOB,
         data: {},
-        opts: { removeOnComplete: { count: 50 }, removeOnFail: { count: 50 } },
+        // B(b) familia M: `upsertJobScheduler` reemplaza las opciones del programador.
+        opts: { ...MAINTENANCE_JOB_RETENTION },
       },
     );
   }
@@ -96,6 +116,8 @@ export class PlatformHealthSamplerProcessor extends WorkerHost implements OnAppl
   }
 
   async sample(now: Date): Promise<PlatformHealthSampleResult> {
+    // sec-eng C-3: antes de contar, la edad máxima de los fallidos se aplica de verdad.
+    await this.pruneExpiredFailures();
     const [dbOk, redisOk, apiOk, queues] = await Promise.all([
       this.probeDatabase(),
       this.probeRedis(),
@@ -158,17 +180,75 @@ export class PlatformHealthSamplerProcessor extends WorkerHost implements OnAppl
         signal: AbortSignal.timeout(PLATFORM_HEALTH_PROBE_TIMEOUT_MS),
         redirect: 'error',
       });
-      return response.status === 200;
+      const ok = response.status === 200;
+      // Solo cuenta el status: el cuerpo se cancela para liberar el socket (L-1, F3-D3).
+      await response.body?.cancel().catch(() => undefined);
+      return ok;
     } catch {
       return false;
     }
   }
 
+  /**
+   * Cola a leer: la registrada en el worker o, para las que procesa el API, una propia sobre la
+   * misma conexión de Redis (solo lectura de conteos; se cierra al apagar el módulo).
+   */
+  private queueFor(name: string): Queue {
+    if (!API_QUEUE_NAMES.has(name)) {
+      return this.moduleRef.get<Queue>(getQueueToken(name), { strict: false });
+    }
+    let queue = this.apiQueues.get(name);
+    if (!queue) {
+      const { connection, prefix } = this.queue.opts;
+      queue = new Queue(name, prefix === undefined ? { connection } : { connection, prefix });
+      // Sin manejador, un error de conexión de esta cola de lectura tumbaría el proceso.
+      queue.on('error', (error) => {
+        this.logger.warn(
+          `platform_health.queue_connection_error queue=${name} ${summarizeErrorForLog(error)}`,
+        );
+      });
+      this.apiQueues.set(name, queue);
+    }
+    return queue;
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await Promise.all([...this.apiQueues.values()].map((queue) => queue.close()));
+    this.apiQueues.clear();
+  }
+
+  /**
+   * `removeOnFail.age` solo recorta cuando falla otro trabajo de la misma cola: en una cola que
+   * dejó de fallar, los fallidos viejos (con su payload) se quedarían. Cada vuelta del muestreo
+   * aplica `clean(age, 1000, 'failed')` con la edad de `QUEUE_FAILED_MAX_AGE_SECONDS`. El fallo de
+   * una cola no detiene a las demás ni a la muestra.
+   */
+  async pruneExpiredFailures(): Promise<number> {
+    let removed = 0;
+    for (const [name, ageSeconds] of Object.entries(QUEUE_FAILED_MAX_AGE_SECONDS)) {
+      try {
+        const queue = this.queueFor(name);
+        const cleaned = await withTimeout(
+          queue.clean(ageSeconds * 1000, FAILED_CLEAN_BATCH, 'failed'),
+          PLATFORM_HEALTH_PROBE_TIMEOUT_MS,
+        );
+        removed += cleaned.length;
+      } catch (error) {
+        this.logger.warn(
+          `platform_health.failed_cleanup_error queue=${name} ${summarizeErrorForLog(error)}`,
+        );
+      }
+    }
+    if (removed > 0) this.logger.log(`platform_health.failed_cleanup removed=${removed}`);
+    return removed;
+  }
+
   private async readQueues(now: Date): Promise<PlatformHealthSampleQueue[]> {
     const snapshots: PlatformHealthSampleQueue[] = [];
-    for (const name of WORKER_QUEUE_NAMES) {
+    // Todas las colas de la plataforma, también las que procesa el API (AI-EM-ARCH 2026-11-22).
+    for (const name of SAMPLED_QUEUE_NAMES) {
       try {
-        const queue = this.moduleRef.get<Queue>(getQueueToken(name), { strict: false });
+        const queue = this.queueFor(name);
         snapshots.push(
           await withTimeout(this.readQueue(queue, name, now), PLATFORM_HEALTH_PROBE_TIMEOUT_MS),
         );
@@ -196,6 +276,20 @@ export class PlatformHealthSamplerProcessor extends WorkerHost implements OnAppl
         oldestWaitingSeconds = Math.max(0, Math.floor((now.getTime() - oldest.timestamp) / 1000));
       }
     }
-    return { name, waiting, failed: counts['failed'] ?? 0, oldestWaitingSeconds };
+    // B(b): el conjunto `failed` es un zset ordenado por `finishedOn` (ms). Los fallidos de la
+    // ventana salen con un ZCOUNT, sin traer trabajos.
+    const client = await queue.client;
+    const failedRecent = await client.zcount(
+      queue.keys['failed'] as string,
+      now.getTime() - QUEUE_FAILED_RECENT_WINDOW_MS,
+      '+inf',
+    );
+    return {
+      name,
+      waiting,
+      failed: counts['failed'] ?? 0,
+      failedRecent,
+      oldestWaitingSeconds,
+    };
   }
 }

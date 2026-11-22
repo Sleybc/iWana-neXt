@@ -39,16 +39,16 @@ export interface ProvisioningJobPayload {
   tenantId: string;
   schemaName: string;
   tenantSlug: string;
-  /**
-   * Email del administrador inicial del tenant, indicado al crear la empresa.
-   *
-   * Sustituye a la constante `admin@iwana.co` que el seed usaba para **todos**
-   * los tenants: además de impedir la trazabilidad de quién administra cada
-   * empresa, obligaba a cambiarlo a mano después de cada alta. No es un
-   * secreto, así que viajar por la cola es correcto.
-   */
-  adminEmail: string;
+  // Sin email del administrador (sec-eng C-2, 2026-11-22): es dato personal y un fallido
+  // retenido lo dejaría en Redis. El worker lo lee de `public.tenants.admin_email`; las
+  // empresas anteriores a ese campo usan `LEGACY_SEED_ADMIN_EMAIL`.
 }
+
+/**
+ * Email con el que el seed creaba el ADMIN de **todas** las empresas anteriores al campo
+ * `tenants.admin_email`. Lo usan el API (reintento) y el worker (alta) como respaldo.
+ */
+export const LEGACY_SEED_ADMIN_EMAIL = 'admin@iwana.co';
 
 /** Payload del job diario repetible de generación de facturación por tenant (HLD §4, AGENTS.md). */
 export interface BillingGenerationJobPayload {

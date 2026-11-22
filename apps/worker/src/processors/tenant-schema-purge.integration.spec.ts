@@ -60,6 +60,7 @@ describe('R7 — purga de tenants con el rol de producción (PostgreSQL real)', 
   let migratorPool: Pool | undefined;
   let purge: TenantSchemaPurgeProcessor | undefined;
   let tenantId: string | undefined;
+  let otherTenantId: string | undefined;
   let cleanEvidence: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
@@ -109,6 +110,22 @@ describe('R7 — purga de tenants con el rol de producción (PostgreSQL real)', 
     if (!tenantId) throw new Error('[BLOCKED] No fue posible crear el tenant sintético.');
     cleanEvidence = await recordTestPurgeEvidence(tenantId);
 
+    // F4-D6 (ADR-114 §7 condición 7): una medición de uso de la empresa purgada y otra de una
+    // empresa ajena (sin marcar ni schema: la purga no la toca) que debe sobrevivir.
+    const other = await migratorPool.query<{ id: string }>(
+      `INSERT INTO public.tenants (name, slug, schema_name, status, contact_email)
+       VALUES ('R7 ajena', $1, $2, 'INACTIVE', 'r7-ajena@invalid.test')
+       RETURNING id::text AS id`,
+      [`${tenantSlug}-ajena`, `${schemaName}_ajena`],
+    );
+    otherTenantId = other.rows[0]?.id;
+    if (!otherTenantId) throw new Error('[BLOCKED] No fue posible crear la empresa ajena.');
+    await migratorPool.query(
+      `INSERT INTO public.tenant_usage_snapshots (tenant_id, active_subscribers, measured_at)
+       VALUES ($1, 4, now()), ($2, 9, now())`,
+      [tenantId, otherTenantId],
+    );
+
     // 2. Misma configuración que worker-prod: ConfigService sobre process.env.
     purge = new TenantSchemaPurgeProcessor(new ConfigService());
   }, 60_000);
@@ -124,6 +141,11 @@ describe('R7 — purga de tenants con el rol de producción (PostgreSQL real)', 
             tenantId,
             schemaName,
           ])
+          .catch(() => undefined);
+      }
+      if (otherTenantId) {
+        await migratorPool
+          .query(`DELETE FROM public.tenants WHERE id = $1`, [otherTenantId])
           .catch(() => undefined);
       }
     }
@@ -185,4 +207,21 @@ describe('R7 — purga de tenants con el rol de producción (PostgreSQL real)', 
       'TENANT_PURGE_STARTED',
     ]);
   }, 120_000);
+
+  it('F4-D6: la purga real se lleva la medición de uso de la empresa purgada y no la de otra', async () => {
+    if (!migratorPool || !tenantId || !otherTenantId) throw new Error('[BLOCKED] setup');
+    // Depende de la purga de la prueba anterior: sin ella esta prueba no demuestra nada.
+    const purged = await migratorPool.query(`SELECT 1 FROM public.tenants WHERE id = $1`, [
+      tenantId,
+    ]);
+    if (purged.rowCount !== 0)
+      throw new Error('[BLOCKED] la purga de la prueba anterior no corrió');
+
+    const snapshots = await migratorPool.query<{ tenant_id: string; active: number }>(
+      `SELECT tenant_id::text AS tenant_id, active_subscribers AS active
+         FROM public.tenant_usage_snapshots WHERE tenant_id = ANY($1::uuid[])`,
+      [[tenantId, otherTenantId]],
+    );
+    expect(snapshots.rows).toEqual([{ tenant_id: otherTenantId, active: 9 }]);
+  });
 });

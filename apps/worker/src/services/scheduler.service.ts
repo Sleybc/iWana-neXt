@@ -2,6 +2,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { REFRESH_TOKEN_PURGE_QUEUE, TENANT_SCHEMA_PURGE_QUEUE } from '@iwana/shared';
+import { registerMaintenanceRepeatable } from '../common/maintenance-repeatable';
 
 /**
  * Servicio responsable de registrar jobs repetibles (cron) en BullMQ al iniciar el worker.
@@ -30,26 +31,23 @@ export class SchedulerService implements OnApplicationBootstrap {
    * si el job con ese ID ya existe en la cola.
    */
   async onApplicationBootstrap(): Promise<void> {
-    await this.purgeQueue.add(
+    // B(b) familia M: retira el repetible y lo registra con la retención de mantenimiento.
+    await registerMaintenanceRepeatable(
+      this.purgeQueue,
       'purge-expired-tokens',
-      {},
-      {
-        repeat: { pattern: '0 3 * * *' },
-        jobId: 'refresh-token-purge-daily',
-      },
+      { pattern: '0 3 * * *' },
+      'refresh-token-purge-daily',
     );
 
     this.logger.log(
       '[scheduler] Job repetible de purga de refresh tokens registrado (cron: 0 3 * * * — 3am UTC / 10pm Colombia)',
     );
 
-    await this.tenantSchemaPurgeQueue.add(
+    await registerMaintenanceRepeatable(
+      this.tenantSchemaPurgeQueue,
       'purge-marked-tenant-schemas',
-      {},
-      {
-        repeat: { pattern: '30 3 * * *' },
-        jobId: 'tenant-schema-purge-daily',
-      },
+      { pattern: '30 3 * * *' },
+      'tenant-schema-purge-daily',
     );
 
     this.logger.log(

@@ -8,6 +8,7 @@ import {
   SEARCH_INDEX_JOB_USER_DELETE,
   SEARCH_INDEX_JOB_USER_UPSERT,
   SEARCH_INDEX_QUEUE,
+  BUSINESS_JOB_REMOVE_ON_FAIL,
 } from '@iwana/shared';
 
 @Injectable()
@@ -25,6 +26,8 @@ export class SearchQueueService {
         // BullMQ no permite ':' en custom jobId.
         jobId: `${SEARCH_INDEX_JOB_REBUILD}-${force ? 'force' : 'soft'}`,
         removeOnComplete: true,
+        // B(b) familia N: fallidos 14 días (cota de edad y de cantidad).
+        removeOnFail: BUSINESS_JOB_REMOVE_ON_FAIL,
       },
     );
   }
@@ -36,6 +39,8 @@ export class SearchQueueService {
       {
         jobId: `${SEARCH_INDEX_JOB_TENANT_UPSERT}-${tenantId}`,
         removeOnComplete: true,
+        // B(b) familia N: fallidos 14 días (cota de edad y de cantidad).
+        removeOnFail: BUSINESS_JOB_REMOVE_ON_FAIL,
       },
     );
   }
@@ -47,6 +52,8 @@ export class SearchQueueService {
       {
         jobId: `${SEARCH_INDEX_JOB_USER_UPSERT}-${tenantId}-${userId}`,
         removeOnComplete: true,
+        // B(b) familia N: fallidos 14 días (cota de edad y de cantidad).
+        removeOnFail: BUSINESS_JOB_REMOVE_ON_FAIL,
       },
     );
   }
@@ -58,6 +65,8 @@ export class SearchQueueService {
       {
         jobId: `${SEARCH_INDEX_JOB_USER_DELETE}-${userId}`,
         removeOnComplete: true,
+        // B(b) familia N: fallidos 14 días (cota de edad y de cantidad).
+        removeOnFail: BUSINESS_JOB_REMOVE_ON_FAIL,
       },
     );
   }
@@ -69,6 +78,8 @@ export class SearchQueueService {
       {
         jobId: SEARCH_INDEX_JOB_NAVIGATION_REBUILD,
         removeOnComplete: true,
+        // B(b) familia N: fallidos 14 días (cota de edad y de cantidad).
+        removeOnFail: BUSINESS_JOB_REMOVE_ON_FAIL,
       },
     );
   }

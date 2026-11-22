@@ -176,6 +176,8 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
 
     try {
       const tenants = await client.query<TenantRow>(
+        // Filtro propio, no `listSweepableTenants`: el outbox de una empresa suspendida o
+        // inactiva debe seguir entregándose; solo se excluyen las retiradas o marcadas.
         `SELECT id, schema_name FROM public.tenants
          WHERE deleted_at IS NULL AND status <> 'MARKED_FOR_DELETION'`,
       );
@@ -366,6 +368,8 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
     const client = await this.pool.connect();
     try {
       const tenants = await client.query<TenantRow>(
+        // Filtro propio, no `listSweepableTenants`: el outbox de una empresa suspendida o
+        // inactiva debe seguir entregándose; solo se excluyen las retiradas o marcadas.
         `SELECT id, schema_name FROM public.tenants
          WHERE deleted_at IS NULL AND status <> 'MARKED_FOR_DELETION'`,
       );

@@ -11,6 +11,7 @@ import {
   ContractActivatedEnvelopeSchema,
   type ContractActivatedEnvelope,
   type ContractActivationSource,
+  BUSINESS_JOB_REMOVE_ON_FAIL,
 } from '@iwana/shared';
 
 export interface AppendContractActivatedInput {
@@ -120,7 +121,8 @@ export class ContractActivationEventsPublisher {
         attempts: 5,
         backoff: { type: 'exponential', delay: 5_000 },
         removeOnComplete: { count: 1000 },
-        removeOnFail: { count: 5000 },
+        // B(b) familia N: fallidos 14 días y hasta 1000.
+        removeOnFail: BUSINESS_JOB_REMOVE_ON_FAIL,
       });
       await runInTenantSchema(this.dataSource, schemaName, (qr) =>
         qr.query(

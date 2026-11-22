@@ -1,53 +1,27 @@
 import {
-  ASSURANCE_FIELD_SERVICE_QUEUE,
-  BILLING_INSTALLATION_EVENTS_QUEUE,
-  CRM_CONTRACT_PDF_QUEUE,
-  INVENTORY_EXECUTION_REQUESTS_QUEUE,
-  NETWORK_EXECUTION_EVENTS_QUEUE,
-  OPERATIONS_EXECUTION_DLQ,
-  OPERATIONS_EXECUTION_EVENTS_QUEUE,
-  OPERATIONS_EXECUTION_RELAY_QUEUE,
-  OPERATIONS_EXECUTION_TOMBSTONE_QUEUE,
-  REFRESH_TOKEN_PURGE_QUEUE,
-  SCHEDULE_EVENTS_SWEEP_QUEUE,
-  SEARCH_INDEX_QUEUE,
-  TENANT_PROVISIONING_QUEUE,
-  TENANT_SCHEMA_PURGE_QUEUE,
+  PLATFORM_HEALTH_SAMPLER_QUEUE,
+  TENANT_USAGE_SAMPLER_QUEUE,
+  WORKER_QUEUE_NAMES,
+  type WorkerQueueName,
 } from '@iwana/shared';
 import { CONTRACT_MEDIA_SWEEP_QUEUE } from './processors/contract-media-sweep.processor';
 import { EVIDENCE_ANALYSIS_QUEUE } from './processors/evidence-analysis.processor';
 import { EVIDENCE_ORPHAN_DETECTION_QUEUE } from './processors/evidence-orphan-detection.processor';
 
-/** Cola del muestreador de salud de plataforma (PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE3). */
-export const PLATFORM_HEALTH_SAMPLER_QUEUE = 'platform-health-sampler';
-
-/** Cola del muestreador de uso por empresa (ADR-114 D2, PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE4). */
-export const TENANT_USAGE_SAMPLER_QUEUE = 'tenant-usage-sampler';
+/**
+ * Colas que registra el worker. La lista vive en `@iwana/shared` (F3-D5) para que la
+ * web derive de ella los nombres visibles; aquí se reexporta para `WorkerModule` y
+ * para el muestreador de salud.
+ */
+export { PLATFORM_HEALTH_SAMPLER_QUEUE, TENANT_USAGE_SAMPLER_QUEUE, WORKER_QUEUE_NAMES };
+export type { WorkerQueueName };
 
 /**
- * Colas que registra el worker. Fuente única para `WorkerModule` y para el muestreador de
- * salud, que reporta espera, fallidos y antigüedad de cada una.
+ * Las colas cuya constante vive en su procesador deben estar en la lista compartida:
+ * si el literal del procesador cambia o la cola sale de la lista, esto no compila.
  */
-export const WORKER_QUEUE_NAMES: readonly string[] = [
-  TENANT_PROVISIONING_QUEUE,
-  REFRESH_TOKEN_PURGE_QUEUE,
-  TENANT_SCHEMA_PURGE_QUEUE,
-  SEARCH_INDEX_QUEUE,
-  ASSURANCE_FIELD_SERVICE_QUEUE,
-  OPERATIONS_EXECUTION_EVENTS_QUEUE,
-  INVENTORY_EXECUTION_REQUESTS_QUEUE,
-  OPERATIONS_EXECUTION_RELAY_QUEUE,
-  OPERATIONS_EXECUTION_TOMBSTONE_QUEUE,
-  OPERATIONS_EXECUTION_DLQ,
-  NETWORK_EXECUTION_EVENTS_QUEUE,
-  BILLING_INSTALLATION_EVENTS_QUEUE,
-  EVIDENCE_ORPHAN_DETECTION_QUEUE,
-  EVIDENCE_ANALYSIS_QUEUE,
-  SCHEDULE_EVENTS_SWEEP_QUEUE,
-  // Cierre de venta (ADR-109 D5): PDF del contrato con Chromium, solo en el worker.
-  CRM_CONTRACT_PDF_QUEUE,
-  // SEC-1: barrido de objetos de contratos anonimizados y huérfanos.
+export const WORKER_LOCAL_QUEUE_NAMES = [
   CONTRACT_MEDIA_SWEEP_QUEUE,
-  PLATFORM_HEALTH_SAMPLER_QUEUE,
-  TENANT_USAGE_SAMPLER_QUEUE,
-];
+  EVIDENCE_ANALYSIS_QUEUE,
+  EVIDENCE_ORPHAN_DETECTION_QUEUE,
+] as const satisfies readonly WorkerQueueName[];

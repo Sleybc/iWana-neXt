@@ -11,7 +11,7 @@
  *     --config jest.integration.config.js tenant-status-summary
  */
 import { randomBytes, randomUUID } from 'node:crypto';
-import { DataSource } from 'typeorm';
+import { DataSource, type QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '@iwana/db';
 import { TenantStatus } from '@iwana/shared';
 import type { TenantStatusSummary } from '@iwana/shared';
@@ -270,11 +270,14 @@ describeWithDb('TenantService.getStatusSummary — orden de attention con severi
 /**
  * v1.1 (PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE2 §A.5): serie mensual desde
  * `public.platform_audit_logs` y alta más vieja en PROVISIONING. El registro es
- * append-only (trigger 014/024): las filas sembradas no se borran, por eso se
- * mide contra una línea base y los `entity_id` son sintéticos por corrida.
+ * append-only (trigger 014/024) y no admite borrar lo sembrado: la siembra y las
+ * lecturas corren dentro de una transacción que se revierte (F2-D4), así que no
+ * queda ninguna fila. Se mide contra una línea base porque la base puede traer
+ * eventos previos.
  */
 describeWithDb('TenantService.getStatusSummary — v1.1 serie mensual y PROVISIONING', () => {
   let dataSource: DataSource;
+  let queryRunner: QueryRunner;
   let service: TenantService;
   let baseline: TenantStatusSummary;
   const run = randomBytes(4).toString('hex');
@@ -285,7 +288,7 @@ describeWithDb('TenantService.getStatusSummary — v1.1 serie mensual y PROVISIO
     `((date_trunc('month', now() AT TIME ZONE 'America/Bogota') + (${offset} * interval '1 month') + interval '1 hour') AT TIME ZONE 'America/Bogota')`;
 
   const insertAudit = async (action: string, entityId: string, offset: number): Promise<void> => {
-    await dataSource.query(
+    await queryRunner.query(
       `INSERT INTO public.platform_audit_logs (id, action, entity_type, entity_id, created_at)
        VALUES ($1, $2, 'Tenant', $3, ${monthStart(offset)})`,
       [randomUUID(), action, entityId],
@@ -308,15 +311,20 @@ describeWithDb('TenantService.getStatusSummary — v1.1 serie mensual y PROVISIO
       extra: { max: 2, min: 1, connectionTimeoutMillis: 5_000 },
     });
     await dataSource.initialize();
+    queryRunner = dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    // El EntityManager de la transacción expone `query`, lo único que usa el resumen.
+    const manager = queryRunner.manager as unknown as DataSource;
     service = new TenantService(
       undefined as never,
-      dataSource,
+      manager,
       undefined as never,
       undefined as never,
       undefined as never,
       undefined as never,
-      // Serie mensual v1.1: la provee el módulo audit sobre la misma base.
-      new PlatformAuditService(dataSource, undefined as never),
+      // Serie mensual v1.1: la provee el módulo audit sobre la misma transacción.
+      new PlatformAuditService(manager, undefined as never),
     );
 
     baseline = await service.getStatusSummary();
@@ -332,14 +340,14 @@ describeWithDb('TenantService.getStatusSummary — v1.1 serie mensual y PROVISIO
     await insertAudit('CREATE', `it-pulse-${run}-e`, -12);
     // Otra acción y otra entidad no cuentan.
     await insertAudit('UPDATE', `it-pulse-${run}-a`, 0);
-    await dataSource.query(
+    await queryRunner.query(
       `INSERT INTO public.platform_audit_logs (id, action, entity_type, entity_id, created_at)
        VALUES ($1, 'CREATE', 'PlatformUser', $2, ${monthStart(0)})`,
       [randomUUID(), `it-pulse-${run}-pu`],
     );
 
     // Empresa en PROVISIONING con created_at muy antiguo: debe ser la más vieja.
-    await dataSource.query(
+    await queryRunner.query(
       `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email, created_at)
        VALUES ($1, $2, $3, $4, 'PROVISIONING', $5, '2001-02-03T04:05:06.000Z')`,
       [
@@ -353,12 +361,17 @@ describeWithDb('TenantService.getStatusSummary — v1.1 serie mensual y PROVISIO
   });
 
   afterAll(async () => {
+    if (queryRunner?.isTransactionActive) await queryRunner.rollbackTransaction();
+    await queryRunner?.release();
     if (!dataSource?.isInitialized) return;
-    try {
-      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [provisioningId]);
-    } finally {
-      await dataSource.destroy();
-    }
+    // F2-D4: la reversión no deja eventos ni la empresa sembrada.
+    const [left] = (await dataSource.query(
+      `SELECT (SELECT count(*) FROM public.platform_audit_logs WHERE entity_id LIKE $1)::int AS audit,
+              (SELECT count(*) FROM public.tenants WHERE id = $2)::int AS tenants`,
+      [`it-pulse-${run}-%`, provisioningId],
+    )) as Array<{ audit: number; tenants: number }>;
+    await dataSource.destroy();
+    expect(left).toEqual({ audit: 0, tenants: 0 });
   });
 
   it('monthly trae 12 meses consecutivos, del más antiguo al actual, y period es el último', async () => {
@@ -399,5 +412,100 @@ describeWithDb('TenantService.getStatusSummary — v1.1 serie mensual y PROVISIO
     const summary = await service.getStatusSummary();
 
     expect(summary.oldestProvisioningAt).toBe('2001-02-03T04:05:06.000Z');
+  });
+});
+
+/**
+ * v1.2 (F2-D2): periodo de 6/12/24 meses y `activeAtClose`. Una empresa sembrada en la
+ * transacción con `created_at` antiguo y sin ningún evento auditado hace irreconstruible el
+ * cierre de todos los meses pasados: deben salir `null` (nunca 0) sea cual sea la base. El
+ * cálculo con historia completa lo cubren `tenant-active-at-close.spec.ts` y
+ * `platform-audit-entity-lifecycle.postgres.integration.spec.ts`.
+ */
+describeWithDb('TenantService.getStatusSummary — v1.2 periodo y activas al cierre', () => {
+  let dataSource: DataSource;
+  let queryRunner: QueryRunner;
+  let service: TenantService;
+  const run = randomBytes(4).toString('hex');
+  const silentId = randomUUID();
+
+  beforeAll(async () => {
+    const credentials = resolveMigrationDbCredentials();
+    dataSource = new DataSource({
+      type: 'postgres',
+      host: process.env['DB_HOST'] ?? 'localhost',
+      port: Number.parseInt(process.env['DB_PORT'] ?? '5432', 10),
+      username: credentials.username,
+      password: credentials.password,
+      database: process.env['DB_NAME'] ?? 'iwana',
+      entities: [],
+      migrations: [],
+      synchronize: false,
+      logging: false,
+      extra: { max: 2, min: 1, connectionTimeoutMillis: 5_000 },
+    });
+    await dataSource.initialize();
+    queryRunner = dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    const manager = queryRunner.manager as unknown as DataSource;
+    service = new TenantService(
+      undefined as never,
+      manager,
+      undefined as never,
+      undefined as never,
+      undefined as never,
+      undefined as never,
+      new PlatformAuditService(manager, undefined as never),
+    );
+
+    // Empresa activa anterior a la auditoría: sin un solo evento en platform_audit_logs.
+    await queryRunner.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email, created_at)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5, '2001-02-03T04:05:06.000Z')`,
+      [
+        silentId,
+        `Sin historia ${run}`,
+        `summary-silent-${run}`,
+        `tenant_summary_silent_${run}`,
+        `summary-silent-${run}@example.invalid`,
+      ],
+    );
+  });
+
+  afterAll(async () => {
+    if (queryRunner?.isTransactionActive) await queryRunner.rollbackTransaction();
+    await queryRunner?.release();
+    if (!dataSource?.isInitialized) return;
+    const [left] = (await dataSource.query(
+      `SELECT count(*)::int AS tenants FROM public.tenants WHERE id = $1`,
+      [silentId],
+    )) as Array<{ tenants: number }>;
+    await dataSource.destroy();
+    expect(left).toEqual({ tenants: 0 });
+  });
+
+  it.each([6, 12, 24] as const)(
+    'months=%i: serie de ese largo, el mes en curso es byStatus.ACTIVE y los pasados null',
+    async (months) => {
+      const summary = await service.getStatusSummary(months);
+
+      expect(summary.monthly).toHaveLength(months);
+      expect(summary.period).toEqual(summary.monthly[months - 1]);
+      expect(summary.period.activeAtClose).toBe(summary.byStatus.ACTIVE);
+      expect(summary.byStatus.ACTIVE).toBeGreaterThanOrEqual(1);
+      for (const month of summary.monthly.slice(0, -1)) {
+        expect({ month: month.month, activeAtClose: month.activeAtClose }).toEqual({
+          month: month.month,
+          activeAtClose: null,
+        });
+      }
+    },
+  );
+
+  it('sin periodo devuelve 12 meses', async () => {
+    const summary = await service.getStatusSummary();
+
+    expect(summary.monthly).toHaveLength(12);
   });
 });

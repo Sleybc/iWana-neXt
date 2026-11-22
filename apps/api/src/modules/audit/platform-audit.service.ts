@@ -1,18 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Brackets, DataSource } from 'typeorm';
+import { Brackets, DataSource, SelectQueryBuilder } from 'typeorm';
 import { PlatformAuditLog, summarizeErrorForLog } from '@iwana/db';
-import { AUDIT_SESSION_ACTIONS, AuditAction } from '@iwana/shared';
-
-/**
- * Lecturas auditadas (p. ej. `GET tenants/usage`, ADR-114): se conservan en el
- * historial, pero no son actividad; `excludeAccessEvents` las saca del feed.
- */
-export const PLATFORM_AUDIT_ACCESS_ACTIONS = [
-  AuditAction.LIST_ACCESS,
-  AuditAction.RECORD_ACCESS,
-] as const;
-import type { TenantStatusSummaryMonth } from '@iwana/shared';
+import { AUDIT_SESSION_ACTIONS, PLATFORM_AUDIT_ACCESS_ACTIONS } from '@iwana/shared';
+import {
+  isTenantStatusSummaryPeriodMonths,
+  TENANT_STATUS_SUMMARY_DEFAULT_PERIOD_MONTHS,
+  type TenantStatusSummaryPeriodMonths,
+} from '@iwana/shared';
+import type {
+  EntityLifecycleMonth,
+  EntityStatusEvent,
+} from './interfaces/entity-lifecycle.interface';
 import { sanitizeAuditPayload } from './audit-sanitize.policy';
 import { AuditEntryInput } from './interfaces/audit-entry.interface';
 import { AuditActorResolver } from './audit-actor.resolver';
@@ -23,7 +22,6 @@ import {
   applyCreatedAtFilter,
   AuditCsvExportResult,
   buildAuditCsv,
-  buildCreatedAtFilter,
 } from './helpers/audit-export.helper';
 import { encodeAuditCursor, decodeAuditCursor } from '../../common/pagination';
 
@@ -46,6 +44,13 @@ import { encodeAuditCursor, decodeAuditCursor } from '../../common/pagination';
  */
 /** Zona del mes calendario de las series de ciclo de vida (literal fijo, no input). */
 const LIFECYCLE_TIME_ZONE = 'America/Bogota';
+
+/** Defensa en profundidad: el controlador ya valida `months` (6, 12 o 24). */
+function assertLifecycleMonths(months: number): void {
+  if (!isTenantStatusSummaryPeriodMonths(months)) {
+    throw new RangeError(`Largo de serie no admitido: ${months}`);
+  }
+}
 
 @Injectable()
 export class PlatformAuditService {
@@ -102,22 +107,7 @@ export class PlatformAuditService {
       .addOrderBy('audit.id', 'DESC')
       .take(limit + 1);
 
-    if (dto.action) qb.andWhere('audit.action = :action', { action: dto.action });
-    if (dto.entityType)
-      qb.andWhere('audit.entityType = :entityType', { entityType: dto.entityType });
-    if (dto.userId) qb.andWhere('audit.userId = :userId', { userId: dto.userId });
-    if (dto.excludeSessionEvents) {
-      qb.andWhere('audit.action NOT IN (:...sessionActions)', {
-        sessionActions: [...AUDIT_SESSION_ACTIONS],
-      });
-    }
-    if (dto.excludeAccessEvents) {
-      qb.andWhere('audit.action NOT IN (:...accessActions)', {
-        accessActions: [...PLATFORM_AUDIT_ACCESS_ACTIONS],
-      });
-    }
-
-    applyCreatedAtFilter(qb, 'audit', dto.fromDate, dto.toDate);
+    this.applyFilters(qb, dto);
 
     // Cursor compuesto (DEF-3)
     if (dto.cursor) {
@@ -137,22 +127,10 @@ export class PlatformAuditService {
     const data = await qb.getMany();
 
     // Total sin cursor
-    const countQb = this.dataSource.createQueryBuilder(PlatformAuditLog, 'audit');
-    if (dto.action) countQb.andWhere('audit.action = :action', { action: dto.action });
-    if (dto.entityType)
-      countQb.andWhere('audit.entityType = :entityType', { entityType: dto.entityType });
-    if (dto.userId) countQb.andWhere('audit.userId = :userId', { userId: dto.userId });
-    if (dto.excludeSessionEvents) {
-      countQb.andWhere('audit.action NOT IN (:...sessionActions)', {
-        sessionActions: [...AUDIT_SESSION_ACTIONS],
-      });
-    }
-    if (dto.excludeAccessEvents) {
-      countQb.andWhere('audit.action NOT IN (:...accessActions)', {
-        accessActions: [...PLATFORM_AUDIT_ACCESS_ACTIONS],
-      });
-    }
-    applyCreatedAtFilter(countQb, 'audit', dto.fromDate, dto.toDate);
+    const countQb = this.applyFilters(
+      this.dataSource.createQueryBuilder(PlatformAuditLog, 'audit'),
+      dto,
+    );
     const total = await countQb.getCount();
 
     const hasNext = data.length > limit;
@@ -174,44 +152,66 @@ export class PlatformAuditService {
   }
 
   /**
-   * Altas (`CREATE`) y bajas (`DELETE`, entidad distinta por mes) de un
-   * `entityType` en los 12 meses calendario America/Bogota que terminan en el
-   * mes de `asOf`, del más antiguo al actual, con huecos en 0. Una consulta.
-   * El registro es append-only: las entidades ya purgadas siguen contando.
+   * Altas (primer `CREATE` de cada entidad: un `CREATE` posterior sobre la misma
+   * entidad, p. ej. subir un asset de branding, no es otra alta) y bajas (`DELETE`,
+   * entidad distinta por mes) de un `entityType` en los `months` meses calendario
+   * America/Bogota que terminan en el mes de `asOf`, del más antiguo al actual, con
+   * huecos en 0. Una consulta. El registro es append-only: las entidades ya
+   * purgadas siguen contando.
    */
   async countEntityLifecycleByMonth(
     entityType: string,
     asOf: Date = new Date(),
-  ): Promise<TenantStatusSummaryMonth[]> {
+    months: TenantStatusSummaryPeriodMonths = TENANT_STATUS_SUMMARY_DEFAULT_PERIOD_MONTHS,
+  ): Promise<EntityLifecycleMonth[]> {
+    assertLifecycleMonths(months);
     const rows: Array<{ month: string; created: string; removed: string }> =
       await this.dataSource.query(
         `WITH bounds AS (
-           SELECT date_trunc('month', $2::timestamptz AT TIME ZONE '${LIFECYCLE_TIME_ZONE}') AS current_month
+           SELECT date_trunc('month', $2::timestamptz AT TIME ZONE '${LIFECYCLE_TIME_ZONE}') AS current_month,
+                  date_trunc('month', $2::timestamptz AT TIME ZONE '${LIFECYCLE_TIME_ZONE}')
+                    - make_interval(months => $3::int - 1) AS first_month
          ),
          months AS (
            SELECT to_char(m, 'YYYY-MM') AS month
              FROM bounds,
-                  generate_series(bounds.current_month - interval '11 months',
+                  generate_series(bounds.first_month,
                                   bounds.current_month,
                                   interval '1 month') AS m
          ),
-         events AS (
+         first_creates AS (
+           SELECT l.entity_id, MIN(l.created_at) AS created_at
+             FROM public.platform_audit_logs l
+            WHERE l.entity_type = $1
+              AND l.action = 'CREATE'
+              AND l.created_at <= $2::timestamptz
+            GROUP BY l.entity_id
+         ),
+         created AS (
+           SELECT to_char(date_trunc('month', f.created_at AT TIME ZONE '${LIFECYCLE_TIME_ZONE}'), 'YYYY-MM') AS month,
+                  COUNT(*) AS created
+             FROM first_creates f, bounds
+            WHERE f.created_at >= bounds.first_month AT TIME ZONE '${LIFECYCLE_TIME_ZONE}'
+            GROUP BY 1
+         ),
+         removed AS (
            SELECT to_char(date_trunc('month', l.created_at AT TIME ZONE '${LIFECYCLE_TIME_ZONE}'), 'YYYY-MM') AS month,
-                  COUNT(*) FILTER (WHERE l.action = 'CREATE') AS created,
                   COUNT(DISTINCT l.entity_id) FILTER (WHERE l.action = 'DELETE') AS removed
              FROM public.platform_audit_logs l, bounds
             WHERE l.entity_type = $1
-              AND l.action IN ('CREATE', 'DELETE')
-              AND l.created_at >= (bounds.current_month - interval '11 months') AT TIME ZONE '${LIFECYCLE_TIME_ZONE}'
+              AND l.action = 'DELETE'
+              AND l.created_at <= $2::timestamptz
+              AND l.created_at >= bounds.first_month AT TIME ZONE '${LIFECYCLE_TIME_ZONE}'
             GROUP BY 1
          )
          SELECT months.month,
-                COALESCE(events.created, 0) AS created,
-                COALESCE(events.removed, 0) AS removed
+                COALESCE(created.created, 0) AS created,
+                COALESCE(removed.removed, 0) AS removed
            FROM months
-           LEFT JOIN events USING (month)
+           LEFT JOIN created USING (month)
+           LEFT JOIN removed USING (month)
           ORDER BY months.month`,
-        [entityType, asOf.toISOString()],
+        [entityType, asOf.toISOString(), months],
       );
     return rows.map((row) => ({
       month: row.month,
@@ -221,18 +221,76 @@ export class PlatformAuditService {
   }
 
   /**
-   * Export CSV sync con los mismos filtros que `query` (sin cursor/limit).
+   * Eventos que informan el estado de las entidades de `entityType` (`new_value`
+   * con `status`, o `DELETE` / `TENANT_PURGE_COMPLETED`, que no lo traen) entre las
+   * acciones `actions`, hasta `asOf`, en orden cronológico: de cada entidad, el
+   * último anterior a la ventana de `months` meses (America/Bogota) y todos los de
+   * la ventana. Una consulta; la interpretación del estado es del módulo que llama.
+   */
+  async listEntityStatusEvents(
+    entityType: string,
+    actions: readonly string[],
+    asOf: Date,
+    months: TenantStatusSummaryPeriodMonths,
+  ): Promise<EntityStatusEvent[]> {
+    assertLifecycleMonths(months);
+    const rows: Array<{
+      entity_id: string;
+      action: string;
+      status: string | null;
+      created_at: Date | string;
+    }> = await this.dataSource.query(
+      `WITH bounds AS (
+         SELECT (date_trunc('month', $2::timestamptz AT TIME ZONE '${LIFECYCLE_TIME_ZONE}')
+                   - make_interval(months => $3::int - 1)) AT TIME ZONE '${LIFECYCLE_TIME_ZONE}' AS window_start
+       ),
+       status_events AS (
+         SELECT l.id, l.entity_id, l.action, l.new_value ->> 'status' AS status, l.created_at
+           FROM public.platform_audit_logs l
+          WHERE l.entity_type = $1
+            AND l.action = ANY($4::text[])
+            AND l.created_at <= $2::timestamptz
+            AND (l.new_value ? 'status' OR l.action IN ('DELETE', 'TENANT_PURGE_COMPLETED'))
+       ),
+       prior AS (
+         SELECT DISTINCT ON (e.entity_id) e.id, e.entity_id, e.action, e.status, e.created_at
+           FROM status_events e, bounds
+          WHERE e.created_at < bounds.window_start
+          ORDER BY e.entity_id, e.created_at DESC, e.id DESC
+       )
+       SELECT entity_id, action, status, created_at
+         FROM (
+           SELECT id, entity_id, action, status, created_at FROM prior
+           UNION ALL
+           SELECT e.id, e.entity_id, e.action, e.status, e.created_at
+             FROM status_events e, bounds
+            WHERE e.created_at >= bounds.window_start
+         ) AS events
+        ORDER BY created_at, id`,
+      [entityType, asOf.toISOString(), months, [...actions]],
+    );
+    return rows.map((row) => ({
+      entityId: row.entity_id,
+      action: row.action,
+      status: row.status,
+      at: new Date(row.created_at),
+    }));
+  }
+
+  /**
+   * Export CSV sync con los mismos filtros que `query` (sin cursor/limit), vía
+   * {@link applyFilters}.
    * Máximo {@link AUDIT_EXPORT_MAX_ROWS} filas; `truncated=true` si hay más.
    */
   async exportCsv(dto: QueryPlatformAuditLogsDto = {}): Promise<AuditCsvExportResult> {
-    const repo = this.dataSource.getRepository(PlatformAuditLog);
-    const where = this.buildExportWhere(dto);
-
-    const data = await repo.find({
-      where,
-      order: { createdAt: 'DESC', id: 'DESC' },
-      take: AUDIT_EXPORT_MAX_ROWS + 1,
-    });
+    const data = await this.applyFilters(
+      this.dataSource.createQueryBuilder(PlatformAuditLog, 'audit'),
+      dto,
+    )
+      .orderBy('audit.createdAt', 'DESC')
+      .addOrderBy('audit.id', 'DESC')
+      .take(AUDIT_EXPORT_MAX_ROWS + 1)
+      .getMany();
 
     const truncated = data.length > AUDIT_EXPORT_MAX_ROWS;
     const rows = truncated ? data.slice(0, AUDIT_EXPORT_MAX_ROWS) : data;
@@ -257,17 +315,31 @@ export class PlatformAuditService {
     return { csv, truncated, rowCount: rows.length };
   }
 
-  private buildExportWhere(dto: QueryPlatformAuditLogsDto): Record<string, unknown> {
-    const where: Record<string, unknown> = {};
-
-    if (dto.action) where['action'] = dto.action;
-    if (dto.entityType) where['entityType'] = dto.entityType;
-    if (dto.userId) where['userId'] = dto.userId;
-
-    const createdAt = buildCreatedAtFilter(dto.fromDate, dto.toDate);
-    if (createdAt) where['createdAt'] = createdAt;
-
-    return where;
+  /**
+   * Único punto que traduce los filtros de {@link QueryPlatformAuditLogsDto} a
+   * predicados SQL (F2-D5): lo comparten el listado, su total y la exportación.
+   * Cursor y límite no son filtros: los aplica solo el listado.
+   */
+  private applyFilters(
+    qb: SelectQueryBuilder<PlatformAuditLog>,
+    dto: QueryPlatformAuditLogsDto,
+  ): SelectQueryBuilder<PlatformAuditLog> {
+    if (dto.action) qb.andWhere('audit.action = :action', { action: dto.action });
+    if (dto.entityType)
+      qb.andWhere('audit.entityType = :entityType', { entityType: dto.entityType });
+    if (dto.userId) qb.andWhere('audit.userId = :userId', { userId: dto.userId });
+    if (dto.excludeSessionEvents) {
+      qb.andWhere('audit.action NOT IN (:...sessionActions)', {
+        sessionActions: [...AUDIT_SESSION_ACTIONS],
+      });
+    }
+    if (dto.excludeAccessEvents) {
+      qb.andWhere('audit.action NOT IN (:...accessActions)', {
+        accessActions: [...PLATFORM_AUDIT_ACCESS_ACTIONS],
+      });
+    }
+    applyCreatedAtFilter(qb, 'audit', dto.fromDate, dto.toDate);
+    return qb;
   }
 
   private resolveActorLabel(

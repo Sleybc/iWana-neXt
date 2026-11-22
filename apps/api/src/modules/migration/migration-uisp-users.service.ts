@@ -13,6 +13,7 @@ import {
   type MigrationUispUser,
   type MigrationUispUsersFetchAccepted,
   type MigrationUispUsersListMeta,
+  BUSINESS_JOB_REMOVE_ON_FAIL,
 } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
 import {
@@ -127,7 +128,7 @@ export class MigrationUispUsersService {
           attempts: MIGRATION_FETCH_UISP_USERS_ATTEMPTS,
           backoff: { type: 'exponential', delay: MIGRATION_FETCH_UISP_USERS_BACKOFF_MS },
           removeOnComplete: 1_000,
-          removeOnFail: 1_000,
+          removeOnFail: BUSINESS_JOB_REMOVE_ON_FAIL, // B(b) familia N: 14 días
         });
       } catch (error) {
         this.logger.error(

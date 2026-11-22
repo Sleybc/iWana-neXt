@@ -23,7 +23,14 @@ export interface PlatformQueueSnapshot {
   /** Nombre técnico de la cola; la UI lo traduce, no lo muestra. */
   name: string;
   waiting: number;
+  /** Fallidos retenidos en la cola (total; la retención los recorta). */
   failed: number;
+  /**
+   * Fallidos de las últimas 72 h (`QUEUE_FAILED_RECENT_WINDOW_MS`, B(b) v1.1 aditivo). Es lo que
+   * decide el aviso del tablero. El API siempre lo devuelve. Es opcional solo porque las muestras
+   * guardadas antes del despliegue no lo traen: para esas el API usa `failed` (conservador).
+   */
+  failedRecent?: number;
   /** Segundos del trabajo en espera más viejo; `null` si no hay en espera. */
   oldestWaitingSeconds: number | null;
 }

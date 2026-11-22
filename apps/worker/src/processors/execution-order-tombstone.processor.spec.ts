@@ -43,13 +43,17 @@ function buildProcessor(): ExecutionOrderTombstoneProcessor {
   return new ExecutionOrderTombstoneProcessor(config as never, {} as never);
 }
 
+const TENANT_ISP_CO = '99999999-9999-4999-8999-999999999999';
+
 describe('ExecutionOrderTombstoneProcessor', () => {
   afterEach(() => {
     jest.clearAllMocks();
   });
 
   it('barre solo tenants ACTIVE ordenados por schema_name', async () => {
-    mockClient.query.mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_isp_co' }] });
+    mockClient.query.mockResolvedValueOnce({
+      rows: [{ id: TENANT_ISP_CO, schema_name: 'tenant_isp_co' }],
+    });
 
     const processor = buildProcessor();
     await processor.process({} as never);
@@ -57,14 +61,14 @@ describe('ExecutionOrderTombstoneProcessor', () => {
     // El barrido debe filtrar por ACTIVE (solo schemas migrados) y ser determinista
     expect(mockClient.query).toHaveBeenNthCalledWith(
       1,
-      `SELECT schema_name FROM public.tenants WHERE status = 'ACTIVE' AND deleted_at IS NULL ORDER BY schema_name`,
+      `SELECT id::text AS id, schema_name FROM public.tenants WHERE status = 'ACTIVE' AND deleted_at IS NULL ORDER BY schema_name`,
     );
     expect(mockClient.release).toHaveBeenCalledTimes(1);
   });
 
   it('procesa un tenant ACTIVE con transaccion completa y purge calificado por schema', async () => {
     mockClient.query
-      .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_isp_co' }] })
+      .mockResolvedValueOnce({ rows: [{ id: TENANT_ISP_CO, schema_name: 'tenant_isp_co' }] })
       .mockResolvedValue({ rowCount: 1 });
 
     const processor = buildProcessor();
@@ -87,13 +91,16 @@ describe('ExecutionOrderTombstoneProcessor', () => {
     expect(Pool).toHaveBeenCalledTimes(1);
   });
 
-  it('salta un tenant con schema invalido sin ejecutar queries en su nombre', async () => {
+  it('un schema inválido no ejecuta queries en su nombre y el job falla nombrando la empresa', async () => {
+    // Regla AI-EM-ARCH (2026-11-22): nunca se omite en silencio (antes el job terminaba bien).
     mockClient.query.mockResolvedValueOnce({
-      rows: [{ schema_name: 'public; DROP TABLE users' }],
+      rows: [{ id: 'tenant-evil', schema_name: 'public; DROP TABLE users' }],
     });
 
     const processor = buildProcessor();
-    await expect(processor.process({} as never)).resolves.toBeUndefined();
+    await expect(processor.process({} as never)).rejects.toMatchObject({
+      message: expect.stringContaining('tenant=tenant-evil'),
+    });
 
     expect(mockClient.query).toHaveBeenCalledTimes(1);
     expect(mockClient.query).not.toHaveBeenCalledWith('BEGIN');
@@ -105,7 +112,10 @@ describe('ExecutionOrderTombstoneProcessor', () => {
     try {
       mockClient.query
         .mockResolvedValueOnce({
-          rows: [{ schema_name: 'tenant_roto' }, { schema_name: 'tenant_sano' }],
+          rows: [
+            { id: '44444444-4444-4444-8444-444444444444', schema_name: 'tenant_roto' },
+            { id: '55555555-5555-4555-8555-555555555555', schema_name: 'tenant_sano' },
+          ],
         })
         .mockResolvedValueOnce({ rowCount: 1 }) // BEGIN tenant_roto
         .mockResolvedValueOnce({ rowCount: 1 }) // SET LOCAL tenant_roto
@@ -121,10 +131,18 @@ describe('ExecutionOrderTombstoneProcessor', () => {
 
       expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
       expect(mockClient.query).toHaveBeenCalledWith(`SET LOCAL search_path TO "tenant_sano"`);
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('schema=tenant_roto'));
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('tenant=44444444-4444-4444-8444-444444444444'),
+      );
+      expect(errorSpy).not.toHaveBeenCalledWith(expect.stringContaining('tenant_roto'));
       expect(errorSpy).not.toHaveBeenCalledWith(expect.stringContaining('does not exist'));
       expect(error).toBeInstanceOf(AggregateError);
-      expect(error).toMatchObject({ message: 'class=AggregateError sqlstate=none' });
+      // El motivo persistido nombra la empresa que falló (id), sin el texto del driver.
+      expect(error).toMatchObject({
+        message:
+          'Fallaron 1 empresa(s) en el tombstone de órdenes de ejecución: ' +
+          'tenant=44444444-4444-4444-8444-444444444444 (class=Error sqlstate=none)',
+      });
       expect(String(error)).not.toContain('does not exist');
       expect(mockClient.release).toHaveBeenCalledTimes(1);
     } finally {
@@ -149,7 +167,7 @@ describe('ExecutionOrderTombstoneProcessor', () => {
     const debugSpy = jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
     try {
       mockClient.query
-        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_isp_co' }] })
+        .mockResolvedValueOnce({ rows: [{ id: TENANT_ISP_CO, schema_name: 'tenant_isp_co' }] })
         .mockResolvedValueOnce({ rowCount: 1 }) // BEGIN
         .mockResolvedValueOnce({ rowCount: 1 }) // SET LOCAL
         .mockResolvedValueOnce({ rowCount: 1 }) // UPDATE tombstone
@@ -170,7 +188,8 @@ describe('ExecutionOrderTombstoneProcessor', () => {
       const processor = buildProcessor();
       await processor.process({} as never);
 
-      expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining('schema=tenant_isp_co'));
+      // Revisión de boundaries: los logs nombran la empresa por id, no por schema.
+      expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining(`tenant=${TENANT_ISP_CO}`));
       expect(debugSpy).toHaveBeenCalledWith(
         expect.stringContaining('status_transitions_anonymized=7'),
       );
@@ -198,7 +217,7 @@ describe('ExecutionOrderTombstoneProcessor', () => {
     const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     try {
       mockClient.query
-        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_isp_co' }] })
+        .mockResolvedValueOnce({ rows: [{ id: TENANT_ISP_CO, schema_name: 'tenant_isp_co' }] })
         .mockResolvedValueOnce({ rowCount: 1 }) // BEGIN
         .mockResolvedValueOnce({ rowCount: 1 }) // SET LOCAL
         .mockResolvedValueOnce({ rowCount: 1 }) // UPDATE tombstone
@@ -244,7 +263,7 @@ describe('ExecutionOrderTombstoneProcessor', () => {
     const debugSpy = jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
     try {
       mockClient.query
-        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_isp_co' }] })
+        .mockResolvedValueOnce({ rows: [{ id: TENANT_ISP_CO, schema_name: 'tenant_isp_co' }] })
         .mockResolvedValueOnce({ rowCount: 1 }) // BEGIN
         .mockResolvedValueOnce({ rowCount: 1 }) // SET LOCAL
         .mockResolvedValueOnce({ rowCount: 1 }) // UPDATE tombstone
@@ -269,7 +288,8 @@ describe('ExecutionOrderTombstoneProcessor', () => {
       const emitted = [...logSpy.mock.calls, ...debugSpy.mock.calls]
         .map((call) => String(call[0]))
         .join('\n');
-      expect(emitted).toContain('schema=tenant_isp_co');
+      expect(emitted).toContain(`tenant=${TENANT_ISP_CO}`);
+      expect(emitted).not.toContain('tenant_isp_co');
       expect(emitted).not.toMatch(/reason|changed_by|actor/i);
       expect(mockClient.release).toHaveBeenCalledTimes(1);
     } finally {

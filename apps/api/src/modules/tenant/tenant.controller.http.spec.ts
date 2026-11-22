@@ -413,6 +413,36 @@ describe('TenantController HTTP', () => {
     expect(tenantService.getStatusSummary).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['', 12],
+    ['?months=6', 6],
+    ['?months=12', 12],
+    ['?months=24', 24],
+  ])('GET /api/v1/tenants/summary%s pide al servicio %i meses (v1.2)', async (query, months) => {
+    tenantService.getStatusSummary.mockClear().mockResolvedValueOnce({});
+
+    await request(app.getHttpServer())
+      .get(`/api/v1/tenants/summary${query}`)
+      .set('Authorization', 'Bearer platform-admin-token')
+      .expect(200);
+
+    expect(tenantService.getStatusSummary).toHaveBeenCalledWith(months);
+  });
+
+  it.each(['?months=0', '?months=13', '?months=36', '?months=12m', '?months=', '?periodo=12m'])(
+    'GET /api/v1/tenants/summary%s retorna 400 sin llamar al servicio (v1.2)',
+    async (query) => {
+      tenantService.getStatusSummary.mockClear();
+
+      await request(app.getHttpServer())
+        .get(`/api/v1/tenants/summary${query}`)
+        .set('Authorization', 'Bearer platform-admin-token')
+        .expect(400);
+
+      expect(tenantService.getStatusSummary).not.toHaveBeenCalled();
+    },
+  );
+
   it('PATCH /api/v1/tenants/me/branding retorna 403 para un rol sin permiso', async () => {
     await request(app.getHttpServer())
       .patch('/api/v1/tenants/me/branding')
@@ -505,8 +535,7 @@ describe('TenantController HTTP', () => {
       '44444444-4444-4444-8444-444444444444',
       'tenant_isp_test',
       'isp-test',
-      // Tenant anterior al campo `adminEmail`: conserva el email del seed.
-      'admin@iwana.co',
+      // sec-eng C-2: sin email del administrador; el worker lo lee de la fila.
     );
     expect(response.body.data.status).toBe('PROVISIONING');
   });

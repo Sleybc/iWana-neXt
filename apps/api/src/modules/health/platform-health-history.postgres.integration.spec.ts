@@ -177,9 +177,22 @@ describeWithDb('GET /platform/health/history — PostgreSQL real', () => {
         }
       }
       // Cola sin trabajos: antigüedad null.
+      // Muestra sin `failedRecent` (previa a B(b)): el API usa el total.
       expect(history.queues).toEqual([
-        { name: 'search-index', waiting: 0, failed: 0, oldestWaitingSeconds: null },
-        { name: 'tenant-provisioning', waiting: 3, failed: 1, oldestWaitingSeconds: 125 },
+        {
+          name: 'search-index',
+          waiting: 0,
+          failed: 0,
+          failedRecent: 0,
+          oldestWaitingSeconds: null,
+        },
+        {
+          name: 'tenant-provisioning',
+          waiting: 3,
+          failed: 1,
+          failedRecent: 1,
+          oldestWaitingSeconds: 125,
+        },
       ]);
       expect(history.queuesSampledAt).toBe(bogotaNoon(dates[29] as string, -1).toISOString());
     },

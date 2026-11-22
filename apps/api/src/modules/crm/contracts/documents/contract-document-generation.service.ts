@@ -29,6 +29,7 @@ import {
   type ContractDocumentGeneration,
   type ContractDocumentSnapshot,
   type OperatorContractRequiredField,
+  BUSINESS_JOB_REMOVE_ON_FAIL,
 } from '@iwana/shared';
 import { encryptAes256Gcm, loadPiiAesGcmKeyPair } from '../../../../common/crypto/aes-gcm.util';
 import { AuditService } from '../../../audit/audit.service';
@@ -536,7 +537,8 @@ export class ContractDocumentGenerationService {
         attempts: JOB_ATTEMPTS,
         backoff: { type: 'exponential', delay: JOB_BACKOFF_MS },
         removeOnComplete: { count: 1000 },
-        removeOnFail: { count: 5000 },
+        // B(b) familia N: fallidos 14 días y hasta 1000.
+        removeOnFail: BUSINESS_JOB_REMOVE_ON_FAIL,
       });
     } catch (error) {
       // La fila queda PENDING: repetir la solicitud vuelve a encolar el mismo jobId.

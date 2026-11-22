@@ -3,7 +3,8 @@
  *
  * - Retención: borra las muestras de más de 35 días y conserva la del día 34.
  * - Colas: una cola con un trabajo en espera reporta conteo y antigüedad; una cola sin trabajos
- *   reporta 0 y antigüedad null. Las colas usan un prefijo efímero: no tocan las del worker.
+ *   reporta 0 y antigüedad null. Un fallido de hace 73 h y otro de hace 1 h dan `failed = 2` y
+ *   `failedRecent = 1` (B(b), ventana de 72 h). Las colas usan un prefijo efímero: no tocan las del worker.
  *
  * Todo lo escrito en PostgreSQL vive en una transacción que se revierte.
  *
@@ -68,6 +69,17 @@ describeWithInfra('PlatformHealthSamplerProcessor — PostgreSQL y Redis reales'
     await queues.get(busyName)!.add('sintetico', {}, { timestamp: Date.now() - 120_000 });
     // Más reciente: la antigüedad debe salir del más viejo, no del último encolado.
     await queues.get(busyName)!.add('sintetico', {}, { timestamp: Date.now() - 10_000 });
+    // B(b): dos fallidos en el zset `failed` (puntaje = finishedOn): uno de hace 73 h y otro de
+    // hace 1 h. Solo el segundo es reciente.
+    const busyQueue = queues.get(busyName)!;
+    const redis = await busyQueue.client;
+    await redis.zadd(
+      busyQueue.keys['failed'] as string,
+      Date.now() - 73 * 60 * 60 * 1000,
+      'fallido-viejo',
+      Date.now() - 60 * 60 * 1000,
+      'fallido-reciente',
+    );
 
     const ownQueue = queues.get(idleName)!;
     processor = new PlatformHealthSamplerProcessor(
@@ -86,6 +98,8 @@ describeWithInfra('PlatformHealthSamplerProcessor — PostgreSQL y Redis reales'
   });
 
   afterAll(async () => {
+    // Cierra las colas del API que abre el muestreador (también las del tablero).
+    await processor?.onModuleDestroy();
     for (const queue of queues.values()) {
       await queue.obliterate({ force: true }).catch(() => undefined);
       await queue.close();
@@ -108,15 +122,52 @@ describeWithInfra('PlatformHealthSamplerProcessor — PostgreSQL y Redis reales'
     expect(row).toEqual(expect.objectContaining({ api_ok: null, db_ok: true, redis_ok: true }));
     const sampled = row?.queues as Array<Record<string, unknown>>;
     const busy = sampled.find((queue) => queue['name'] === busyName);
-    expect(busy).toEqual(expect.objectContaining({ waiting: 2, failed: 0 }));
+    expect(busy).toEqual(expect.objectContaining({ waiting: 2, failed: 2, failedRecent: 1 }));
     expect(busy?.['oldestWaitingSeconds']).toBeGreaterThanOrEqual(119);
     // Cola sin trabajos.
     expect(sampled.find((queue) => queue['name'] === idleName)).toEqual({
       name: idleName,
       waiting: 0,
       failed: 0,
+      failedRecent: 0,
       oldestWaitingSeconds: null,
     });
+  });
+
+  it('C-3: retira de verdad los fallidos más viejos que la edad de su cola', async () => {
+    const connection = {
+      host: process.env['REDIS_HOST'] ?? 'localhost',
+      port: Number.parseInt(process.env['REDIS_PORT'] ?? '6379', 10),
+      password: process.env['REDIS_PASSWORD'],
+      db: Number.parseInt(process.env['REDIS_DB'] ?? '0', 10),
+    };
+    // Cola del API (24 h): un fallido de hace 2 días y uno de hace 1 hora, con su hash de trabajo.
+    const bulk = new Queue('users-bulk-create', { connection, prefix: PREFIX });
+    try {
+      const redis = await bulk.client;
+      const old = Date.now() - 2 * DAY_MS;
+      const recent = Date.now() - 60 * 60 * 1000;
+      for (const [id, finishedOn] of [
+        ['viejo', old],
+        ['reciente', recent],
+      ] as const) {
+        await redis.hset(`${PREFIX}:users-bulk-create:${id}`, {
+          name: 'bulk',
+          data: '{}',
+          timestamp: String(finishedOn),
+          finishedOn: String(finishedOn),
+          failedReason: 'class=Error sqlstate=none',
+        });
+        await redis.zadd(bulk.keys['failed'] as string, finishedOn, id);
+      }
+
+      await processor.pruneExpiredFailures();
+
+      expect(await redis.zrange(bulk.keys['failed'] as string, 0, -1)).toEqual(['reciente']);
+    } finally {
+      await bulk.obliterate({ force: true }).catch(() => undefined);
+      await bulk.close();
+    }
   });
 
   it('retención: borra las muestras de más de 35 días y conserva la de 34', async () => {

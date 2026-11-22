@@ -1,5 +1,6 @@
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
+import { listSweepableTenants, TENANT_SCHEMA_INVALID } from '../common/tenant-sweep';
 import { Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Job, Queue, UnrecoverableError } from 'bullmq';
@@ -7,6 +8,8 @@ import { Pool } from 'pg';
 import { DataSource } from 'typeorm';
 import {
   applyTenantMigrationsInOrder,
+  buildTenantStatusTransitionAudit,
+  insertTenantStatusTransitionAudit,
   grantTenantSchemaAppPrivileges,
   resolveAppDbRole,
   resolveMigrationDbCredentials,
@@ -15,11 +18,18 @@ import {
   isValidSchemaName,
   summarizeErrorForLog,
 } from '@iwana/db';
-import { TENANT_PROVISIONING_QUEUE } from '@iwana/shared';
+import {
+  LEGACY_SEED_ADMIN_EMAIL,
+  MAINTENANCE_JOB_RETENTION,
+  TENANT_PROVISIONING_QUEUE,
+} from '@iwana/shared';
 import type { ProvisioningJobPayload } from '@iwana/shared';
 import { TenantSeedService } from '../services/tenant-seed.service';
 import { TENANT_USAGE_SAMPLER_QUEUE } from '../worker-queues';
-import { TENANT_USAGE_SAMPLER_JOB } from './tenant-usage-sampler.processor';
+import {
+  TENANT_USAGE_SAMPLER_JOB,
+  type TenantUsageSampleJobData,
+} from './tenant-usage-sampler.processor';
 
 /** DT-4: código estable del rechazo de un job sobre un tenant no aprovisionable. */
 export const TENANT_NOT_PROVISIONABLE = 'TENANT_NOT_PROVISIONABLE';
@@ -101,7 +111,7 @@ export class TenantProvisioningProcessor extends WorkerHost {
    */
   @SanitizeFailedReason()
   async process(job: Job<ProvisioningJobPayload>): Promise<void> {
-    const { tenantId, schemaName, tenantSlug, adminEmail } = job.data;
+    const { tenantId, schemaName, tenantSlug } = job.data;
 
     this.logger.log(
       `[provisioning] Iniciando provisioning de schema "${schemaName}" para tenant ${tenantSlug} (${tenantId})`,
@@ -148,6 +158,9 @@ export class TenantProvisioningProcessor extends WorkerHost {
         throw this.notProvisionableError(tenantId, tenant.status);
       }
 
+      // sec-eng C-2: el email del administrador no viaja en la cola; sale de la fila. Las
+      // empresas anteriores al campo se sembraron con la constante y la conservan.
+      const adminEmail = tenant.adminEmail ?? LEGACY_SEED_ADMIN_EMAIL;
       await this.provisionTenant(tenantId, schemaName, tenantSlug, adminEmail);
     } finally {
       await this.releaseTenantLock(lockResource);
@@ -163,7 +176,7 @@ export class TenantProvisioningProcessor extends WorkerHost {
     tenantId: string,
     schemaName: string,
     tenantSlug: string,
-    adminEmail: ProvisioningJobPayload['adminEmail'],
+    adminEmail: string,
   ): Promise<void> {
     try {
       const schemaExists = await this.checkSchemaExists(schemaName);
@@ -263,17 +276,9 @@ export class TenantProvisioningProcessor extends WorkerHost {
     tenantId: string,
     tenantSlug: string,
   ): Promise<boolean> {
-    const result = await this.dataSource
-      .createQueryBuilder()
-      .update('public.tenants')
-      .set({ status: 'ACTIVE' })
-      .where('id = :id AND status = :expectedStatus', {
-        id: tenantId,
-        expectedStatus: 'PROVISIONING',
-      })
-      .execute();
+    const affected = await this.transitionFromProvisioning(tenantId, 'ACTIVE');
 
-    if ((result?.affected ?? 0) === 0) {
+    if (affected === 0) {
       this.logger.warn(
         `[provisioning] ${TENANT_STATUS_CHANGED_DURING_PROVISIONING}: tenant ${tenantSlug} (${tenantId}) ` +
           'dejó de estar en PROVISIONING durante el aprovisionamiento; no se activa ni se borra el esquema',
@@ -292,11 +297,13 @@ export class TenantProvisioningProcessor extends WorkerHost {
     try {
       await this.usageQueue?.add(
         TENANT_USAGE_SAMPLER_JOB,
-        {},
+        // Con `tenantId`: el muestreador mide solo la empresa activada, no la flota entera.
+        { tenantId } satisfies TenantUsageSampleJobData,
         {
           jobId: `usage-on-activate-${tenantId}`,
           removeOnComplete: true,
-          removeOnFail: { count: 24 },
+          // B(b) familia M (mantenimiento).
+          removeOnFail: MAINTENANCE_JOB_RETENTION.removeOnFail,
         },
       );
     } catch (error) {
@@ -342,22 +349,46 @@ export class TenantProvisioningProcessor extends WorkerHost {
    */
   private async markFailed(tenantId: string): Promise<void> {
     try {
-      await this.dataSource
-        .createQueryBuilder()
-        .update('public.tenants')
-        .set({ status: 'PROVISIONING_FAILED' })
-        // DT-4 §3.2: un fallo nunca saca a un tenant de MARKED_FOR_DELETION
-        // (ni de ningún otro estado distinto de PROVISIONING).
-        .where('id = :id AND status = :expectedStatus', {
-          id: tenantId,
-          expectedStatus: 'PROVISIONING',
-        })
-        .execute();
+      // DT-4 §3.2: un fallo nunca saca a un tenant de MARKED_FOR_DELETION
+      // (ni de ningún otro estado distinto de PROVISIONING).
+      await this.transitionFromProvisioning(tenantId, 'PROVISIONING_FAILED');
     } catch (updateError) {
       this.logger.error(
         `[provisioning] No se pudo actualizar status a PROVISIONING_FAILED para tenant ${tenantId}: ${summarizeErrorForLog(updateError)}`,
       );
     }
+  }
+
+  /**
+   * Compare-and-set desde PROVISIONING (DT-4 §3.2) y, si cambió la fila, su auditoría en
+   * `platform_audit_logs` en la misma transacción (F2-D2): sin ella la serie «Activas al
+   * cierre» no puede reconstruir la activación. Actor del sistema, sin datos personales.
+   *
+   * @returns filas afectadas (0 si el estado ya no era PROVISIONING o no hay fila).
+   */
+  private async transitionFromProvisioning(
+    tenantId: string,
+    toStatus: 'ACTIVE' | 'PROVISIONING_FAILED',
+  ): Promise<number> {
+    return this.dataSource.transaction(async (manager) => {
+      const result = await manager
+        .createQueryBuilder()
+        .update('public.tenants')
+        .set({ status: toStatus })
+        .where('id = :id AND status = :expectedStatus', {
+          id: tenantId,
+          expectedStatus: 'PROVISIONING',
+        })
+        .execute();
+      const affected = result?.affected ?? 0;
+      if (affected > 0) {
+        await insertTenantStatusTransitionAudit(
+          manager,
+          buildTenantStatusTransitionAudit(tenantId, 'PROVISIONING', toStatus),
+        );
+      }
+      return affected;
+    });
   }
 
   private hashSchemaName(schemaName: string): number {
@@ -474,15 +505,18 @@ export class TenantProvisioningProcessor extends WorkerHost {
    * runbook como «hace falta autorización cada vez».
    */
   private async resolvePiiContractEnv(): Promise<NodeJS.ProcessEnv> {
-    const tenants = await this.pgPool.query<{ schema_name: string }>(
-      `SELECT schema_name FROM public.tenants WHERE status = 'ACTIVE' ORDER BY schema_name`,
-    );
+    // Flota vigente: ACTIVE y no retirada (filtro compartido de los barridos). Una empresa
+    // retirada puede tener el schema ya purgado o a medio borrar; contarla haría fallar el alta
+    // de toda empresa nueva. El fallo de consulta sigue siendo cerrado (R2-1).
+    const tenants = await listSweepableTenants(this.pgPool);
 
-    for (const row of tenants.rows ?? []) {
-      const schemaName = row.schema_name;
+    for (const { schemaName } of tenants) {
+      // Fallo cerrado: un schema inválido en la flota rechaza el job sin reintento.
       if (!isValidSchemaName(schemaName)) {
-        throw new UnrecoverableError(
-          `resolvePiiContractEnv: schema inválido en public.tenants: "${schemaName}"`,
+        // Con `code`: el motivo saneado del job queda como `code=TENANT_SCHEMA_INVALID`.
+        throw Object.assign(
+          new UnrecoverableError('resolvePiiContractEnv: schema inválido en public.tenants'),
+          { code: TENANT_SCHEMA_INVALID },
         );
       }
       const contract = await this.pgPool.query<{ exists: boolean }>(

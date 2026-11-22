@@ -27,7 +27,14 @@ jest.mock('@iwana/db', () => {
     '../../../../packages/database/src/db-credentials',
   ) as typeof import('@iwana/db');
 
+  // F2-D2: la auditoría de la transición es la real (forma de la fila), sobre el doble del manager.
+  const tenantStatusAudit = jest.requireActual(
+    '../../../../packages/database/src/tenant-status-audit',
+  ) as typeof import('@iwana/db');
+
   return {
+    buildTenantStatusTransitionAudit: tenantStatusAudit.buildTenantStatusTransitionAudit,
+    insertTenantStatusTransitionAudit: tenantStatusAudit.insertTenantStatusTransitionAudit,
     Tenant: class Tenant {},
     TENANT_MIGRATIONS: [{ name: '000_initial' }, { name: '001_next' }],
     isValidSchemaName: jest.fn().mockReturnValue(true),
@@ -60,7 +67,10 @@ jest.mock('pg', () => ({
   Pool: jest.fn().mockImplementation(() => mockPool),
 }));
 
-function buildTenantRepository(contactEmail = 'admin@isptest.co') {
+function buildTenantRepository(
+  contactEmail = 'admin@isptest.co',
+  adminEmail: string | null = 'admin@isptest.invalid',
+) {
   return {
     findOne: jest.fn().mockResolvedValue({
       id: 'tenant-uuid-1',
@@ -69,6 +79,8 @@ function buildTenantRepository(contactEmail = 'admin@isptest.co') {
       // DT-4: el procesador solo aprovisiona tenants en PROVISIONING.
       status: 'PROVISIONING',
       contactEmail,
+      // sec-eng C-2: el email del administrador sale de la fila, no del payload.
+      adminEmail,
     }),
   };
 }
@@ -106,6 +118,11 @@ describe('TenantProvisioningProcessor', () => {
     const dataSource = {
       getRepository: jest.fn(),
       createQueryBuilder: jest.fn(),
+      // F2-D2: el cambio de estado y su auditoría van en una transacción sobre el mismo doble.
+      transaction: jest.fn(async function (this: unknown, work: (manager: unknown) => unknown) {
+        return work(this);
+      }),
+      query: jest.fn().mockResolvedValue([]),
     } as unknown as DataSource;
     const tenantSeedService = {
       seedInitialAdmin: jest.fn(),
@@ -131,6 +148,11 @@ describe('TenantProvisioningProcessor', () => {
     const dataSource = {
       getRepository: jest.fn(),
       createQueryBuilder: jest.fn(),
+      // F2-D2: el cambio de estado y su auditoría van en una transacción sobre el mismo doble.
+      transaction: jest.fn(async function (this: unknown, work: (manager: unknown) => unknown) {
+        return work(this);
+      }),
+      query: jest.fn().mockResolvedValue([]),
     } as unknown as DataSource;
     const tenantSeedService = {
       seedInitialAdmin: jest.fn(),
@@ -164,6 +186,11 @@ describe('TenantProvisioningProcessor', () => {
     const dataSource = {
       getRepository: jest.fn().mockReturnValue(tenantRepository),
       createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+      // F2-D2: el cambio de estado y su auditoría van en una transacción sobre el mismo doble.
+      transaction: jest.fn(async function (this: unknown, work: (manager: unknown) => unknown) {
+        return work(this);
+      }),
+      query: jest.fn().mockResolvedValue([]),
     } as unknown as DataSource;
     const tenantSeedService = {
       seedInitialAdmin: jest.fn().mockResolvedValue({ created: true }),
@@ -208,6 +235,7 @@ describe('TenantProvisioningProcessor', () => {
       tenantId: 'tenant-uuid-1',
       tenantSlug: 'isp-test',
       schemaName: 'tenant_isp_test',
+      adminEmail: 'admin@isptest.invalid',
     });
     expect(tenantSeedService.seedTaxPresets).toHaveBeenCalledWith('tenant_isp_test');
     expect(updateBuilder.execute).toHaveBeenCalledTimes(1);
@@ -225,6 +253,11 @@ describe('TenantProvisioningProcessor', () => {
     const dataSource = {
       getRepository: jest.fn().mockReturnValue(buildTenantRepository()),
       createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+      // F2-D2: el cambio de estado y su auditoría van en una transacción sobre el mismo doble.
+      transaction: jest.fn(async function (this: unknown, work: (manager: unknown) => unknown) {
+        return work(this);
+      }),
+      query: jest.fn().mockResolvedValue([]),
     } as unknown as DataSource;
     const tenantSeedService = {
       seedInitialAdmin: jest.fn().mockResolvedValue({ created: true }),
@@ -241,9 +274,10 @@ describe('TenantProvisioningProcessor', () => {
       usageQueue as never,
     );
     await processor.process(job);
+    // ADR-114 D2: el payload lleva la empresa activada para medir solo esa.
     expect(usageQueue.add).toHaveBeenCalledWith(
       'sample',
-      {},
+      { tenantId: 'tenant-uuid-1' },
       expect.objectContaining({ jobId: 'usage-on-activate-tenant-uuid-1' }),
     );
 
@@ -255,6 +289,142 @@ describe('TenantProvisioningProcessor', () => {
     updateBuilder.execute.mockResolvedValueOnce({ affected: 0 });
     await processor.process(job);
     expect(usageQueue.add).not.toHaveBeenCalled();
+  });
+
+  describe('sec-eng C-2: email del administrador desde la fila, no desde la cola', () => {
+    function buildWith(adminEmail: string | null) {
+      const updateBuilder = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 1 }),
+      };
+      const dataSource = {
+        getRepository: jest
+          .fn()
+          .mockReturnValue(buildTenantRepository('contacto@isptest.co', adminEmail)),
+        createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+        query: jest.fn().mockResolvedValue([]),
+        transaction: jest.fn(async function (this: unknown, work: (manager: unknown) => unknown) {
+          return work(this);
+        }),
+      };
+      const seed = {
+        seedInitialAdmin: jest.fn().mockResolvedValue({ created: true }),
+        seedTaxPresets: jest.fn().mockResolvedValue(undefined),
+      };
+      return {
+        processor: new TenantProvisioningProcessor(dataSource as never, seed as never),
+        seed,
+      };
+    }
+    const job = {
+      data: { tenantId: 'tenant-uuid-1', schemaName: 'tenant_isp_test', tenantSlug: 'isp-test' },
+    } as never;
+
+    it('siembra el ADMIN con tenants.admin_email', async () => {
+      mockPool.query.mockResolvedValue({ rowCount: 0 });
+      const { processor, seed } = buildWith('admin@fila.invalid');
+      await processor.process(job);
+      expect(seed.seedInitialAdmin).toHaveBeenCalledWith(
+        expect.objectContaining({ adminEmail: 'admin@fila.invalid' }),
+      );
+    });
+
+    it('una empresa anterior al campo conserva el email del seed antiguo', async () => {
+      mockPool.query.mockResolvedValue({ rowCount: 0 });
+      const { processor, seed } = buildWith(null);
+      await processor.process(job);
+      expect(seed.seedInitialAdmin).toHaveBeenCalledWith(
+        expect.objectContaining({ adminEmail: 'admin@iwana.co' }),
+      );
+    });
+  });
+
+  describe('F2-D2: auditoría de la transición de estado', () => {
+    function buildDataSource(affected: number) {
+      const updateBuilder = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected }),
+      };
+      const manager = {
+        createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+        query: jest.fn().mockResolvedValue([]),
+      };
+      const dataSource = {
+        getRepository: jest.fn().mockReturnValue(buildTenantRepository()),
+        createQueryBuilder: jest.fn(),
+        query: jest.fn(),
+        transaction: jest.fn(async (work: (m: unknown) => unknown) => work(manager)),
+      };
+      return { dataSource, manager, updateBuilder };
+    }
+    const job = {
+      data: { tenantId: 'tenant-uuid-1', schemaName: 'tenant_isp_test', tenantSlug: 'isp-test' },
+    } as never;
+    const seed = () =>
+      ({
+        seedInitialAdmin: jest.fn().mockResolvedValue({ created: true }),
+        seedTaxPresets: jest.fn().mockResolvedValue(undefined),
+      }) as unknown as TenantSeedService;
+
+    function auditCall(manager: { query: jest.Mock }) {
+      return manager.query.mock.calls.find(([sql]) =>
+        String(sql).includes('INSERT INTO public.platform_audit_logs'),
+      );
+    }
+
+    it('la activación escribe UPDATE de Tenant con new_value.status ACTIVE en la misma transacción', async () => {
+      mockPool.query.mockResolvedValue({ rowCount: 0 });
+      const { dataSource, manager, updateBuilder } = buildDataSource(1);
+
+      await new TenantProvisioningProcessor(dataSource as never, seed()).process(job);
+
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+      expect(updateBuilder.set).toHaveBeenCalledWith({ status: 'ACTIVE' });
+      const call = auditCall(manager);
+      expect(call?.[1]).toEqual([
+        'UPDATE',
+        'Tenant',
+        'tenant-uuid-1',
+        JSON.stringify({ status: 'PROVISIONING' }),
+        JSON.stringify({ status: 'ACTIVE', actor: 'worker:tenant-provisioning' }),
+        'worker:tenant-provisioning',
+      ]);
+      // Primero el cambio de estado, después su auditoría, sobre el mismo manager.
+      expect(updateBuilder.execute.mock.invocationCallOrder[0]).toBeLessThan(
+        manager.query.mock.invocationCallOrder[0] as number,
+      );
+      expect(dataSource.query).not.toHaveBeenCalled();
+    });
+
+    it('el fallo del aprovisionamiento audita el paso a PROVISIONING_FAILED', async () => {
+      mockPool.query.mockResolvedValue({ rowCount: 0 });
+      mockApplyTenantMigrationsInOrder.mockRejectedValueOnce(new Error('migración rota'));
+      const { dataSource, manager, updateBuilder } = buildDataSource(1);
+
+      await expect(
+        new TenantProvisioningProcessor(dataSource as never, seed()).process(job),
+      ).rejects.toBeDefined();
+
+      expect(updateBuilder.set).toHaveBeenCalledWith({ status: 'PROVISIONING_FAILED' });
+      const newValue = JSON.parse(String(auditCall(manager)?.[1]?.[4]));
+      expect(newValue).toEqual({
+        status: 'PROVISIONING_FAILED',
+        actor: 'worker:tenant-provisioning',
+      });
+    });
+
+    it('sin fila cambiada (el estado ya no era PROVISIONING) no audita nada', async () => {
+      mockPool.query.mockResolvedValue({ rowCount: 0 });
+      const { dataSource, manager } = buildDataSource(0);
+
+      await new TenantProvisioningProcessor(dataSource as never, seed()).process(job);
+
+      expect(auditCall(manager)).toBeUndefined();
+    });
   });
 
   it('aborta el provisioning si falla el GRANT SEC-04 (no siembra a ciegas)', async () => {
@@ -274,6 +444,11 @@ describe('TenantProvisioningProcessor', () => {
     const dataSource = {
       getRepository: jest.fn().mockReturnValue(tenantRepository),
       createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+      // F2-D2: el cambio de estado y su auditoría van en una transacción sobre el mismo doble.
+      transaction: jest.fn(async function (this: unknown, work: (manager: unknown) => unknown) {
+        return work(this);
+      }),
+      query: jest.fn().mockResolvedValue([]),
     } as unknown as DataSource;
     const tenantSeedService = {
       seedInitialAdmin: jest.fn(),
@@ -316,6 +491,7 @@ describe('TenantProvisioningProcessor', () => {
         slug: 'isp-test',
         schemaName: 'tenant_isp_test',
         status: 'PROVISIONING',
+        adminEmail: 'admin@isptest.invalid',
       }),
     };
     const updateBuilder = {
@@ -328,6 +504,11 @@ describe('TenantProvisioningProcessor', () => {
     const dataSource = {
       getRepository: jest.fn().mockReturnValue(tenantRepository),
       createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+      // F2-D2: el cambio de estado y su auditoría van en una transacción sobre el mismo doble.
+      transaction: jest.fn(async function (this: unknown, work: (manager: unknown) => unknown) {
+        return work(this);
+      }),
+      query: jest.fn().mockResolvedValue([]),
     } as unknown as DataSource;
     const tenantSeedService = {
       seedInitialAdmin: jest.fn().mockResolvedValue({ created: true }),
@@ -351,6 +532,7 @@ describe('TenantProvisioningProcessor', () => {
       tenantId: 'tenant-uuid-1',
       tenantSlug: 'isp-test',
       schemaName: 'tenant_isp_test',
+      adminEmail: 'admin@isptest.invalid',
     });
     expect(tenantSeedService.seedTaxPresets).toHaveBeenCalledWith('tenant_isp_test');
 
@@ -392,6 +574,11 @@ describe('TenantProvisioningProcessor', () => {
     const dataSource = {
       getRepository: jest.fn().mockReturnValue(tenantRepository),
       createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+      // F2-D2: el cambio de estado y su auditoría van en una transacción sobre el mismo doble.
+      transaction: jest.fn(async function (this: unknown, work: (manager: unknown) => unknown) {
+        return work(this);
+      }),
+      query: jest.fn().mockResolvedValue([]),
     } as unknown as DataSource;
     const tenantSeedService = {
       seedInitialAdmin: jest.fn(),
@@ -430,6 +617,11 @@ describe('TenantProvisioningProcessor', () => {
     const dataSource = {
       getRepository: jest.fn().mockReturnValue(tenantRepository),
       createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+      // F2-D2: el cambio de estado y su auditoría van en una transacción sobre el mismo doble.
+      transaction: jest.fn(async function (this: unknown, work: (manager: unknown) => unknown) {
+        return work(this);
+      }),
+      query: jest.fn().mockResolvedValue([]),
     } as unknown as DataSource;
     const tenantSeedService = {
       seedInitialAdmin: jest.fn(),
@@ -484,6 +676,11 @@ describe('TenantProvisioningProcessor', () => {
       const dataSource = {
         getRepository: jest.fn().mockReturnValue(tenantRepository),
         createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+        // F2-D2: el cambio de estado y su auditoría van en una transacción sobre el mismo doble.
+        transaction: jest.fn(async function (this: unknown, work: (manager: unknown) => unknown) {
+          return work(this);
+        }),
+        query: jest.fn().mockResolvedValue([]),
       } as unknown as DataSource;
       const tenantSeedService = {
         seedInitialAdmin: jest.fn().mockResolvedValue({ created: true }),
@@ -717,6 +914,11 @@ describe('TenantProvisioningProcessor', () => {
           findOne: jest.fn().mockImplementation(async () => ({ ...row })),
         }),
         createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+        // F2-D2: el cambio de estado y su auditoría van en una transacción sobre el mismo doble.
+        transaction: jest.fn(async function (this: unknown, work: (manager: unknown) => unknown) {
+          return work(this);
+        }),
+        query: jest.fn().mockResolvedValue([]),
       } as unknown as DataSource;
       const tenantSeedService = {
         seedInitialAdmin: jest.fn().mockResolvedValue({ created: true }),

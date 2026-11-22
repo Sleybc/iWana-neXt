@@ -21,6 +21,7 @@ import {
   type EvidenceUploadResult,
   type IEvidenceAssetPort,
 } from '../tasks/ports/evidence-asset.port';
+import { BUSINESS_JOB_REMOVE_ON_FAIL } from '@iwana/shared';
 
 export const EVIDENCE_ANALYSIS_QUEUE = 'evidence-analysis';
 
@@ -209,7 +210,8 @@ export class EvidenceAssetProvider implements IEvidenceAssetPort {
         attempts: 3,
         backoff: { type: 'exponential', delay: 1000 },
         removeOnComplete: true,
-        removeOnFail: false,
+        // B(b) familia N: fallidos 14 días (antes, para siempre).
+        removeOnFail: BUSINESS_JOB_REMOVE_ON_FAIL,
       },
     );
 

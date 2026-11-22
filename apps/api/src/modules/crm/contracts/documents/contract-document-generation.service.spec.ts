@@ -1,3 +1,4 @@
+import { BUSINESS_JOB_REMOVE_ON_FAIL } from '@iwana/shared';
 import {
   ConflictException,
   ForbiddenException,
@@ -532,6 +533,15 @@ describe('ContractDocumentGenerationService', () => {
       snapshotDigest(base),
     );
   });
+  it('B(b) familia N: el PDF del contrato conserva los fallidos 14 días y hasta 1000', async () => {
+    await run(() => service.request(CONTRACT_ID, ORDER_ID, actor));
+    expect(queue.add).toHaveBeenCalledWith(
+      CRM_CONTRACT_PDF_JOB_NAME,
+      expect.anything(),
+      expect.objectContaining({ removeOnFail: BUSINESS_JOB_REMOVE_ON_FAIL }),
+    );
+  });
+
   describe('executionOrderContract (G7: contrato de la OT para el técnico)', () => {
     const answer = (contracts: unknown[], signed = false) =>
       query.mockImplementation(async (sql: string) => {

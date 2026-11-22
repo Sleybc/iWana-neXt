@@ -21,6 +21,7 @@ import {
   inspectTicketAttachmentFile,
   ticketAttachmentExtension,
 } from './ticket-attachment-file';
+import { BUSINESS_JOB_REMOVE_ON_FAIL } from '@iwana/shared';
 
 /** Vida del enlace firmado: corta, como los demás soportes privados (privacy, estrato). */
 export const TICKET_ATTACHMENT_SIGNED_URL_TTL_SECONDS = 300;
@@ -115,7 +116,8 @@ export class TicketAttachmentMediaProvider extends TicketAttachmentMediaPort {
             attempts: 3,
             backoff: { type: 'exponential', delay: 1000 },
             removeOnComplete: true,
-            removeOnFail: false,
+            // B(b) familia N: fallidos 14 días (antes, para siempre).
+            removeOnFail: BUSINESS_JOB_REMOVE_ON_FAIL,
           },
         );
       } catch (error: unknown) {

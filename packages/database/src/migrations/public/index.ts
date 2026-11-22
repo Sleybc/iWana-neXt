@@ -40,6 +40,7 @@ import { MediaUsageTicketAttachment1784419220000 } from './032_media_usage_ticke
 import { DashboardStatusAndAuditCursorIndexes1784419221000 } from './033_dashboard_status_and_audit_cursor_indexes';
 import { PlatformHealthSamples1784419222000 } from './034_platform_health_samples';
 import { TenantUsageSnapshots1784419223000 } from './035_tenant_usage_snapshots';
+import { PlatformAuditTenantStatusEventsIndex1784419224000 } from './036_platform_audit_tenant_status_events_index';
 
 /**
  * Migraciones del schema público, en orden.
@@ -90,6 +91,7 @@ export const PUBLIC_MIGRATIONS: (new () => MigrationInterface)[] = [
   DashboardStatusAndAuditCursorIndexes1784419221000,
   PlatformHealthSamples1784419222000,
   TenantUsageSnapshots1784419223000,
+  PlatformAuditTenantStatusEventsIndex1784419224000,
 ];
 
 /**

@@ -131,35 +131,14 @@ describe('TenantController', () => {
     const result = await controller.retryProvisioning('tenant-uuid-1');
 
     expect(tenantService.findOne).toHaveBeenCalledWith('tenant-uuid-1');
+    // sec-eng C-2: el reintento no lleva el email del administrador; el worker lo lee de la
+    // fila (y usa el del seed antiguo si la empresa es anterior al campo).
     expect(provisioningService.retryProvisioning).toHaveBeenCalledWith(
       'tenant-uuid-1',
       'tenant_isp_test',
       'isp-test',
-      // Este tenant es anterior al campo `adminEmail`: al reintentar conserva
-      // el email con el que se sembró en su día, no estrena uno distinto.
-      'admin@iwana.co',
     );
     expect(result.data.status).toBe('PROVISIONING');
-  });
-
-  it('reintenta con el adminEmail del tenant cuando lo tiene', async () => {
-    tenantService.findOne.mockResolvedValue({
-      id: 'tenant-uuid-2',
-      slug: 'nuevo-isp',
-      schemaName: 'tenant_nuevo_isp',
-      status: 'PROVISIONING_FAILED',
-      adminEmail: 'admin@nuevoisp.co',
-    });
-    provisioningService.retryProvisioning.mockResolvedValue({ status: 'PROVISIONING' });
-
-    await controller.retryProvisioning('tenant-uuid-2');
-
-    expect(provisioningService.retryProvisioning).toHaveBeenCalledWith(
-      'tenant-uuid-2',
-      'tenant_nuevo_isp',
-      'nuevo-isp',
-      'admin@nuevoisp.co',
-    );
   });
 
   // El test del endpoint `bootstrap-admin-credentials` se retiró con el propio

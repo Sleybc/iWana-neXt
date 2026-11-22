@@ -27,6 +27,7 @@ import {
   type MigrationBatchSummary,
   type MigrationPendingValue,
   type MigrationSimulateJob,
+  BUSINESS_JOB_REMOVE_ON_FAIL,
 } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
 import { MigrationCrypto } from './migration-crypto';
@@ -251,7 +252,7 @@ export class MigrationBatchesService {
             attempts: MIGRATION_SIMULATE_ATTEMPTS,
             backoff: { type: 'exponential', delay: MIGRATION_SIMULATE_BACKOFF_MS },
             removeOnComplete: 1_000,
-            removeOnFail: 1_000,
+            removeOnFail: BUSINESS_JOB_REMOVE_ON_FAIL, // B(b) familia N: 14 días
           });
         } catch (error) {
           this.logger.error(

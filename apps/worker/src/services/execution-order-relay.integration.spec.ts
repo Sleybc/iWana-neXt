@@ -16,6 +16,11 @@ import { ExecutionOrderRelayService } from './execution-order-relay.service';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { ephemeralSchemaName } from '../../../../packages/database/test/ephemeral-schema';
 
+const { isDisposableIntegrationDatabase } =
+  require('../../../../packages/database/test/integration-tenant-guard') as {
+    isDisposableIntegrationDatabase: (name: string) => boolean;
+  };
+
 function loadWorkspaceEnv(): void {
   if (process.env.DB_HOST && process.env.DB_PASSWORD) return;
   for (const envPath of [resolve(process.cwd(), '.env'), resolve(process.cwd(), '../../.env')]) {
@@ -37,6 +42,9 @@ function loadWorkspaceEnv(): void {
 
 loadWorkspaceEnv();
 
+/** B(a): registra una empresa ACTIVE con schema parcial: solo en una base desechable, nunca dbiw. */
+const INTEGRATION_DB_NAME = process.env.DB_NAME ?? 'test';
+
 describe('R0.3 relay outbox (PostgreSQL real)', () => {
   let database: Pool | undefined;
   let migrationDataSource: DataSource | undefined;
@@ -48,6 +56,11 @@ describe('R0.3 relay outbox (PostgreSQL real)', () => {
   const correlationId = '00000000-0000-4000-8000-0000000000f5';
 
   beforeAll(async () => {
+    if (!isDisposableIntegrationDatabase(INTEGRATION_DB_NAME)) {
+      throw new Error(
+        `[BLOCKED] R0.3 registra una empresa sintética: solo corre con DB_NAME=test (recibido "${INTEGRATION_DB_NAME}").`,
+      );
+    }
     if (process.env.R0_3_REAL_DB !== '1') {
       throw new Error(
         '[BLOCKED] R0.3 requiere PostgreSQL real. Configure R0_3_REAL_DB=1 y DB_* antes de ejecutar.',
@@ -59,7 +72,7 @@ describe('R0.3 relay outbox (PostgreSQL real)', () => {
       port: Number.parseInt(process.env.DB_PORT ?? '5433', 10),
       user: process.env.DB_USER ?? 'iwana',
       password: process.env.DB_PASSWORD ?? '',
-      database: process.env.DB_NAME ?? 'dbiw',
+      database: INTEGRATION_DB_NAME,
       max: 2,
     });
     await database.query(`CREATE SCHEMA "${schemaName}"`);
@@ -90,7 +103,7 @@ describe('R0.3 relay outbox (PostgreSQL real)', () => {
       port: Number.parseInt(process.env.DB_PORT ?? '5433', 10),
       username: process.env.DB_USER ?? 'iwana',
       password: process.env.DB_PASSWORD ?? '',
-      database: process.env.DB_NAME ?? 'dbiw',
+      database: INTEGRATION_DB_NAME,
       synchronize: false,
       extra: { max: 1, options: `-c search_path="${schemaName}"` },
     });
@@ -123,7 +136,7 @@ describe('R0.3 relay outbox (PostgreSQL real)', () => {
           DB_PORT: Number.parseInt(process.env.DB_PORT ?? '5433', 10),
           DB_USER: process.env.DB_USER ?? 'iwana',
           DB_PASSWORD: process.env.DB_PASSWORD ?? '',
-          DB_NAME: process.env.DB_NAME ?? 'dbiw',
+          DB_NAME: INTEGRATION_DB_NAME,
         };
         return (values[key] as T | undefined) ?? fallback;
       },

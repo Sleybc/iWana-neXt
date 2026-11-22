@@ -1,6 +1,7 @@
 import type { Job, Queue } from 'bullmq';
 import type { ConfigService } from '@nestjs/config';
 import { EvidenceOrphanDetectionProcessor } from './evidence-orphan-detection.processor';
+import { TenantSweepFailedError } from '../common/tenant-sweep';
 
 describe('EvidenceOrphanDetectionProcessor', () => {
   it('libera claims con segmentos extra sin consultar un schema parcial', async () => {
@@ -127,7 +128,9 @@ describe('EvidenceOrphanDetectionProcessor', () => {
     const client = {
       query: jest
         .fn()
-        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_test' }] })
+        .mockResolvedValueOnce({
+          rows: [{ id: '12121212-1212-4121-8121-121212121212', schema_name: 'tenant_test' }],
+        })
         .mockResolvedValueOnce(undefined) // BEGIN
         .mockResolvedValueOnce(undefined) // SET LOCAL search_path
         .mockResolvedValueOnce({
@@ -348,7 +351,9 @@ describe('EvidenceOrphanDetectionProcessor', () => {
       const client = {
         query: jest
           .fn()
-          .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_test' }] })
+          .mockResolvedValueOnce({
+            rows: [{ id: '12121212-1212-4121-8121-121212121212', schema_name: 'tenant_test' }],
+          })
           .mockResolvedValueOnce(undefined) // BEGIN
           .mockResolvedValueOnce(undefined) // SET LOCAL search_path
           .mockResolvedValueOnce({
@@ -386,7 +391,9 @@ describe('EvidenceOrphanDetectionProcessor', () => {
       const client = {
         query: jest
           .fn()
-          .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_test' }] })
+          .mockResolvedValueOnce({
+            rows: [{ id: '12121212-1212-4121-8121-121212121212', schema_name: 'tenant_test' }],
+          })
           .mockResolvedValueOnce(undefined) // BEGIN
           .mockResolvedValueOnce(undefined) // SET LOCAL search_path
           .mockResolvedValueOnce({
@@ -420,6 +427,98 @@ describe('EvidenceOrphanDetectionProcessor', () => {
         'REJECTED',
         'evidence-001',
       ]);
+    });
+  });
+
+  describe('reconcileClaimFailed — barrido multiempresa', () => {
+    const incompleta = '66666666-6666-4666-8666-666666666666';
+    const sana = '77777777-7777-4777-8777-777777777777';
+
+    it('solo recorre empresas ACTIVE no retiradas; un schema sin la tabla no corta a las demás', async () => {
+      const client = {
+        query: jest
+          .fn()
+          .mockResolvedValueOnce({
+            rows: [
+              { id: incompleta, schema_name: 'tenant_incompleta' },
+              { id: sana, schema_name: 'tenant_sana' },
+            ],
+          })
+          .mockResolvedValueOnce(undefined) // BEGIN tenant_incompleta
+          .mockResolvedValueOnce(undefined) // SET LOCAL tenant_incompleta
+          .mockRejectedValueOnce(
+            Object.assign(new Error('relation "execution_order_evidence" does not exist'), {
+              code: '42P01',
+            }),
+          )
+          .mockResolvedValueOnce(undefined) // ROLLBACK tenant_incompleta
+          .mockResolvedValueOnce(undefined) // BEGIN tenant_sana
+          .mockResolvedValueOnce(undefined) // SET LOCAL tenant_sana
+          .mockResolvedValueOnce({
+            rows: [{ id: 'evidence-001', media_asset_id: 'asset-x', execution_order_id: 'eo-1' }],
+          })
+          .mockResolvedValueOnce({ rows: [] }) // asset ausente
+          .mockResolvedValueOnce({ rowCount: 1 }) // UPDATE evidence → EXPIRED
+          .mockResolvedValueOnce(undefined), // COMMIT tenant_sana
+      };
+      const processor = new EvidenceOrphanDetectionProcessor(
+        { get: jest.fn() } as unknown as ConfigService,
+        { add: jest.fn() } as unknown as Queue,
+        { deleteObject: jest.fn() },
+      );
+
+      const thrown = await (
+        processor as unknown as {
+          reconcileClaimFailed: (client: unknown, correlationId: string) => Promise<void>;
+        }
+      )
+        .reconcileClaimFailed(client, 'correlation-sweep')
+        .catch((error: unknown) => error);
+
+      const [tenantsSql] = client.query.mock.calls[0] as [string];
+      expect(tenantsSql).toContain("status = 'ACTIVE'");
+      expect(tenantsSql).toContain('deleted_at IS NULL');
+      expect(client.query).toHaveBeenCalledWith('ROLLBACK');
+      expect(client.query).toHaveBeenCalledWith('SET LOCAL search_path TO "tenant_sana", public');
+      expect(client.query).toHaveBeenCalledWith(
+        expect.stringContaining("SET asset_status = 'EXPIRED'"),
+        ['evidence-001'],
+      );
+      expect(client.query).toHaveBeenLastCalledWith('COMMIT');
+      expect(thrown).toBeInstanceOf(AggregateError);
+      expect((thrown as Error).message).toBe(
+        `Fallaron 1 empresa(s) en la reconciliación de evidencias: tenant=${incompleta} ` +
+          '(class=Error sqlstate=42P01)',
+      );
+    });
+
+    it('el fallo de la reconciliación no frena la eliminación física (fase 3) y se propaga', async () => {
+      const client = { query: jest.fn().mockResolvedValue({ rows: [] }), release: jest.fn() };
+      const processor = new EvidenceOrphanDetectionProcessor(
+        { get: jest.fn() } as unknown as ConfigService,
+        { add: jest.fn() } as unknown as Queue,
+        { deleteObject: jest.fn() },
+      );
+      (processor as unknown as { pool: { connect: jest.Mock } }).pool = {
+        connect: jest.fn().mockResolvedValue(client),
+      };
+      const internals = processor as unknown as Record<string, jest.Mock>;
+      internals.reconcileClaimFailed = jest
+        .fn()
+        .mockRejectedValue(
+          new TenantSweepFailedError('la reconciliación de evidencias', [
+            { tenantId: incompleta, error: new Error('x') },
+          ]),
+        );
+      internals.physicalDeleteRetained = jest.fn().mockResolvedValue(undefined);
+
+      await expect(
+        processor.process({
+          data: { operation: 'detect-and-clean', correlationId: 'corr-sweep' },
+        } as Job<{ operation: 'detect-and-clean'; correlationId: string }>),
+      ).rejects.toMatchObject({ message: expect.stringContaining(`tenant=${incompleta}`) });
+      expect(internals.physicalDeleteRetained).toHaveBeenCalledTimes(1);
+      expect(client.release).toHaveBeenCalled();
     });
   });
 

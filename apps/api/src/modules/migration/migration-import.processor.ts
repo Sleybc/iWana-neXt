@@ -16,6 +16,7 @@ import {
   MigrationPurgeTenantJobSchema,
   MigrationSimulateJobSchema,
   type MigrationPurgeTenantJob,
+  MAINTENANCE_JOB_RETENTION,
 } from '@iwana/shared';
 import { SanitizeFailedReason } from '../../common/sanitize-failed-reason.decorator';
 import {
@@ -60,13 +61,18 @@ export class MigrationImportProcessor extends WorkerHost implements OnApplicatio
   }
 
   async onApplicationBootstrap(): Promise<void> {
+    // B(b) familia M: se retira el repetible antes de registrarlo, para que la retención nueva
+    // llegue también a uno ya programado (cada ejecución hereda las opciones de la anterior).
+    const repeat = { pattern: MIGRATION_PURGE_CRON_PATTERN, tz: MIGRATION_PURGE_TIME_ZONE };
+    await this.queue.removeRepeatable(
+      MIGRATION_IMPORT_PURGE_SWEEP_JOB,
+      repeat,
+      MIGRATION_PURGE_REPEATABLE_JOB_ID,
+    );
     await this.queue.add(
       MIGRATION_IMPORT_PURGE_SWEEP_JOB,
       {},
-      {
-        repeat: { pattern: MIGRATION_PURGE_CRON_PATTERN, tz: MIGRATION_PURGE_TIME_ZONE },
-        jobId: MIGRATION_PURGE_REPEATABLE_JOB_ID,
-      },
+      { repeat, jobId: MIGRATION_PURGE_REPEATABLE_JOB_ID, ...MAINTENANCE_JOB_RETENTION },
     );
   }
 
@@ -166,8 +172,8 @@ export class MigrationImportProcessor extends WorkerHost implements OnApplicatio
         jobId: `migration-purge-${tenant.id}-${new Date().toISOString().slice(0, 10)}`,
         attempts: MIGRATION_PURGE_ATTEMPTS,
         backoff: { type: 'exponential', delay: 5_000 },
-        removeOnComplete: 1_000,
-        removeOnFail: 1_000,
+        // B(b) familia M (purga de mantenimiento).
+        ...MAINTENANCE_JOB_RETENTION,
       });
     }
   }
@@ -191,8 +197,7 @@ export class MigrationImportProcessor extends WorkerHost implements OnApplicatio
         {
           jobId: `migration-purge-${tenant.tenantId}-${Date.now()}`,
           attempts: MIGRATION_PURGE_ATTEMPTS,
-          removeOnComplete: 1_000,
-          removeOnFail: 1_000,
+          ...MAINTENANCE_JOB_RETENTION,
         },
       );
     }

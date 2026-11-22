@@ -1,13 +1,12 @@
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import type { PlatformQueueSnapshot } from '@iwana/shared';
 
-/** Estado de una cola en el instante de la muestra. Solo conteos, sin datos de empresa. */
-export interface PlatformHealthSampleQueue {
-  name: string;
-  waiting: number;
-  failed: number;
-  /** `null` si no hay trabajos en espera. */
-  oldestWaitingSeconds: number | null;
-}
+/**
+ * Estado de una cola en el instante de la muestra. Solo conteos, sin datos de empresa.
+ * Es el mismo tipo que expone el contrato P2 (`PlatformQueueSnapshot`, F3-D5): el API
+ * devuelve la última muestra tal cual se guardó, así que no pueden divergir.
+ */
+export type PlatformHealthSampleQueue = PlatformQueueSnapshot;
 
 /**
  * Muestra de salud de la plataforma (migración pública 034, PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE3).

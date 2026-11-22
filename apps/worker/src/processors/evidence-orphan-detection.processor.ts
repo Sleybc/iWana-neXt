@@ -6,7 +6,13 @@ import { Pool, PoolClient } from 'pg';
 import { randomUUID } from 'node:crypto';
 import { STORAGE_PORT, type StoragePort } from '@iwana/storage';
 import { summarizeErrorForLog } from '@iwana/db';
+import {
+  listSweepableTenants,
+  runTenantSweep,
+  throwIfTenantSweepFailed,
+} from '../common/tenant-sweep';
 import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
+import { registerMaintenanceRepeatable } from '../common/maintenance-repeatable';
 
 /**
  * Nombre de la cola para la detección de assets de evidencia huérfanos.
@@ -67,17 +73,16 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
   }
 
   async onApplicationBootstrap(): Promise<void> {
-    // Programar job recurrente cada 6 horas
-    await this.queue.add(
+    // Programar job recurrente cada 6 horas (B(b) familia M).
+    await registerMaintenanceRepeatable(
+      this.queue,
       'detect-orphans-recurring',
+      { pattern: '0 */6 * * *' },
+      'evidence-orphan-detection-recurring',
       {
         operation: 'detect-and-clean',
         correlationId: randomUUID(),
       } satisfies OrphanDetectionJobData,
-      {
-        repeat: { pattern: '0 */6 * * *' },
-        jobId: 'evidence-orphan-detection-recurring',
-      },
     );
     this.logger.log('Job recurrente de detección de huérfanos programado (cada 6h)');
   }
@@ -100,10 +105,17 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
         await this.releaseOrphanClaims(client, correlationId);
 
         // ── Fase 2b: recuperar escrituras cuyo claim falló después del insert ─
-        await this.reconcileClaimFailed(client, correlationId);
+        // Recorre las empresas; el fallo de alguna no frena la fase 3, que es de `public`.
+        let reconcileError: unknown = null;
+        try {
+          await this.reconcileClaimFailed(client, correlationId);
+        } catch (error: unknown) {
+          reconcileError = error;
+        }
 
         // ── Fase 3: Eliminación física de assets retenidos ────────────────
         await this.physicalDeleteRetained(client, correlationId);
+        if (reconcileError !== null) throw reconcileError;
       } catch (error: unknown) {
         evidenceError = error;
       }
@@ -125,50 +137,82 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
    * Completa el caso de ventana entre el insert de evidence y claimAsset.
    * Si el asset sigue disponible, el worker repite el claim de forma atómica;
    * si otro claim ya ganó, la evidencia queda reflejando el estado real.
+   *
+   * Recorre las empresas vigentes (`listSweepableTenants`) con `runTenantSweep`: un schema
+   * incompleto o inválido falla solo esa empresa y el error final las nombra por id.
    */
   private async reconcileClaimFailed(client: PoolClient, _correlationId: string): Promise<void> {
-    const tenants = await client.query<{ schema_name: string }>(
-      `SELECT schema_name FROM public.tenants WHERE status = 'ACTIVE'`,
+    // `listSweepableTenants` ya omite (con aviso) los schemas que no pasan `isValidSchemaName`.
+    const tenants = await listSweepableTenants(client);
+
+    // Una empresa con el schema incompleto (sin `execution_order_evidence`) no corta la
+    // reconciliación de las demás; el fallo nombra la empresa (TenantSweepFailedError).
+    const { failures } = await runTenantSweep(tenants, (tenant) =>
+      this.reconcileTenantClaimFailed(client, tenant.schemaName),
     );
+    if (failures.length > 0) {
+      // Como el failedReason: el log nombra las empresas que fallaron (id, sin schema).
+      const tenantIds = failures.map((failure) => failure.tenantId).join(',');
+      this.logger.error(`[evidence-orphan] reconcile_failed tenants=${tenantIds}`);
+    }
+    throwIfTenantSweepFailed('la reconciliación de evidencias', failures);
+  }
 
-    for (const tenant of tenants.rows) {
-      if (!/^[a-z][a-z0-9_]{0,62}$/i.test(tenant.schema_name)) continue;
+  private async reconcileTenantClaimFailed(client: PoolClient, schemaName: string): Promise<void> {
+    await client.query('BEGIN');
+    try {
+      await client.query(`SET LOCAL search_path TO "${schemaName}", public`);
+      const failed = await client.query<{
+        id: string;
+        media_asset_id: string;
+        execution_order_id: string;
+      }>(
+        `SELECT id, media_asset_id, execution_order_id
+         FROM execution_order_evidence
+         WHERE asset_status = 'CLAIM_FAILED' AND media_asset_id IS NOT NULL
+         ORDER BY created_at ASC, id ASC
+         LIMIT 500`,
+      );
 
-      await client.query('BEGIN');
-      try {
-        await client.query(`SET LOCAL search_path TO "${tenant.schema_name}", public`);
-        const failed = await client.query<{
-          id: string;
-          media_asset_id: string;
-          execution_order_id: string;
-        }>(
-          `SELECT id, media_asset_id, execution_order_id
-           FROM execution_order_evidence
-           WHERE asset_status = 'CLAIM_FAILED' AND media_asset_id IS NOT NULL
-           ORDER BY created_at ASC, id ASC
-           LIMIT 500`,
+      for (const evidence of failed.rows) {
+        const claimRef = `${schemaName}:${evidence.execution_order_id}`;
+        const asset = await client.query<{ asset_status: string; claim_ref: string | null }>(
+          `SELECT asset_status, claim_ref
+           FROM public.media_assets
+           WHERE id = $1 AND tenant_schema = $2`,
+          [evidence.media_asset_id, schemaName],
         );
-
-        for (const evidence of failed.rows) {
-          const claimRef = `${tenant.schema_name}:${evidence.execution_order_id}`;
-          const asset = await client.query<{ asset_status: string; claim_ref: string | null }>(
-            `SELECT asset_status, claim_ref
-             FROM public.media_assets
-             WHERE id = $1 AND tenant_schema = $2`,
-            [evidence.media_asset_id, tenant.schema_name],
+        let current = asset.rows[0];
+        if (!current) {
+          await client.query(
+            `UPDATE execution_order_evidence
+             SET asset_status = 'EXPIRED'
+             WHERE id = $1 AND asset_status = 'CLAIM_FAILED'`,
+            [evidence.id],
           );
-          let current = asset.rows[0];
-          if (!current) {
-            await client.query(
-              `UPDATE execution_order_evidence
-               SET asset_status = 'EXPIRED'
-               WHERE id = $1 AND asset_status = 'CLAIM_FAILED'`,
-              [evidence.id],
-            );
-            continue;
-          }
+          continue;
+        }
 
-          if (current.asset_status === 'AVAILABLE' && current.claim_ref === claimRef) {
+        if (current.asset_status === 'AVAILABLE' && current.claim_ref === claimRef) {
+          await client.query(
+            `UPDATE execution_order_evidence
+             SET asset_status = 'AVAILABLE'
+             WHERE id = $1 AND asset_status = 'CLAIM_FAILED'`,
+            [evidence.id],
+          );
+          continue;
+        }
+
+        if (current.asset_status === 'AVAILABLE' && current.claim_ref === null) {
+          const claimed = await client.query(
+            `UPDATE public.media_assets
+             SET claim_ref = $1
+             WHERE id = $2 AND tenant_schema = $3
+               AND asset_status = 'AVAILABLE' AND claim_ref IS NULL
+               AND deleted_at IS NULL`,
+            [claimRef, evidence.media_asset_id, schemaName],
+          );
+          if ((claimed.rowCount ?? 0) > 0) {
             await client.query(
               `UPDATE execution_order_evidence
                SET asset_status = 'AVAILABLE'
@@ -178,70 +222,50 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
             continue;
           }
 
-          if (current.asset_status === 'AVAILABLE' && current.claim_ref === null) {
-            const claimed = await client.query(
-              `UPDATE public.media_assets
-               SET claim_ref = $1
-               WHERE id = $2 AND tenant_schema = $3
-                 AND asset_status = 'AVAILABLE' AND claim_ref IS NULL
-                 AND deleted_at IS NULL`,
-              [claimRef, evidence.media_asset_id, tenant.schema_name],
-            );
-            if ((claimed.rowCount ?? 0) > 0) {
-              await client.query(
-                `UPDATE execution_order_evidence
-                 SET asset_status = 'AVAILABLE'
-                 WHERE id = $1 AND asset_status = 'CLAIM_FAILED'`,
-                [evidence.id],
-              );
-              continue;
-            }
-
-            // Si la actualización perdió una carrera, leer de nuevo antes de
-            // clasificar el intento como rechazado.
-            const refreshed = await client.query<{
-              asset_status: string;
-              claim_ref: string | null;
-            }>(
-              `SELECT asset_status, claim_ref
-               FROM public.media_assets
-               WHERE id = $1 AND tenant_schema = $2`,
-              [evidence.media_asset_id, tenant.schema_name],
-            );
-            current = refreshed.rows[0] ?? current;
-            if (current.asset_status === 'AVAILABLE' && current.claim_ref === claimRef) {
-              await client.query(
-                `UPDATE execution_order_evidence
-                 SET asset_status = 'AVAILABLE'
-                 WHERE id = $1 AND asset_status = 'CLAIM_FAILED'`,
-                [evidence.id],
-              );
-              continue;
-            }
-          }
-
-          // Un claim distinto ya ganó la carrera: este intento no puede
-          // recuperarse. Los estados de Media se reflejan sin promover
-          // cuarentena ni fabricar una disponibilidad.
-          const evidenceStatus = this.mapAssetStatusToEvidenceStatus(
-            current.asset_status,
-            current.claim_ref,
-            claimRef,
+          // Si la actualización perdió una carrera, leer de nuevo antes de
+          // clasificar el intento como rechazado.
+          const refreshed = await client.query<{
+            asset_status: string;
+            claim_ref: string | null;
+          }>(
+            `SELECT asset_status, claim_ref
+             FROM public.media_assets
+             WHERE id = $1 AND tenant_schema = $2`,
+            [evidence.media_asset_id, schemaName],
           );
-          if (evidenceStatus) {
+          current = refreshed.rows[0] ?? current;
+          if (current.asset_status === 'AVAILABLE' && current.claim_ref === claimRef) {
             await client.query(
               `UPDATE execution_order_evidence
-               SET asset_status = $1
-               WHERE id = $2 AND asset_status = 'CLAIM_FAILED'`,
-              [evidenceStatus, evidence.id],
+               SET asset_status = 'AVAILABLE'
+               WHERE id = $1 AND asset_status = 'CLAIM_FAILED'`,
+              [evidence.id],
             );
+            continue;
           }
         }
-        await client.query('COMMIT');
-      } catch (error: unknown) {
-        await client.query('ROLLBACK');
-        throw error;
+
+        // Un claim distinto ya ganó la carrera: este intento no puede
+        // recuperarse. Los estados de Media se reflejan sin promover
+        // cuarentena ni fabricar una disponibilidad.
+        const evidenceStatus = this.mapAssetStatusToEvidenceStatus(
+          current.asset_status,
+          current.claim_ref,
+          claimRef,
+        );
+        if (evidenceStatus) {
+          await client.query(
+            `UPDATE execution_order_evidence
+             SET asset_status = $1
+             WHERE id = $2 AND asset_status = 'CLAIM_FAILED'`,
+            [evidenceStatus, evidence.id],
+          );
+        }
       }
+      await client.query('COMMIT');
+    } catch (error: unknown) {
+      await client.query('ROLLBACK');
+      throw error;
     }
   }
 
