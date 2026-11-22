@@ -208,7 +208,7 @@ function resolveAreaContent(id: DashboardAreaId, props: DashboardAreaCardsProps)
                   key: 'overdue',
                   label: 'Vencidas',
                   value: overdue,
-                  tone: overdue > 0 ? 'danger' : 'default',
+                  ...(overdue > 0 ? { tone: 'error', emphasis: 'strong' } : {}),
                 },
                 { key: 'upcoming', label: 'Próximos 7 días', value: data?.upcomingCount ?? 0 },
               ]}
@@ -308,13 +308,13 @@ function resolveAreaContent(id: DashboardAreaId, props: DashboardAreaCardsProps)
                   key: 'failed',
                   label: 'Sin aprovisionar',
                   value: data?.failed ?? 0,
-                  tone: (data?.failed ?? 0) > 0 ? 'danger' : 'default',
+                  ...((data?.failed ?? 0) > 0 ? { tone: 'error', emphasis: 'strong' } : {}),
                 },
                 {
                   key: 'closed',
                   label: 'Cerradas sin aprovisionar',
                   value: data?.closedUnprovisioned ?? 0,
-                  tone: (data?.closedUnprovisioned ?? 0) > 0 ? 'warning' : 'default',
+                  ...((data?.closedUnprovisioned ?? 0) > 0 ? { tone: 'warning' } : {}),
                 },
               ]}
             />

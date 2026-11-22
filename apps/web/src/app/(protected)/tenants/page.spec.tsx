@@ -380,6 +380,29 @@ describe('TenantsPage', () => {
     expect(activeChip).toHaveAttribute('href', expect.stringContaining('status=ACTIVE'));
   });
 
+  it('F1-D1 (b): si falla el resumen, la franja muestra error con reintento, no ceros', async () => {
+    tenantApi.summary.mockRejectedValueOnce(new Error('boom'));
+
+    render(<TenantsPage />);
+
+    const strip = await screen.findByRole('region', { name: PLATFORM_UI_COPY.tenants.eyebrow });
+    expect(
+      await within(strip).findByText(PLATFORM_UI_COPY.tenants.parkSummaryError),
+    ).toBeInTheDocument();
+    expect(
+      within(strip).queryByRole('link', { name: PLATFORM_UI_COPY.dashboard.viewActiveCompanies }),
+    ).toBeNull();
+    expect(within(strip).queryByText('0')).toBeNull();
+
+    fireEvent.click(within(strip).getByRole('button', { name: PLATFORM_UI_COPY.dashboard.retry }));
+    expect(
+      await within(strip).findByRole('link', {
+        name: PLATFORM_UI_COPY.dashboard.viewActiveCompanies,
+      }),
+    ).toHaveTextContent('1');
+    expect(tenantApi.summary).toHaveBeenCalledTimes(2);
+  });
+
   it('CA-EMP-10: list pide search cuando la URL trae search', async () => {
     useSearchParams.mockReturnValue(new URLSearchParams('search=Fibernet'));
     tenantApi.list.mockResolvedValue([

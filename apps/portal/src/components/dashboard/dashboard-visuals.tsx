@@ -1,5 +1,11 @@
 // apps/portal/src/components/dashboard/dashboard-visuals.tsx
-import { cn, toneFillVariants, type StackedBarSegment } from '@iwana/ui';
+import {
+  cn,
+  toneFillVariants,
+  type FillEmphasis,
+  type StackedBarSegment,
+  type Tone,
+} from '@iwana/ui';
 
 /**
  * Visuales de proporción del inicio, sin librería de gráficas: barras en CSS.
@@ -58,15 +64,10 @@ export interface DashboardBarRow {
   key: string;
   label: string;
   value: number;
-  /** Tono del relleno; por defecto azul noche. */
-  tone?: 'default' | 'warning' | 'danger';
+  /** Tono del relleno; sin tono, azul noche fuerte (contrato DS §7ter.2). */
+  tone?: Tone | undefined;
+  emphasis?: FillEmphasis | undefined;
 }
-
-const barToneClassName = {
-  default: 'bg-iwana-primary dark:bg-iwana-primary-300',
-  warning: 'bg-amber-500',
-  danger: 'bg-error-600',
-} as const;
 
 /** Barras horizontales comparables; el ancho es relativo al mayor de la lista. */
 export function DashboardBars({ rows }: { rows: readonly DashboardBarRow[] }) {
@@ -84,7 +85,13 @@ export function DashboardBars({ rows }: { rows: readonly DashboardBarRow[] }) {
             aria-hidden={true}
           >
             <span
-              className={cn('block h-full rounded-full', barToneClassName[row.tone ?? 'default'])}
+              className={cn(
+                'block h-full rounded-full',
+                toneFillVariants({
+                  tone: row.tone ?? 'primary',
+                  emphasis: row.tone ? row.emphasis : 'strong',
+                }),
+              )}
               style={{ width: `${(row.value / max) * 100}%` }}
             />
           </span>

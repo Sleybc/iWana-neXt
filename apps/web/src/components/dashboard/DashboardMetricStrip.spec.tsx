@@ -77,7 +77,7 @@ describe('DashboardMetricStrip', () => {
     );
     const zero = screen.getByText('Requieren atención').closest('article');
     expect(zero).not.toBeNull();
-    expect(zero?.className).toContain('bg-error-50');
+    expect(zero?.className).toContain('bg-iwana-surface-soft');
     expect(container.innerHTML).not.toMatch(/rose-|rounded-3xl|\[[0-9]+px\]/);
 
     const onRetry = jest.fn();
@@ -113,5 +113,14 @@ describe('DashboardMetricStrip', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Ver desglose' }));
     expect(onActivate).toHaveBeenCalledTimes(1);
+  });
+
+  it('F1-D1 (a): una cifra 0 va en tono neutral aunque la métrica pida otro (§3 empty)', () => {
+    render(<DashboardMetricStrip metrics={fourChips} isLoading={false} />);
+    const zero = screen.getByText('Requieren atención').closest('[class*="border-"]');
+    expect(zero).toHaveClass('bg-iwana-surface-soft');
+    expect(zero).not.toHaveClass('bg-error-50');
+    const active = screen.getByRole('link', { name: /Activas/ });
+    expect(active).toHaveClass('bg-iwana-primary-50');
   });
 });

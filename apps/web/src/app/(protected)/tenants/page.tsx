@@ -74,6 +74,7 @@ export default function TenantsPage() {
   const [parkSummary, setParkSummary] = useState<TenantStatusSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isParkLoading, setIsParkLoading] = useState(true);
+  const [parkError, setParkError] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -179,8 +180,11 @@ export default function TenantsPage() {
     try {
       setIsParkLoading(true);
       setParkSummary(await tenantApi.summary());
+      setParkError(false);
     } catch {
+      // F1-D1: sin resumen la franja dice que falló; nunca pinta 0 como dato.
       setParkSummary(null);
+      setParkError(true);
     } finally {
       setIsParkLoading(false);
     }
@@ -477,6 +481,8 @@ export default function TenantsPage() {
       <DashboardMetricStrip
         metrics={signalChips}
         isLoading={isParkLoading}
+        error={parkError ? PLATFORM_UI_COPY.tenants.parkSummaryError : null}
+        onRetry={() => void loadParkSummary()}
         eyebrow={PLATFORM_UI_COPY.tenants.eyebrow}
         ariaLabel={PLATFORM_UI_COPY.tenants.eyebrow}
         skeletonCount={3}

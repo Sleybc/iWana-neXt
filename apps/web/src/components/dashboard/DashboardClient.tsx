@@ -1,13 +1,17 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import {
   TENANT_ATTENTION_STATUSES,
+  TENANT_STATUS_SUMMARY_DEFAULT_PERIOD_MONTHS,
   TenantStatus,
   formatRelativeTime,
+  isTenantStatusSummaryPeriodMonths,
   type TenantStatusSummary,
+  type TenantStatusSummaryPeriodMonths,
 } from '@iwana/shared';
 import {
   AttentionQueue,
@@ -48,12 +52,24 @@ import {
 } from '@/lib/api-client';
 import { describePlatformActivityLine } from '@/lib/platform-audit-vocabulary';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
-import { formatPercent, summarizeAvailability, summarizeWorkQueues } from '@/lib/platform-health';
+import {
+  availabilityGoalTone,
+  formatPercent,
+  summarizeAvailability,
+  summarizeWorkQueues,
+} from '@/lib/platform-health';
+import { summarizeTenantUsage } from '@/lib/tenant-usage';
 
 const COPY = PLATFORM_UI_COPY.dashboard;
 const HEALTH_ANCHOR = 'salud-de-plataforma';
 const QUEUES_ANCHOR = 'colas-de-trabajo';
 const ACTIVITY_VISIBLE = 5;
+const USAGE_NUMBER = new Intl.NumberFormat('es-CO');
+const AVAILABILITY_DELTA = {
+  success: { label: COPY.availabilityOk, tone: 'success' },
+  warning: { label: COPY.availabilityDegraded, tone: 'warning' },
+  error: { label: COPY.availabilityCritical, tone: 'error' },
+} as const satisfies Record<ReturnType<typeof availabilityGoalTone>, PulseCellData['delta']>;
 
 interface Remote<T> {
   data: T | null;
@@ -96,7 +112,16 @@ function useRemote<T>(fetcher: (() => Promise<T>) | null): Remote<T> {
   return { data, error, loading, reload };
 }
 
-const fetchSummary = () => tenantApi.summary();
+/** `?periodo=6m|12m|24m` (dirección v1.2 §8.3); ausente o inválido → 12 meses. */
+const PERIOD_PARAM = 'periodo';
+
+function readTrendMonths(value: string | null): TenantStatusSummaryPeriodMonths {
+  const match = value ? /^(\d+)m$/.exec(value) : null;
+  const months = match ? Number(match[1]) : NaN;
+  return isTenantStatusSummaryPeriodMonths(months)
+    ? months
+    : TENANT_STATUS_SUMMARY_DEFAULT_PERIOD_MONTHS;
+}
 const fetchLatest = () => tenantApi.list({ limit: 5 });
 // Las acciones de sesión se excluyen en servidor (CA-PP2-04).
 const fetchActivity = () =>
@@ -183,6 +208,22 @@ export function DashboardClient() {
       heading.scrollIntoView({ block: 'nearest' });
     }
   }, []);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const trendMonths = readTrendMonths(searchParams.get(PERIOD_PARAM));
+  // Un fetcher por periodo: `useRemote` vuelve a pedir el resumen cuando cambia.
+  const fetchSummary = useCallback(() => tenantApi.summary({ months: trendMonths }), [trendMonths]);
+  const selectTrendMonths = useCallback(
+    (months: TenantStatusSummaryPeriodMonths) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (months === TENANT_STATUS_SUMMARY_DEFAULT_PERIOD_MONTHS) params.delete(PERIOD_PARAM);
+      else params.set(PERIOD_PARAM, `${months}m`);
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
   const summary = useRemote(fetchSummary);
   const latest = useRemote<TenantListItem[]>(fetchLatest);
   const activity = useRemote(fetchActivity);
@@ -273,6 +314,8 @@ export function DashboardClient() {
     const t = team.data;
     const teamMfaPct =
       t && t.total > 0 ? Math.round(((t.total - t.withoutMfa) / t.total) * 100) : null;
+    const availabilityTone =
+      availability?.availability != null ? availabilityGoalTone(availability.availability) : null;
 
     return [
       {
@@ -349,18 +392,13 @@ export function DashboardClient() {
         label: COPY.pulseAvailability,
         value: availability?.availability ?? null,
         formatValue: formatPercent,
-        delta:
-          availability?.availability != null
-            ? availability.availability >= 1
-              ? { label: COPY.availabilityOk, tone: 'success' }
-              : { label: COPY.availabilityDegraded, tone: 'warning' }
-            : undefined,
+        delta: availabilityTone ? AVAILABILITY_DELTA[availabilityTone] : undefined,
         hint: availability
           ? availability.availability === null
             ? COPY.availabilityNoSamples
             : availability.daysWithoutData > 0
               ? COPY.availabilityDaysWithoutData(availability.daysWithoutData)
-              : availability.worst && availability.availability < 1
+              : availability.worst && availabilityTone !== 'success'
                 ? COPY.availabilityWorst(COPY.componentShort[availability.worst])
                 : undefined
           : undefined,
@@ -400,6 +438,21 @@ export function DashboardClient() {
         title: TENANT_ATTENTION_TITLE[item.status] ?? COPY.queueAttention,
         area: `${item.name} · ${formatRelativeTime(item.updatedAt)}`,
         href: `/tenants/${item.id}/settings`,
+      });
+    }
+    // §8.1: una fila por empresa con activos ≥ cupo; `usage.data` solo existe si el rol ve el área.
+    for (const { item, kind } of summarizeTenantUsage(usage.data?.items).overQuota) {
+      rows.push({
+        id: `usage-${item.tenantId}`,
+        severity: 'attention',
+        title: kind === 'reached' ? COPY.queueUsageReached : COPY.queueUsageExceeded,
+        area: COPY.queueUsageArea(
+          item.name,
+          USAGE_NUMBER.format(item.activeSubscribers ?? 0),
+          USAGE_NUMBER.format(item.maxSubscribers ?? 0),
+          item.maxSubscribers === 1,
+        ),
+        href: `/tenants/${item.tenantId}/settings`,
       });
     }
     const h = health.data;
@@ -447,7 +500,7 @@ export function DashboardClient() {
       ...rows.filter((row) => row.severity === 'at-risk'),
       ...rows.filter((row) => row.severity === 'attention'),
     ];
-  }, [summary.data, health.data, history.data, team.data]);
+  }, [summary.data, usage.data, health.data, history.data, team.data]);
 
   const queueLoading = (summary.loading && !summary.data) || (health.loading && !health.data);
 
@@ -514,6 +567,8 @@ export function DashboardClient() {
             updating={summary.loading && summary.data !== null}
             error={summary.error}
             onRetry={summary.reload}
+            months={trendMonths}
+            onMonthsChange={selectTrendMonths}
           />
         </div>
       </div>

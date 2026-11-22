@@ -1,3 +1,6 @@
+'use client';
+
+import { useId, useState } from 'react';
 import Link from 'next/link';
 import {
   PLATFORM_TENANT_USAGE_ROLES,
@@ -6,6 +9,7 @@ import {
 } from '@iwana/shared';
 import {
   Badge,
+  Button,
   Card,
   cn,
   EmptyState,
@@ -13,17 +17,16 @@ import {
   interactiveFocusClassName,
   SkeletonBlock,
   StackedBar,
-  type Tone,
 } from '@iwana/ui';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
+import { summarizeTenantUsage, usageDisplayPercent, usageTone } from '@/lib/tenant-usage';
 
 const COPY = PLATFORM_UI_COPY.dashboard;
 const NUMBER = new Intl.NumberFormat('es-CO');
 /** ADR-114 D5: una medición de más de 2 h se marca desactualizada. */
 export const USAGE_STALE_MS = 2 * 60 * 60 * 1000;
-/** Umbrales del prototipo validado (bloque «Uso por empresa»). */
-const WARN_PCT = 90;
-const ERROR_PCT = 95;
+/** Tope de filas visibles, igual que la cola de atención (dirección v1.2 §8.2). */
+export const USAGE_VISIBLE_ROWS = 6;
 
 /** El área se monta y se pide solo para los roles del contrato (CA-PP4-01). */
 export function canSeeTenantUsage(role: string | null | undefined): boolean {
@@ -34,24 +37,6 @@ export function isUsageStale(measuredAt: string | null, now: number = Date.now()
   if (!measuredAt) return false;
   const at = Date.parse(measuredAt);
   return Number.isFinite(at) && now - at > USAGE_STALE_MS;
-}
-
-function usagePercent(item: TenantUsageItem): number | null {
-  if (item.activeSubscribers === null || !item.maxSubscribers) return null;
-  return Math.round((item.activeSubscribers / item.maxSubscribers) * 100);
-}
-
-function toneFor(pct: number): Tone {
-  if (pct >= ERROR_PCT) return 'error';
-  if (pct >= WARN_PCT) return 'warning';
-  return 'primary';
-}
-
-/** Mayor uso primero; sin cupo después; sin dato al final. */
-function sortItems(items: readonly TenantUsageItem[]): TenantUsageItem[] {
-  const rank = (item: TenantUsageItem) =>
-    item.activeSubscribers === null ? -2 : (usagePercent(item) ?? -1);
-  return [...items].sort((a, b) => rank(b) - rank(a) || a.name.localeCompare(b.name, 'es'));
 }
 
 interface TenantUsageAreaProps {
@@ -70,8 +55,11 @@ export function TenantUsageArea({
   onRetry,
   className,
 }: TenantUsageAreaProps) {
-  const rows = items ? sortItems(items) : [];
-  const nearQuota = rows.some((item) => (usagePercent(item) ?? 0) >= WARN_PCT);
+  const { rows, state } = summarizeTenantUsage(items);
+  const [expanded, setExpanded] = useState(false);
+  const listId = useId();
+  const hidden = rows.length - USAGE_VISIBLE_ROWS;
+  const visibleRows = expanded || hidden <= 0 ? rows : rows.slice(0, USAGE_VISIBLE_ROWS);
   const now = Date.now();
 
   let body;
@@ -96,11 +84,28 @@ export function TenantUsageArea({
     body = <EmptyState className="mt-3" message={COPY.usageEmpty} />;
   } else {
     body = (
-      <ul className="mt-3 space-y-2 text-sm">
-        {rows.map((item) => (
-          <UsageRow key={item.tenantId} item={item} stale={isUsageStale(item.measuredAt, now)} />
-        ))}
-      </ul>
+      <>
+        <ul id={listId} className="mt-3 space-y-2 text-sm">
+          {visibleRows.map((item) => (
+            <UsageRow key={item.tenantId} item={item} stale={isUsageStale(item.measuredAt, now)} />
+          ))}
+        </ul>
+        {hidden > 0 ? (
+          // F4-D5: se expande en el sitio, como Colas de trabajo; no se persiste en la URL.
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-600 dark:text-gray-300">
+            {expanded ? <span /> : <span>{COPY.usageMore(hidden)}</span>}
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-expanded={expanded}
+              aria-controls={listId}
+              onClick={() => setExpanded((value) => !value)}
+            >
+              {expanded ? COPY.usageShowLess : COPY.usageShowAll}
+            </Button>
+          </div>
+        ) : null}
+      </>
     );
   }
 
@@ -117,8 +122,10 @@ export function TenantUsageArea({
         >
           {COPY.usageTitle}
         </h2>
-        {!isLoading && !error && nearQuota ? (
-          <Badge variant="warning">{COPY.usageNearQuota}</Badge>
+        {!isLoading && !error && state !== 'clear' ? (
+          <Badge variant={state === 'reached' ? 'error' : 'warning'}>
+            {state === 'reached' ? COPY.usageQuotaReached : COPY.usageNearQuota}
+          </Badge>
         ) : null}
       </div>
       {body}
@@ -141,7 +148,8 @@ export function TenantUsageArea({
 }
 
 function UsageRow({ item, stale }: { item: TenantUsageItem; stale: boolean }) {
-  const pct = usagePercent(item);
+  const pct = usageDisplayPercent(item);
+  const tone = usageTone(item);
   const active = item.activeSubscribers;
 
   let figure: string;
@@ -157,7 +165,7 @@ function UsageRow({ item, stale }: { item: TenantUsageItem; stale: boolean }) {
         <Badge variant={active > 0 ? 'error' : 'warning'}>{COPY.usageClosed}</Badge>
       </span>
     );
-  } else if (pct === null || item.maxSubscribers === null) {
+  } else if (pct === null || tone === null || item.maxSubscribers === null) {
     figure = COPY.usageSubscribers(NUMBER.format(active));
   } else {
     figure = COPY.usagePercent(pct);
@@ -173,7 +181,7 @@ function UsageRow({ item, stale }: { item: TenantUsageItem; stale: boolean }) {
           pct,
         )}
         segments={[
-          { key: 'used', label: item.name, value: used, tone: toneFor(pct) },
+          { key: 'used', label: item.name, value: used, tone },
           {
             key: 'free',
             label: COPY.usageNoQuota,

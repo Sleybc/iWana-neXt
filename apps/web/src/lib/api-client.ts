@@ -5,6 +5,7 @@ import type {
   PlatformUsersSummary,
   PublicHealth,
   TenantStatusSummary,
+  TenantStatusSummaryPeriodMonths,
   TenantUsage,
 } from '@iwana/shared';
 
@@ -767,8 +768,14 @@ export const tenantApi = {
     return request<TenantListItem[]>(`/tenants${query ? `?${query}` : ''}`);
   },
 
-  /** Conteo por estado y avisos del directorio completo (TenantStatusSummary v1.1). */
-  summary: () => request<TenantStatusSummary>('/tenants/summary'),
+  /**
+   * Conteo por estado y avisos del directorio completo (TenantStatusSummary v1.2).
+   * `months` alarga la serie mensual (6, 12 o 24); sin él, el servidor usa 12.
+   */
+  summary: (params?: { months?: TenantStatusSummaryPeriodMonths }) =>
+    request<TenantStatusSummary>(
+      `/tenants/summary${params?.months ? `?months=${params.months}` : ''}`,
+    ),
 
   /** Uso por empresa (contrato P4 v1.0, `{ data }`); solo `PLATFORM_TENANT_USAGE_ROLES`. */
   usage: () => request<TenantUsage>('/tenants/usage'),

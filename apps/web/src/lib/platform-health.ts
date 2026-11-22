@@ -83,9 +83,10 @@ export type WorkQueuesState = 'failed' | 'backlog' | 'clear';
 
 export interface WorkQueuesSummary {
   state: WorkQueuesState;
-  /** Colas con trabajos en espera o fallidos, en el orden recibido. */
+  /** Colas con trabajos en espera o fallidos en 72 h, en el orden recibido. */
   withNews: PlatformQueueSnapshot[];
   quietCount: number;
+  /** Fallidos de las últimas 72 h (`recentFailed`), no el histórico retenido. */
   failedTotal: number;
   waitingTotal: number;
 }
@@ -97,8 +98,16 @@ export interface WorkQueuesSummary {
 export const QUEUE_BACKLOG_ALERT_SECONDS = 300;
 
 /**
+ * Fallidos que deciden el aviso (dirección §8.0): los de 72 h. Una muestra anterior al
+ * despliegue no trae `failedRecent`; entonces cuenta `failed` (conservador).
+ */
+export function recentFailed(queue: PlatformQueueSnapshot): number {
+  return queue.failedRecent ?? queue.failed;
+}
+
+/**
  * Regla única de Colas de trabajo (área y «Requiere tu atención»): hay aviso si
- * alguna cola tiene fallidos (`failed`) o espera de al menos
+ * alguna cola tiene fallidos en 72 h (`failed`) o espera de al menos
  * `QUEUE_BACKLOG_ALERT_SECONDS` (`backlog`);
  * los fallidos mandan sobre la espera.
  */
@@ -106,8 +115,9 @@ export function summarizeWorkQueues(
   queues: readonly PlatformQueueSnapshot[] | null | undefined,
 ): WorkQueuesSummary {
   const rows = queues ?? [];
-  const withNews = rows.filter((q) => q.waiting > 0 || q.failed > 0);
-  const failedTotal = rows.reduce((sum, q) => sum + q.failed, 0);
+  // Solo fallidos históricos no es novedad: la cola cuenta como «sin novedad» (§8.0).
+  const withNews = rows.filter((q) => q.waiting > 0 || recentFailed(q) > 0);
+  const failedTotal = rows.reduce((sum, q) => sum + recentFailed(q), 0);
   const waitingTotal = rows.reduce((sum, q) => sum + q.waiting, 0);
   const staleBacklog = rows.some(
     (q) =>
@@ -135,7 +145,45 @@ export function formatWaitingAge(seconds: number | null): string {
   return `${Math.round(hours / 24)} d`;
 }
 
+/** Centésimas de punto porcentual (basis points): 1 = 0,01 %. */
+const BASIS_POINTS = 10000;
+/** Meta de la celda de 30 días (decisión CTO 2026-11-22): verde desde 99,9 %. */
+export const AVAILABILITY_GOAL = 0.999;
+/** Ámbar desde 99 %; por debajo, rojo. */
+export const AVAILABILITY_FLOOR = 0.99;
+
+/**
+ * Fronteras de color de celda y tracker (1, 99,9 %, 99 %), en centésimas de punto. Una cifra
+ * nunca se muestra cruzando una (AI-EM-ARCH 2026-11-22): si el redondeo la llevaría a la
+ * frontera estando por debajo, se trunca.
+ */
+const COLOR_BOUNDARIES_BP = [BASIS_POINTS, 9990, 9900] as const;
+
+/**
+ * Cifra mostrada, en centésimas de punto: redondeo a 2 decimales (F3-D6), salvo junto a una
+ * frontera de color, donde se trunca (0,99899 → 99,89 %; 0,99996 → 99,99 %).
+ * Solo para mostrar: el tono compara la razón exacta.
+ */
+function displayedBasisPoints(value: number): number {
+  const bp = Math.round(value * BASIS_POINTS);
+  const crosses = COLOR_BOUNDARIES_BP.some(
+    (boundary) => value < boundary / BASIS_POINTS && bp >= boundary,
+  );
+  return crosses ? Math.floor(value * BASIS_POINTS) : bp;
+}
+
+/**
+ * Tono de la celda «Disponibilidad, 30 días» frente a la meta prometida a las empresas.
+ * Razón exacta (TCR-ola1 4c): 99,8958 % incumple la meta aunque esté a una centésima.
+ */
+export function availabilityGoalTone(
+  value: number,
+): Extract<Tone, 'success' | 'warning' | 'error'> {
+  if (value >= AVAILABILITY_GOAL) return 'success';
+  if (value >= AVAILABILITY_FLOOR) return 'warning';
+  return 'error';
+}
+
 export function formatPercent(value: number): string {
-  // Truncado a 2 decimales: 99,999 % no se redondea a 100 %.
-  return COPY.availabilityValue(Math.floor(value * 10000) / 100);
+  return COPY.availabilityValue(displayedBasisPoints(value) / 100);
 }

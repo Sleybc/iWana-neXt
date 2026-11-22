@@ -97,11 +97,18 @@ export function PulseStrip({
       {cells.map((cell) => {
         if (loading || cell.state === 'loading') {
           return (
-            <div key={cell.id} className={cellClassName}>
+            <article
+              key={cell.id}
+              aria-label={cell.label}
+              // F1-D5 (§7ter.1): ocupada la celda que carga, no la franja; con la franja
+              // en carga ya lo dice la sección. `updating` no: silenciaría su aria-live.
+              aria-busy={!loading || undefined}
+              className={cellClassName}
+            >
               <SkeletonBlock className="h-3 w-28 rounded-md" />
               <SkeletonBlock className="h-9 w-20 rounded-lg" />
               <SkeletonBlock className="h-4 w-32 rounded-md" />
-            </div>
+            </article>
           );
         }
 

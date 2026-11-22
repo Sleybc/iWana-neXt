@@ -1,4 +1,4 @@
-import { ApiError, authApi, healthApi, persistAccessToken } from './api-client';
+import { ApiError, authApi, healthApi, persistAccessToken, tenantApi } from './api-client';
 
 const buildJsonResponse = (body: unknown, status = 200) =>
   ({
@@ -154,5 +154,14 @@ describe('api-client', () => {
 
       await expect(healthApi.get()).rejects.toThrow('Failed to fetch');
     });
+  });
+
+  it('F2-D2: summary envía `months` del contrato v1.2 y sin periodo no añade query', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue(buildJsonResponse({ data: {} }));
+    await tenantApi.summary({ months: 24 });
+    await tenantApi.summary();
+    const urls = (global.fetch as jest.Mock).mock.calls.map((call) => String(call[0]));
+    expect(urls[0]).toMatch(/\/tenants\/summary\?months=24$/);
+    expect(urls[1]).toMatch(/\/tenants\/summary$/);
   });
 });

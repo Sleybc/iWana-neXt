@@ -72,7 +72,8 @@ function DashboardMetric({ metric }: { metric: DashboardMetricModel }) {
   // Una cifra 0 no es interactiva (contrato §3, estado «disabled»).
   const interactive = metric.count > 0;
   const common = {
-    tone: metric.tone,
+    // Sin cifra no hay señal: el 0 se pinta neutral (contrato §3, estado «empty»).
+    tone: interactive ? metric.tone : ('neutral' as const),
     label: metric.label,
     value: metric.count,
     size: 'compact' as const,

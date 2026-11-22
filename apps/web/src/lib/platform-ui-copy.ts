@@ -116,15 +116,27 @@ export const PLATFORM_UI_COPY = {
           : `${n} sin verificación en dos pasos`,
     pulseTeamMfaMeter: (pct: number) => `${pct} % del equipo con verificación en dos pasos`,
     trendTitle: 'Tendencia',
-    trendSubtitle: 'Altas y bajas de empresas por mes, últimos 12 meses',
+    trendSubtitle: (months: number) => `Empresas por mes, últimos ${months} meses`,
+    trendActiveTitle: 'Activas al cierre',
+    trendActiveSeries: 'Activas al cierre',
+    trendActiveSummary: (months: number) =>
+      `Empresas activas al cierre de cada mes, últimos ${months} meses`,
+    trendActiveCaption: 'Empresas activas al cierre de cada mes',
+    trendActivePartial: 'Sin dato en algunos meses.',
+    trendActiveNoHistory: 'Aún no hay historia de empresas activas en este periodo.',
+    trendFlowTitle: 'Altas y bajas',
     trendCreated: 'Altas',
     trendRemoved: 'Bajas',
     trendMonthHeader: 'Mes',
     trendCaption: 'Altas y bajas de empresas por mes',
     trendCurrentMonth: (label: string) => `${label} (en curso)`,
-    trendSummary: (created: number, removed: number) =>
-      `Altas y bajas de empresas por mes, últimos 12 meses: ${created} altas y ${removed} bajas en total`,
-    trendEmpty: 'Sin altas ni bajas en los últimos 12 meses',
+    trendSummary: (months: number, created: number, removed: number) =>
+      `Altas y bajas de empresas por mes, últimos ${months} meses: ${created} altas y ${removed} bajas en total`,
+    trendEmpty: (months: number) => `Sin altas ni bajas en los últimos ${months} meses`,
+    trendAllEmpty: (months: number) =>
+      `Sin empresas activas, altas ni bajas en los últimos ${months} meses`,
+    trendPeriodGroup: 'Periodo',
+    trendPeriodOption: (months: number) => `${months} meses`,
     trendError: 'No pudimos cargar la tendencia.',
     usersTitle: 'Usuarios internos',
     usersWithoutMfa: 'Sin verificación en dos pasos',
@@ -160,8 +172,8 @@ export const PLATFORM_UI_COPY = {
     queueHealthArea: 'Salud de plataforma',
     queueWorkFailed: (n: number) =>
       n === 1
-        ? '1 trabajo fallido'
-        : `${new Intl.NumberFormat('es-CO').format(n)} trabajos fallidos`,
+        ? '1 trabajo fallido en 72 h'
+        : `${new Intl.NumberFormat('es-CO').format(n)} trabajos fallidos en 72 h`,
     queueWorkBacklog: (n: number) =>
       n === 1
         ? '1 trabajo en espera'
@@ -187,6 +199,7 @@ export const PLATFORM_UI_COPY = {
       `${new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 }).format(pct)} %`,
     availabilityOk: 'Operativa',
     availabilityDegraded: 'Con fallas',
+    availabilityCritical: 'Con fallas graves',
     availabilityWorst: (label: string) => `Peor componente: ${label}`,
     availabilityNoSamples: 'Sin muestras en 30 días',
     availabilityDaysWithoutData: (n: number) => (n === 1 ? '1 día sin dato' : `${n} días sin dato`),
@@ -210,11 +223,20 @@ export const PLATFORM_UI_COPY = {
     usageLink: 'Ver empresas',
     usageEmpty: 'Aún no hay empresas activas.',
     usageError: 'No pudimos cargar el uso por empresa.',
+    usageQuotaReached: 'Cupo alcanzado',
+    usageMore: (n: number) => (n === 1 ? '1 empresa más' : `${n} empresas más`),
+    usageShowAll: 'Ver todas',
+    usageShowLess: 'Ver menos',
+    queueUsageReached: 'Llegó al cupo de suscriptores',
+    queueUsageExceeded: 'Superó el cupo de suscriptores',
+    queueUsageArea: (name: string, active: string, max: string, maxIsOne: boolean) =>
+      `${name} · ${active} de ${max} ${maxIsOne ? 'suscriptor' : 'suscriptores'}`,
     queuesTitle: 'Colas de trabajo',
     queuesSampled: (relative: string) => `Muestra ${relative}`,
     queuesColName: 'Cola',
     queuesColWaiting: 'En espera',
-    queuesColFailed: 'Fallidos',
+    queuesColFailed: 'Fallidos (72 h)',
+    queuesFailedTotal: (n: number) => `${new Intl.NumberFormat('es-CO').format(n)} en total`,
     queuesColOldest: 'Más antiguo',
     queuesOldestNone: 'Sin espera',
     queuesEmpty: 'Aún no hay muestras de las colas.',
@@ -227,13 +249,14 @@ export const PLATFORM_UI_COPY = {
     queuesShowAll: 'Ver todas',
     queuesShowNews: 'Ver solo con novedad',
     queuesUnknown: 'Proceso interno',
+    // F3-D5: exhaustivo sobre las colas del worker; una cola nueva sin nombre visible no compila.
+    // Se lee con un nombre cualquiera de la muestra (puede traer colas retiradas): de ahí el cast.
     queueNames: {
       'tenant-provisioning': 'Puesta en marcha de empresas',
       'tenant-schema-purge': 'Retiro de empresas',
       'refresh-token-purge': 'Limpieza de sesiones',
       'search-index': 'Índice de búsqueda',
       'assurance-field-service': 'Atención en campo',
-      'users-bulk-create': 'Alta masiva de usuarios',
       'operations-execution-events': 'Eventos de órdenes de trabajo',
       'operations-execution-relay': 'Envío de eventos de órdenes',
       'operations-execution-tombstone': 'Cierre de eventos de órdenes',
@@ -241,16 +264,28 @@ export const PLATFORM_UI_COPY = {
       'inventory-execution-requests': 'Consumo de inventario',
       'schedule-events-sweep': 'Revisión de la agenda',
       'network-execution-events': 'Eventos de red',
-      'network-provisioning-reconcile': 'Conciliación de red',
       'billing-installation-events': 'Cobros de instalación',
       'crm-contract-pdf': 'Documentos de contrato',
-      'crm-contract-events': 'Eventos de contratos',
       'crm-contract-media-sweep': 'Limpieza de archivos de contratos',
       'evidence-analysis': 'Análisis de evidencias',
       'evidence-orphan-detection': 'Revisión de evidencias',
-      'migration-import': 'Importación de datos',
       'platform-health-sampler': 'Muestreo de salud de plataforma',
-    } as Record<string, string>,
+      'tenant-usage-sampler': 'Medición de uso por empresa',
+      // Colas que procesa el API (el tablero muestrea todas las de la plataforma).
+      'users-bulk-create': 'Alta masiva de usuarios',
+      'network-provisioning-reconcile': 'Revisión de servicios de red',
+      'crm-contract-events': 'Avisos de contratos activados',
+      'migration-import': 'Importación de datos',
+      'billing-generation': 'Generación de facturas',
+      'billing-email-send': 'Envío de facturas por correo',
+      'crm-contract-signed-copy': 'Copia del contrato firmado',
+      'crm-contract-pending-signature-alerts': 'Avisos de contratos sin firmar',
+      'privacy-due-alerts': 'Avisos de solicitudes de privacidad',
+      'privacy-retention-expiry': 'Vencimiento de conservación de datos',
+    } satisfies Record<import('@iwana/shared').SampledQueueName, string> as Record<
+      string,
+      string | undefined
+    >,
   },
   tenants: {
     subtitle: 'Estado, contacto y última actualización de cada empresa.',
@@ -258,6 +293,7 @@ export const PLATFORM_UI_COPY = {
     tableTitle: 'Directorio',
     searchPlaceholder: 'Buscar por empresa o contacto…',
     loading: 'Cargando el directorio',
+    parkSummaryError: 'No pudimos cargar el resumen de empresas.',
     newCompany: 'Nueva empresa',
     firstCompanyCta: 'Registrar primera empresa',
     emptyParkTitle: 'Aún no hay empresas registradas',

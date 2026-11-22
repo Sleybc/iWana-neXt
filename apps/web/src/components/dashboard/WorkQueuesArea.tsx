@@ -3,7 +3,12 @@
 import { useId, useState } from 'react';
 import { formatRelativeTime, type PlatformQueueSnapshot } from '@iwana/shared';
 import { Badge, Button, Card, EmptyState, ErrorState, SkeletonBlock } from '@iwana/ui';
-import { formatWaitingAge, queueLabel, summarizeWorkQueues } from '@/lib/platform-health';
+import {
+  formatWaitingAge,
+  queueLabel,
+  recentFailed,
+  summarizeWorkQueues,
+} from '@/lib/platform-health';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 
 const COPY = PLATFORM_UI_COPY.dashboard;
@@ -110,7 +115,14 @@ export function WorkQueuesArea({
                     {queueLabel(q.name)}
                   </th>
                   <td className="py-1.5 text-right tabular-nums">{NUMBER.format(q.waiting)}</td>
-                  <td className="py-1.5 text-right tabular-nums">{NUMBER.format(q.failed)}</td>
+                  <td className="py-1.5 text-right tabular-nums">
+                    {NUMBER.format(recentFailed(q))}
+                    {q.failed > recentFailed(q) ? (
+                      <span className="block text-xs text-gray-600 dark:text-gray-300">
+                        {COPY.queuesFailedTotal(q.failed)}
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="py-1.5 text-right tabular-nums">
                     {formatWaitingAge(q.oldestWaitingSeconds)}
                   </td>

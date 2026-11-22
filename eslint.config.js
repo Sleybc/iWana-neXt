@@ -60,7 +60,7 @@ export default [
     },
   },
   {
-    // ADR-112 D4: en las apps, `@iwana/ui/chart` solo por `import()` dinámico (PortalChart) o `import type`.
+    // ADR-112 D4: en las apps, `@iwana/ui/chart` solo por `import()` dinámico (PortalChart/WebChart) o `import type`.
     // Este bloque reemplaza la regla del anterior para apps/**: repite la restricción de Recharts.
     files: ['apps/**/*.ts', 'apps/**/*.tsx'],
     rules: {
@@ -73,7 +73,7 @@ export default [
               name: '@iwana/ui/chart',
               allowTypeImports: true,
               message:
-                'Carga diferida obligatoria (ADR-112 D4): usa PortalChart de components/shared/portal-chart.tsx.',
+                'Carga diferida obligatoria (ADR-112 D4): usa PortalChart (portal) o WebChart (web) de components/shared/.',
             },
           ],
           patterns: [rechartsSubpathRestriction],

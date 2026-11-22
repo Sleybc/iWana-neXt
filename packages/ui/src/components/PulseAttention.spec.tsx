@@ -105,6 +105,30 @@ describe('PulseStrip (contrato DS v1.3 §7bis.2)', () => {
     expect(text()).toContain('1.234');
   });
 
+  it('aria-busy por celda (§7ter.1): solo el article que carga; la sección no', () => {
+    strip([
+      cell({ id: 'a', label: 'Cargando', state: 'loading' }),
+      cell({ id: 'b', label: 'Lista' }),
+    ]);
+    const section = container.querySelector('section');
+    expect(section?.hasAttribute('aria-busy')).toBe(false);
+    const loading = container.querySelector('article[aria-label="Cargando"]');
+    expect(loading?.getAttribute('aria-busy')).toBe('true');
+    expect(container.querySelectorAll('[aria-busy]')).toHaveLength(1);
+  });
+
+  it('updating no lleva aria-busy: no silencia su aviso', () => {
+    strip([cell({ updating: true, href: '/x' })]);
+    expect(container.querySelector('[aria-busy]')).toBeNull();
+    expect(container.querySelector('[aria-live="polite"]')?.textContent).toBe('Actualizando');
+  });
+
+  it('loading de franja: solo la sección queda aria-busy', () => {
+    strip([cell(), cell({ id: 'c2' })], true);
+    expect(container.querySelectorAll('[aria-busy]')).toHaveLength(1);
+    expect(container.querySelector('section')?.getAttribute('aria-busy')).toBe('true');
+  });
+
   it('href usa linkComponent con el rótulo como nombre; onClick es botón', () => {
     const onClick = jest.fn();
     const LinkStub = (props: Record<string, unknown>) => <a data-stub="1" {...props} />;

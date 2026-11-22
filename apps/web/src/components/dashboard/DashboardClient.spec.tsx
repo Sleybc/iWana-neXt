@@ -2,7 +2,7 @@ import '@testing-library/jest-dom';
 import type { AnchorHTMLAttributes, ReactNode } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { TenantStatus } from '@iwana/shared';
+import { TenantStatus, type TenantStatusSummaryMonth } from '@iwana/shared';
 import { makeHealthDays, makePlatformHealthHistory } from '@/test-utils/platform-health-history';
 import { makePlatformUsersSummary } from '@/test-utils/platform-users-summary';
 import { makeMonthlySeries, makeTenantStatusSummary } from '@/test-utils/tenant-status-summary';
@@ -42,11 +42,13 @@ jest.mock('next/link', () => ({
   ),
 }));
 
+let mockSearchParams = new URLSearchParams();
+const mockReplace = jest.fn();
 jest.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => mockSearchParams,
   usePathname: () => '/dashboard',
   useRouter: () => ({
-    replace: jest.fn(),
+    replace: mockReplace,
     push: jest.fn(),
   }),
 }));
@@ -161,6 +163,7 @@ describe('DashboardClient', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRole = 'IWANA_SUPPORT';
+    mockSearchParams = new URLSearchParams();
     tenantApi.usage.mockResolvedValue({ items: [], generatedAt: new Date().toISOString() });
     healthApi.get.mockResolvedValue(HEALTH_OK);
     platformAuditApi.list.mockResolvedValue({ data: [] });
@@ -172,6 +175,7 @@ describe('DashboardClient', () => {
 
   const pulse = () => screen.getByRole('region', { name: 'Pulso de plataforma' });
   const companies = () => screen.getByRole('region', { name: 'Empresas' });
+  const trendCard = () => screen.getByRole('region', { name: 'Tendencia' });
 
   async function renderReady() {
     render(<DashboardClient />);
@@ -241,7 +245,9 @@ describe('DashboardClient', () => {
     tenantApi.summary.mockResolvedValue(makeTenantStatusSummary({ ACTIVE: 187, PROVISIONING: 41 }));
     await renderReady();
 
-    expect(screen.getAllByText('187')).toHaveLength(2);
+    // Fuera de Tendencia: la leyenda de «Activas al cierre» repite el valor del mes en curso.
+    expect(screen.getAllByText('187').filter((el) => !trendCard().contains(el))).toHaveLength(2);
+    expect(within(trendCard()).getByText('187')).toBeInTheDocument();
     expect(within(pulse()).getByText('187')).toBeInTheDocument();
     expect(within(companies()).getByText('187')).toBeInTheDocument();
     expect(screen.getAllByText('41')).toHaveLength(2);
@@ -502,9 +508,12 @@ describe('DashboardClient', () => {
 
     // Activas y Altas en curso: cifra propia en el pulso y en Empresas.
     ['101', '102'].forEach((n) => {
-      expect(screen.getAllByText(n)).toHaveLength(2);
+      // Fuera de Tendencia solo para ACTIVE (101): su leyenda repite el valor del mes en curso.
+      const shown = screen.getAllByText(n);
+      expect(n === '101' ? shown.filter((el) => !trendCard().contains(el)) : shown).toHaveLength(2);
       expect(within(pulse()).getByText(n)).toBeInTheDocument();
     });
+    expect(within(trendCard()).getByText('101')).toBeInTheDocument();
     // Estados de atención: en Empresas como cifra y en el pulso solo dentro de la frase.
     ['103', '104', '105', '106'].forEach((n) => {
       expect(screen.getAllByText(n)).toHaveLength(1);
@@ -641,13 +650,221 @@ describe('DashboardClient', () => {
       await screen.findByRole('link', { name: 'Empresas activas' });
 
       expect(monthly).toHaveLength(12);
-      expect(within(trend()).getByRole('img')).toHaveAccessibleName(/2 altas y 1 bajas en total/);
+      expect(
+        within(trend()).getByRole('img', { name: /2 altas y 1 bajas en total/ }),
+      ).toBeInTheDocument();
       unmount();
 
       tenantApi.summary.mockRejectedValue(new Error('timeout'));
       render(<DashboardClient />);
       expect(await screen.findByText('No pudimos cargar la tendencia.')).toBeInTheDocument();
       expect(within(trend()).queryByRole('img')).not.toBeInTheDocument();
+    });
+
+    describe('F2-D2 · dos gráficas en la tarjeta (contrato DS §7ter.7, dirección §8.3)', () => {
+      const withActive = (values: Record<string, number | null>) =>
+        makeMonthlySeries(
+          Object.fromEntries(
+            Object.entries(values).map(([month, activeAtClose]) => [month, { activeAtClose }]),
+          ),
+        );
+
+      it('«Activas al cierre» en línea y «Altas y bajas» en barras, cada una con su nombre', async () => {
+        const monthly = makeMonthlySeries(
+          Object.fromEntries(
+            Array.from({ length: 12 }, (_, i) => {
+              const d = new Date(Date.UTC(2025, 11 + i, 1));
+              const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+              return [
+                key,
+                { activeAtClose: 10 + i, ...(i === 10 ? { created: 2, removed: 1 } : {}) },
+              ];
+            }),
+          ),
+        );
+        tenantApi.summary.mockResolvedValue(makeTenantStatusSummary({ ACTIVE: 21 }, { monthly }));
+        await renderReady();
+
+        const card = within(trend());
+        expect(card.getByText('Empresas por mes, últimos 12 meses')).toBeInTheDocument();
+        expect(
+          card.getByRole('heading', { level: 3, name: 'Activas al cierre' }),
+        ).toBeInTheDocument();
+        expect(card.getByRole('heading', { level: 3, name: 'Altas y bajas' })).toBeInTheDocument();
+        expect(
+          card.getByRole('img', {
+            name: 'Empresas activas al cierre de cada mes, últimos 12 meses',
+          }),
+        ).toBeInTheDocument();
+        expect(
+          card.getByRole('img', {
+            name: 'Altas y bajas de empresas por mes, últimos 12 meses: 2 altas y 1 bajas en total',
+          }),
+        ).toBeInTheDocument();
+        expect(card.getAllByRole('button', { name: 'Ver como tabla' })).toHaveLength(2);
+        expect(card.queryByText('Sin dato en algunos meses.')).toBeNull();
+        // ADR-112 D6: Bajas con trazo hueco (outline), Altas plenas.
+        const swatches = Array.from(trend().querySelectorAll('figure li rect'));
+        expect(swatches.map((r) => r.getAttribute('stroke-width'))).toEqual(['0', '2']);
+      });
+
+      it('algunos meses sin dato: la línea se corta, avisa y la tabla dice «Sin dato»', async () => {
+        tenantApi.summary.mockResolvedValue(
+          makeTenantStatusSummary(
+            { ACTIVE: 3 },
+            { monthly: withActive({ '2026-10': 3, '2026-11': 3, '2026-01': 0 }) },
+          ),
+        );
+        const user = userEvent.setup();
+        await renderReady();
+
+        const card = within(trend());
+        expect(card.getByText('Sin dato en algunos meses.')).toBeInTheDocument();
+        await user.click(card.getAllByRole('button', { name: 'Ver como tabla' })[0]!);
+        const table = card.getByRole('table', { name: 'Empresas activas al cierre de cada mes' });
+        expect(within(table).getAllByText('Sin dato').length).toBeGreaterThan(0);
+        expect(
+          within(table).getByRole('columnheader', { name: 'Activas al cierre' }),
+        ).toBeInTheDocument();
+      });
+
+      const allMonths = (value: (index: number) => Partial<TenantStatusSummaryMonth>) =>
+        makeMonthlySeries(
+          Object.fromEntries(
+            Array.from({ length: 12 }, (_, i) => {
+              const d = new Date(Date.UTC(2025, 11 + i, 1));
+              return [
+                `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`,
+                value(i),
+              ];
+            }),
+          ),
+        );
+      /** Payload v1.1 (desfase de versión): los meses no traen `activeAtClose`. */
+      const v11 = (monthly: TenantStatusSummaryMonth[]) =>
+        monthly.map((month) => {
+          const legacy: Partial<TenantStatusSummaryMonth> = { ...month };
+          delete legacy.activeAtClose;
+          return legacy as TenantStatusSummaryMonth;
+        });
+
+      it('payload v1.1 sin activas: sin línea, con aviso; las barras siguen', async () => {
+        tenantApi.summary.mockResolvedValue(
+          makeTenantStatusSummary(
+            { ACTIVE: 1 },
+            { monthly: v11(makeMonthlySeries({ '2026-10': { created: 2, removed: 0 } })) },
+          ),
+        );
+        await renderReady();
+
+        const card = within(trend());
+        expect(
+          card.getByText('Aún no hay historia de empresas activas en este periodo.'),
+        ).toBeInTheDocument();
+        expect(card.getAllByRole('img')).toHaveLength(1);
+        expect(card.getByRole('img')).toHaveAccessibleName(/2 altas y 0 bajas en total/);
+      });
+
+      it('payload v1.1 con flujos en 0: aviso de activas y vacío de barras, no el vacío único', async () => {
+        tenantApi.summary.mockResolvedValue(
+          makeTenantStatusSummary({ ACTIVE: 1 }, { monthly: v11(makeMonthlySeries()) }),
+        );
+        await renderReady();
+
+        const card = within(trend());
+        expect(
+          card.getByText('Aún no hay historia de empresas activas en este periodo.'),
+        ).toBeInTheDocument();
+        expect(card.getByText('Sin altas ni bajas en los últimos 12 meses')).toBeInTheDocument();
+        expect(card.queryByText(/Sin empresas activas/)).toBeNull();
+      });
+
+      it('activas en 0 son dato real y se dibujan junto a las barras', async () => {
+        tenantApi.summary.mockResolvedValue(
+          makeTenantStatusSummary(
+            {},
+            {
+              monthly: allMonths((i) => ({
+                activeAtClose: 0,
+                ...(i === 4 ? { created: 1, removed: 1 } : {}),
+              })),
+            },
+          ),
+        );
+        await renderReady();
+
+        const card = within(trend());
+        expect(
+          card.getByRole('img', {
+            name: 'Empresas activas al cierre de cada mes, últimos 12 meses',
+          }),
+        ).toBeInTheDocument();
+        expect(card.getByRole('img', { name: /1 altas y 1 bajas en total/ })).toBeInTheDocument();
+      });
+
+      it('ambas vacías (activas en 0 todos los meses y sin altas ni bajas): un solo vacío', async () => {
+        tenantApi.summary.mockResolvedValue(
+          makeTenantStatusSummary({}, { monthly: allMonths(() => ({ activeAtClose: 0 })) }),
+        );
+        await renderReady();
+
+        const card = within(trend());
+        expect(
+          card.getByText('Sin empresas activas, altas ni bajas en los últimos 12 meses'),
+        ).toBeInTheDocument();
+        expect(card.queryByRole('heading', { level: 3 })).toBeNull();
+        expect(card.queryByRole('img')).toBeNull();
+      });
+    });
+
+    describe('F2-D2 · periodo de la tendencia (dirección v1.2 §8.3)', () => {
+      const periods = () => within(within(trend()).getByRole('group', { name: 'Periodo' }));
+
+      it('por defecto 12 meses: lo pide al servidor y marca «12 meses»', async () => {
+        await renderReady();
+        expect(tenantApi.summary).toHaveBeenCalledWith({ months: 12 });
+        expect(periods().getByRole('button', { name: '12 meses' })).toHaveAttribute(
+          'aria-pressed',
+          'true',
+        );
+        expect(periods().getByRole('button', { name: '6 meses' })).toHaveAttribute(
+          'aria-pressed',
+          'false',
+        );
+        expect(periods().getAllByRole('button')).toHaveLength(3);
+      });
+
+      it('?periodo=24m pide 24 meses y lo dice en el subtítulo y el vacío', async () => {
+        mockSearchParams = new URLSearchParams('periodo=24m');
+        await renderReady();
+        expect(tenantApi.summary).toHaveBeenCalledWith({ months: 24 });
+        expect(periods().getByRole('button', { name: '24 meses' })).toHaveAttribute(
+          'aria-pressed',
+          'true',
+        );
+        expect(within(trend()).getByText('Empresas por mes, últimos 24 meses')).toBeInTheDocument();
+        expect(
+          within(trend()).getByText('Sin altas ni bajas en los últimos 24 meses'),
+        ).toBeInTheDocument();
+      });
+
+      it('un periodo inválido cae a 12 meses', async () => {
+        mockSearchParams = new URLSearchParams('periodo=7m');
+        await renderReady();
+        expect(tenantApi.summary).toHaveBeenCalledWith({ months: 12 });
+      });
+
+      it('elegir un periodo lo lleva a la URL; 12 meses se omite', async () => {
+        mockSearchParams = new URLSearchParams('periodo=6m&otro=1');
+        const user = userEvent.setup();
+        await renderReady();
+        await user.click(periods().getByRole('button', { name: '24 meses' }));
+        expect(mockReplace).toHaveBeenLastCalledWith('/dashboard?periodo=24m&otro=1', {
+          scroll: false,
+        });
+        await user.click(periods().getByRole('button', { name: '12 meses' }));
+        expect(mockReplace).toHaveBeenLastCalledWith('/dashboard?otro=1', { scroll: false });
+      });
     });
 
     it('CA-PP2-01: 12 meses en cero muestran el vacío, no una gráfica de ceros', async () => {
@@ -657,7 +874,8 @@ describe('DashboardClient', () => {
       expect(
         within(trend()).getByText('Sin altas ni bajas en los últimos 12 meses'),
       ).toBeInTheDocument();
-      expect(within(trend()).queryByRole('img')).not.toBeInTheDocument();
+      // Barras en cero = vacío; la única gráfica es la línea de activas (mes en curso = 1).
+      expect(within(trend()).getAllByRole('img')).toHaveLength(1);
     });
 
     it('B1 y B3: «Equipo interno» y Usuarios internos leen el resumen del equipo', async () => {
@@ -822,9 +1040,40 @@ describe('DashboardClient', () => {
       await renderReady();
 
       const cell = within(pulse()).getByRole('link', { name: 'Disponibilidad, 30 días' });
-      // Redis: (29·288 + 50) / (29·288 + 100) = 0,99408…, truncado a 99,4 %.
-      expect(cell).toHaveTextContent('99,4 %');
+      // Redis: (29·288 + 50) / (29·288 + 100) = 0,99408…, redondeado a 99,41 % (F3-D6).
+      expect(cell).toHaveTextContent('99,41 %');
       expect(cell).toHaveTextContent('Con fallas');
+      expect(cell).toHaveTextContent('Peor componente: Redis');
+    });
+
+    it('meta CTO: desde 99,9 % la celda es verde y no señala peor componente', async () => {
+      platformHealthApi.history.mockResolvedValue(
+        makePlatformHealthHistory({
+          days: makeHealthDays({ 29: { redis: { samples: 288, availability: 0.98 } } }),
+        }),
+      );
+      await renderReady();
+
+      const cell = within(pulse()).getByRole('link', { name: 'Disponibilidad, 30 días' });
+      // Redis: (8640 − 5,76) / 8640 = 0,99933…
+      expect(cell).toHaveTextContent('99,93 %');
+      expect(cell).toHaveTextContent('Operativa');
+      expect(cell).not.toHaveTextContent('Con fallas');
+      expect(cell).not.toHaveTextContent('Peor componente');
+    });
+
+    it('meta CTO: por debajo de 99 % la celda es roja y señala el peor componente', async () => {
+      platformHealthApi.history.mockResolvedValue(
+        makePlatformHealthHistory({
+          days: makeHealthDays({ 29: { redis: { samples: 288, availability: 0 } } }),
+        }),
+      );
+      await renderReady();
+
+      const cell = within(pulse()).getByRole('link', { name: 'Disponibilidad, 30 días' });
+      // Redis: 29·288 / 30·288 = 0,96666…
+      expect(cell).toHaveTextContent('96,67 %');
+      expect(cell).toHaveTextContent('Con fallas graves');
       expect(cell).toHaveTextContent('Peor componente: Redis');
     });
 
@@ -915,10 +1164,80 @@ describe('DashboardClient', () => {
       expect(within(queues).queryByText('Acumulación')).toBeNull();
       expect(
         await screen.findByRole('link', {
-          name: 'Atención: 14 trabajos fallidos. Colas de trabajo · 1 cola',
+          name: 'Atención: 14 trabajos fallidos en 72 h. Colas de trabajo · 1 cola',
         }),
       ).toHaveAttribute('href', '#colas-de-trabajo');
       expect(screen.queryByText('Todo al día')).not.toBeInTheDocument();
+    });
+
+    it('§8.0: solo fallidos históricos (fuera de 72 h) es «Sin novedad», sin aviso ni atención', async () => {
+      platformHealthApi.history.mockResolvedValue(
+        makePlatformHealthHistory({
+          queues: [
+            {
+              name: 'search-index',
+              waiting: 0,
+              failed: 30,
+              failedRecent: 0,
+              oldestWaitingSeconds: null,
+            },
+            {
+              name: 'tenant-provisioning',
+              waiting: 0,
+              failed: 0,
+              failedRecent: 0,
+              oldestWaitingSeconds: null,
+            },
+          ],
+        }),
+      );
+      await renderReady();
+
+      const queues = screen.getByRole('region', { name: 'Colas de trabajo' });
+      expect(queues).toHaveTextContent('Sin novedad en las 2 colas.');
+      expect(within(queues).queryByText('Con fallos')).toBeNull();
+      expect(screen.queryByRole('link', { name: /trabajos? fallidos?/ })).toBeNull();
+    });
+
+    it('§8.0: «Fallidos (72 h)» con el histórico debajo y fila de atención en 72 h', async () => {
+      platformHealthApi.history.mockResolvedValue(
+        makePlatformHealthHistory({
+          queues: [
+            {
+              name: 'search-index',
+              waiting: 0,
+              failed: 1200,
+              failedRecent: 3,
+              oldestWaitingSeconds: null,
+            },
+            {
+              name: 'tenant-provisioning',
+              waiting: 0,
+              failed: 1,
+              failedRecent: 1,
+              oldestWaitingSeconds: null,
+            },
+          ],
+        }),
+      );
+      await renderReady();
+
+      const queues = screen.getByRole('region', { name: 'Colas de trabajo' });
+      expect(within(queues).getByText('Con fallos')).toBeInTheDocument();
+      expect(
+        within(queues).getByRole('columnheader', { name: 'Fallidos (72 h)' }),
+      ).toBeInTheDocument();
+      const search = within(queues).getByRole('row', { name: /Índice de búsqueda/ });
+      expect(search).toHaveTextContent('1.200 en total');
+      const provisioning = within(queues).getByRole('row', {
+        name: /Puesta en marcha|Aprovisionamiento|empresas/i,
+      });
+      expect(provisioning).not.toHaveTextContent('en total');
+      expect(
+        await screen.findByRole('link', {
+          name: 'Atención: 4 trabajos fallidos en 72 h. Colas de trabajo · 2 colas',
+        }),
+      ).toHaveAttribute('href', '#colas-de-trabajo');
     });
 
     it('C-D2: una espera reciente (< 5 min) se lista pero no avisa ni entra en atención', async () => {
@@ -1062,6 +1381,99 @@ describe('DashboardClient', () => {
       expect(area.getAllByText('No admite nuevos suscriptores')).toHaveLength(2);
       expect(area.queryByText(/%/)).not.toBeInTheDocument();
       expect(area.queryByRole('img')).not.toBeInTheDocument();
+    });
+
+    const usageItem = (
+      tenantId: string,
+      name: string,
+      activeSubscribers: number | null,
+      maxSubscribers: number | null,
+    ) => ({ tenantId, name, activeSubscribers, maxSubscribers, measuredAt: hoursAgo(1) });
+
+    it('§8 A2: rojo desde el cupo con la razón exacta; la cifra se trunca', async () => {
+      mockRole = 'SYSTEM_ADMIN';
+      tenantApi.usage.mockResolvedValue({
+        generatedAt: hoursAgo(0),
+        items: [usageItem('t1', 'Casi Llena', 999, 1000), usageItem('t2', 'Llena', 50, 50)],
+      });
+      await renderReady();
+      const region = await screen.findByRole('region', { name: 'Uso por empresa' });
+      const area = within(region);
+      // 999/1000 = 99,9 %: se ve «99 %», nunca «100 %» antes de alcanzar el cupo.
+      expect(await area.findByText('99 %')).toBeInTheDocument();
+      expect(area.getByText('100 %')).toBeInTheDocument();
+      expect(area.getByText('Cupo alcanzado')).toBeInTheDocument();
+      expect(area.queryByText('Cerca del cupo')).not.toBeInTheDocument();
+      expect(region.querySelector('[data-tone="error"]')).not.toBeNull();
+    });
+
+    it('§8.2 F4-D5: tope de 6 filas, «N empresas más» y Ver todas / Ver menos en el sitio', async () => {
+      mockRole = 'SYSTEM_ADMIN';
+      tenantApi.usage.mockResolvedValue({
+        generatedAt: hoursAgo(0),
+        items: Array.from({ length: 8 }, (_, i) => usageItem(`t${i}`, `Empresa ${i}`, i, 100)),
+      });
+      const user = userEvent.setup();
+      await renderReady();
+      const area = within(await screen.findByRole('region', { name: 'Uso por empresa' }));
+      await area.findByText('Empresa 7');
+      expect(area.getAllByRole('listitem')).toHaveLength(6);
+      expect(area.queryByText('Empresa 0')).not.toBeInTheDocument();
+      expect(area.getByText('2 empresas más')).toBeInTheDocument();
+      const toggle = area.getByRole('button', { name: 'Ver todas' });
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      expect(toggle).toHaveAttribute('aria-controls', area.getByRole('list').id);
+
+      await user.click(toggle);
+      expect(area.getAllByRole('listitem')).toHaveLength(8);
+      expect(area.queryByText('2 empresas más')).not.toBeInTheDocument();
+      await user.click(area.getByRole('button', { name: 'Ver menos' }));
+      expect(area.getAllByRole('listitem')).toHaveLength(6);
+    });
+
+    it('§8.1: activos ≥ cupo entra en «Requiere tu atención», una fila por empresa', async () => {
+      mockRole = 'SYSTEM_ADMIN';
+      tenantApi.usage.mockResolvedValue({
+        generatedAt: hoursAgo(0),
+        items: [
+          usageItem('t1', 'Llena', 1, 1),
+          usageItem('t2', 'Pasada', 1210, 1200),
+          usageItem('t3', 'Cerrada', 7, 0),
+          usageItem('t4', 'Vacía', 0, 0),
+          usageItem('t5', 'Casi', 95, 100),
+          usageItem('t6', 'Sin Cupo', 5000, null),
+          usageItem('t7', 'Nueva', null, 10),
+        ],
+      });
+      await renderReady();
+
+      expect(
+        await screen.findByRole('link', {
+          name: 'Atención: Llegó al cupo de suscriptores. Llena · 1 de 1 suscriptor',
+        }),
+      ).toHaveAttribute('href', '/tenants/t1/settings');
+      expect(
+        screen.getByRole('link', {
+          name: 'Atención: Superó el cupo de suscriptores. Pasada · 1.210 de 1.200 suscriptores',
+        }),
+      ).toHaveAttribute('href', '/tenants/t2/settings');
+      expect(
+        screen.getByRole('link', {
+          name: 'Atención: Superó el cupo de suscriptores. Cerrada · 7 de 0 suscriptores',
+        }),
+      ).toHaveAttribute('href', '/tenants/t3/settings');
+      for (const name of ['Vacía', 'Casi', 'Sin Cupo', 'Nueva']) {
+        expect(screen.queryByRole('link', { name: new RegExp(`cupo.*${name} ·`) })).toBeNull();
+      }
+    });
+
+    it('§8.1: sin acceso al área, el uso no entra en la cola', async () => {
+      tenantApi.usage.mockResolvedValue({
+        generatedAt: hoursAgo(0),
+        items: [usageItem('t1', 'Llena', 10, 10)],
+      });
+      await renderReady();
+      expect(screen.queryByRole('link', { name: /cupo de suscriptores/ })).toBeNull();
     });
 
     it('CA-PP4-04: en error solo el área degrada y Reintentar la recupera', async () => {
