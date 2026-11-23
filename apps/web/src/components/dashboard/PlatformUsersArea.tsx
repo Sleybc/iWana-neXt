@@ -1,5 +1,9 @@
 import Link from 'next/link';
-import { PlatformRole, type PlatformUsersSummary } from '@iwana/shared';
+import {
+  PLATFORM_USERS_SEARCH_SECTION,
+  PlatformRole,
+  type PlatformUsersSummary,
+} from '@iwana/shared';
 import {
   Badge,
   Card,
@@ -85,7 +89,7 @@ export function PlatformUsersArea({ summary, isLoading, error, onRetry }: Platfo
           <div className="mt-auto flex items-center justify-between gap-3 pt-3 text-xs text-gray-600 dark:text-gray-300">
             <span>{COPY.usersTotal(summary.total)}</span>
             <Link
-              href="/platform-users"
+              href={PLATFORM_USERS_SEARCH_SECTION.route}
               className={cn(
                 'inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary dark:text-white',
                 interactiveFocusClassName,

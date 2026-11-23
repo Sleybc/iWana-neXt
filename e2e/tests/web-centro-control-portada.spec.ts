@@ -287,10 +287,376 @@ test.describe('Centro de control — pulso de plataforma (datos completos)', () 
     await expect(team).toContainText('2 sin verificación en dos pasos');
     await expect(team.getByRole('progressbar')).toHaveAttribute('value', '78');
     await expect(users.getByRole('definition')).toHaveText(['3', '6', '2', '1']);
-    await expect(users.getByRole('link', { name: 'Ver usuarios' })).toHaveAttribute(
-      'href',
-      '/platform-users',
+    await expect(users.getByText('9 usuarios', { exact: true })).toBeVisible();
+    await page.route('**/api/v1/platform-users?page=1', (route) =>
+      route.fulfill({
+        json: {
+          data: {
+            items: Array.from({ length: 9 }, (_, index) => ({
+              id: `platform-${index}`,
+              firstName: `Cuenta de prueba ${index + 1}`,
+              lastName: null,
+              role: index < 3 ? 'SYSTEM_ADMIN' : 'IWANA_SUPPORT',
+              status: 'ACTIVE',
+              mfaEnabled: index >= 2,
+              passwordResetRequired: false,
+              lastLoginAt: index === 0 ? null : buildIsoAt(-1, 12),
+            })),
+            total: 9,
+            pageSize: 20,
+          },
+        },
+      }),
     );
+    const accounts = page.getByRole('list', { name: 'Cuentas de plataforma' });
+    const expectDirectory = async () => {
+      await expect(page).toHaveURL(/\/platform-users$/);
+      await expect(page.getByRole('heading', { name: '9 cuentas de plataforma' })).toBeVisible();
+      await expect(accounts.getByRole('listitem')).toHaveCount(9);
+      await expect(
+        page
+          .getByRole('region', { name: 'Cuenta de prueba 1' })
+          .getByText('Sin verificación en dos pasos', { exact: true }),
+      ).toBeVisible();
+    };
+
+    const sidebarLink = page
+      .getByRole('navigation', { name: 'Menú principal' })
+      .getByRole('link', { name: 'Usuarios internos' });
+    for (const link of [
+      team,
+      page.getByRole('link', { name: /Atención: 2 usuarios sin verificación en dos pasos/ }),
+      users.getByRole('link', { name: 'Ver usuarios' }),
+      sidebarLink,
+    ]) {
+      await link.click();
+      await expectDirectory();
+      await expect(sidebarLink).toHaveAttribute('aria-current', 'page');
+      await page.goBack();
+      await expect(page).toHaveURL(/\/dashboard$/);
+    }
+
+    const search = page.getByRole('combobox', { name: 'Buscar en la plataforma' });
+    await search.click();
+    await page.getByRole('link', { name: /^Usuarios internos Consulta/ }).click();
+    await expectDirectory();
+    await page.goBack();
+    await expect(page).toHaveURL(/\/dashboard$/);
+
+    await page.route('**/api/v1/search/global?**', (route) =>
+      route.fulfill({
+        json: {
+          data: {
+            query: 'usuarios',
+            tookMs: 1,
+            groups: [
+              {
+                type: 'modules',
+                label: 'Secciones',
+                total: 1,
+                items: [
+                  {
+                    id: 'users',
+                    type: 'module',
+                    title: 'Usuarios',
+                    subtitle: 'Cuentas de plataforma',
+                    meta: 'Ruta rápida',
+                    route: '/platform-users',
+                    highlights: [],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    );
+    await search.fill('usuarios');
+    await page
+      .getByRole('listbox', { name: 'Secciones' })
+      .getByRole('option', { name: /^Usuarios / })
+      .click();
+    await expectDirectory();
+  });
+
+  test('el administrador crea una cuenta pendiente y la ve en el listado y el resumen', async ({
+    page,
+  }) => {
+    const accounts = [
+      {
+        id: 'admin-demo',
+        firstName: 'Cuenta',
+        lastName: 'Inicial',
+        role: 'SYSTEM_ADMIN',
+        status: 'ACTIVE',
+        mfaEnabled: true,
+        passwordResetRequired: false,
+        lastLoginAt: null,
+      },
+    ];
+    await page.route('**/api/v1/platform-users/summary', (route) =>
+      route.fulfill({
+        json: {
+          data: buildPlatformUsersSummaryMock({
+            total: accounts.length,
+            withoutMfa: accounts.length - 1,
+            byRole: { SYSTEM_ADMIN: 1, IWANA_SUPPORT: accounts.length - 1 },
+          }),
+        },
+      }),
+    );
+    await page.route('**/api/v1/platform-users?page=1', (route) =>
+      route.fulfill({ json: { data: { total: accounts.length, pageSize: 20, items: accounts } } }),
+    );
+    await page.route('**/api/v1/platform-users', async (route) => {
+      expect(route.request().method()).toBe('POST');
+      const input = route.request().postDataJSON();
+      expect(input).toEqual({
+        email: 'cuenta@example.test',
+        firstName: 'Cuenta',
+        lastName: 'Nueva',
+        role: 'IWANA_SUPPORT',
+      });
+      accounts.unshift({
+        id: 'support-demo',
+        firstName: input.firstName,
+        lastName: input.lastName,
+        role: input.role,
+        status: 'PENDING_VERIFICATION',
+        mfaEnabled: false,
+        passwordResetRequired: true,
+        lastLoginAt: null,
+      });
+      await route.fulfill({
+        status: 201,
+        json: { data: { id: 'support-demo', temporaryPassword: 'clave-temporal-sintetica' } },
+      });
+    });
+
+    await loginToPulse(page);
+    await expect(blocks(page).users.getByText('1 usuario', { exact: true })).toBeVisible();
+    await blocks(page).users.getByRole('link', { name: 'Ver usuarios' }).click();
+    await page.getByRole('button', { name: 'Crear cuenta' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Crear cuenta' });
+    await dialog.getByLabel('Correo de acceso').fill('cuenta@example.test');
+    await dialog.getByLabel('Nombre', { exact: true }).fill('Cuenta');
+    await dialog.getByLabel('Apellidos').fill('Nueva');
+    await dialog.getByRole('button', { name: 'Crear cuenta' }).click();
+    const created = page.getByRole('dialog', { name: 'Cuenta creada' });
+    await expect(created.getByLabel('Contraseña temporal')).toHaveValue('clave-temporal-sintetica');
+    await created.getByRole('button', { name: 'Entendido' }).click();
+    await expect(page.getByRole('heading', { name: '2 cuentas de plataforma' })).toBeVisible();
+    const accountsList = page.getByRole('list', { name: 'Cuentas de plataforma' });
+    await expect(accountsList.getByRole('button').first()).toHaveAccessibleName(/Cuenta Nueva/);
+    await expect(accountsList.getByRole('button', { name: /Cuenta Nueva/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    const pendingDetails = page.getByRole('region', { name: 'Cuenta Nueva' });
+    await expect(
+      pendingDetails.getByText('Pendiente de activación', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      pendingDetails.getByText('Cambiar la contraseña temporal', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      pendingDetails.getByText('Configurar la verificación en dos pasos', { exact: true }),
+    ).toBeVisible();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await accountsList.getByRole('button', { name: /Cuenta Inicial/ }).click();
+    const activeDetails = page.getByRole('region', { name: 'Cuenta Inicial' });
+    await expect(activeDetails.getByRole('heading', { name: 'Cuenta Inicial' })).toBeFocused();
+    await expect(activeDetails.getByText('Con verificación en dos pasos')).toBeVisible();
+    await expect(activeDetails.getByRole('heading', { name: 'Activación' })).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      390,
+    );
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page
+      .getByRole('navigation', { name: 'Menú principal' })
+      .getByRole('link', { name: 'Centro de control' })
+      .click();
+    await expect(blocks(page).users.getByText('2 usuarios', { exact: true })).toBeVisible();
+  });
+
+  test('la cuenta pendiente debe configurar la verificación en dos pasos antes de entrar', async ({
+    page,
+  }) => {
+    const scopedToken = 'jwt-de-inscripcion-de-prueba';
+    await page.route('**/api/v1/auth/platform/login', (route) =>
+      route.fulfill({
+        json: { data: { accessToken: scopedToken, mfaSetupRequired: true } },
+      }),
+    );
+    await page.route('**/api/v1/auth/platform/mfa/setup', (route) => {
+      expect(route.request().headers().authorization).toBe(`Bearer ${scopedToken}`);
+      return route.fulfill({
+        json: {
+          data: {
+            qrCodeBase64:
+              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l1sAAAAASUVORK5CYII=',
+            otpauthUri: 'otpauth://totp/Cuenta?secret=JBSWY3DPEHPK3PXP',
+          },
+        },
+      });
+    });
+    await page.route('**/api/v1/auth/platform/mfa/verify', (route) => {
+      expect(route.request().headers().authorization).toBe(`Bearer ${scopedToken}`);
+      if (route.request().postDataJSON().totpCode === '123456')
+        return route.fulfill({ status: 204 });
+      return route.fulfill({ status: 401, json: { message: 'Código incorrecto.' } });
+    });
+    await page.goto('/auth/login');
+    await submitPlatformLogin(page, { email: 'cuenta@example.test', password: 'Definitiva123!' });
+    await expect(page).toHaveURL(/\/auth\/mfa\/setup$/);
+    await expect(page.getByRole('img', { name: 'Código QR de configuración' })).toBeVisible();
+    const code = page.getByLabel('Código de seis dígitos');
+    await code.fill('654321');
+    await page.getByRole('button', { name: 'Activar cuenta' }).click();
+    await expect(page.getByRole('alert').filter({ hasText: 'Revisa el código' })).toBeVisible();
+    await code.fill('123456');
+    await page.getByRole('button', { name: 'Activar cuenta' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Cuenta activada' })).toBeVisible();
+    await page.getByRole('link', { name: 'Iniciar sesión', exact: true }).click();
+    await expect(page).toHaveURL(/\/auth\/login$/);
+  });
+
+  test('una cuenta activa configura la verificación en dos pasos desde Mi cuenta', async ({
+    page,
+  }) => {
+    let enabled = false;
+    const challenge = 'desafio-de-prueba';
+    await page.route('**/api/v1/platform-users/me', (route) =>
+      route.fulfill({
+        json: {
+          data: {
+            id: 'admin-test',
+            email: 'admin@example.test',
+            firstName: 'Cuenta',
+            lastName: 'Inicial',
+            role: 'SYSTEM_ADMIN',
+            status: 'ACTIVE',
+            mfaEnabled: enabled,
+            timezone: 'America/Bogota',
+            language: 'es-CO',
+          },
+        },
+      }),
+    );
+    await page.route('**/api/v1/auth/platform/mfa/self/setup', (route) => {
+      expect(route.request().postDataJSON()).toEqual({ currentPassword: 'Actual123!' });
+      expect(route.request().headers().authorization).toMatch(/^Bearer /);
+      return route.fulfill({
+        json: {
+          data: {
+            challenge,
+            otpauthUri: 'otpauth://totp/Cuenta?secret=JBSWY3DPEHPK3PXP',
+            qrCodeBase64:
+              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l1sAAAAASUVORK5CYII=',
+          },
+        },
+      });
+    });
+    await page.route('**/api/v1/auth/platform/mfa/self/verify', (route) => {
+      const input = route.request().postDataJSON();
+      expect(input.challenge).toBe(challenge);
+      if (input.totpCode !== '123456')
+        return route.fulfill({ status: 401, json: { message: 'Código incorrecto.' } });
+      enabled = true;
+      return route.fulfill({ status: 204 });
+    });
+
+    await loginToPulse(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole('button', { name: 'Menú de usuario' }).click();
+    await page.getByRole('menuitem', { name: 'Editar perfil' }).click();
+    const profile = page.getByRole('region', { name: 'Datos de perfil' });
+    const security = page.getByRole('region', { name: 'Seguridad de la cuenta' });
+    await expect(profile.getByRole('button', { name: 'Guardar cambios' })).toBeVisible();
+    const setup = security.getByRole('button', { name: 'Configurar verificación en dos pasos' });
+    await expect(setup).toBeInViewport();
+    const desktopProfile = (await profile.boundingBox())!;
+    const desktopSecurity = (await security.boundingBox())!;
+    expect(desktopSecurity.x).toBeGreaterThan(desktopProfile.x + desktopProfile.width);
+    expect(desktopSecurity.y).toBe(desktopProfile.y);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const mobileProfile = (await profile.boundingBox())!;
+    const mobileSecurity = (await security.boundingBox())!;
+    expect(mobileSecurity.x).toBe(mobileProfile.x);
+    expect(mobileSecurity.y).toBeGreaterThan(mobileProfile.y + mobileProfile.height);
+    await security.getByRole('button', { name: 'Cambiar correo' }).click();
+    await expect(security.getByLabel('Nuevo correo de acceso')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      390,
+    );
+    await security.getByRole('button', { name: 'Cerrar' }).click();
+
+    await setup.click();
+    const dialog = page.getByRole('dialog', { name: 'Configurar verificación en dos pasos' });
+    await dialog.getByLabel('Contraseña actual').fill('Actual123!');
+    await dialog.getByRole('button', { name: 'Continuar' }).click();
+    await expect(dialog.getByRole('img', { name: 'Código QR de configuración' })).toBeVisible();
+    const code = dialog.getByLabel('Código de seis dígitos');
+    await expect(code).toBeFocused();
+    await code.fill('012345');
+    await dialog.getByRole('button', { name: 'Activar verificación en dos pasos' }).click();
+    await expect(dialog.getByRole('alert')).toHaveText('Código incorrecto.');
+    await code.fill('123456');
+    await dialog.getByRole('button', { name: 'Activar verificación en dos pasos' }).click();
+    await expect(
+      page.getByRole('status').filter({ hasText: 'Verificación en dos pasos activada' }),
+    ).toBeVisible();
+    await expect(page).toHaveURL(/\/profile$/);
+    await page.reload();
+    await expect(page.getByText('Activa', { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Configurar verificación en dos pasos' }),
+    ).toHaveCount(0);
+  });
+
+  test('el administrador puede editar el nombre desde Cuentas de plataforma', async ({ page }) => {
+    await loginToPulse(page);
+    let firstName = 'Cuenta';
+    let lastName = 'Anterior';
+    await page.route('**/api/v1/platform-users?page=1', (route) =>
+      route.fulfill({
+        json: {
+          data: {
+            total: 1,
+            pageSize: 20,
+            items: [
+              {
+                id: 'account-demo',
+                firstName,
+                lastName,
+                role: 'IWANA_SUPPORT',
+                status: 'ACTIVE',
+                mfaEnabled: false,
+                lastLoginAt: null,
+              },
+            ],
+          },
+        },
+      }),
+    );
+    await page.route('**/api/v1/platform-users/account-demo/name', async (route) => {
+      expect(route.request().method()).toBe('PATCH');
+      ({ firstName, lastName } = route.request().postDataJSON());
+      await route.fulfill({ status: 204 });
+    });
+
+    await blocks(page).users.getByRole('link', { name: 'Ver usuarios' }).click();
+    await page.getByRole('button', { name: 'Editar nombre' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Editar nombre de la cuenta' });
+    await expect(dialog.getByLabel('Apellidos')).toHaveValue('Anterior');
+    await dialog.getByLabel('Apellidos').fill('Actualizada');
+    await dialog.getByRole('button', { name: 'Guardar cambios' }).click();
+    await expect(page.getByText('Nombre actualizado.', { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Cuenta Actualizada', exact: true }),
+    ).toBeVisible();
   });
 
   test('CA-PP-06 / CA-PP2-04: actividad pedida sin sesión al servidor, máx. 5 y con <time>', async ({

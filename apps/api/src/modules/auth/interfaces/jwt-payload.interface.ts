@@ -30,7 +30,7 @@ export interface JwtPayload {
    *   plataforma cuando la cuenta sigue con la credencial de arranque
    *   (`passwordResetRequired`), de modo que el token no abra la consola.
    */
-  scope?: 'mfa-setup' | 'password-change';
+  scope?: 'mfa-setup' | 'password-change' | 'platform-mfa-setup';
   /**
    * Emisor y audiencia. Diferencian criptograficamente los tokens de plataforma
    * de los de tenant (ver auth.constants.ts). Los emite @nestjs/jwt al firmar.

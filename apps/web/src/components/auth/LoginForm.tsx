@@ -119,6 +119,8 @@ export function LoginForm() {
       const result = await login(data.email, data.password);
       if (result === 'mfa_required') {
         router.push('/auth/mfa/verify');
+      } else if (result === 'mfa_setup_required') {
+        router.push('/auth/mfa/setup');
       } else if (result === 'password_reset_required') {
         router.push('/auth/change-password');
       } else {

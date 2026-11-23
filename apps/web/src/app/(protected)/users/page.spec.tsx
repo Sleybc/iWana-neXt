@@ -122,7 +122,7 @@ describe('UsersPage', () => {
 
     render(<UsersPage />);
 
-    expect(await screen.findByText('Usuarios internos')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Usuarios de empresa' })).toBeInTheDocument();
     expect(screen.getByText('Gestiona acceso interno de Empresa Demo')).toBeInTheDocument();
 
     await waitFor(() => {

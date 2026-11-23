@@ -28,7 +28,7 @@ export class SearchController {
   @Get('global')
   @Roles(PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
   @ApiOperation({
-    summary: 'Buscar empresas, usuarios internos y secciones desde la consola de plataforma',
+    summary: 'Buscar empresas, usuarios de empresa y secciones desde la consola de plataforma',
   })
   @ApiOkResponse({ type: GlobalSearchResponseDto })
   @ApiUnauthorizedResponse({ description: 'Requiere JWT de plataforma válido.' })

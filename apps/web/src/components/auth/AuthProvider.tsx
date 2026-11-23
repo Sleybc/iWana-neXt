@@ -33,7 +33,11 @@ interface AuthUser {
 }
 
 /** Resultados posibles del metodo login */
-export type LoginResult = 'authenticated' | 'mfa_required' | 'password_reset_required';
+export type LoginResult =
+  | 'authenticated'
+  | 'mfa_required'
+  | 'mfa_setup_required'
+  | 'password_reset_required';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -184,6 +188,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearPendingPlatformMfaLogin();
       setUser(null);
       return 'password_reset_required';
+    }
+
+    if (result.mfaSetupRequired) {
+      clearPendingPlatformMfaLogin();
+      setUser(null);
+      return 'mfa_setup_required';
     }
 
     const profile = await authApi.me();

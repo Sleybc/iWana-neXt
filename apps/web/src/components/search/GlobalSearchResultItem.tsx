@@ -1,19 +1,20 @@
 'use client';
 
 import { Building2, ClipboardList, LayoutDashboard, Settings, Users } from 'lucide-react';
+import { PLATFORM_USERS_SEARCH_SECTION } from '@iwana/shared';
 import { cn, SearchSnippetPill } from '@iwana/ui';
 import type { GlobalSearchItem } from '@/lib/api-client';
 
 const moduleIconByRoute: Record<string, typeof LayoutDashboard> = {
   '/dashboard': LayoutDashboard,
   '/tenants': Building2,
-  '/users': Users,
+  [PLATFORM_USERS_SEARCH_SECTION.route]: Users,
   '/audit-logs': ClipboardList,
   '/settings': Settings,
 };
 
 function renderHighlights(item: GlobalSearchItem): string[] {
-  return item.highlights.filter(Boolean).slice(0, 2);
+  return Array.from(new Set(item.highlights.filter(Boolean))).slice(0, 2);
 }
 
 export function GlobalSearchResultItem({

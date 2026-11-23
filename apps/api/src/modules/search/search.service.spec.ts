@@ -95,9 +95,14 @@ describe('SearchService', () => {
     expect(result.query).toBe('lili');
     expect(result.groups).toHaveLength(3);
     expect(result.groups[0]?.label).toBe('Empresas');
+    expect(result.groups[1]?.label).toBe('Usuarios de empresa');
     expect(result.groups[1]?.items[0]?.title).toBe('Liliana Ruiz');
     expect(result.groups[1]?.items[0]?.route).toContain('openUser=user-1');
-    expect(result.groups[2]?.items[0]?.title).toBe('Usuarios');
+    expect(result.groups[2]?.items[0]).toMatchObject({
+      title: 'Usuarios',
+      subtitle: 'Consulta las cuentas que tienen acceso a la plataforma',
+      route: '/platform-users',
+    });
     expect(result.tookMs).toBe(11);
   });
 

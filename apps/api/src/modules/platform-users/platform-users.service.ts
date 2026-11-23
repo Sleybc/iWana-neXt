@@ -8,10 +8,11 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
+import { randomBytes } from 'node:crypto';
 import { PlatformUser } from '@iwana/db';
 import { AuditAction, PlatformRole, UserStatus } from '@iwana/shared';
-import type { PlatformUsersSummary } from '@iwana/shared';
-import { Repository } from 'typeorm';
+import type { PlatformUserDirectory, PlatformUsersSummary } from '@iwana/shared';
+import { IsNull, QueryFailedError, Repository } from 'typeorm';
 import { PLATFORM_USER_ENTITY_TYPE } from '../audit/audit.constants';
 import { AuditRequestContext } from '../audit/interfaces/audit-request-context.interface';
 import { PlatformAuditService } from '../audit/platform-audit.service';
@@ -23,12 +24,15 @@ import {
 } from '../../common/crypto/aes-gcm.util';
 import { hashEmail } from '../../common/crypto/hash-email.util';
 import { resolvePiiHashKey } from '../../common/crypto/pii-hash-key.util';
+import { DIRECTORY_PAGE_SIZE } from './dto/platform-user-directory.dto';
 import { PlatformUserResponseDto } from './dto/platform-user-response.dto';
 import { CreatePlatformUserBootstrapDto } from './dto/create-platform-user-bootstrap.dto';
+import { CreatePlatformUserDto, CreatedPlatformUserDto } from './dto/create-platform-user.dto';
 import {
   ChangePlatformUserLoginEmailDto,
   ChangePlatformUserPasswordDto,
   UpdatePlatformUserDto,
+  UpdatePlatformUserNameDto,
 } from './dto/update-platform-user.dto';
 
 const ALLOWED_LANGUAGES = new Set(['es-CO', 'en-US']);
@@ -101,6 +105,74 @@ export class PlatformUsersService {
     return { total, byRole, withoutMfa, withoutAccess30d, generatedAt: generatedAt.toISOString() };
   }
 
+  async listDirectory(
+    page: number,
+    actor: { sub: string; role: string },
+    requestContext: AuditRequestContext,
+  ): Promise<PlatformUserDirectory> {
+    const [users, total] = await this.platformUserRepo
+      .createQueryBuilder('account')
+      .select([
+        'account.id',
+        'account.firstName',
+        'account.lastName',
+        'account.role',
+        'account.status',
+        'account.mfaEnabled',
+        'account.passwordResetRequired',
+        'account.lastLoginAt',
+      ])
+      .where('account.deletedAt IS NULL')
+      .orderBy('CASE WHEN account.status = :pending THEN 0 ELSE 1 END', 'ASC')
+      .setParameter('pending', UserStatus.PENDING_VERIFICATION)
+      .addOrderBy('account.createdAt', 'DESC')
+      .addOrderBy('account.id', 'DESC')
+      .skip((page - 1) * DIRECTORY_PAGE_SIZE)
+      .take(DIRECTORY_PAGE_SIZE)
+      .getManyAndCount();
+
+    await this.platformAuditService.log({
+      action: AuditAction.LIST_ACCESS,
+      entityType: PLATFORM_USER_ENTITY_TYPE,
+      entityId: 'directory',
+      userId: actor.sub,
+      newValue: {
+        actorRole: actor.role,
+        page,
+        pageSize: DIRECTORY_PAGE_SIZE,
+        served: users.length,
+        total,
+      },
+      ...requestContext,
+    });
+
+    return {
+      items: users.map(
+        ({
+          id,
+          firstName,
+          lastName,
+          role,
+          status,
+          mfaEnabled,
+          passwordResetRequired,
+          lastLoginAt,
+        }) => ({
+          id,
+          firstName,
+          lastName,
+          role,
+          status,
+          mfaEnabled,
+          passwordResetRequired,
+          lastLoginAt: lastLoginAt?.toISOString() ?? null,
+        }),
+      ),
+      total,
+      pageSize: DIRECTORY_PAGE_SIZE,
+    };
+  }
+
   async getProfile(userId: string): Promise<PlatformUserResponseDto> {
     const user = (await this.platformUserRepo.findOne({
       where: { id: userId },
@@ -110,6 +182,85 @@ export class PlatformUsersService {
     }
 
     return this.toDto(user);
+  }
+
+  async createDirectoryAccount(
+    dto: CreatePlatformUserDto,
+    actorId: string,
+    requestContext: AuditRequestContext,
+  ): Promise<CreatedPlatformUserDto> {
+    const email = dto.email.trim().toLowerCase();
+    const emailHash = hashEmail(email, this.piiHashKey);
+    const temporaryPassword = randomBytes(24).toString('base64url');
+    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+
+    try {
+      const id = await this.platformUserRepo.manager.transaction(async (manager) => {
+        const account = manager.create(PlatformUser, {
+          email: this.encryptValue(email),
+          emailHash,
+          passwordHash,
+          role: dto.role,
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          status: UserStatus.PENDING_VERIFICATION,
+          mfaEnabled: false,
+          passwordResetRequired: true,
+        });
+        const saved = await manager.save(PlatformUser, account);
+        await this.platformAuditService.logWithin(
+          {
+            action: AuditAction.CREATE,
+            entityType: PLATFORM_USER_ENTITY_TYPE,
+            entityId: saved.id,
+            userId: actorId,
+            newValue: { role: dto.role, status: account.status },
+            ...requestContext,
+          },
+          manager,
+        );
+        return saved.id;
+      });
+      return { id, temporaryPassword };
+    } catch (error) {
+      if (error instanceof QueryFailedError && error.driverError?.code === '23505') {
+        throw new ConflictException('Ya existe una cuenta con ese correo de acceso.');
+      }
+      throw error;
+    }
+  }
+
+  async updateDirectoryName(
+    id: string,
+    dto: UpdatePlatformUserNameDto,
+    actorId: string,
+    requestContext: AuditRequestContext,
+  ): Promise<void> {
+    await this.platformUserRepo.manager.transaction(async (manager) => {
+      const result = await manager.update(
+        PlatformUser,
+        { id, deletedAt: IsNull() },
+        {
+          firstName: dto.firstName.trim() || null,
+          lastName: dto.lastName.trim() || null,
+        },
+      );
+      if (!result.affected) {
+        throw new NotFoundException('Cuenta de plataforma no encontrada.');
+      }
+
+      await this.platformAuditService.logWithin(
+        {
+          action: AuditAction.UPDATE,
+          entityType: PLATFORM_USER_ENTITY_TYPE,
+          entityId: id,
+          userId: actorId,
+          newValue: { changedFields: ['firstName', 'lastName'] },
+          ...requestContext,
+        },
+        manager,
+      );
+    });
   }
 
   async updateProfile(

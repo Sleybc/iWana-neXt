@@ -55,6 +55,22 @@ describe('GlobalSearchResultItem — resaltado', () => {
     expect(container.textContent).toContain('lili Ruiz lili');
   });
 
+  it('should mostrar los dos primeros fragmentos distintos en orden', () => {
+    const { container } = renderItem([
+      '',
+      '<mark>Ma</mark>rco',
+      '<mark>Ma</mark>rco',
+      '<mark>Ma</mark>ría',
+      '<mark>Ma</mark>teo',
+    ]);
+
+    const snippets = Array.from(
+      container.querySelectorAll('mark'),
+      (mark) => mark.parentElement?.textContent,
+    );
+    expect(snippets).toEqual(['Marco', 'María']);
+  });
+
   it('should mostrar el fragmento sin coincidencias como texto plano', () => {
     const { container } = renderItem(['Sin coincidencias']);
 

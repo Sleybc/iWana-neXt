@@ -475,9 +475,9 @@ test.describe('Bootstrap operativo admin', () => {
     await operationalSettingsForm.getByRole('button', { name: 'Guardar configuración' }).click();
     await expect(page.getByText('Configuración operativa actualizada.')).toBeVisible();
 
-    await page.getByRole('link', { name: 'Usuarios internos' }).click();
+    await page.goto('/users');
     await expect(
-      page.getByRole('heading', { name: 'Usuarios internos', exact: true }),
+      page.getByRole('heading', { name: 'Usuarios de empresa', exact: true }),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Crear usuario interno' }).click();
     const createUserDialog = page.getByRole('dialog', { name: 'Crear usuario' });

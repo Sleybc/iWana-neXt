@@ -162,12 +162,12 @@ export default function UsersPage() {
       if (tenants.length === 0) {
         return {
           title: 'No hay empresas activas disponibles.',
-          description: 'Cuando actives una empresa, podrás revisar aquí sus usuarios internos.',
+          description: 'Cuando actives una empresa, podrás revisar aquí sus usuarios.',
         };
       }
 
       return {
-        title: 'Selecciona una empresa para revisar usuarios internos.',
+        title: 'Selecciona una empresa para revisar sus usuarios.',
         description: 'Elige una empresa del listado para ver su equipo y gestionar accesos.',
       };
     }
@@ -180,7 +180,7 @@ export default function UsersPage() {
     }
 
     return {
-      title: `Aún no hay usuarios internos en ${selectedTenantName}.`,
+      title: `Aún no hay usuarios en ${selectedTenantName}.`,
       description: 'Crea el primer usuario interno para empezar a gestionar accesos.',
     };
   }, [

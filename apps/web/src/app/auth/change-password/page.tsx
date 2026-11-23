@@ -94,6 +94,8 @@ export default function ChangePasswordPage() {
       if (err instanceof ApiError) {
         if (err.status === 401) {
           setServerError('La contraseña actual es incorrecta.');
+        } else if (err.status === 400 || err.status === 409) {
+          setServerError(err.message);
         } else {
           setServerError('Ocurrió un error al cambiar la contraseña. Intenta de nuevo.');
         }

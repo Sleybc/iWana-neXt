@@ -24,6 +24,6 @@ describe('UsersTable', () => {
     expect(
       screen.getByText('Revisa el criterio de búsqueda o crea un usuario interno para continuar.'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Mostrando 0 de 0 usuarios internos')).toBeInTheDocument();
+    expect(screen.getByText('Mostrando 0 de 0 usuarios de empresa')).toBeInTheDocument();
   });
 });

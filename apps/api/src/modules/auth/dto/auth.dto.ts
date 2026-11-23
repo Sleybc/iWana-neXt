@@ -8,7 +8,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { ApiSchema } from '@nestjs/swagger';
+import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import {
   PASSWORD_COMPLEXITY_MESSAGE,
   PASSWORD_DIGIT_PATTERN,
@@ -64,6 +64,45 @@ export class MfaVerifyDto {
   @IsString()
   @Length(6, 6)
   totpCode: string;
+}
+
+export class PlatformMfaVerifyDto {
+  @ApiProperty({ pattern: '^\\d{6}$' })
+  @IsString()
+  @Matches(/^\d{6}$/, { message: 'Ingresa el código de seis dígitos.' })
+  totpCode: string;
+}
+
+export class PlatformSelfMfaSetupDto {
+  @ApiProperty({ maxLength: 128, writeOnly: true })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(128)
+  currentPassword: string;
+}
+
+export class PlatformSelfMfaVerifyDto extends PlatformMfaVerifyDto {
+  @ApiProperty({ maxLength: 2048, writeOnly: true })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2048)
+  challenge: string;
+}
+
+export class PlatformSelfMfaSetupResultDto {
+  @ApiProperty()
+  qrCodeBase64: string;
+
+  @ApiProperty()
+  otpauthUri: string;
+
+  @ApiProperty()
+  challenge: string;
+}
+
+export class PlatformSelfMfaSetupResponseDto {
+  @ApiProperty({ type: PlatformSelfMfaSetupResultDto })
+  data: PlatformSelfMfaSetupResultDto;
 }
 
 /**

@@ -70,7 +70,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
   /** Rutas permitidas por alcance limitado, y el mensaje con el que se rechaza el resto. */
   private static readonly LIMITED_SCOPES: Record<
-    'mfa-setup' | 'password-change',
+    NonNullable<JwtPayload['scope']>,
     { paths: readonly string[]; message: string }
   > = {
     'mfa-setup': {
@@ -80,6 +80,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     'password-change': {
       paths: JwtAuthGuard.PASSWORD_CHANGE_ALLOWED_PATHS,
       message: 'Token de alcance limitado. Cambia tu contrasena antes de continuar.',
+    },
+    'platform-mfa-setup': {
+      paths: ['/api/v1/auth/platform/mfa/setup', '/api/v1/auth/platform/mfa/verify'],
+      message: 'Completa la verificación en dos pasos antes de acceder a la plataforma.',
     },
   };
 

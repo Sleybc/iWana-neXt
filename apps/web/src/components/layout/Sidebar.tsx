@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef, type ComponentType } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Building2, ClipboardList, LayoutDashboard, Settings, Users, X } from 'lucide-react';
+import { PLATFORM_USERS_SEARCH_SECTION } from '@iwana/shared';
 import { cn, interactiveFocusClassName } from '@iwana/ui';
 import { usePlatformBrandingAssets } from '@/components/branding/PlatformBrandingProvider';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
@@ -27,7 +28,11 @@ const DESKTOP_STORAGE_KEY = 'iwana-web-sidebar-collapsed';
 const navItems: NavItem[] = [
   { href: '/dashboard', label: PLATFORM_UI_COPY.navigation.home, icon: LayoutDashboard },
   { href: '/tenants', label: PLATFORM_UI_COPY.navigation.tenants, icon: Building2 },
-  { href: '/users', label: PLATFORM_UI_COPY.navigation.users, icon: Users },
+  {
+    href: PLATFORM_USERS_SEARCH_SECTION.route,
+    label: PLATFORM_UI_COPY.navigation.users,
+    icon: Users,
+  },
   { href: '/audit-logs', label: PLATFORM_UI_COPY.navigation.audit, icon: ClipboardList },
   { href: '/settings', label: PLATFORM_UI_COPY.navigation.settings, icon: Settings },
 ];

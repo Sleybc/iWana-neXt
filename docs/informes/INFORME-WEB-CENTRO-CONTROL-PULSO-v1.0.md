@@ -76,6 +76,22 @@
 | ~~F2-D6~~ | Cerrada 2026-11-22 (`1a2636ef`): otra suite carga `.env.development`, que define `MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS`, prohibida en producción; el helper solo borraba dos claves. Ahora borra toda clave del esquema no declarada | — |
 | ~~F2-D7~~ | Mocks E2E repiten literales de sesión en vez de importar `AUDIT_SESSION_ACTIONS` | P3 |
 
+El 2026-11-23 se corrigió el destino de «Ver usuarios», «Equipo interno» y la alerta de verificación en dos pasos. Los tres abren `/platform-users`, que lista las cuentas de `public.platform_users` con el mismo criterio que el resumen P3: cualquier estado y exclusión de cuentas eliminadas. El directorio muestra nombres para identificar cada cuenta, rol, estado, verificación en dos pasos y último acceso para revisar su seguridad. `GET /api/v1/platform-users` exige sesión de plataforma y registra `LIST_ACCESS` con los conteos de la página. El directorio por empresa se sigue abriendo desde `/users`.
+
+«Usuarios internos» en el menú lateral y en las rutas frecuentes del buscador global también abre `/platform-users`. El menú lateral queda marcado como página activa.
+
+El resultado de sección «Usuarios» del buscador global abre `/platform-users` incluso cuando el índice conserva la ruta anterior. Los resultados de personas por empresa mantienen sus enlaces al directorio de su empresa.
+
+Los seis accesos al listado de plataforma usan la misma ruta definida en `@iwana/shared`. El buscador y el directorio por empresa identifican los resultados de personas como «Usuarios de empresa».
+
+El buscador muestra hasta dos fragmentos resaltados distintos por resultado, en su orden original. Así evita claves duplicadas de React cuando la búsqueda devuelve el mismo fragmento más de una vez.
+
+En «Cuentas de plataforma», el administrador puede editar el nombre y los apellidos mediante `PATCH /api/v1/platform-users/:id/name`. La actualización excluye cuentas eliminadas y registra al actor y los campos editados en la misma transacción. El administrador también puede crear cuentas que aparecen de inmediato como pendientes en el listado y se incluyen en el resumen. La persona titular cambia su contraseña temporal y confirma la verificación en dos pasos antes de obtener una sesión completa. [ADR-115](../adrs/ADR-115-Activacion-de-Cuentas-de-Plataforma.md)
+
+El Panel de activación agrupa el directorio en cuentas pendientes, activas y otras cuentas. La API prioriza las pendientes antes de paginar y entrega el indicador de cambio de contraseña para mostrar qué pasos faltan. Tras crear una cuenta, el panel abre su detalle. En pantallas angostas, seleccionar una cuenta lleva el foco al detalle.
+
+Las cuentas de plataforma que ya están activas pueden configurar la verificación en dos pasos desde «Mi cuenta». La persona titular confirma su contraseña actual y un código de su aplicación autenticadora. Al activarse, el resumen del Centro de control refleja el nuevo estado. [ADR-115](../adrs/ADR-115-Activacion-de-Cuentas-de-Plataforma.md)
+
 ## Fase 3 — P2
 
 **Estado:** G6 ✅ 2026-11-21 (AI-EM-ARCH) · commit local, sin push. Encargo: [FASE3](../prompts/PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE3-v1.0.md).
@@ -298,6 +314,7 @@ Omitido: E2E web contra un servidor dedicado (hoy usa `next dev` compartido). Si
 | 1 | `a74c5689` | 45021428513 | Rojo en el intento 1 (`portal-inventory-scm.spec.ts:3685`, carrera con la carga de categorías; corregida en `871cb00b`); verde en el 2 |
 | 2 | `095b5cfc` | 45054684943 | Rojo en tres intentos, cada uno por una prueba distinta: p95 de N1 (348 ms por contención de 4 workers en 2 núcleos), `CreateTaskSchedulingDialog.spec.tsx` (debounce de 300 ms en reloj real) y `tenant-active-at-close.activation` (exigía `DB_NAME=test` en los workers 2 a 4, que usan un clon) |
 | 3 | `b4a2024a` | 45188080121 | Verde en el intento 1, incluido el paso nuevo «presupuestos de latencia (en serie)». E2E Web Admin Smoke 45188080316 verde |
+| 4 | `52dfd266` | 45206507196 | Verde en el intento 1 (ajuste por rol de «Uso por empresa», F4-D3). E2E Web Admin Smoke 45206507090 verde |
 
 Arreglos de las tres intermitentes: `cdc0bc17` y `b4a2024a`. Sin umbrales cambiados ni reintentos.
 

@@ -1,4 +1,5 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { PLATFORM_USERS_SEARCH_SECTION } from '@iwana/shared';
 import {
   GlobalSearchGroupDto,
   GlobalSearchItemDto,
@@ -144,7 +145,7 @@ export class SearchService {
   ): GlobalSearchGroupDto {
     return {
       type: 'users',
-      label: 'Usuarios internos',
+      label: 'Usuarios de empresa',
       total,
       items: hits.map((hit) => {
         const fullName = [hit.document.firstName, hit.document.lastName].filter(Boolean).join(' ');
@@ -170,15 +171,22 @@ export class SearchService {
       type: 'modules',
       label: 'Secciones',
       total,
-      items: hits.map((hit) => ({
-        id: hit.document.id,
-        type: 'module',
-        title: hit.document.title,
-        subtitle: hit.document.description,
-        meta: 'Ruta rápida',
-        route: hit.document.route,
-        highlights: this.extractHighlights(hit),
-      })),
+      items: hits.map((hit) => {
+        // Los índices existentes pueden conservar el destino anterior de esta sección.
+        const section =
+          hit.document.id === PLATFORM_USERS_SEARCH_SECTION.id
+            ? PLATFORM_USERS_SEARCH_SECTION
+            : hit.document;
+        return {
+          id: section.id,
+          type: 'module',
+          title: section.title,
+          subtitle: section.description,
+          meta: 'Ruta rápida',
+          route: section.route,
+          highlights: this.extractHighlights(hit),
+        };
+      }),
     };
   }
 

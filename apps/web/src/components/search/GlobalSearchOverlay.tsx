@@ -2,13 +2,19 @@
 
 import Link from 'next/link';
 import { ArrowUpRight, Loader2, Search, Sparkles } from 'lucide-react';
+import { PLATFORM_USERS_SEARCH_SECTION } from '@iwana/shared';
 import { GlobalSearchResultItem } from './GlobalSearchResultItem';
 import type { GlobalSearchGroup, GlobalSearchItem } from '@/lib/api-client';
+import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 
 const quickLinks: Array<{ href: string; label: string; description: string }> = [
   { href: '/dashboard', label: 'Centro de control', description: 'Vista general de la plataforma' },
   { href: '/tenants', label: 'Empresas', description: 'Consulta y administra organizaciones' },
-  { href: '/users', label: 'Usuarios internos', description: 'Revisa accesos y cuentas internas' },
+  {
+    href: PLATFORM_USERS_SEARCH_SECTION.route,
+    label: PLATFORM_UI_COPY.navigation.users,
+    description: PLATFORM_USERS_SEARCH_SECTION.description,
+  },
   {
     href: '/audit-logs',
     label: 'Historial de cambios',
@@ -19,13 +25,13 @@ const quickLinks: Array<{ href: string; label: string; description: string }> = 
 
 const groupDescriptions: Record<GlobalSearchGroup['type'], string> = {
   tenants: 'Empresas disponibles en la plataforma',
-  users: 'Cuentas internas y responsables operativos',
+  users: 'Personas y responsables de cada empresa',
   modules: 'Secciones y rutas rápidas de navegación',
 };
 
 const activeItemTypeLabels: Record<GlobalSearchItem['type'], string> = {
   tenant: 'Empresa',
-  user: 'Usuario interno',
+  user: 'Usuario de empresa',
   module: 'Sección',
 };
 
@@ -68,7 +74,7 @@ export function GlobalSearchOverlay({
           <div>
             <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Comando rápido</p>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Empresas, usuarios internos y secciones en una sola vista.
+              Empresas, usuarios de empresa y secciones en una sola vista.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -157,7 +163,7 @@ export function GlobalSearchOverlay({
                   Revisa si el nombre está completo o si falta una tilde.
                 </div>
                 <div className="rounded-2xl bg-gray-50 px-3 py-3 dark:bg-dark-surface-3">
-                  Busca por correo cuando necesites encontrar una cuenta interna.
+                  Busca por correo cuando necesites encontrar a un usuario de empresa.
                 </div>
                 <div className="rounded-2xl bg-gray-50 px-3 py-3 dark:bg-dark-surface-3">
                   Usa las rutas frecuentes si solo quieres llegar rápido a una sección.

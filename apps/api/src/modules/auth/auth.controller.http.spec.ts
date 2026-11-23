@@ -37,19 +37,20 @@ jest.mock('./guards/jwt-auth.guard', () => ({
 
       const request = context.switchToHttp().getRequest();
       const authHeader = request.headers.authorization;
+      const isPlatform = authHeader === 'Bearer platform-self-test';
 
-      if (authHeader !== 'Bearer test-access-token') {
+      if (!isPlatform && authHeader !== 'Bearer test-access-token') {
         throw new UnauthorizedException('Token de acceso invalido o expirado.');
       }
 
       request.user = {
         sub: 'user-uuid-1',
         email: 'hash-email-123',
-        role: 'tenant_admin',
-        tenantId: 'tenant-test-uuid',
-        schemaName: 'tenant_test',
+        role: isPlatform ? 'SYSTEM_ADMIN' : 'tenant_admin',
+        tenantId: isPlatform ? null : 'tenant-test-uuid',
+        schemaName: isPlatform ? null : 'tenant_test',
         jti: 'jti-http-test',
-        type: 'tenant',
+        type: isPlatform ? 'platform' : 'tenant',
         exp: Math.floor(Date.now() / 1000) + 900,
       };
 
@@ -69,6 +70,8 @@ describe('AuthController HTTP', () => {
     logout: jest.fn(),
     setupMfa: jest.fn(),
     verifyMfaSetup: jest.fn(),
+    setupPlatformSelfMfa: jest.fn(),
+    verifyPlatformSelfMfa: jest.fn(),
     disableMfa: jest.fn(),
     forgotPassword: jest.fn(),
     resetPassword: jest.fn(),
@@ -116,6 +119,46 @@ describe('AuthController HTTP', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('protege la inscripción de Mi cuenta, valida el cuerpo y devuelve el QR sin caché', async () => {
+    const setupPath = '/api/v1/auth/platform/mfa/self/setup';
+    const verifyPath = '/api/v1/auth/platform/mfa/self/verify';
+    const credential = { currentPassword: 'PruebaSegura1!' };
+    const setup = {
+      qrCodeBase64: 'qr-test',
+      otpauthUri: 'otpauth://totp/demo',
+      challenge: 'challenge-test',
+    };
+    mockAuthService.setupPlatformSelfMfa.mockResolvedValue(setup);
+    await request(app.getHttpServer()).post(setupPath).send(credential).expect(401);
+    await request(app.getHttpServer())
+      .post(setupPath)
+      .set('Authorization', 'Bearer platform-self-test')
+      .send({ ...credential, id: 'other-user' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post(setupPath)
+      .set('Authorization', 'Bearer platform-self-test')
+      .send(credential)
+      .expect('Cache-Control', 'private, no-store')
+      .expect(200, { data: setup });
+    expect(mockAuthService.setupPlatformSelfMfa).toHaveBeenCalledTimes(1);
+    expect(mockAuthService.setupPlatformSelfMfa).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'platform' }),
+      credential.currentPassword,
+    );
+    await request(app.getHttpServer())
+      .post(verifyPath)
+      .set('Authorization', 'Bearer platform-self-test')
+      .send({ totpCode: 'foobar', challenge: setup.challenge })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post(verifyPath)
+      .set('Authorization', 'Bearer platform-self-test')
+      .send({ totpCode: '012345', challenge: setup.challenge })
+      .expect(204);
+    expect(mockAuthService.verifyPlatformSelfMfa).toHaveBeenCalledTimes(1);
   });
 
   afterAll(async () => {
@@ -391,6 +434,20 @@ describe('AuthController HTTP', () => {
         .expect(200);
 
       expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('envía el desafío de inscripción de plataforma sin emitir cookies de sesión', async () => {
+      mockAuthService.loginPlatform.mockResolvedValue({
+        accessToken: 'jwt-enrollment',
+        mfaSetupRequired: true,
+      });
+      const result = await request(app.getHttpServer())
+        .post('/api/v1/auth/platform/login')
+        .send({ email: 'cuenta@example.test', password: 'Passw0rd!!' })
+        .expect(200);
+
+      expect(result.body.data).toEqual({ accessToken: 'jwt-enrollment', mfaSetupRequired: true });
+      expect(result.headers['set-cookie']).toBeUndefined();
     });
 
     it('omite el indicador cuando la cuenta ya cambio su contrasena', async () => {

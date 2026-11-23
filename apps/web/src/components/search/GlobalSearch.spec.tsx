@@ -52,7 +52,7 @@ describe('GlobalSearch', () => {
       groups: [
         {
           type: 'users',
-          label: 'Usuarios',
+          label: 'Usuarios de empresa',
           total: 2,
           items: [
             {
@@ -91,6 +91,7 @@ describe('GlobalSearch', () => {
     expect(globalSearchApi.search).toHaveBeenCalledWith('lili', 5, expect.any(Object));
 
     await screen.findAllByText('Liliana Ruiz');
+    expect(screen.getByRole('listbox', { name: 'Usuarios de empresa' })).toBeVisible();
 
     await user.keyboard('{ArrowDown}');
     await user.keyboard('{Enter}');
@@ -116,6 +117,10 @@ describe('GlobalSearch', () => {
     await waitFor(() => {
       expect(document.activeElement).toBe(input);
     });
+    expect(screen.getByRole('link', { name: /^Usuarios internos/ })).toHaveAttribute(
+      'href',
+      '/platform-users',
+    );
   });
 
   it('should mostrar error recuperable cuando falla la consulta', async () => {

@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import {
+  PLATFORM_USERS_SEARCH_SECTION,
   TENANT_ATTENTION_STATUSES,
   TENANT_STATUS_SUMMARY_DEFAULT_PERIOD_MONTHS,
   TenantStatus,
@@ -424,7 +425,7 @@ export function DashboardClient() {
           ) : undefined,
         state: team.loading && !t ? 'loading' : team.error ? 'error' : 'idle',
         updating: team.loading && t !== null,
-        href: '/platform-users',
+        href: PLATFORM_USERS_SEARCH_SECTION.route,
         onRetry: team.reload,
       },
     ];
@@ -493,7 +494,7 @@ export function DashboardClient() {
         severity: 'attention',
         title: COPY.queueUsersWithoutMfa(withoutMfa),
         area: COPY.queueUsersArea,
-        href: '/platform-users',
+        href: PLATFORM_USERS_SEARCH_SECTION.route,
       });
     }
     // En riesgo antes que Atención; estable dentro de cada severidad.

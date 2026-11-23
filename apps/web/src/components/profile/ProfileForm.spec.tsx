@@ -6,6 +6,7 @@ jest.mock('@iwana/ui', () => {
   const ReactLib = require('react') as typeof import('react');
 
   return {
+    ...jest.requireActual('@iwana/ui'),
     Button: ({ children, loading, disabled, ...props }: Record<string, unknown>) => (
       <button {...props} disabled={Boolean(disabled) || Boolean(loading)}>
         {children as React.ReactNode}
@@ -17,7 +18,9 @@ jest.mock('@iwana/ui', () => {
     ) {
       return (
         <div>
-          {label ? <label htmlFor={id as string | undefined}>{label as React.ReactNode}</label> : null}
+          {label ? (
+            <label htmlFor={id as string | undefined}>{label as React.ReactNode}</label>
+          ) : null}
           <input id={id as string | undefined} ref={ref} {...props} />
           {error ? <p>{error as React.ReactNode}</p> : null}
         </div>
@@ -29,7 +32,9 @@ jest.mock('@iwana/ui', () => {
     ) {
       return (
         <div>
-          {label ? <label htmlFor={id as string | undefined}>{label as React.ReactNode}</label> : null}
+          {label ? (
+            <label htmlFor={id as string | undefined}>{label as React.ReactNode}</label>
+          ) : null}
           <select
             id={id as string | undefined}
             name={name as string | undefined}
@@ -129,8 +134,8 @@ describe('ProfileForm', () => {
     render(<ProfileForm />);
 
     await screen.findByText('admin@iwana.co');
-    fireEvent.click(screen.getByRole('button', { name: 'Cambiar email' }));
-    fireEvent.change(screen.getByLabelText('Nuevo email de acceso'), {
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar correo' }));
+    fireEvent.change(screen.getByLabelText('Nuevo correo de acceso'), {
       target: { value: 'nuevo@iwana.co' },
     });
     fireEvent.change(screen.getByLabelText('Contraseña actual'), {

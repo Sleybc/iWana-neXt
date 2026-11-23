@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Logger,
@@ -27,6 +28,10 @@ import {
   LoginDto,
   MfaDisableDto,
   MfaVerifyDto,
+  PlatformMfaVerifyDto,
+  PlatformSelfMfaSetupDto,
+  PlatformSelfMfaSetupResponseDto,
+  PlatformSelfMfaVerifyDto,
   ResendVerificationDto,
   ResetPasswordDto,
 } from './dto/auth.dto';
@@ -172,6 +177,7 @@ export class AuthController {
    */
   @Public()
   @Post('platform/login')
+  @Header('Cache-Control', 'no-store')
   @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(5) } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Iniciar sesion de plataforma (SYSTEM_ADMIN / IWANA_SUPPORT)' })
@@ -191,11 +197,13 @@ export class AuthController {
     // C-6 (ADR-081): la consola de plataforma gana ciclo de refresco. Emite la
     // cookie de access y la de refresh solo en el login completo. El token de
     // alcance limitado (password-change) no entra en cookies: queda en memoria.
-    if (!result.mfaRequired && !result.passwordResetRequired && result.accessToken) {
+    const fullSession =
+      !result.mfaRequired && !result.passwordResetRequired && !result.mfaSetupRequired;
+    if (fullSession && result.accessToken) {
       res.cookie(platformAccessCookieName(), result.accessToken, this.accessCookieOptions());
     }
 
-    if (!result.mfaRequired && !result.passwordResetRequired && result.refreshToken) {
+    if (fullSession && result.refreshToken) {
       res.cookie(platformRefreshCookieName(), result.refreshToken, this.refreshCookieOptions());
     }
 
@@ -203,6 +211,7 @@ export class AuthController {
       data: {
         accessToken: result.accessToken,
         ...(result.mfaRequired ? { mfaRequired: true } : {}),
+        ...(result.mfaSetupRequired ? { mfaSetupRequired: true } : {}),
         // Propagado explicitamente: NestJS descarta los campos omitidos al
         // serializar. Si este indicador no viaja, la consola deja entrar al
         // usuario sin cambiar nada mientras el backend cree que lo exigio.
@@ -403,6 +412,86 @@ export class AuthController {
    *
    * RF-AUTH-03
    */
+  @Post('platform/mfa/setup')
+  @SkipAudit()
+  @Header('Cache-Control', 'private, no-store')
+  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(10) } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Configurar la verificación en dos pasos de una cuenta de plataforma pendiente',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Código QR y clave de configuración para la persona titular.',
+  })
+  @ApiResponse({ status: 403, description: 'La sesión no permite configurar esta cuenta.' })
+  async setupPlatformMfa(@CurrentUser() user: JwtPayload): Promise<{ data: MfaSetupResponse }> {
+    return { data: await this.authService.setupPlatformMfa(user) };
+  }
+
+  @Post('platform/mfa/verify')
+  @SkipAudit()
+  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(5) } })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Activar una cuenta de plataforma al confirmar su verificación en dos pasos',
+  })
+  @ApiResponse({ status: 204, description: 'Cuenta activada. La persona debe iniciar sesión.' })
+  @ApiResponse({ status: 401, description: 'Código de verificación inválido.' })
+  @ApiResponse({ status: 403, description: 'La sesión no permite activar esta cuenta.' })
+  async verifyPlatformMfa(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: PlatformMfaVerifyDto,
+    @Request() req: ExpressRequest,
+  ): Promise<void> {
+    await this.authService.verifyPlatformMfa(user, dto, {
+      ipAddress: req.ip ?? req.socket?.remoteAddress ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
+  }
+
+  @Post('platform/mfa/self/setup')
+  @SkipAudit()
+  @Header('Cache-Control', 'private, no-store')
+  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(5) } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Preparar la verificación en dos pasos de la cuenta de plataforma activa',
+  })
+  @ApiResponse({ status: 200, type: PlatformSelfMfaSetupResponseDto })
+  @ApiResponse({ status: 401, description: 'Sesión o contraseña incorrecta.' })
+  @ApiResponse({ status: 403, description: 'Requiere una sesión de plataforma activa.' })
+  @ApiResponse({ status: 409, description: 'La verificación en dos pasos ya está activa.' })
+  async setupPlatformSelfMfa(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: PlatformSelfMfaSetupDto,
+  ): Promise<PlatformSelfMfaSetupResponseDto> {
+    return { data: await this.authService.setupPlatformSelfMfa(user, dto.currentPassword) };
+  }
+
+  @Post('platform/mfa/self/verify')
+  @SkipAudit()
+  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(5) } })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Activar la verificación en dos pasos de la cuenta de plataforma activa',
+  })
+  @ApiResponse({ status: 204, description: 'Verificación en dos pasos activada.' })
+  @ApiResponse({ status: 400, description: 'Configuración vencida o inválida.' })
+  @ApiResponse({ status: 401, description: 'Sesión o código incorrecto.' })
+  @ApiResponse({ status: 403, description: 'Requiere una sesión de plataforma activa.' })
+  @ApiResponse({ status: 409, description: 'La verificación en dos pasos ya está activa.' })
+  async verifyPlatformSelfMfa(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: PlatformSelfMfaVerifyDto,
+    @Request() req: ExpressRequest,
+  ): Promise<void> {
+    await this.authService.verifyPlatformSelfMfa(user, dto, {
+      ipAddress: req.ip ?? req.socket?.remoteAddress ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
+  }
+
   @Post('mfa/setup')
   // La respuesta lleva la semilla TOTP: `otpauthUri` es
   // `otpauth://totp/<email>?secret=<BASE32>` y `qrCodeBase64` es esa misma

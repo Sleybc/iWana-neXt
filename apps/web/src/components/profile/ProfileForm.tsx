@@ -7,13 +7,13 @@ import {
   CircleAlert,
   Lock,
   Mail,
-  UserRound,
+  Shield,
 } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Button, Input, Select } from '@iwana/ui';
+import { Avatar, Button, Input, Select } from '@iwana/ui';
 import {
   ApiError,
   type ChangePlatformUserLoginEmailPayload,
@@ -22,6 +22,7 @@ import {
   type UpdatePlatformUserPayload,
 } from '@/lib/api-client';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { PlatformProfileMfa } from './PlatformProfileMfa';
 import {
   FORM_ALERT_ERROR_CLASS,
   FORM_ALERT_SUCCESS_CLASS,
@@ -84,14 +85,13 @@ const LANGUAGE_OPTIONS = [
   { value: 'en-US', label: 'en-US' },
 ];
 
-const accountSectionClass =
-  'rounded-2xl border border-gray-100 bg-gray-50/60 p-4 dark:border-dark-border dark:bg-dark-surface-3/60';
-
 const profilePanelClass =
-  'rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2 dark:shadow-none';
+  'min-w-0 rounded-2xl border border-gray-200 bg-white shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2 dark:shadow-none';
 
 export function ProfileForm() {
-  const { refreshProfile, logout } = useAuth();
+  const { user, refreshProfile, logout } = useAuth();
+  const nameId = useId();
+  const displayName = user?.displayName ?? 'Usuario';
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingEmail, setIsSavingEmail] = useState(false);
@@ -103,6 +103,7 @@ export function ProfileForm() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccessMessage, setPasswordSuccessMessage] = useState<string | null>(null);
   const [currentEmail, setCurrentEmail] = useState<string>('');
+  const [mfaEnabled, setMfaEnabled] = useState<boolean | null>(null);
   const [isEmailSectionExpanded, setIsEmailSectionExpanded] = useState(false);
   const [isPasswordSectionExpanded, setIsPasswordSectionExpanded] = useState(false);
 
@@ -157,6 +158,7 @@ export function ProfileForm() {
         const profile = await platformUsersApi.me();
         reset(mapProfileToForm(profile));
         setCurrentEmail(profile.email);
+        setMfaEnabled(profile.mfaEnabled);
         resetEmailForm({ email: profile.email, currentPassword: '' });
       } catch {
         setServerError('No fue posible cargar tu perfil.');
@@ -257,132 +259,145 @@ export function ProfileForm() {
   }
 
   return (
-    <div className={profilePanelClass}>
-      <div className="mb-6 flex items-start gap-3">
-        <div className="rounded-2xl bg-white p-2 text-iwana-primary shadow-sm dark:bg-dark-surface-2 dark:text-white">
-          <UserRound className="h-5 w-5" aria-hidden="true" />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold text-iwana-primary dark:text-white">
+    <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+      <section aria-labelledby="profile-details-heading" className={profilePanelClass}>
+        <header className="border-b border-gray-200 p-4 sm:px-6 dark:border-dark-border">
+          <h2
+            id="profile-details-heading"
+            className="text-lg font-semibold text-iwana-primary dark:text-white"
+          >
             Datos de perfil
           </h2>
-          <p className={`mt-1 ${FORM_HELP_CLASS}`}>
-            Actualiza tu información operativa y los datos base del usuario de plataforma sin
-            cambiar el correo de acceso ni la contraseña desde este primer bloque.
-          </p>
-        </div>
-      </div>
+        </header>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-        {serverError && (
-          <div role="alert" className={FORM_ALERT_ERROR_CLASS}>
-            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-            <p>{serverError}</p>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 p-4 sm:p-6">
+          <div className="flex items-center gap-3 rounded-xl bg-iwana-surface-soft p-3 dark:bg-dark-surface-3">
+            <div className="shrink-0">
+              <Avatar size="md" name={displayName} labelledById={nameId} />
+            </div>
+            <div className="min-w-0">
+              <p id={nameId} className="font-semibold break-words text-gray-900 dark:text-white">
+                {displayName}
+              </p>
+              {user?.subtitle && <p className={FORM_HELP_CLASS}>{user.subtitle}</p>}
+            </div>
           </div>
-        )}
-        {successMessage && (
-          <div className={FORM_ALERT_SUCCESS_CLASS}>
-            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-            <p>{successMessage}</p>
-          </div>
-        )}
+          {serverError && (
+            <div role="alert" className={FORM_ALERT_ERROR_CLASS}>
+              <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+              <p>{serverError}</p>
+            </div>
+          )}
+          {successMessage && (
+            <div className={FORM_ALERT_SUCCESS_CLASS}>
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+              <p>{successMessage}</p>
+            </div>
+          )}
 
-        <div className="max-w-4xl space-y-5">
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Input
+                id="profile-first-name"
+                label="Nombres"
+                maxLength={100}
+                error={errors.firstName?.message}
+                {...register('firstName')}
+              />
+
+              <Input
+                id="profile-last-name"
+                label="Apellidos"
+                maxLength={100}
+                error={errors.lastName?.message}
+                {...register('lastName')}
+              />
+            </div>
+
             <Input
-              id="profile-first-name"
-              label="Nombres"
-              maxLength={100}
-              error={errors.firstName?.message}
-              {...register('firstName')}
+              id="profile-phone"
+              type="tel"
+              label="Teléfono"
+              autoComplete="tel"
+              error={errors.phone?.message}
+              {...register('phone')}
             />
 
-            <Input
-              id="profile-last-name"
-              label="Apellidos"
-              maxLength={100}
-              error={errors.lastName?.message}
-              {...register('lastName')}
-            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Controller
+                control={control}
+                name="timezone"
+                render={({ field, fieldState }) => (
+                  <Select
+                    id="profile-timezone"
+                    label="Zona horaria"
+                    options={TIMEZONE_OPTIONS}
+                    value={field.value ?? ''}
+                    name={field.name}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                    {...(fieldState.error ? { error: fieldState.error.message } : {})}
+                  />
+                )}
+              />
+
+              <Controller
+                control={control}
+                name="language"
+                render={({ field, fieldState }) => (
+                  <Select
+                    id="profile-language"
+                    label="Idioma"
+                    options={LANGUAGE_OPTIONS}
+                    value={field.value ?? ''}
+                    name={field.name}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                    {...(fieldState.error ? { error: fieldState.error.message } : {})}
+                  />
+                )}
+              />
+            </div>
           </div>
 
-          <Input
-            id="profile-phone"
-            type="text"
-            label="Teléfono"
-            placeholder="+573001112233"
-            containerClassName="max-w-xl"
-            error={errors.phone?.message}
-            {...register('phone')}
-          />
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <Controller
-              control={control}
-              name="timezone"
-              render={({ field, fieldState }) => (
-                <Select
-                  id="profile-timezone"
-                  label="Zona horaria"
-                  options={TIMEZONE_OPTIONS}
-                  value={field.value ?? ''}
-                  name={field.name}
-                  onChange={field.onChange}
-                  onBlur={field.onBlur}
-                  ref={field.ref}
-                  {...(fieldState.error ? { error: fieldState.error.message } : {})}
-                />
-              )}
-            />
-
-            <Controller
-              control={control}
-              name="language"
-              render={({ field, fieldState }) => (
-                <Select
-                  id="profile-language"
-                  label="Idioma"
-                  options={LANGUAGE_OPTIONS}
-                  value={field.value ?? ''}
-                  name={field.name}
-                  onChange={field.onChange}
-                  onBlur={field.onBlur}
-                  ref={field.ref}
-                  {...(fieldState.error ? { error: fieldState.error.message } : {})}
-                />
-              )}
-            />
+          <div className="flex justify-end border-t border-gray-200 pt-4 dark:border-dark-border">
+            <Button type="submit" loading={isSaving} className="min-h-11 w-full sm:w-auto">
+              Guardar cambios
+            </Button>
           </div>
-        </div>
+        </form>
+      </section>
 
-        <div className="flex justify-end">
-          <Button type="submit" size="lg" loading={isSaving}>
-            Guardar cambios
-          </Button>
-        </div>
-      </form>
+      <section aria-labelledby="profile-security-heading" className={profilePanelClass}>
+        <header className="flex items-center gap-2 border-b border-gray-200 p-4 text-iwana-primary sm:px-6 dark:border-dark-border dark:text-white">
+          <Shield aria-hidden="true" className="size-5 shrink-0" />
+          <h2 id="profile-security-heading" className="text-lg font-semibold">
+            Seguridad de la cuenta
+          </h2>
+        </header>
 
-      <div className="mt-8 border-t border-gray-100 pt-6 dark:border-dark-border">
-        <h3 className="mb-2 text-lg font-semibold text-iwana-primary dark:text-white">
-          Seguridad de la cuenta
-        </h3>
-        <p className={`mb-6 ${FORM_HELP_CLASS}`}>
-          Separa el mantenimiento del perfil operativo de los cambios sensibles de acceso para
-          reducir errores y hacer más clara cada acción administrativa.
-        </p>
-
-        <div className="space-y-6">
-          <div className={accountSectionClass}>
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-                  <Mail className="h-4 w-4" aria-hidden="true" /> Email de acceso
-                </h4>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{currentEmail}</p>
+        <div className="divide-y divide-gray-200 px-4 sm:px-6 dark:divide-dark-border">
+          {mfaEnabled !== null && (
+            <div className="py-4">
+              <PlatformProfileMfa enabled={mfaEnabled} onEnabled={() => setMfaEnabled(true)} />
+            </div>
+          )}
+          <div className="py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                  <Mail className="h-4 w-4 shrink-0" aria-hidden="true" /> Correo de acceso
+                </h3>
+                <p className={`mt-1 break-all ${FORM_HELP_CLASS}`}>{currentEmail}</p>
               </div>
               <Button
                 type="button"
-                size="lg"
+                variant="outline"
+                className="min-h-11"
+                aria-expanded={isEmailSectionExpanded}
+                aria-controls={isEmailSectionExpanded ? 'profile-email-form' : undefined}
                 onClick={() => {
                   setIsEmailSectionExpanded(!isEmailSectionExpanded);
                   setIsPasswordSectionExpanded(false);
@@ -391,12 +406,13 @@ export function ProfileForm() {
                   resetEmailForm({ email: currentEmail, currentPassword: '' });
                 }}
               >
-                {isEmailSectionExpanded ? 'Cancelar' : 'Cambiar email'}
+                {isEmailSectionExpanded ? 'Cerrar' : 'Cambiar correo'}
               </Button>
             </div>
 
             {isEmailSectionExpanded && (
               <form
+                id="profile-email-form"
                 onSubmit={handleSubmitEmail(onSubmitLoginEmail)}
                 className="mt-4 space-y-4 border-t border-gray-100 pt-4 dark:border-dark-border"
               >
@@ -404,7 +420,7 @@ export function ProfileForm() {
                   <Input
                     id="profile-login-email"
                     type="email"
-                    label="Nuevo email de acceso"
+                    label="Nuevo correo de acceso"
                     error={emailErrors.email?.message}
                     {...registerEmail('email')}
                   />
@@ -431,7 +447,7 @@ export function ProfileForm() {
                   )}
                 </div>
 
-                <div className="flex justify-end gap-3">
+                <div className="flex flex-wrap justify-end gap-2">
                   <Button
                     type="button"
                     variant="ghost"
@@ -443,7 +459,11 @@ export function ProfileForm() {
                   >
                     Cancelar
                   </Button>
-                  <Button type="submit" size="lg" loading={isSavingEmail}>
+                  <Button
+                    type="submit"
+                    loading={isSavingEmail}
+                    className="h-auto min-h-11 max-w-full whitespace-normal"
+                  >
                     Actualizar correo de acceso
                   </Button>
                 </div>
@@ -451,19 +471,22 @@ export function ProfileForm() {
             )}
           </div>
 
-          <div className={accountSectionClass}>
-            <div className="flex items-center justify-between">
+          <div className="py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h4 className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-                  <Lock className="h-4 w-4" aria-hidden="true" /> Cambiar contraseña
-                </h4>
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                  <Lock className="h-4 w-4 shrink-0" aria-hidden="true" /> Contraseña
+                </h3>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Requiere contraseña actual para confirmar
+                  Confirma el cambio con tu contraseña actual.
                 </p>
               </div>
               <Button
                 type="button"
-                size="lg"
+                variant="outline"
+                className="min-h-11"
+                aria-expanded={isPasswordSectionExpanded}
+                aria-controls={isPasswordSectionExpanded ? 'profile-password-form' : undefined}
                 onClick={() => {
                   setIsPasswordSectionExpanded(!isPasswordSectionExpanded);
                   setIsEmailSectionExpanded(false);
@@ -472,12 +495,13 @@ export function ProfileForm() {
                   resetPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
                 }}
               >
-                {isPasswordSectionExpanded ? 'Cancelar' : 'Cambiar contraseña'}
+                {isPasswordSectionExpanded ? 'Cerrar' : 'Cambiar contraseña'}
               </Button>
             </div>
 
             {isPasswordSectionExpanded && (
               <form
+                id="profile-password-form"
                 onSubmit={handleSubmitPassword(onSubmitPassword)}
                 className="mt-4 space-y-4 border-t border-gray-100 pt-4 dark:border-dark-border"
               >
@@ -507,8 +531,7 @@ export function ProfileForm() {
                   />
 
                   <p className={FORM_MICROCOPY_CLASS}>
-                    Tras un cambio exitoso de contraseña, la sesión se cerrará automáticamente para
-                    forzar reautenticación segura.
+                    Al cambiar tu contraseña, tendrás que iniciar sesión de nuevo.
                   </p>
 
                   {passwordError && (
@@ -525,7 +548,7 @@ export function ProfileForm() {
                   )}
                 </div>
 
-                <div className="flex justify-end gap-3">
+                <div className="flex flex-wrap justify-end gap-2">
                   <Button
                     type="button"
                     variant="ghost"
@@ -537,7 +560,7 @@ export function ProfileForm() {
                   >
                     Cancelar
                   </Button>
-                  <Button type="submit" size="lg" loading={isSavingPassword}>
+                  <Button type="submit" loading={isSavingPassword} className="min-h-11">
                     Cambiar contraseña
                   </Button>
                 </div>
@@ -545,7 +568,7 @@ export function ProfileForm() {
             )}
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

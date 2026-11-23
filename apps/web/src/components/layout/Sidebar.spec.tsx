@@ -37,7 +37,7 @@ jest.mock('@/components/branding/PlatformBrandingProvider', () => ({
 const NAV_DESTINATIONS = [
   { href: '/dashboard', label: PLATFORM_UI_COPY.navigation.home },
   { href: '/tenants', label: PLATFORM_UI_COPY.navigation.tenants },
-  { href: '/users', label: PLATFORM_UI_COPY.navigation.users },
+  { href: '/platform-users', label: PLATFORM_UI_COPY.navigation.users },
   { href: '/audit-logs', label: PLATFORM_UI_COPY.navigation.audit },
   { href: '/settings', label: PLATFORM_UI_COPY.navigation.settings },
 ] as const;

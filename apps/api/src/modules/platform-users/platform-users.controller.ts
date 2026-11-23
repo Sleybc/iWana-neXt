@@ -2,10 +2,14 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
+  Param,
+  ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
@@ -24,12 +28,21 @@ import { PlatformOnlyGuard } from '../auth/guards/platform-only.guard';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { PlatformUser } from '@iwana/db';
 import { CreatePlatformUserBootstrapDto } from './dto/create-platform-user-bootstrap.dto';
+import {
+  CreatePlatformUserDto,
+  CreatePlatformUserResponseDto,
+} from './dto/create-platform-user.dto';
+import {
+  PlatformUserDirectoryResponseDto,
+  QueryPlatformUserDirectoryDto,
+} from './dto/platform-user-directory.dto';
 import { PlatformUserResponseDto } from './dto/platform-user-response.dto';
 import { PlatformUsersSummaryResponseDto } from './dto/platform-users-summary.dto';
 import {
   ChangePlatformUserLoginEmailDto,
   ChangePlatformUserPasswordDto,
   UpdatePlatformUserDto,
+  UpdatePlatformUserNameDto,
 } from './dto/update-platform-user.dto';
 import { PlatformUsersService } from './platform-users.service';
 
@@ -102,6 +115,52 @@ export class PlatformUsersController {
     return { data: await this.platformUsersService.getSummary() };
   }
 
+  @Get()
+  @Roles(PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
+  @Header('Cache-Control', 'private, no-store')
+  @ApiOperation({ summary: 'Listar cuentas de plataforma' })
+  @ApiResponse({ status: 200, type: PlatformUserDirectoryResponseDto })
+  @ApiResponse({ status: 400, description: 'Página inválida.' })
+  @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
+  @ApiResponse({ status: 403, description: 'Requiere un token de plataforma.' })
+  async listDirectory(
+    @Query() query: QueryPlatformUserDirectoryDto,
+    @CurrentUser() user: JwtPayload,
+    @Request() req: ExpressRequest,
+  ): Promise<PlatformUserDirectoryResponseDto> {
+    return {
+      data: await this.platformUsersService.listDirectory(
+        query.page,
+        user,
+        PlatformUsersController.auditContext(req),
+      ),
+    };
+  }
+
+  @Post()
+  @SkipAudit()
+  @Roles(PlatformRole.SYSTEM_ADMIN)
+  @Header('Cache-Control', 'private, no-store')
+  @ApiOperation({ summary: 'Crear una cuenta de plataforma pendiente de activación' })
+  @ApiResponse({ status: 201, type: CreatePlatformUserResponseDto })
+  @ApiResponse({ status: 400, description: 'Datos de la cuenta inválidos.' })
+  @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
+  @ApiResponse({ status: 403, description: 'Requiere una sesión de administrador de plataforma.' })
+  @ApiResponse({ status: 409, description: 'Ya existe una cuenta con ese correo.' })
+  async createAccount(
+    @Body() dto: CreatePlatformUserDto,
+    @CurrentUser() user: JwtPayload,
+    @Request() req: ExpressRequest,
+  ): Promise<CreatePlatformUserResponseDto> {
+    return {
+      data: await this.platformUsersService.createDirectoryAccount(
+        dto,
+        user.sub,
+        PlatformUsersController.auditContext(req),
+      ),
+    };
+  }
+
   @Get('me')
   @Roles(PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
   @ApiOperation({ summary: 'Obtener perfil del usuario de plataforma autenticado' })
@@ -160,5 +219,29 @@ export class PlatformUsersController {
       PlatformUsersController.auditContext(req),
     );
     return { data: { message: 'Contraseña actualizada correctamente.' } };
+  }
+
+  @Patch(':id/name')
+  @SkipAudit()
+  @Roles(PlatformRole.SYSTEM_ADMIN)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Editar el nombre de una cuenta de plataforma' })
+  @ApiResponse({ status: 204, description: 'Nombre actualizado.' })
+  @ApiResponse({ status: 400, description: 'Identificador o nombre inválido.' })
+  @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
+  @ApiResponse({ status: 403, description: 'Requiere una sesión de administrador de plataforma.' })
+  @ApiResponse({ status: 404, description: 'Cuenta de plataforma no encontrada.' })
+  async updateName(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePlatformUserNameDto,
+    @CurrentUser() user: JwtPayload,
+    @Request() req: ExpressRequest,
+  ): Promise<void> {
+    await this.platformUsersService.updateDirectoryName(
+      id,
+      dto,
+      user.sub,
+      PlatformUsersController.auditContext(req),
+    );
   }
 }

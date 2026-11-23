@@ -200,7 +200,7 @@ export function UsersTable({
     <Card>
       <CardHeader className="pb-0">
         <div className="space-y-1">
-          <CardTitle>Directorio de usuarios internos</CardTitle>
+          <CardTitle>Directorio de usuarios de empresa</CardTitle>
           <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">{cardSubtitle}</p>
         </div>
       </CardHeader>
@@ -209,9 +209,9 @@ export function UsersTable({
         <div className="px-6 pb-6">
           <div className="overflow-hidden rounded-2xl border border-gray-200 dark:border-dark-border">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm" aria-label="Listado de usuarios internos">
+              <table className="w-full text-sm" aria-label="Listado de usuarios de empresa">
                 <caption className="sr-only">
-                  Usuarios internos con rol, estado de seguridad y acciones de gestión
+                  Usuarios de empresa con rol, estado de seguridad y acciones de gestión
                 </caption>
                 <thead>
                   <TableHeaderRow />
@@ -344,7 +344,7 @@ export function UsersTable({
         {!isLoading && (
           <div className="flex flex-col gap-3 border-t border-gray-100 px-6 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-dark-border">
             <p className="text-xs text-gray-600 dark:text-gray-400">
-              Mostrando {visibleCount} de {total} usuarios internos
+              Mostrando {visibleCount} de {total} usuarios de empresa
             </p>
             <div className="flex items-center gap-2">
               <Button

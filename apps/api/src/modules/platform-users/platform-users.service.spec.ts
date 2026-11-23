@@ -7,7 +7,7 @@ import * as crypto from 'crypto';
 import { PlatformUser } from '@iwana/db';
 import { PlatformRole, UserStatus, AuditAction } from '@iwana/shared';
 import { CreatePlatformUserBootstrapDto } from './dto/create-platform-user-bootstrap.dto';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { PlatformAuditService } from '../audit/platform-audit.service';
 import { PlatformUsersService } from './platform-users.service';
 import { hashEmail } from '../../common/crypto/hash-email.util';
@@ -61,7 +61,18 @@ describe('PlatformUsersService', () => {
   let repo: jest.Mocked<Repository<PlatformUser>>;
   // S-8: las operaciones de plataforma no tienen TenantContext; su trail es
   // public.platform_audit_logs, no el schema de un tenant.
-  const platformAuditServiceMock = { log: jest.fn() };
+  const platformAuditServiceMock = { log: jest.fn(), logWithin: jest.fn() };
+  const directoryQuery = {
+    select: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    setParameter: jest.fn().mockReturnThis(),
+    addOrderBy: jest.fn().mockReturnThis(),
+    skip: jest.fn().mockReturnThis(),
+    take: jest.fn().mockReturnThis(),
+    getManyAndCount: jest.fn(),
+  };
+  const manager = { update: jest.fn() };
 
   beforeEach(async () => {
     process.env.PII_HASH_KEY = INJECTED_PII_HASH_KEY_HEX;
@@ -72,10 +83,12 @@ describe('PlatformUsersService', () => {
           provide: getRepositoryToken(PlatformUser),
           useValue: {
             findOne: jest.fn(),
+            createQueryBuilder: jest.fn().mockReturnValue(directoryQuery),
             save: jest.fn(),
             count: jest.fn(),
             create: jest.fn(),
             query: jest.fn(),
+            manager: { transaction: jest.fn((operation) => operation(manager)) },
           },
         },
         { provide: PlatformAuditService, useValue: platformAuditServiceMock },
@@ -102,6 +115,78 @@ describe('PlatformUsersService', () => {
       process.env.PII_HASH_KEY = originalPiiHashKey;
     }
     jest.clearAllMocks();
+  });
+
+  it('lista cuentas de plataforma sin borrados, proyecta solo el directorio y audita el acceso', async () => {
+    const user = buildPlatformUser({ mfaEnabled: false, passwordResetRequired: true });
+    directoryQuery.getManyAndCount.mockResolvedValue([[user], 21]);
+
+    const result = await service.listDirectory(2, { sub: user.id, role: user.role }, {});
+
+    expect(directoryQuery.where).toHaveBeenCalledWith('account.deletedAt IS NULL');
+    expect(directoryQuery.setParameter).toHaveBeenCalledWith(
+      'pending',
+      UserStatus.PENDING_VERIFICATION,
+    );
+    expect(directoryQuery.skip).toHaveBeenCalledWith(20);
+    expect(directoryQuery.take).toHaveBeenCalledWith(20);
+    expect(result).toEqual({
+      items: [
+        {
+          id: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          status: user.status,
+          mfaEnabled: false,
+          passwordResetRequired: true,
+          lastLoginAt: null,
+        },
+      ],
+      pageSize: 20,
+      total: 21,
+    });
+    expect(platformAuditServiceMock.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.LIST_ACCESS,
+        userId: user.id,
+        newValue: { actorRole: user.role, page: 2, pageSize: 20, served: 1, total: 21 },
+      }),
+    );
+  });
+
+  it('actualiza solo el nombre y registra al administrador dentro de la misma transacción', async () => {
+    manager.update.mockResolvedValue({ affected: 1 });
+    await service.updateDirectoryName(
+      'account',
+      { firstName: ' Cuenta ', lastName: ' ' },
+      'admin',
+      {},
+    );
+
+    expect(repo.manager.transaction).toHaveBeenCalledTimes(1);
+    expect(manager.update).toHaveBeenCalledWith(
+      PlatformUser,
+      { id: 'account', deletedAt: IsNull() },
+      { firstName: 'Cuenta', lastName: null },
+    );
+    expect(platformAuditServiceMock.logWithin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.UPDATE,
+        entityId: 'account',
+        userId: 'admin',
+        newValue: { changedFields: ['firstName', 'lastName'] },
+      }),
+      manager,
+    );
+  });
+
+  it('devuelve 404 cuando la cuenta a editar fue eliminada', async () => {
+    manager.update.mockResolvedValue({ affected: 0 });
+    await expect(
+      service.updateDirectoryName('account', { firstName: 'Cuenta', lastName: '' }, 'admin', {}),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(platformAuditServiceMock.logWithin).not.toHaveBeenCalled();
   });
 
   describe('getSummary', () => {

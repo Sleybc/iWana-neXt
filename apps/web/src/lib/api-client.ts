@@ -2,6 +2,8 @@
 
 import type {
   PlatformHealthHistory,
+  PlatformRole,
+  PlatformUserDirectory,
   PlatformUsersSummary,
   PublicHealth,
   TenantStatusSummary,
@@ -338,6 +340,7 @@ async function requestBlob(path: string, options?: RequestOptions): Promise<Blob
 export interface PlatformLoginResponse {
   accessToken: string;
   mfaRequired?: boolean;
+  mfaSetupRequired?: boolean;
   /**
    * true cuando la cuenta sigue usando la credencial de arranque. El accessToken
    * recibido tiene alcance limitado: solo sirve para POST /auth/change-password.
@@ -380,6 +383,32 @@ export const authApi = {
     request<{ mfaEnabled: boolean }>('/auth/mfa/verify', {
       method: 'POST',
       body: JSON.stringify({ totpCode: code }),
+    }),
+
+  setupPlatformMfa: () =>
+    request<{ qrCodeBase64: string; otpauthUri: string }>('/auth/platform/mfa/setup', {
+      method: 'POST',
+      skipRefreshRetry: true,
+    }),
+
+  verifyPlatformMfa: (totpCode: string) =>
+    request<void>('/auth/platform/mfa/verify', {
+      method: 'POST',
+      body: JSON.stringify({ totpCode }),
+      skipRefreshRetry: true,
+    }),
+
+  setupPlatformSelfMfa: (currentPassword: string) =>
+    request<{ qrCodeBase64: string; otpauthUri: string; challenge: string }>(
+      '/auth/platform/mfa/self/setup',
+      { method: 'POST', body: JSON.stringify({ currentPassword }), skipRefreshRetry: true },
+    ),
+
+  verifyPlatformSelfMfa: (challenge: string, totpCode: string) =>
+    request<void>('/auth/platform/mfa/self/verify', {
+      method: 'POST',
+      body: JSON.stringify({ challenge, totpCode }),
+      skipRefreshRetry: true,
     }),
 
   me: () => request<JwtProfile>('/auth/me'),
@@ -492,6 +521,22 @@ export interface CreateBootstrapUserPayload {
 }
 
 export const platformUsersApi = {
+  directory: (page: number) => request<PlatformUserDirectory>(`/platform-users?page=${page}`),
+  createDirectoryAccount: (account: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    role: PlatformRole;
+  }) =>
+    request<{ id: string; temporaryPassword: string }>('/platform-users', {
+      method: 'POST',
+      body: JSON.stringify(account),
+    }),
+  updateDirectoryName: (id: string, name: { firstName: string; lastName: string }) =>
+    request<void>(`/platform-users/${encodeURIComponent(id)}/name`, {
+      method: 'PATCH',
+      body: JSON.stringify(name),
+    }),
   /** Conteos del equipo interno (PlatformUsersSummary v1.0). */
   summary: () => request<PlatformUsersSummary>('/platform-users/summary'),
 

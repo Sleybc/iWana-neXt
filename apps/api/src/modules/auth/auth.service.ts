@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Inject,
@@ -15,7 +16,7 @@ import * as crypto from 'crypto';
 import { TOTP, NobleCryptoPlugin, ScureBase32Plugin } from 'otplib';
 import * as qrcode from 'qrcode';
 import Redis from 'ioredis';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { PlatformUser, RefreshToken, User } from '@iwana/db';
 import { UserRole, UserStatus, AuditAction } from '@iwana/shared';
 import { runInTenantSchema, summarizeErrorForLog, TenantContext } from '@iwana/db';
@@ -27,6 +28,7 @@ import {
   UNKNOWN_PLATFORM_USER_ENTITY_ID,
 } from '../audit/audit.constants';
 import { PlatformAuditService } from '../audit/platform-audit.service';
+import type { AuditRequestContext } from '../audit/interfaces/audit-request-context.interface';
 import { hashEmail } from '../../common/crypto/hash-email.util';
 import { resolvePiiHashKey } from '../../common/crypto/pii-hash-key.util';
 import { isAccountLocked, remainingLockoutMinutes } from '../../common/account-lockout.policy';
@@ -42,6 +44,8 @@ import {
   LoginDto,
   MfaDisableDto,
   MfaVerifyDto,
+  PlatformSelfMfaSetupResultDto,
+  PlatformSelfMfaVerifyDto,
   ResendVerificationDto,
   ResetPasswordDto,
 } from './dto/auth.dto';
@@ -66,6 +70,16 @@ const PASSWORD_RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 
 /** Duracion de las credenciales temporales del ADMIN inicial (24 horas) */
 const TEMPORARY_PASSWORD_TTL_SECONDS = 24 * 60 * 60;
+const PLATFORM_SELF_MFA_TTL_MS = 5 * 60 * 1000;
+
+interface PlatformSelfMfaChallenge {
+  purpose: 'platform-self-mfa';
+  subject: string;
+  session: string;
+  credential: string;
+  expiresAt: number;
+  secret: string;
+}
 
 /**
  * Motivos cerrados de fallo de login de plataforma que se persisten en el trail.
@@ -143,6 +157,7 @@ export class AuthService {
    */
   private readonly mfaEncryptionKey: Buffer;
   private readonly mfaEncryptionKeyPrevious: Buffer | null;
+  private readonly platformSelfMfaKey: Buffer;
   private readonly piiHashKey: Buffer;
 
   /**
@@ -185,6 +200,10 @@ export class AuthService {
     const keys = loadAesGcmKeyPair(this.configService);
     this.mfaEncryptionKey = keys.activeKey;
     this.mfaEncryptionKeyPrevious = keys.previousKey;
+    this.platformSelfMfaKey = crypto
+      .createHmac('sha256', keys.activeKey)
+      .update('iwana:platform-self-mfa:v1')
+      .digest();
     this.piiHashKey = resolvePiiHashKey(this.configService);
     this.accessTokenTtlSeconds = resolveAccessTokenTtlSeconds(this.configService);
     this.refreshTokenTtlSeconds = resolveRefreshTokenTtlSeconds(this.configService);
@@ -288,6 +307,20 @@ export class AuthService {
       });
 
       return { accessToken, passwordResetRequired: true };
+    }
+
+    if (user.status === UserStatus.PENDING_VERIFICATION) {
+      const { accessToken } = this.signPlatformAccessToken(user, 'platform-mfa-setup');
+      await this.platformAuditService.log({
+        action: AuditAction.LOGIN,
+        entityType: PLATFORM_USER_ENTITY_TYPE,
+        entityId: user.id,
+        userId: user.id,
+        ipAddress: ipAddress ?? null,
+        userAgent: userAgent ?? null,
+        newValue: { mfaSetupRequired: true },
+      });
+      return { accessToken, mfaSetupRequired: true };
     }
 
     if (user.mfaEnabled) {
@@ -866,6 +899,178 @@ export class AuthService {
    *
    * RF-AUTH-03
    */
+  async setupPlatformMfa(actor: JwtPayload): Promise<MfaSetupResponse> {
+    const { label, secret } = await this.platformUserRepository.manager.transaction(
+      async (manager) => {
+        const user = await this.lockPlatformMfaEnrollment(actor, manager);
+        if (user.mfaSecret) {
+          return {
+            label: this.decodeStoredValue(user.email),
+            secret: this.decryptSecret(user.mfaSecret),
+          };
+        }
+        const secret = this.totp.generateSecret();
+        await manager.update(PlatformUser, user.id, { mfaSecret: this.encryptSecret(secret) });
+        return { label: this.decodeStoredValue(user.email), secret };
+      },
+    );
+    return this.renderMfaSetup(secret, label);
+  }
+
+  async verifyPlatformMfa(
+    actor: JwtPayload,
+    dto: MfaVerifyDto,
+    context: AuditRequestContext,
+  ): Promise<void> {
+    await this.platformUserRepository.manager.transaction(async (manager) => {
+      const user = await this.lockPlatformMfaEnrollment(actor, manager);
+      if (
+        !user.mfaSecret ||
+        !(await this.verifyTotp(this.decryptSecret(user.mfaSecret), dto.totpCode))
+      ) {
+        throw new UnauthorizedException('Código incorrecto. Revisa tu aplicación autenticadora.');
+      }
+      await this.activatePlatformMfa(manager, user.id, user.mfaSecret, context);
+    });
+  }
+
+  async setupPlatformSelfMfa(
+    actor: JwtPayload,
+    currentPassword: string,
+  ): Promise<PlatformSelfMfaSetupResultDto> {
+    this.assertFullPlatformSession(actor);
+    const user = await this.platformUserRepository.findOne({ where: { id: actor.sub } });
+    this.assertPlatformSelfMfaEligible(user);
+    if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+      throw new UnauthorizedException('La contraseña actual es incorrecta.');
+    }
+
+    const ticket: PlatformSelfMfaChallenge = {
+      purpose: 'platform-self-mfa',
+      subject: user.id,
+      session: actor.jti,
+      credential: this.hashToken(user.passwordHash),
+      expiresAt: Date.now() + PLATFORM_SELF_MFA_TTL_MS,
+      secret: this.totp.generateSecret(),
+    };
+    return {
+      ...(await this.renderMfaSetup(ticket.secret, this.decodeStoredValue(user.email))),
+      challenge: encryptAes256Gcm(JSON.stringify(ticket), this.platformSelfMfaKey),
+    };
+  }
+
+  async verifyPlatformSelfMfa(
+    actor: JwtPayload,
+    dto: PlatformSelfMfaVerifyDto,
+    context: AuditRequestContext,
+  ): Promise<void> {
+    this.assertFullPlatformSession(actor);
+    let ticket: PlatformSelfMfaChallenge;
+    try {
+      ticket = JSON.parse(
+        decryptAes256Gcm(dto.challenge, this.platformSelfMfaKey),
+      ) as PlatformSelfMfaChallenge;
+    } catch {
+      throw new BadRequestException(
+        'Vuelve a iniciar la configuración de la verificación en dos pasos.',
+      );
+    }
+    if (
+      ticket?.purpose !== 'platform-self-mfa' ||
+      ticket.subject !== actor.sub ||
+      ticket.session !== actor.jti ||
+      ticket.expiresAt <= Date.now()
+    ) {
+      throw new BadRequestException(
+        'Vuelve a iniciar la configuración de la verificación en dos pasos.',
+      );
+    }
+
+    await this.platformUserRepository.manager.transaction(async (manager) => {
+      const user = await manager.findOne(PlatformUser, {
+        where: { id: actor.sub },
+        lock: { mode: 'pessimistic_write' },
+      });
+      this.assertPlatformSelfMfaEligible(user);
+      if (
+        ticket.expiresAt <= Date.now() ||
+        ticket.credential !== this.hashToken(user.passwordHash)
+      ) {
+        throw new BadRequestException(
+          'Vuelve a iniciar la configuración de la verificación en dos pasos.',
+        );
+      }
+      if (!(await this.verifyTotp(ticket.secret, dto.totpCode))) {
+        throw new UnauthorizedException('Código incorrecto. Revisa tu aplicación autenticadora.');
+      }
+      await this.activatePlatformMfa(manager, user.id, this.encryptSecret(ticket.secret), context);
+    });
+  }
+
+  private assertFullPlatformSession(actor: JwtPayload): void {
+    if (actor.type !== 'platform' || actor.scope || !actor.jti) {
+      throw new ForbiddenException('Inicia sesión con una cuenta de plataforma activa.');
+    }
+  }
+
+  private assertPlatformSelfMfaEligible(user: PlatformUser | null): asserts user is PlatformUser {
+    if (!user || user.status !== UserStatus.ACTIVE || user.passwordResetRequired) {
+      throw new ForbiddenException('Inicia sesión con una cuenta de plataforma activa.');
+    }
+    if (user.mfaEnabled) {
+      throw new ConflictException('La verificación en dos pasos ya está activa.');
+    }
+  }
+
+  private async activatePlatformMfa(
+    manager: EntityManager,
+    id: string,
+    encryptedSecret: string,
+    context: AuditRequestContext,
+  ): Promise<void> {
+    await manager.update(PlatformUser, id, {
+      mfaEnabled: true,
+      mfaSecret: encryptedSecret,
+      status: UserStatus.ACTIVE,
+    });
+    await this.platformAuditService.logWithin(
+      {
+        action: AuditAction.MFA_ENABLED,
+        entityType: PLATFORM_USER_ENTITY_TYPE,
+        entityId: id,
+        userId: id,
+        ...context,
+      },
+      manager,
+    );
+  }
+
+  private async renderMfaSetup(secret: string, label: string): Promise<MfaSetupResponse> {
+    const issuer = this.configService.get<string>('APP_NAME', 'iWana neXt');
+    const otpauthUri = this.totp.toURI({ secret, label, issuer });
+    return { qrCodeBase64: await qrcode.toDataURL(otpauthUri), otpauthUri };
+  }
+
+  private async lockPlatformMfaEnrollment(
+    actor: JwtPayload,
+    manager: EntityManager,
+  ): Promise<PlatformUser> {
+    if (actor.type !== 'platform' || actor.scope !== 'platform-mfa-setup') {
+      throw new ForbiddenException('Inicia sesión con una cuenta pendiente de activación.');
+    }
+    const user = await manager.findOne(PlatformUser, {
+      where: {
+        id: actor.sub,
+        status: UserStatus.PENDING_VERIFICATION,
+        passwordResetRequired: false,
+        mfaEnabled: false,
+      },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!user) throw new ForbiddenException('La cuenta no tiene una activación pendiente.');
+    return user;
+  }
+
   async setupMfa(userId: string, email: string): Promise<MfaSetupResponse> {
     // Idempotencia: si ya existe un setup pendiente reusar el mismo secret.
     // Previene race condition cuando el cliente llama dos veces en rapida sucesion
@@ -1251,14 +1456,36 @@ export class AuthService {
       );
     }
 
+    const pendingActivation = user.status === UserStatus.PENDING_VERIFICATION;
+    if (
+      pendingActivation &&
+      (dto.newPassword === dto.currentPassword || Buffer.byteLength(dto.newPassword, 'utf8') > 72)
+    ) {
+      throw new BadRequestException(
+        'Elige una contraseña diferente de la temporal, de hasta 72 bytes.',
+      );
+    }
     const newHash = await bcrypt.hash(dto.newPassword, 12);
 
     // Hash y marca en la misma sentencia: no puede quedar la contrasena nueva
     // aplicada con la cuenta todavia marcada como pendiente, ni al reves.
-    await this.platformUserRepository.update(user.id, {
-      passwordHash: newHash,
-      passwordResetRequired: false,
-    });
+    const changed = await this.platformUserRepository.update(
+      pendingActivation
+        ? {
+            id: user.id,
+            status: UserStatus.PENDING_VERIFICATION,
+            passwordHash: user.passwordHash,
+            passwordResetRequired: true,
+          }
+        : user.id,
+      {
+        passwordHash: newHash,
+        passwordResetRequired: false,
+      },
+    );
+    if (pendingActivation && !changed.affected) {
+      throw new ConflictException('La contraseña temporal ya se cambió. Inicia sesión de nuevo.');
+    }
 
     // VENTANA CONOCIDA Y ACEPTADA — [SEC-REVIEW] S-M01-06.
     //
@@ -1530,7 +1757,7 @@ export class AuthService {
    */
   private signPlatformAccessToken(
     user: PlatformUser,
-    scope?: 'password-change',
+    scope?: 'password-change' | 'platform-mfa-setup',
   ): { accessToken: string; jti: string } {
     const jti = crypto.randomUUID();
     const payload: Omit<JwtPayload, 'iat' | 'exp'> = {

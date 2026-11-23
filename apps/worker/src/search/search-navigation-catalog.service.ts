@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { PLATFORM_USERS_SEARCH_SECTION } from '@iwana/shared';
 
 export interface SearchNavigationCatalogItem {
   id: string;
@@ -30,11 +31,8 @@ export class SearchNavigationCatalogService {
         order: 2,
       },
       {
-        id: 'users',
-        title: 'Usuarios',
-        description: 'Gestión interna de usuarios por empresa',
-        keywords: ['usuarios', 'accesos', 'credenciales', 'roles'],
-        route: '/users',
+        ...PLATFORM_USERS_SEARCH_SECTION,
+        keywords: ['usuarios', 'accesos', 'credenciales', 'roles', 'usuarios internos'],
         order: 3,
       },
       {
