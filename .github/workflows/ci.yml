@@ -5,7 +5,9 @@
 # trinquete global). Actualizado el 2026-08-04: hasta esa fecha el paso corría
 # `pnpm test` sin `--coverage` y NINGÚN umbral se evaluaba en CI.
 # R-14: ambos scripts serializan las tareas `test` (--concurrency=1) para que la suite
-# sea determinista en un runner de 2 cores. Ver nota en «Unit tests + gate de cobertura».
+# sea determinista en el runner. Ver nota en «Unit tests + gate de cobertura».
+# Runner verificado el 2026-11-23 (repo público): ubuntu-24.04 = 4 vCPU / 16 GB según
+# docs de GitHub. Las menciones históricas a «2 cores» son del runner anterior.
 # Ejecuta en push y PR a main
 
 name: CI
@@ -460,9 +462,10 @@ jobs:
       # en @iwana/db: correr antes `pnpm build`. El camino de dev sigue siendo
       # `pnpm test`, que sí arrastra sus `^build`.)
       #
-      # COSTE MEDIDO el 2026-08-04 (local 16 cores; el runner tiene 2):
+      # COSTE MEDIDO el 2026-08-04 (local 16 cores; el runner de entonces tenía 2):
       #   agregado, 6 tareas test sin caché:  128,3 s → 151,4 s  (+23,1 s, +18%)
-      #   por app a maxWorkers=1, que es el reparto REAL del runner de 2 cores:
+      #   por app a maxWorkers=1, que emulaba el reparto del runner de 2 cores de
+      #   entonces (hoy 4 vCPU en repo público: este '50%' da 2 workers):
       #     portal  114,2 s → 133,4 s  (+19,2 s)
       #     api      84,2 s → 106,4 s  (+22,2 s)
       #     web      16,8 s →  16,7 s  (dentro del ruido)
@@ -475,8 +478,8 @@ jobs:
       #
       # R-14 (hallazgo A-1): la serialización `--concurrency=1` se conserva intacta.
       # Las tareas `test` se serializan a propósito — jest ya paraleliza dentro de cada
-      # paquete, y antes 6 jest concurrentes pedían más workers que cores (en este runner
-      # de 2 cores el reparto es imposible: el mínimo por paquete ya es 1 worker).
+      # paquete, y antes 6 jest concurrentes pedían más workers que cores (en el runner
+      # de 4 vCPU el reparto sigue siendo imposible: el mínimo por paquete ya es 1 worker).
       # Serializar no cuesta tiempo de pipeline: el paso «Build» ya dejó construido lo
       # que haga falta y `--only` deja fuera del run las tareas `^build`. No subir
       # testTimeout para tapar contención: si vuelve a fallar por reloj de pared, es
@@ -727,8 +730,8 @@ jobs:
         env:
           IWANA_IT_WORKERS: 4
           # Los presupuestos de latencia (HLD §7) se miden aparte, en serie: con 4
-          # workers en 2 núcleos el p95 mide la contención entre suites (CI
-          # 45054684943 midió 348 ms en N1; aislada la consulta tarda ~85 ms).
+          # workers sobre 4 vCPU (más 4 clones de PostgreSQL) el p95 mide la contención
+          # entre suites (CI 45054684943 midió 348 ms en N1; aislada la consulta tarda ~85 ms).
           IWANA_IT_LATENCY_DEFERRED: '1'
         run: |
           set -uo pipefail

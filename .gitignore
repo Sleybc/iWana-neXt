@@ -67,6 +67,10 @@ playwright-report/
 blob-report/
 *.trace
 *.har
+# Capturas del proyecto local google-chrome-local (channel chrome, solo en
+# playwright.local.config.ts y playwright.portal.local.config.ts). CI compara
+# contra las baselines chromium-*; estas no son canónicas ni se versionan.
+e2e/tests/**/*-google-chrome-local-*.png
 
 # Playwright MCP artifacts
 .playwright-mcp/
@@ -83,6 +87,7 @@ out/
 .claude/mcp-postgres.local.env
 .claude/mcp-redis.local.env
 .claude/hook-timings.jsonl*
+.claude/launch.json
 **/__pycache__/
 *.pyc
 

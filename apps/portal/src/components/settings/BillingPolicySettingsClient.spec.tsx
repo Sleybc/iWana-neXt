@@ -95,7 +95,11 @@ describe('BillingPolicySettingsClient', () => {
   it('carga la política y muestra las fechas que devuelve el servidor por ciclo', async () => {
     render(<BillingPolicySettingsClient />);
 
-    expect(await screen.findByText('Ciclo día 1 · corte día 10')).toBeInTheDocument();
+    // El default de 1000 ms no alcanza en el runner Linux: espera explícita por
+    // aserción, el remedio probado en InventoryCatalogDrawer.kind-tracking.spec.tsx.
+    expect(
+      await screen.findByText('Ciclo día 1 · corte día 10', {}, { timeout: 5000 }),
+    ).toBeInTheDocument();
     expect(screen.getByText('2026-11-01 a 2026-11-30')).toBeInTheDocument();
     expect(screen.getByText('No programado')).toBeInTheDocument();
     expect(
@@ -118,7 +122,7 @@ describe('BillingPolicySettingsClient', () => {
     const user = userEvent.setup();
     render(<BillingPolicySettingsClient />);
 
-    await screen.findByText('Ciclo día 1 · corte día 10');
+    await screen.findByText('Ciclo día 1 · corte día 10', {}, { timeout: 5000 });
     mockPreviewPolicy.mockClear();
     await user.selectOptions(screen.getByLabelText('Momento del cobro'), 'VENCIDO');
 
@@ -142,14 +146,18 @@ describe('BillingPolicySettingsClient', () => {
     );
     render(<BillingPolicySettingsClient />);
 
-    await screen.findByText('Ciclo día 1 · corte día 10');
+    await screen.findByText('Ciclo día 1 · corte día 10', {}, { timeout: 5000 });
     const prefix = screen.getByLabelText('Prefijo de las facturas');
     await user.clear(prefix);
     await user.type(prefix, 'OLD');
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
 
     expect(
-      await screen.findByText(/La política fue modificada recientemente por otro usuario/),
+      await screen.findByText(
+        /La política fue modificada recientemente por otro usuario/,
+        {},
+        { timeout: 5000 },
+      ),
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Prefijo de las facturas')).toHaveValue('NW');
     expect(mockUpdatePolicy).toHaveBeenCalledWith(
