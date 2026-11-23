@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import type { DataSource } from 'typeorm';
-import { AuditAction, TenantStatus } from '@iwana/shared';
-import type { TenantUsage } from '@iwana/shared';
+import { AuditAction, TenantStatus, canRoleViewTenantUsage } from '@iwana/shared';
+import type { TenantUsage, TenantUsageGrantableRole, TenantUsageVisibility } from '@iwana/shared';
 import { PlatformAuditService } from '../audit/platform-audit.service';
+import { PlatformAccessSettingsService } from '../platform-branding/platform-access-settings.service';
 
 interface TenantUsageRow {
   tenant_id: string;
@@ -23,9 +24,34 @@ export class TenantUsageService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly platformAuditService: PlatformAuditService,
+    private readonly accessSettings: PlatformAccessSettingsService,
   ) {}
 
-  async getUsage(actor: { userId: string; ipAddress: string | null }): Promise<TenantUsage> {
+  /** Ajuste guardado y respuesta para el rol que pregunta (ADR-114 v1.3 §9). */
+  async getVisibility(role: string): Promise<TenantUsageVisibility> {
+    const grantedRoles = await this.accessSettings.getTenantUsageGrantedRoles();
+    return { grantedRoles, canView: canRoleViewTenantUsage(role, grantedRoles) };
+  }
+
+  async updateVisibility(
+    grantedRoles: readonly TenantUsageGrantableRole[],
+    actor: { userId: string; role: string; ipAddress: string | null },
+  ): Promise<TenantUsageVisibility> {
+    const saved = await this.accessSettings.setTenantUsageGrantedRoles(grantedRoles, actor);
+    return { grantedRoles: saved, canView: canRoleViewTenantUsage(actor.role, saved) };
+  }
+
+  async getUsage(actor: {
+    userId: string;
+    role: string;
+    ipAddress: string | null;
+  }): Promise<TenantUsage> {
+    // v1.3 §9: el permiso se evalúa contra el ajuste guardado en cada petición, sin caché.
+    const grantedRoles = await this.accessSettings.getTenantUsageGrantedRoles();
+    if (!canRoleViewTenantUsage(actor.role, grantedRoles)) {
+      throw new ForbiddenException('No tienes permiso para ver el uso por empresa.');
+    }
+
     const rows = (await this.dataSource.query(
       `SELECT t.id::text AS tenant_id, t.name, u.active_subscribers, t.max_subscribers,
               u.measured_at

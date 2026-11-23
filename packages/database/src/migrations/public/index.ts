@@ -41,6 +41,7 @@ import { DashboardStatusAndAuditCursorIndexes1784419221000 } from './033_dashboa
 import { PlatformHealthSamples1784419222000 } from './034_platform_health_samples';
 import { TenantUsageSnapshots1784419223000 } from './035_tenant_usage_snapshots';
 import { PlatformAuditTenantStatusEventsIndex1784419224000 } from './036_platform_audit_tenant_status_events_index';
+import { TenantUsageViewerRoles1784419225000 } from './037_tenant_usage_viewer_roles';
 
 /**
  * Migraciones del schema público, en orden.
@@ -92,6 +93,7 @@ export const PUBLIC_MIGRATIONS: (new () => MigrationInterface)[] = [
   PlatformHealthSamples1784419222000,
   TenantUsageSnapshots1784419223000,
   PlatformAuditTenantStatusEventsIndex1784419224000,
+  TenantUsageViewerRoles1784419225000,
 ];
 
 /**

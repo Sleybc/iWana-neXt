@@ -6,6 +6,7 @@ import { TENANT_PROVISIONING_QUEUE } from '@iwana/shared';
 import { AuthModule } from '../auth/auth.module';
 import { AuditModule } from '../audit/audit.module';
 import { MediaModule } from '../media/media.module';
+import { PlatformBrandingModule } from '../platform-branding/platform-branding.module';
 import { SearchQueueModule } from '../search/search-queue.module';
 import { TenantController } from './tenant.controller';
 import { TenantProvisioningService } from './tenant-provisioning.service';
@@ -47,6 +48,9 @@ import { TenantLifecycleReadPort } from './ports/tenant-lifecycle-read.port';
 
     // Branding v2 consume MediaService para uploads y soft delete de assets.
     MediaModule,
+
+    // ADR-114 v1.3 §9: quién ve el uso por empresa (fila única de configuración de plataforma).
+    PlatformBrandingModule,
 
     // Cola de indexación de búsqueda global.
     SearchQueueModule,

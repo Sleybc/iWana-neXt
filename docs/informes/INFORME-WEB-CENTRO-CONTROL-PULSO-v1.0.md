@@ -118,7 +118,7 @@
 
 ## Fase 4 — P4, uso por empresa
 
-**Estado:** G6 ✅ 2026-11-21 (AI-EM-ARCH) · commit local, sin push. [ADR-114](../adrs/ADR-114-Uso-por-Empresa-en-la-Consola-de-Plataforma.md) aprobado por el CTO el 2026-11-21 con D3. Visibilidad (CTO): «System_Admin, y a los roles que se les dé permiso» → constante `PLATFORM_TENANT_USAGE_ROLES` (hoy solo `SYSTEM_ADMIN`). Encargo: [FASE4](../prompts/PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE4-v1.0.md).
+**Estado:** G6 ✅ 2026-11-21 (AI-EM-ARCH) · commit local, sin push. [ADR-114](../adrs/ADR-114-Uso-por-Empresa-en-la-Consola-de-Plataforma.md) aprobado por el CTO el 2026-11-21 con D3. Visibilidad (CTO): «System_Admin, y a los roles que se les dé permiso» → constante `PLATFORM_TENANT_USAGE_ROLES` (hoy solo `SYSTEM_ADMIN`; superada por el ajuste por rol de ADR-114 v1.3 §9, F4-D3). Encargo: [FASE4](../prompts/PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE4-v1.0.md).
 
 | Bloque | Agente | Entregable |
 | --- | --- | --- |
@@ -249,7 +249,7 @@ Omitido: arreglo de `web-tenant-create-happy-path` y E2E del portal en producci�
 | F3-D5 | `WORKER_QUEUE_NAMES`/`SAMPLED_QUEUE_NAMES` en `@iwana/shared`; `queueNames` con `satisfies Record<…>`; el tablero muestrea también las colas del API |
 | F3-D6 | `formatPercent` redondea; E2E de 401 con renovación fallida y aceptada |
 | F3-D7 | No aplica: en E2E el API corre en el host y ninguna E2E lee la salud real; el día sale «sin dato», nunca verde. Comentado en el compose |
-| F4-D3 | Trasladada por decisión del CTO: exige un modelo de permisos de plataforma con ADR propio |
+| F4-D3 | Resuelta 2026-11-23 con «ajuste por rol» (CTO), ADR-114 v1.3 §9; ver «F4-D3 — ajuste por rol» |
 | F4-D4 | El cupo no bloquea: ámbar ≥ 90 %, rojo ≥ 100 %; en o sobre el cupo, una fila por empresa en «Requiere tu atención» |
 | F4-D5 | Tope de 6 filas por mayor uso, con «Ver todas» en el sitio |
 | F4-D6 | Prueba de integración con la purga R7 real: borra las muestras de la empresa purgada y no las de otras |
@@ -288,3 +288,39 @@ Omitido: E2E web contra un servidor dedicado (hoy usa `next dev` compartido). Si
 - La celda de disponibilidad en 94,94 % es la medición real de las caídas del API de hoy en desarrollo.
 
 **Título vacío en `/audit-logs`:** con ámbito plataforma la página fijaba una empresa y navegaba a `?tenant=…` por RSC. El `<head>` quedaba unos 90 ms sin `<title>` y axe fallaba de forma intermitente. Ahora no se escribe `?tenant=` en ámbito plataforma y la query se sincroniza con `history.replaceState`. La E2E pasa 100/100 y web jest 351/351. CA-FR-08 se reapunta a `history`, aprobado por test-change-reviewer.
+
+## G6.5 — publicación y CI (2026-11-23)
+
+**Estado:** G6.5 ✅. `origin/main` = `b4a2024a`.
+
+| Push | Commit | CI | Resultado |
+| --- | --- | --- | --- |
+| 1 | `a74c5689` | 45021428513 | Rojo en el intento 1 (`portal-inventory-scm.spec.ts:3685`, carrera con la carga de categorías; corregida en `871cb00b`); verde en el 2 |
+| 2 | `095b5cfc` | 45054684943 | Rojo en tres intentos, cada uno por una prueba distinta: p95 de N1 (348 ms por contención de 4 workers en 2 núcleos), `CreateTaskSchedulingDialog.spec.tsx` (debounce de 300 ms en reloj real) y `tenant-active-at-close.activation` (exigía `DB_NAME=test` en los workers 2 a 4, que usan un clon) |
+| 3 | `b4a2024a` | 45188080121 | Verde en el intento 1, incluido el paso nuevo «presupuestos de latencia (en serie)». E2E Web Admin Smoke 45188080316 verde |
+
+Arreglos de las tres intermitentes: `cdc0bc17` y `b4a2024a`. Sin umbrales cambiados ni reintentos.
+
+Queda fuera, por decisión del CTO: F4-D3 (permisos de plataforma asignables). Riesgo: la serie «Activas al cierre» no tiene historia anterior al 2026-11-22.
+
+## F4-D3 — ajuste por rol de «Uso por empresa» (2026-11-23)
+
+**Estado:** resuelta, commits locales sin push. Decisión del CTO (2026-11-23): visibilidad configurable por rol; por defecto solo el administrador de plataforma. [ADR-114](../adrs/ADR-114-Uso-por-Empresa-en-la-Consola-de-Plataforma.md) v1.3 §9.
+
+- **Contrato** (`@iwana/shared`): `UpdateTenantUsageVisibilitySchema` (Zod estricto, roles en `TENANT_USAGE_GRANTABLE_ROLES`), `TenantUsageVisibility`, `canRoleViewTenantUsage`. Se retira `PLATFORM_TENANT_USAGE_ROLES`.
+- **API:** `GET` y `PUT /api/v1/tenants/usage/visibility`; `GET /tenants/usage` evalúa el ajuste en cada petición. Escritura solo `SYSTEM_ADMIN`, auditada (`TenantUsageVisibility`, valor anterior y nuevo). Migración pública 037 (reversible): columna en `platform_branding_settings`.
+- **Consola:** pestaña «Equipo» en Plataforma; el Centro de control monta el área con `canView` del API.
+
+| Evidencia | Resultado |
+| --- | --- |
+| Integración API `tenant-usage` (`DB_NAME=test`) | 10/10 |
+| Jest `apps/api` (suite completa, cambia `@Module`) | 636 suites, 8472 pruebas |
+| Jest `packages/shared` · `packages/database` · `apps/web` | 837 · 476 · 358 |
+| Typecheck y lint de shared, db, api, web | verdes; lint sin errores |
+| E2E `playwright.web.config.ts --workers=1` | 70 pasadas, 1 omitida (alta real, condicionada) |
+| En vivo `localhost:3001` (claro y oscuro) | conceder y retirar con confirmación; dos filas de auditoría; ajuste devuelto a vacío |
+| `sec-eng` | GO; 7 condiciones de §7 vigentes |
+| `boundary-reviewer` · `contract-drift-reviewer` · `test-change-reviewer` | sin bloqueantes |
+
+**Deudas:** S1 (baja): lectura previa, UPSERT y auditoría sin transacción común. Sin spec propio de la migración 037. El `down` de la 037 no se ejecutó en vivo (el hook del repo bloquea la reversión). El doble E2E no valida el cuerpo del `PUT`.
+

@@ -6,7 +6,11 @@
  *
  * Casos: `SYSTEM_ADMIN` 200 con solo los campos del contrato; empresa `ACTIVE` sin medición →
  * `null` (nunca 0); empresa no `ACTIVE` fuera; auditoría `LIST_ACCESS` con actor, IP y
- * cantidad; anónimo 401; `IWANA_SUPPORT` 403; JWT de empresa (`ADMIN`) 403.
+ * cantidad; anónimo 401; `IWANA_SUPPORT` 403 por defecto; JWT de empresa (`ADMIN`) 403.
+ *
+ * ADR-114 v1.3 §9 (visibilidad por rol): al conceder, Soporte ve en la siguiente petición y al
+ * retirar deja de ver; Soporte y empresa reciben 403 al escribir; la escritura deja fila de
+ * auditoría con valor anterior y nuevo; un rol no autorizable da 400.
  *
  * Ejecutar:
  *   IWANA_DB_INTEGRATION_AVAILABLE=true DB_NAME=test pnpm --filter @iwana/api exec jest \
@@ -20,7 +24,11 @@ import { PassportModule } from '@nestjs/passport';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { DataSource, type QueryRunner } from 'typeorm';
-import { PlatformAuditLog, resolveMigrationDbCredentials } from '@iwana/db';
+import {
+  PlatformAuditLog,
+  PlatformBrandingSettings,
+  resolveMigrationDbCredentials,
+} from '@iwana/db';
 import { AuditAction, PlatformRole, UserRole } from '@iwana/shared';
 import type { TenantUsage } from '@iwana/shared';
 import { REDIS_CLIENT } from '../redis/redis.module';
@@ -33,6 +41,7 @@ import { TenantService } from './tenant.service';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { DashboardSummaryService } from './dashboard-summary.service';
 import { TenantUsageService } from './tenant-usage.service';
+import { PlatformAccessSettingsService } from '../platform-branding/platform-access-settings.service';
 
 // El controlador inyecta AuthService (otplib es ESM); esta ruta no lo usa.
 jest.mock('../auth/auth.service', () => ({ AuthService: class AuthService {} }));
@@ -40,6 +49,7 @@ jest.mock('../auth/auth.service', () => ({ AuthService: class AuthService {} }))
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const PATH = '/api/v1/tenants/usage';
+const VISIBILITY = '/api/v1/tenants/usage/visibility';
 const RUN = randomBytes(4).toString('hex');
 
 describeWithDb('GET /tenants/usage — PostgreSQL real', () => {
@@ -77,7 +87,7 @@ describeWithDb('GET /tenants/usage — PostgreSQL real', () => {
       username: credentials.username,
       password: credentials.password,
       database: process.env['DB_NAME'] ?? 'iwana',
-      entities: [PlatformAuditLog],
+      entities: [PlatformAuditLog, PlatformBrandingSettings],
       migrations: [],
       synchronize: false,
       logging: false,
@@ -87,6 +97,15 @@ describeWithDb('GET /tenants/usage — PostgreSQL real', () => {
     queryRunner = dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
+    // Valor por defecto (solo administrador) dentro de la transacción, sea cual sea la fila previa.
+    await queryRunner.query(
+      `INSERT INTO public.platform_branding_settings
+         (id, product_name, surface_name, metadata_title, metadata_description)
+       VALUES ('platform', 'p', 's', 't', 'd') ON CONFLICT (id) DO NOTHING`,
+    );
+    await queryRunner.query(
+      `UPDATE public.platform_branding_settings SET tenant_usage_viewer_roles = '{}' WHERE id = 'platform'`,
+    );
 
     const seed: Array<[string, string, number | null]> = [
       [measured, 'ACTIVE', 100],
@@ -130,8 +149,17 @@ describeWithDb('GET /tenants/usage — PostgreSQL real', () => {
         { provide: REDIS_CLIENT, useValue: { get: async () => null } },
         {
           provide: TenantUsageService,
-          useFactory: () =>
-            new TenantUsageService(manager, new PlatformAuditService(manager, undefined as never)),
+          useFactory: () => {
+            const audit = new PlatformAuditService(manager, undefined as never);
+            return new TenantUsageService(
+              manager,
+              audit,
+              new PlatformAccessSettingsService(
+                queryRunner.manager.getRepository(PlatformBrandingSettings),
+                audit,
+              ),
+            );
+          },
         },
         { provide: TenantService, useValue: {} },
         { provide: TenantProvisioningService, useValue: {} },
@@ -192,7 +220,7 @@ describeWithDb('GET /tenants/usage — PostgreSQL real', () => {
     await request(app.getHttpServer()).get(PATH).expect(401);
   });
 
-  it('IWANA_SUPPORT recibe 403', async () => {
+  it('por defecto solo el administrador: IWANA_SUPPORT recibe 403', async () => {
     await request(app.getHttpServer())
       .get(PATH)
       .set('Authorization', `Bearer ${sign('platform', PlatformRole.IWANA_SUPPORT)}`)
@@ -206,5 +234,112 @@ describeWithDb('GET /tenants/usage — PostgreSQL real', () => {
         .set('Authorization', `Bearer ${sign('tenant', role)}`)
         .expect(403);
     }
+  });
+
+  describe('visibilidad por rol (ADR-114 v1.3 §9)', () => {
+    const support = () => `Bearer ${sign('platform', PlatformRole.IWANA_SUPPORT)}`;
+    const admin = () => `Bearer ${sign('platform', PlatformRole.SYSTEM_ADMIN, adminSub)}`;
+
+    it('por defecto: soporte lee canView=false y el administrador canView=true', async () => {
+      const asSupport = await request(app.getHttpServer())
+        .get(VISIBILITY)
+        .set('Authorization', support())
+        .expect(200);
+      expect(asSupport.body).toEqual({ data: { grantedRoles: [], canView: false } });
+      const asAdmin = await request(app.getHttpServer())
+        .get(VISIBILITY)
+        .set('Authorization', admin())
+        .expect(200);
+      expect(asAdmin.body.data.canView).toBe(true);
+    });
+
+    it('al conceder, soporte ve en la siguiente petición; al retirar, deja de ver', async () => {
+      await request(app.getHttpServer())
+        .put(VISIBILITY)
+        .set('Authorization', admin())
+        .send({ grantedRoles: [PlatformRole.IWANA_SUPPORT] })
+        .expect(200, { data: { grantedRoles: [PlatformRole.IWANA_SUPPORT], canView: true } });
+      await request(app.getHttpServer()).get(PATH).set('Authorization', support()).expect(200);
+      const visibility = await request(app.getHttpServer())
+        .get(VISIBILITY)
+        .set('Authorization', support())
+        .expect(200);
+      expect(visibility.body.data.canView).toBe(true);
+
+      await request(app.getHttpServer())
+        .put(VISIBILITY)
+        .set('Authorization', admin())
+        .send({ grantedRoles: [] })
+        .expect(200);
+      await request(app.getHttpServer()).get(PATH).set('Authorization', support()).expect(403);
+      // El administrador lo ve siempre.
+      await request(app.getHttpServer()).get(PATH).set('Authorization', admin()).expect(200);
+    });
+
+    it('la escritura deja fila de auditoría con valor anterior y nuevo', async () => {
+      await request(app.getHttpServer())
+        .put(VISIBILITY)
+        .set('Authorization', admin())
+        .send({ grantedRoles: [PlatformRole.IWANA_SUPPORT] })
+        .expect(200);
+      await request(app.getHttpServer())
+        .put(VISIBILITY)
+        .set('Authorization', admin())
+        .send({ grantedRoles: [] })
+        .expect(200);
+      const rows = (await queryRunner.query(
+        `SELECT action, old_value, new_value, ip_address
+           FROM public.platform_audit_logs
+          WHERE entity_type = 'TenantUsageVisibility' AND user_id = $1
+          ORDER BY created_at DESC, id DESC`,
+        [adminSub],
+      )) as Array<{ action: string; old_value: unknown; new_value: unknown; ip_address: string }>;
+      // En la transacción `now()` no avanza: se busca la fila de la retirada por su contenido.
+      const revoke = rows.find(
+        (row) => JSON.stringify(row.new_value) === JSON.stringify({ grantedRoles: [] }),
+      );
+      expect(revoke).toMatchObject({
+        action: AuditAction.UPDATE,
+        old_value: { grantedRoles: [PlatformRole.IWANA_SUPPORT] },
+        new_value: { grantedRoles: [] },
+      });
+      expect(revoke?.ip_address).toBeTruthy();
+    });
+
+    it('soporte recibe 403 al escribir y no cambia el ajuste', async () => {
+      await request(app.getHttpServer())
+        .put(VISIBILITY)
+        .set('Authorization', support())
+        .send({ grantedRoles: [PlatformRole.IWANA_SUPPORT] })
+        .expect(403);
+      await request(app.getHttpServer()).get(PATH).set('Authorization', support()).expect(403);
+    });
+
+    it('un JWT de empresa recibe 403 al leer y al escribir el ajuste', async () => {
+      for (const role of [UserRole.ADMIN, UserRole.SUPPORT]) {
+        const token = `Bearer ${sign('tenant', role)}`;
+        await request(app.getHttpServer()).get(VISIBILITY).set('Authorization', token).expect(403);
+        await request(app.getHttpServer())
+          .put(VISIBILITY)
+          .set('Authorization', token)
+          .send({ grantedRoles: [] })
+          .expect(403);
+      }
+    });
+
+    it('rechaza con 400 un rol no autorizable, repetido o un campo desconocido', async () => {
+      for (const body of [
+        { grantedRoles: [PlatformRole.SYSTEM_ADMIN] },
+        { grantedRoles: ['ADMIN'] },
+        { grantedRoles: [PlatformRole.IWANA_SUPPORT, PlatformRole.IWANA_SUPPORT] },
+        { grantedRoles: [], extra: true },
+      ]) {
+        await request(app.getHttpServer())
+          .put(VISIBILITY)
+          .set('Authorization', admin())
+          .send(body)
+          .expect(400);
+      }
+    });
   });
 });

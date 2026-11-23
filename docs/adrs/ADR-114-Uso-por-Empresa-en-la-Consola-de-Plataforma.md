@@ -1,11 +1,11 @@
 # ADR-114: Uso por empresa en la consola de plataforma (conteos leídos desde schemas de empresa)
 
-**Versión:** 1.2 (2026-11-22: anonimizados fuera del conteo, §8)
+**Versión:** 1.3 (2026-11-23: visibilidad configurable por rol, §9) · 1.2 (2026-11-22: anonimizados fuera del conteo, §8)
 **Estado:** Aprobado
 **Aprobación:** CTO, 2026-11-21 («Aprobar ADR-114»), junto con D3 de la dirección; obligan las condiciones 1–7 de §7
 **Fecha:** 2026-11-21
 **Autor:** Claude Code (AI-EM-ARCH) · **Revisión de seguridad:** AI-SEC-ENG (§7)
-**Módulos:** `apps/worker` · `apps/api` (`tenant`) · `packages/database` (schema `public`) · `apps/web` (`/dashboard`)
+**Módulos:** `apps/worker` · `apps/api` (`tenant`, `platform-branding`) · `packages/database` (schema `public`) · `apps/web` (`/dashboard`, `/settings`)
 **Origen:** contrato P4 y decisión D3 de [`2026-11-21-web-centro-control-pulso-plataforma-direccion.md`](../specs/2026-11-21-web-centro-control-pulso-plataforma-direccion.md) §5–§7
 
 ## 1. Contexto
@@ -44,7 +44,7 @@ Solo conteos agregados. Ninguna columna con PII cruza a `public`. El conteo de s
 ## 6. Pendiente para aprobar
 
 - ~~D3 de la dirección~~: aprobada por el CTO el 2026-11-21.
-- ~~Visibilidad~~: CTO 2026-11-21: «System_Admin, y a los roles que se les dé permiso». Se aplica con la constante `PLATFORM_TENANT_USAGE_ROLES` de `@iwana/shared` (hoy solo `SYSTEM_ADMIN`), que el endpoint y la consola leen. La plataforma no tiene permisos asignables por pantalla; concederlos así exige un modelo de permisos de plataforma con ADR propio.
+- ~~Visibilidad~~: CTO 2026-11-21: «System_Admin, y a los roles que se les dé permiso». ~~Se aplica con la constante `PLATFORM_TENANT_USAGE_ROLES`~~ (superado por §9: ajuste por rol guardado, sin constante).
 
 ## 7. Revisión de AI-SEC-ENG
 
@@ -86,3 +86,23 @@ Conteo con anonimizados: conforme a la regla CRM vigente y a esta §7; solo agre
 - La frase de §7 «cuentan según la regla CRM vigente» queda superada por esta enmienda.
 
 **Verificación de AI-SEC-ENG (2026-11-22):** las 7 condiciones de §7 siguen cumpliéndose; GO. `anonymized_at` solo se lee en el `WHERE` y sale un número. Un schema anterior a la migración tenant 150 fallaría con 42703, aislado y sin escribir 0.
+
+## 9. Enmienda v1.3 — visibilidad configurable por rol
+
+**Decisión del CTO (2026-11-23):** alcance «ajuste por rol» (deuda F4-D3), no un modelo de permisos por usuario.
+
+| # | Decisión |
+| --- | --- |
+| V1 | `SYSTEM_ADMIN` ve el uso por empresa siempre; no se puede quitar. |
+| V2 | Los demás roles de plataforma (hoy solo `IWANA_SUPPORT`) lo ven si están concedidos. Valor por defecto: ninguno (solo `SYSTEM_ADMIN`). |
+| V3 | Solo `SYSTEM_ADMIN` cambia el ajuste: `PUT /api/v1/tenants/usage/visibility` con `{ grantedRoles }`, validado con Zod (`UpdateTenantUsageVisibilitySchema`, `@iwana/shared`) y acotado a `TENANT_USAGE_GRANTABLE_ROLES`. Cualquier rol de plataforma lee el ajuste y su propio `canView` con `GET`. Un token de empresa recibe 403 en los tres endpoints. |
+| V4 | `GET /tenants/usage` evalúa el permiso en cada petición contra el ajuste guardado (`canRoleViewTenantUsage`), sin caché: un cambio rige en la siguiente petición. `@Roles` admite los dos roles de plataforma y el servicio niega con 403 al no concedido, antes de leer o auditar. |
+| V5 | El cambio se audita en `platform_audit_logs`: `UPDATE`, `entityType = 'TenantUsageVisibility'`, actor, IP, `oldValue` y `newValue` (`{ grantedRoles }`). |
+| V6 | La consola monta el área según `canView` del API y no repite la regla. El control vive en Configuración → pestaña «Equipo»; para quien no es administrador se muestra en solo lectura. |
+
+**Persistencia (migración pública 037, reversible).** Sin tabla ni módulo nuevos: columna `tenant_usage_viewer_roles text[] NOT NULL DEFAULT '{}'` en la fila única de configuración de plataforma `platform_branding_settings` (id `platform`), con `CHECK (… <@ ARRAY['IWANA_SUPPORT'])`. La lee y escribe `PlatformAccessSettingsService`, exportado por `PlatformBrandingModule` e importado por `TenantModule`. El `down` descarta las concesiones y el comportamiento vuelve a v1.2. Añadir un rol de plataforma nuevo exige ampliar el enum, `TENANT_USAGE_GRANTABLE_ROLES` y el `CHECK` en una migración.
+
+**Fuera de alcance:** otras áreas de la consola no usan este ajuste; extenderlo es decisión aparte del CTO.
+
+**Revisión de AI-SEC-ENG (2026-11-23):** GO de seguridad. Las 7 condiciones de §7 siguen cumpliéndose; la 5 queda con `@Roles(SYSTEM_ADMIN, IWANA_SUPPORT)` más la verificación por petición del servicio, que sustituye a la constante citada en la verificación del 2026-11-21. El permiso se evalúa en cada petición sin caché y el 403 ocurre antes de leer o auditar. Zod estricto con lista cerrada; el CHECK de la 037 acota a `IWANA_SUPPORT`; el UPSERT es parametrizado; la auditoría registra actor, IP y valores anterior y nuevo. Un token de empresa recibe 403 en los tres endpoints (prueba de integración). Deuda baja S1: envolver la lectura del valor anterior, el UPSERT y la auditoría en una transacción con `FOR UPDATE` (`platform-access-settings.service.ts`). No bloquea.
+

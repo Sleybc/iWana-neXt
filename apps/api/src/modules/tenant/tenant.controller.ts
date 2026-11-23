@@ -13,6 +13,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   UploadedFile,
   UseGuards,
@@ -42,7 +43,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { AuthService } from '../auth/auth.service';
 import {
-  PLATFORM_TENANT_USAGE_ROLES,
+  UpdateTenantUsageVisibilitySchema,
   PlatformRole,
   TENANT_STATUS_SUMMARY_DEFAULT_PERIOD_MONTHS,
   TENANT_STATUS_SUMMARY_PERIOD_MONTHS,
@@ -56,7 +57,12 @@ import { TenantService } from './tenant.service';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { DashboardSummaryService } from './dashboard-summary.service';
 import { TenantUsageService } from './tenant-usage.service';
-import { TenantUsageResponseDto } from './dto/tenant-usage.dto';
+import {
+  TenantUsageResponseDto,
+  TenantUsageVisibilityResponseDto,
+  UpdateTenantUsageVisibilityDto,
+} from './dto/tenant-usage.dto';
+import type { UpdateTenantUsageVisibility } from '@iwana/shared';
 import { CreateTenantDto, TenantResponseDto, UpdateTenantDto } from './dto/tenant.dto';
 import { TenantSettingsResponseDto, UpdateTenantSettingsDto } from './dto/tenant-settings.dto';
 import {
@@ -807,12 +813,58 @@ export class TenantController {
   }
 
   /**
+   * GET /api/v1/tenants/usage/visibility
+   * Ajuste de visibilidad de «Uso por empresa» (ADR-114 v1.3 §9) y `canView` del usuario
+   * actual, para que la consola monte el área sin repetir la regla. Roles de plataforma.
+   */
+  @Get('usage/visibility')
+  @Roles(PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
+  @ApiOperation({ summary: 'Quién ve el uso por empresa y si el usuario actual lo ve' })
+  @ApiResponse({ status: 200, type: TenantUsageVisibilityResponseDto })
+  @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
+  @ApiResponse({ status: 403, description: 'Requiere un token de plataforma.' })
+  async getUsageVisibility(
+    @CurrentUser() user: JwtPayload,
+  ): Promise<TenantUsageVisibilityResponseDto> {
+    return { data: await this.tenantUsageService.getVisibility(user.role) };
+  }
+
+  /**
+   * PUT /api/v1/tenants/usage/visibility
+   * Concede o retira a otros roles de plataforma la vista del uso por empresa. Solo
+   * `SYSTEM_ADMIN`; el cambio se audita con valor anterior y nuevo (ADR-114 v1.3 §9).
+   */
+  @Put('usage/visibility')
+  @Roles(PlatformRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Cambiar qué roles de plataforma ven el uso por empresa' })
+  @ApiBody({ type: UpdateTenantUsageVisibilityDto })
+  @ApiResponse({ status: 200, type: TenantUsageVisibilityResponseDto })
+  @ApiResponse({ status: 400, description: 'Rol no autorizable, repetido o campo desconocido.' })
+  @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
+  @ApiResponse({ status: 403, description: 'Requiere el administrador de plataforma.' })
+  async updateUsageVisibility(
+    @Body(new ZodValidationPipe(UpdateTenantUsageVisibilitySchema))
+    body: UpdateTenantUsageVisibility,
+    @CurrentUser() user: JwtPayload,
+    @Ip() ip: string | undefined,
+  ): Promise<TenantUsageVisibilityResponseDto> {
+    return {
+      data: await this.tenantUsageService.updateVisibility(body.grantedRoles, {
+        userId: user.sub,
+        role: user.role,
+        ipAddress: ip ?? null,
+      }),
+    };
+  }
+
+  /**
    * GET /api/v1/tenants/usage
-   * Uso por empresa (`TenantUsage` v1.0, ADR-114 D4). Solo `PLATFORM_TENANT_USAGE_ROLES`;
-   * un JWT de empresa, incluido `ADMIN`, recibe 403. Declarado antes de `:id`.
+   * Uso por empresa (`TenantUsage` v1.0, ADR-114 D4). `SYSTEM_ADMIN` siempre; otro rol de
+   * plataforma solo si el ajuste guardado lo autoriza, evaluado en cada petición (v1.3 §9).
+   * Un JWT de empresa, incluido `ADMIN`, recibe 403. Declarado antes de `:id`.
    */
   @Get('usage')
-  @Roles(...PLATFORM_TENANT_USAGE_ROLES)
+  @Roles(PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
   @ApiOperation({ summary: 'Uso por empresa: suscriptores medidos frente al cupo' })
   @ApiResponse({ status: 200, description: 'Uso por empresa.', type: TenantUsageResponseDto })
   @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
@@ -822,7 +874,11 @@ export class TenantController {
     @Ip() ip: string | undefined,
   ): Promise<TenantUsageResponseDto> {
     return {
-      data: await this.tenantUsageService.getUsage({ userId: user.sub, ipAddress: ip ?? null }),
+      data: await this.tenantUsageService.getUsage({
+        userId: user.sub,
+        role: user.role,
+        ipAddress: ip ?? null,
+      }),
     };
   }
 

@@ -45,6 +45,13 @@ export class PlatformBrandingSettings {
   @Column({ name: 'login_background_dark_asset_id', type: 'uuid', nullable: true })
   loginBackgroundDarkAssetId: string | null;
 
+  /**
+   * Roles de plataforma, además del administrador, que ven «Uso por empresa»
+   * (ADR-114 v1.3 §9). Vacío por defecto. Migración pública 037.
+   */
+  @Column({ name: 'tenant_usage_viewer_roles', type: 'text', array: true, default: () => "'{}'" })
+  tenantUsageViewerRoles: string[];
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
