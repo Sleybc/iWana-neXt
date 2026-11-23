@@ -1,9 +1,9 @@
 # ADR-115: Activación de cuentas de plataforma
 
-**Estado** · En revisión, implementado en desarrollo  
+**Estado:** En revisión  
 **Fecha** · 2026-11-23
 
-Los administradores de plataforma pueden dar de alta cuentas desde la consola. La decisión mantiene la separación entre plataformas y empresas de [ADR-061](ADR-061-Frontera-de-Audiencias-JWT-y-Procedencia-de-Roles.md) y la política de verificación en dos pasos de MOD01.
+Los administradores de plataforma pueden dar de alta cuentas desde la consola. La implementación está activa en desarrollo. La decisión mantiene la separación entre plataformas y empresas de [ADR-061](ADR-061-Frontera-de-Audiencias-JWT-y-Procedencia-de-Roles.md) y la política de verificación en dos pasos de MOD01.
 
 1. `POST /api/v1/platform-users` exige `SYSTEM_ADMIN` y un token de plataforma. Crea la cuenta en `public.platform_users` con estado pendiente, una contraseña temporal aleatoria que se muestra una sola vez y cambio de contraseña obligatorio. El administrador entrega la credencial por un canal seguro.
 2. La persona titular entra con la contraseña temporal y recibe el alcance existente `password-change`. Después del cambio inicia sesión con su contraseña definitiva y recibe `platform-mfa-setup`, que solo autoriza la configuración y confirmación de TOTP de la propia cuenta. Ambos pasos usan tokens de alcance limitado y carecen de cookies de sesión.

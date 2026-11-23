@@ -86,11 +86,11 @@ Los seis accesos al listado de plataforma usan la misma ruta definida en `@iwana
 
 El buscador muestra hasta dos fragmentos resaltados distintos por resultado, en su orden original. Así evita claves duplicadas de React cuando la búsqueda devuelve el mismo fragmento más de una vez.
 
-En «Cuentas de plataforma», el administrador puede editar el nombre y los apellidos mediante `PATCH /api/v1/platform-users/:id/name`. La actualización excluye cuentas eliminadas y registra al actor y los campos editados en la misma transacción. El administrador también puede crear cuentas que aparecen de inmediato como pendientes en el listado y se incluyen en el resumen. La persona titular cambia su contraseña temporal y confirma la verificación en dos pasos antes de obtener una sesión completa. [ADR-115](../adrs/ADR-115-Activacion-de-Cuentas-de-Plataforma.md)
+En «Cuentas de plataforma», el administrador puede editar el nombre y los apellidos mediante `PATCH /api/v1/platform-users/:id/name`. La actualización excluye cuentas eliminadas y registra al actor y los campos editados en la misma transacción. El administrador también puede crear cuentas que aparecen de inmediato como pendientes en el listado y se incluyen en el resumen. La persona titular cambia su contraseña temporal y confirma la verificación en dos pasos antes de obtener una sesión completa. [ADR-115 (en revisión)](../adrs/ADR-115-Activacion-de-Cuentas-de-Plataforma.md)
 
 El Panel de activación agrupa el directorio en cuentas pendientes, activas y otras cuentas. La API prioriza las pendientes antes de paginar y entrega el indicador de cambio de contraseña para mostrar qué pasos faltan. Tras crear una cuenta, el panel abre su detalle. En pantallas angostas, seleccionar una cuenta lleva el foco al detalle.
 
-Las cuentas de plataforma que ya están activas pueden configurar la verificación en dos pasos desde «Mi cuenta». La persona titular confirma su contraseña actual y un código de su aplicación autenticadora. Al activarse, el resumen del Centro de control refleja el nuevo estado. [ADR-115](../adrs/ADR-115-Activacion-de-Cuentas-de-Plataforma.md)
+Las cuentas de plataforma que ya están activas pueden configurar la verificación en dos pasos desde «Mi cuenta». La persona titular confirma su contraseña actual y un código de su aplicación autenticadora. Al activarse, el resumen del Centro de control refleja el nuevo estado. [ADR-115 (en revisión)](../adrs/ADR-115-Activacion-de-Cuentas-de-Plataforma.md)
 
 ## Fase 3 — P2
 
