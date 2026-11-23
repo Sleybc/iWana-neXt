@@ -315,8 +315,9 @@ Omitido: E2E web contra un servidor dedicado (hoy usa `next dev` compartido). Si
 | 2 | `095b5cfc` | 45054684943 | Rojo en tres intentos, cada uno por una prueba distinta: p95 de N1 (348 ms por contención de 4 workers en 2 núcleos), `CreateTaskSchedulingDialog.spec.tsx` (debounce de 300 ms en reloj real) y `tenant-active-at-close.activation` (exigía `DB_NAME=test` en los workers 2 a 4, que usan un clon) |
 | 3 | `b4a2024a` | 45188080121 | Verde en el intento 1, incluido el paso nuevo «presupuestos de latencia (en serie)». E2E Web Admin Smoke 45188080316 verde |
 | 4 | `52dfd266` | 45206507196 | Verde en el intento 1 (ajuste por rol de «Uso por empresa», F4-D3). E2E Web Admin Smoke 45206507090 verde |
+| 5 | `d1acbc85` | 45244735825 | Rojo en el intento 1 por dos vías: el job de citas ADR (estado de ADR-115 (en revisión) fuera del vocabulario canónico; corregido en `c9e850eb`, cuya corrida docs-only 45249106262 es verde) y la integración API (`titular-anonymized-concurrency.postgres.integration.spec.ts`, flake del sondeo de bloqueos; verde en local 10/10). Rojo en el intento 2 por unit del portal (`BillingPolicySettingsClient.spec.tsx`, render asíncrono; verde en local 3/3). El job re-ejecutado quedó verde en el intento 3, con integración, presupuestos de latencia y gate de cobertura incluidos |
 
-Arreglos de las tres intermitentes: `cdc0bc17` y `b4a2024a`. Sin umbrales cambiados ni reintentos.
+Arreglos de las tres intermitentes: `cdc0bc17` y `b4a2024a`. Sin umbrales cambiados ni reintentos. Las dos intermitentes nuevas de la fila 5 (CRM y portal, módulos no tocados por la ola) no recibieron arreglo de código: reproducidas verdes en local el mismo día.
 
 Queda fuera, por decisión del CTO: F4-D3 (permisos de plataforma asignables). Riesgo: la serie «Activas al cierre» no tiene historia anterior al 2026-11-22.
 
