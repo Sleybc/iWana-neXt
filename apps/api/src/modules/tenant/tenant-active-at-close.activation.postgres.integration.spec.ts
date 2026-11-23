@@ -55,7 +55,12 @@ describeWithDb('Activas al cierre — activación auditada por el aprovisionador
   }
 
   beforeAll(async () => {
-    if (process.env['DB_NAME'] !== 'test') {
+    // Con IWANA_IT_WORKERS > 1, `integration-worker-db.js` cambia DB_NAME al clon
+    // del worker (`iwana_it_g7_test_wN`) y guarda la original en IWANA_IT_BASE_DB_NAME.
+    // La guarda valida la base original y la conexión usa la del worker: exigir
+    // DB_NAME=test hacía fallar la suite siempre que caía en los workers 2..N (CI 45054684943).
+    const baseDbName = process.env['IWANA_IT_BASE_DB_NAME'] ?? process.env['DB_NAME'];
+    if (baseDbName !== 'test') {
       throw new Error('[BLOCKED] Solo corre con DB_NAME=test.');
     }
     const credentials = resolveMigrationDbCredentials();
@@ -65,7 +70,7 @@ describeWithDb('Activas al cierre — activación auditada por el aprovisionador
       port: Number.parseInt(process.env['DB_PORT'] ?? '5432', 10),
       username: credentials.username,
       password: credentials.password,
-      database: 'test',
+      database: process.env['DB_NAME'] ?? 'test',
       entities: [],
       synchronize: false,
       logging: false,
