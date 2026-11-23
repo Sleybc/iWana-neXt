@@ -467,6 +467,21 @@ export const PLATFORM_UI_COPY = {
     tabsAriaLabel: 'Configuración de plataforma',
     tabIdentity: 'Identidad',
     tabSecurity: 'Seguridad',
+    tabTeam: 'Equipo',
+    team: {
+      title: 'Qué ve Soporte iWana',
+      usageLabel: 'Mostrar uso por empresa a Soporte iWana',
+      usageHelp:
+        'En el centro de control, compara los suscriptores activos de cada empresa con su cupo. Tú lo ves siempre.',
+      loading: 'Cargando esta preferencia…',
+      saving: 'Guardando…',
+      savedOn: 'Listo. Soporte iWana ya ve el uso por empresa.',
+      savedOff: 'Listo. Soporte iWana ya no ve el uso por empresa.',
+      errorLoad: 'No pudimos cargar esta preferencia. Reintenta en unos minutos.',
+      errorSave: 'No pudimos guardar el cambio. Reintenta en unos minutos.',
+      readOnly: 'Solo el administrador de plataforma puede cambiar esta opción.',
+      retry: 'Reintentar',
+    },
     identity: {
       title: 'Identidad de la consola',
       help: 'Logo, fondos de acceso y nombres públicos. No cambia la identidad de cada empresa.',

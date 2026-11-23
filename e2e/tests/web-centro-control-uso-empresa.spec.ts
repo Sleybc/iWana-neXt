@@ -1,8 +1,9 @@
 /**
  * Centro de control — Fase 4, P4 «Uso por empresa» (CA-PP4-01…04, ADR-114).
  * Encargo: docs/prompts/PROMPT-WEB-CENTRO-CONTROL-PULSO-FASE4-v1.0.md §C.
- * El área solo se monta para `PLATFORM_TENANT_USAGE_ROLES` (hoy `SYSTEM_ADMIN`);
- * los mocks devuelven `SYSTEM_ADMIN` por defecto, como el API real; aquí se fija explícito.
+ * El área se monta según `GET /tenants/usage/visibility` (ADR-114 v1.3 §9): `SYSTEM_ADMIN`
+ * siempre; Soporte iWana solo si el administrador lo concede en Configuración → Equipo.
+ * Los mocks devuelven `SYSTEM_ADMIN` y ninguna concesión por defecto, como el API real.
  * Selectores por rol y texto de `PLATFORM_UI_COPY.dashboard`. Sin PII.
  */
 import path from 'node:path';
@@ -123,6 +124,81 @@ test.describe('Uso por empresa — IWANA_SUPPORT (CA-PP4-01)', () => {
     await expect(usageArea(page)).toHaveCount(0);
     await expect(page.getByRole('main').getByText(/uso por empresa/i)).toHaveCount(0);
     expect(requests).toEqual([]);
+  });
+});
+
+test.describe('Uso por empresa — Soporte con permiso concedido (ADR-114 §9)', () => {
+  test.beforeEach(
+    setupWebApiMocks({
+      platformRole: 'IWANA_SUPPORT',
+      tenantUsage: USAGE,
+      tenantUsageGrantedRoles: ['IWANA_SUPPORT'],
+      onUnhandledApiRoute: '404',
+    }),
+  );
+
+  test('IWANA_SUPPORT ve el área cuando el API lo autoriza', async ({ page }) => {
+    const requests = trackUsageRequests(page);
+    await loginToPulse(page);
+    await expect(usageArea(page)).toBeVisible();
+    await expect(usageArea(page).getByRole('listitem')).toHaveCount(4);
+    expect(requests.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+test.describe('Configuración → Equipo (ADR-114 §9)', () => {
+  const LABEL = /^Mostrar uso por empresa a Soporte iWana/;
+
+  test.describe('administrador', () => {
+    test.beforeEach(
+      setupWebApiMocks({
+        platformRole: 'SYSTEM_ADMIN',
+        tenantUsage: USAGE,
+        onUnhandledApiRoute: '404',
+      }),
+    );
+
+    test('concede y retira con confirmación; envía solo roles autorizables', async ({ page }) => {
+      await loginToPulse(page);
+      await page.goto('/settings');
+      await page.getByRole('tab', { name: 'Equipo' }).click();
+      const toggle = page.getByRole('switch', { name: LABEL });
+      await expect(toggle).not.toBeChecked();
+
+      const put = page.waitForRequest(
+        (r) => r.method() === 'PUT' && r.url().endsWith('/tenants/usage/visibility'),
+      );
+      await toggle.click();
+      expect((await put).postDataJSON()).toEqual({ grantedRoles: ['IWANA_SUPPORT'] });
+      await expect(page.getByText('Listo. Soporte iWana ya ve el uso por empresa.')).toBeVisible();
+      await expect(toggle).toBeChecked();
+
+      await toggle.click();
+      await expect(
+        page.getByText('Listo. Soporte iWana ya no ve el uso por empresa.'),
+      ).toBeVisible();
+      await expect(toggle).not.toBeChecked();
+    });
+  });
+
+  test.describe('soporte', () => {
+    test.beforeEach(
+      setupWebApiMocks({
+        platformRole: 'IWANA_SUPPORT',
+        tenantUsage: USAGE,
+        onUnhandledApiRoute: '404',
+      }),
+    );
+
+    test('ve el valor en solo lectura', async ({ page }) => {
+      await loginToPulse(page);
+      await page.goto('/settings');
+      await page.getByRole('tab', { name: 'Equipo' }).click();
+      await expect(page.getByRole('switch', { name: LABEL })).toBeDisabled();
+      await expect(
+        page.getByText('Solo el administrador de plataforma puede cambiar esta opción.'),
+      ).toBeVisible();
+    });
   });
 });
 

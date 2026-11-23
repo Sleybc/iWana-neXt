@@ -94,6 +94,7 @@ jest.mock('@/lib/api-client', () => {
       summary: jest.fn(),
       list: jest.fn(),
       usage: jest.fn(),
+      usageVisibility: jest.fn(),
     },
     platformAuditApi: {
       list: jest.fn(),
@@ -145,7 +146,12 @@ describe('DashboardClient', () => {
   const { tenantApi, platformAuditApi, platformUsersApi, healthApi, platformHealthApi, ApiError } =
     jest.requireMock('@/lib/api-client') as {
       ApiError: new (status: number, code: string, message: string) => Error;
-      tenantApi: { summary: jest.Mock; list: jest.Mock; usage: jest.Mock };
+      tenantApi: {
+        summary: jest.Mock;
+        list: jest.Mock;
+        usage: jest.Mock;
+        usageVisibility: jest.Mock;
+      };
       platformAuditApi: { list: jest.Mock };
       platformUsersApi: { summary: jest.Mock };
       healthApi: { get: jest.Mock };
@@ -165,6 +171,11 @@ describe('DashboardClient', () => {
     mockRole = 'IWANA_SUPPORT';
     mockSearchParams = new URLSearchParams();
     tenantApi.usage.mockResolvedValue({ items: [], generatedAt: new Date().toISOString() });
+    // ADR-114 §9: el API decide; el doble responde como el valor por defecto (solo administrador).
+    tenantApi.usageVisibility.mockImplementation(async () => ({
+      grantedRoles: [],
+      canView: mockRole === 'SYSTEM_ADMIN',
+    }));
     healthApi.get.mockResolvedValue(HEALTH_OK);
     platformAuditApi.list.mockResolvedValue({ data: [] });
     tenantApi.summary.mockResolvedValue(makeTenantStatusSummary());
@@ -1297,6 +1308,24 @@ describe('DashboardClient', () => {
     const hoursAgo = (h: number) => new Date(Date.now() - h * 60 * 60 * 1000).toISOString();
 
     it('CA-PP4-01: IWANA_SUPPORT no ve el área ni la pide', async () => {
+      await renderReady();
+      expect(usageRegion()).not.toBeInTheDocument();
+      expect(tenantApi.usage).not.toHaveBeenCalled();
+    });
+
+    it('ADR-114 §9: si el API autoriza a Soporte, el área se monta y se pide', async () => {
+      tenantApi.usageVisibility.mockResolvedValue({
+        grantedRoles: ['IWANA_SUPPORT'],
+        canView: true,
+      });
+      await renderReady();
+      expect(await screen.findByRole('region', { name: 'Uso por empresa' })).toBeInTheDocument();
+      expect(tenantApi.usage).toHaveBeenCalledTimes(1);
+    });
+
+    it('ADR-114 §9: si el API no autoriza, ni el administrador la monta (sin regla en el cliente)', async () => {
+      mockRole = 'SYSTEM_ADMIN';
+      tenantApi.usageVisibility.mockResolvedValue({ grantedRoles: [], canView: false });
       await renderReady();
       expect(usageRegion()).not.toBeInTheDocument();
       expect(tenantApi.usage).not.toHaveBeenCalled();

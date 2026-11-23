@@ -326,6 +326,12 @@ interface SetupWebApiMocksOptions {
   tenantUsage?: TenantUsage;
   /** Rol de `/auth/me` (`PlatformRole`, mayúsculas como el API real); por defecto `SYSTEM_ADMIN`. */
   platformRole?: string;
+  /**
+   * Roles concedidos para ver el uso por empresa (ADR-114 v1.3 §9); por defecto ninguno, como el
+   * API real. El doble aplica la misma regla: `SYSTEM_ADMIN` siempre, los demás si están aquí;
+   * `PUT /tenants/usage/visibility` solo para `SYSTEM_ADMIN` y cambia este valor en la página.
+   */
+  tenantUsageGrantedRoles?: readonly string[];
 }
 
 /**
@@ -533,6 +539,9 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
   const platformRole = options.platformRole ?? 'SYSTEM_ADMIN';
 
   return async ({ page }: { page: import('@playwright/test').Page }) => {
+    let grantedUsageRoles: string[] = [...(options.tenantUsageGrantedRoles ?? [])];
+    const canViewUsage = () =>
+      platformRole === 'SYSTEM_ADMIN' || grantedUsageRoles.includes(platformRole);
     let isLoggedIn = false;
 
     // Mock central para flujos web de plataforma sin backend real.
@@ -637,6 +646,38 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({ data: platformUsersSummary }),
+        });
+        return;
+      }
+
+      if (new URL(url).pathname.endsWith('/tenants/usage/visibility')) {
+        if (method === 'PUT') {
+          if (platformRole !== 'SYSTEM_ADMIN') {
+            await route.fulfill({
+              status: 403,
+              contentType: 'application/json',
+              body: JSON.stringify({ code: 'FORBIDDEN', message: 'Prohibido' }),
+            });
+            return;
+          }
+          const body = (route.request().postDataJSON() ?? {}) as { grantedRoles?: string[] };
+          grantedUsageRoles = [...(body.grantedRoles ?? [])];
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: { grantedRoles: grantedUsageRoles, canView: canViewUsage() },
+          }),
+        });
+        return;
+      }
+
+      if (new URL(url).pathname.endsWith('/tenants/usage') && method === 'GET' && !canViewUsage()) {
+        await route.fulfill({
+          status: 403,
+          contentType: 'application/json',
+          body: JSON.stringify({ code: 'FORBIDDEN', message: 'Prohibido' }),
         });
         return;
       }

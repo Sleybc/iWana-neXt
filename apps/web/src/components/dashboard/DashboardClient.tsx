@@ -35,8 +35,7 @@ import { PlatformUsersArea } from '@/components/dashboard/PlatformUsersArea';
 import { TenantTrendPanel } from '@/components/dashboard/TenantTrendPanel';
 import { AvailabilityTracker } from '@/components/dashboard/AvailabilityTracker';
 import { WorkQueuesArea } from '@/components/dashboard/WorkQueuesArea';
-import { TenantUsageArea, canSeeTenantUsage } from '@/components/dashboard/TenantUsageArea';
-import { useAuth } from '@/components/auth/AuthProvider';
+import { TenantUsageArea } from '@/components/dashboard/TenantUsageArea';
 import {
   TenantStatusDistribution,
   type StatusSegment,
@@ -134,6 +133,7 @@ const fetchTeam = () => platformUsersApi.summary();
 const fetchHealth = () => healthApi.get();
 const fetchHistory = () => platformHealthApi.history();
 const fetchUsage = () => tenantApi.usage();
+const fetchUsageVisibility = () => tenantApi.usageVisibility();
 
 /** Cada indicador refleja solo su servicio (L-10, contrato DS v1.2 §4.1). */
 function buildHealthIndicators(health: HealthStatusResponse | null): StatusIndicator[] {
@@ -230,8 +230,9 @@ export function DashboardClient() {
   const health = useRemote(fetchHealth);
   const team = useRemote(fetchTeam);
   const history = useRemote(fetchHistory);
-  const { user } = useAuth();
-  const showUsage = canSeeTenantUsage(user?.role);
+  // ADR-114 §9: el API dice si el usuario actual ve el uso por empresa; la consola no repite la regla.
+  const usageVisibility = useRemote(fetchUsageVisibility);
+  const showUsage = usageVisibility.data?.canView === true;
   const usage = useRemote(showUsage ? fetchUsage : null);
 
   const { reload: reloadSummary } = summary;

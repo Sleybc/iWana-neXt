@@ -2,11 +2,7 @@
 
 import { useId, useState } from 'react';
 import Link from 'next/link';
-import {
-  PLATFORM_TENANT_USAGE_ROLES,
-  type PlatformRole,
-  type TenantUsageItem,
-} from '@iwana/shared';
+import type { TenantUsageItem } from '@iwana/shared';
 import {
   Badge,
   Button,
@@ -27,11 +23,6 @@ const NUMBER = new Intl.NumberFormat('es-CO');
 export const USAGE_STALE_MS = 2 * 60 * 60 * 1000;
 /** Tope de filas visibles, igual que la cola de atención (dirección v1.2 §8.2). */
 export const USAGE_VISIBLE_ROWS = 6;
-
-/** El área se monta y se pide solo para los roles del contrato (CA-PP4-01). */
-export function canSeeTenantUsage(role: string | null | undefined): boolean {
-  return !!role && PLATFORM_TENANT_USAGE_ROLES.includes(role as PlatformRole);
-}
 
 export function isUsageStale(measuredAt: string | null, now: number = Date.now()): boolean {
   if (!measuredAt) return false;

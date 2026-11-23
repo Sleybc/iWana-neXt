@@ -7,6 +7,8 @@ import type {
   TenantStatusSummary,
   TenantStatusSummaryPeriodMonths,
   TenantUsage,
+  TenantUsageVisibility,
+  UpdateTenantUsageVisibility,
 } from '@iwana/shared';
 
 /**
@@ -777,8 +779,18 @@ export const tenantApi = {
       `/tenants/summary${params?.months ? `?months=${params.months}` : ''}`,
     ),
 
-  /** Uso por empresa (contrato P4 v1.0, `{ data }`); solo `PLATFORM_TENANT_USAGE_ROLES`. */
+  /** Uso por empresa (contrato P4 v1.0, `{ data }`); el API decide quién lo ve (ADR-114 §9). */
   usage: () => request<TenantUsage>('/tenants/usage'),
+
+  /** Ajuste de visibilidad del uso por empresa y `canView` del usuario actual (ADR-114 §9). */
+  usageVisibility: () => request<TenantUsageVisibility>('/tenants/usage/visibility'),
+
+  /** Cambia el ajuste; solo el administrador de plataforma (el API responde 403 a los demás). */
+  updateUsageVisibility: (body: UpdateTenantUsageVisibility) =>
+    request<TenantUsageVisibility>('/tenants/usage/visibility', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
 
   getOne: (id: string, options?: { signal?: AbortSignal }) =>
     request<TenantListItem>(

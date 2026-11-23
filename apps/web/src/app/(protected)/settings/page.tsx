@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@iwana/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { PlatformBrandingSettings } from '@/components/settings/PlatformBrandingSettings';
 import { SecuritySettings } from '@/components/settings/SecuritySettings';
+import { TeamVisibilitySettings } from '@/components/settings/TeamVisibilitySettings';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 
 const copy = PLATFORM_UI_COPY.settings;
@@ -25,6 +26,9 @@ export default function SettingsPage() {
             <TabsTrigger value="seguridad" className="min-h-11 flex-1 sm:flex-none">
               {copy.tabSecurity}
             </TabsTrigger>
+            <TabsTrigger value="equipo" className="min-h-11 flex-1 sm:flex-none">
+              {copy.tabTeam}
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -34,6 +38,10 @@ export default function SettingsPage() {
 
         <TabsContent value="seguridad">
           <SecuritySettings />
+        </TabsContent>
+
+        <TabsContent value="equipo">
+          <TeamVisibilitySettings />
         </TabsContent>
       </Tabs>
     </div>
