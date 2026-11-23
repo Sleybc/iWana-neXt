@@ -52,6 +52,12 @@ function newTenant(label: string): TenantFixture {
 const BOGOTA = 'America/Bogota';
 const AS_OF = '2026-11-17';
 
+// Presupuesto de latencia (HLD §7): el CI lo mide en un paso propio, en serie
+// (`--runInBand`), porque la corrida paralela de 4 workers en un runner de 2
+// núcleos mide la contención entre suites y no la consulta. Ese paso pone esta
+// variable en la corrida paralela; en local, sin ella, la prueba corre siempre.
+const itLatencyBudget = process.env['IWANA_IT_LATENCY_DEFERRED'] === '1' ? it.skip : it;
+
 describeWithDb('N3 · serie diaria de casos — PostgreSQL real', () => {
   let dataSource: DataSource;
   let service: AssuranceDashboardSeriesService;
@@ -263,10 +269,12 @@ describeWithDb('N3 · serie diaria de casos — PostgreSQL real', () => {
     expect(AssuranceDashboardSeriesSchema.safeParse(result).success).toBe(true);
   });
 
-  it('p95 ≤ 300 ms con volumen sintético (HLD §7)', async () => {
-    // Volumen en B, después de sus aserciones: 30 000 casos en 120 días, la mitad resueltos.
-    await dataSource.query(
-      `INSERT INTO ${tenantB.quoted}.support_tickets (
+  itLatencyBudget(
+    'p95 ≤ 300 ms con volumen sintético (HLD §7)',
+    async () => {
+      // Volumen en B, después de sus aserciones: 30 000 casos en 120 días, la mitad resueltos.
+      await dataSource.query(
+        `INSERT INTO ${tenantB.quoted}.support_tickets (
          id, tenant_id, ticket_number, type, status, priority, source, subject,
          requester_type, sla_breach_status, field_decision, created_by_user_id,
          created_at, updated_at, resolved_at
@@ -280,37 +288,39 @@ describeWithDb('N3 · serie diaria de casos — PostgreSQL real', () => {
                    THEN timestamptz '2026-07-20 00:00:00+00' + (n * interval '345 seconds') + interval '2 days'
               END
          FROM generate_series(1, 30000) AS n`,
-      [
-        tenantB.tenantId,
-        TicketType.CUSTOMER_INCIDENT,
-        TicketStatus.RESOLVED,
-        TicketStatus.OPEN,
-        TicketPriority.NORMAL,
-        TicketSource.MANUAL,
-        TicketRequesterType.INTERNAL_USER,
-        SlaBreachStatus.OK,
-        TicketFieldDecision.NOT_REQUIRED,
-        actorId,
-      ],
-    );
-    await dataSource.query(`ANALYZE ${tenantB.quoted}.support_tickets`);
-
-    for (const days of [14, 31]) {
-      const run = () => summarize(tenantB, days);
-      for (let index = 0; index < 5; index += 1) await run();
-      const samples: number[] = [];
-      for (let index = 0; index < 60; index += 1) {
-        const started = performance.now();
-        await run();
-        samples.push(performance.now() - started);
-      }
-      samples.sort((a, b) => a - b);
-      const p95 = samples[Math.ceil(samples.length * 0.95) - 1]!;
-      const p50 = samples[Math.floor(samples.length / 2)]!;
-      console.info(
-        `[N3] days=${days} p50=${p50.toFixed(1)} ms p95=${p95.toFixed(1)} ms (n=60, 30k casos)`,
+        [
+          tenantB.tenantId,
+          TicketType.CUSTOMER_INCIDENT,
+          TicketStatus.RESOLVED,
+          TicketStatus.OPEN,
+          TicketPriority.NORMAL,
+          TicketSource.MANUAL,
+          TicketRequesterType.INTERNAL_USER,
+          SlaBreachStatus.OK,
+          TicketFieldDecision.NOT_REQUIRED,
+          actorId,
+        ],
       );
-      expect(p95).toBeLessThanOrEqual(300);
-    }
-  }, 180_000);
+      await dataSource.query(`ANALYZE ${tenantB.quoted}.support_tickets`);
+
+      for (const days of [14, 31]) {
+        const run = () => summarize(tenantB, days);
+        for (let index = 0; index < 5; index += 1) await run();
+        const samples: number[] = [];
+        for (let index = 0; index < 60; index += 1) {
+          const started = performance.now();
+          await run();
+          samples.push(performance.now() - started);
+        }
+        samples.sort((a, b) => a - b);
+        const p95 = samples[Math.ceil(samples.length * 0.95) - 1]!;
+        const p50 = samples[Math.floor(samples.length / 2)]!;
+        console.info(
+          `[N3] days=${days} p50=${p50.toFixed(1)} ms p95=${p95.toFixed(1)} ms (n=60, 30k casos)`,
+        );
+        expect(p95).toBeLessThanOrEqual(300);
+      }
+    },
+    180_000,
+  );
 });

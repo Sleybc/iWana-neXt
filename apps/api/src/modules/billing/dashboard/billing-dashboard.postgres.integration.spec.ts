@@ -57,6 +57,11 @@ function month(summary: BillingDashboardSummary, value: string) {
   return summary.series.find((item) => item.month === value);
 }
 
+// Presupuesto de latencia (HLD §7): el CI lo mide en un paso propio, en serie
+// (`--runInBand`), porque la corrida paralela de 4 workers en un runner de 2
+// núcleos mide la contención entre suites y no la consulta. Ese paso pone esta
+// variable en la corrida paralela; en local, sin ella, la prueba corre siempre.
+const itLatencyBudget = process.env['IWANA_IT_LATENCY_DEFERRED'] === '1' ? it.skip : it;
 describeDb('N1 resumen de facturación del inicio (Postgres real)', () => {
   let ds: DataSource;
   let tenantA: Tenant;
@@ -557,7 +562,7 @@ describeDb('N1 resumen de facturación del inicio (Postgres real)', () => {
     expect(summary.overdue.amount).toBe('317.83');
   });
 
-  it('p95 de N1 con volumen sintético ≤ 300 ms (HLD §7)', async () => {
+  itLatencyBudget('p95 de N1 con volumen sintético ≤ 300 ms (HLD §7)', async () => {
     const subscribers = 1000;
     const periodsPerContract = 12;
     await sql(

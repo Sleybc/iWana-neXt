@@ -63,12 +63,22 @@ describe('CreateTaskSchedulingDialog', () => {
     error: null,
   };
 
+  // El typeahead del responsable espera 300 ms de debounce (CA-PICK-02). Con
+  // reloj real ese tiempo se come el presupuesto de 1 s de `findByRole` cuando
+  // el runner va lento; con reloj falso el debounce y la espera corren en
+  // tiempo virtual y la prueba no depende de la carga de la máquina.
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
   });
 
   it('hides agenda fields until execution mode requires scheduling', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const onSubmit = jest.fn();
 
     render(<CreateTaskSchedulingDialog {...defaultProps} onSubmit={onSubmit} />);
@@ -93,7 +103,7 @@ describe('CreateTaskSchedulingDialog', () => {
   });
 
   it('skips agenda step when execution mode is immediate', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const onSubmit = jest.fn();
 
     render(

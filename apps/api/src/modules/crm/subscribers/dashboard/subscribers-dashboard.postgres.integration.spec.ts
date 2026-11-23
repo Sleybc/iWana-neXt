@@ -40,6 +40,12 @@ function newTenant(label: string): TenantFixture {
 const BOGOTA = 'America/Bogota';
 const AS_OF = '2026-11-17';
 
+// Presupuesto de latencia (HLD §7): el CI lo mide en un paso propio, en serie
+// (`--runInBand`), porque la corrida paralela de 4 workers en un runner de 2
+// núcleos mide la contención entre suites y no la consulta. Ese paso pone esta
+// variable en la corrida paralela; en local, sin ella, la prueba corre siempre.
+const itLatencyBudget = process.env['IWANA_IT_LATENCY_DEFERRED'] === '1' ? it.skip : it;
+
 describeWithDb('N2 · resumen de altas y bajas — PostgreSQL real', () => {
   let dataSource: DataSource;
   let service: SubscribersDashboardService;
@@ -339,10 +345,12 @@ describeWithDb('N2 · resumen de altas y bajas — PostgreSQL real', () => {
     expect(SubscribersDashboardSummarySchema.safeParse(summary).success).toBe(true);
   });
 
-  it('p95 ≤ 300 ms con volumen sintético (HLD §7)', async () => {
-    // Volumen en B, después de sus aserciones: 20 000 suscriptores y 40 000 cambios en 3 años.
-    await dataSource.query(
-      `INSERT INTO ${tenantB.quoted}.subscribers (
+  itLatencyBudget(
+    'p95 ≤ 300 ms con volumen sintético (HLD §7)',
+    async () => {
+      // Volumen en B, después de sus aserciones: 20 000 suscriptores y 40 000 cambios en 3 años.
+      await dataSource.query(
+        `INSERT INTO ${tenantB.quoted}.subscribers (
          id, tenant_id, status, person_type, customer_segment, activated_at,
          document_type, document_number_encrypted, first_name, last_name,
          stratum, vat_treatment, vat_responsibility, address, created_by
@@ -352,10 +360,10 @@ describeWithDb('N2 · resumen de altas y bajas — PostgreSQL real', () => {
               'CC', 'synthetic-encrypted', 'Titular', 'Sintético', 3, 'STANDARD',
               'RESPONSABLE', 'Dirección sintética', $2
          FROM generate_series(1, 20000) AS n`,
-      [tenantB.tenantId, actorId],
-    );
-    await dataSource.query(
-      `INSERT INTO ${tenantB.quoted}.crm_lifecycle_changes (
+        [tenantB.tenantId, actorId],
+      );
+      await dataSource.query(
+        `INSERT INTO ${tenantB.quoted}.crm_lifecycle_changes (
          tenant_id, entity_type, entity_id, subscriber_id, from_status, to_status,
          reason_code, source, batch_id, changed_at
        )
@@ -365,25 +373,27 @@ describeWithDb('N2 · resumen de altas y bajas — PostgreSQL real', () => {
          FROM ${tenantB.quoted}.subscribers s
         CROSS JOIN generate_series(1, 2) AS k
         WHERE s.tenant_id = $1`,
-      [tenantB.tenantId],
-    );
-    await dataSource.query(`ANALYZE ${tenantB.quoted}.subscribers`);
-    await dataSource.query(`ANALYZE ${tenantB.quoted}.crm_lifecycle_changes`);
+        [tenantB.tenantId],
+      );
+      await dataSource.query(`ANALYZE ${tenantB.quoted}.subscribers`);
+      await dataSource.query(`ANALYZE ${tenantB.quoted}.crm_lifecycle_changes`);
 
-    const run = () => summarize(tenantB);
-    for (let index = 0; index < 5; index += 1) await run();
-    const samples: number[] = [];
-    for (let index = 0; index < 60; index += 1) {
-      const started = performance.now();
-      await run();
-      samples.push(performance.now() - started);
-    }
-    samples.sort((a, b) => a - b);
-    const p95 = samples[Math.ceil(samples.length * 0.95) - 1]!;
-    const p50 = samples[Math.floor(samples.length / 2)]!;
-    console.info(
-      `[N2] p50=${p50.toFixed(1)} ms p95=${p95.toFixed(1)} ms (n=60, 20k suscriptores, 40k cambios)`,
-    );
-    expect(p95).toBeLessThanOrEqual(300);
-  }, 180_000);
+      const run = () => summarize(tenantB);
+      for (let index = 0; index < 5; index += 1) await run();
+      const samples: number[] = [];
+      for (let index = 0; index < 60; index += 1) {
+        const started = performance.now();
+        await run();
+        samples.push(performance.now() - started);
+      }
+      samples.sort((a, b) => a - b);
+      const p95 = samples[Math.ceil(samples.length * 0.95) - 1]!;
+      const p50 = samples[Math.floor(samples.length / 2)]!;
+      console.info(
+        `[N2] p50=${p50.toFixed(1)} ms p95=${p95.toFixed(1)} ms (n=60, 20k suscriptores, 40k cambios)`,
+      );
+      expect(p95).toBeLessThanOrEqual(300);
+    },
+    180_000,
+  );
 });

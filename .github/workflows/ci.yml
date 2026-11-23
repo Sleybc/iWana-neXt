@@ -726,6 +726,10 @@ jobs:
         shell: bash
         env:
           IWANA_IT_WORKERS: 4
+          # Los presupuestos de latencia (HLD §7) se miden aparte, en serie: con 4
+          # workers en 2 núcleos el p95 mide la contención entre suites (CI
+          # 45054684943 midió 348 ms en N1; aislada la consulta tarda ~85 ms).
+          IWANA_IT_LATENCY_DEFERRED: '1'
         run: |
           set -uo pipefail
           report=/tmp/api-integration-report.json
@@ -905,6 +909,27 @@ jobs:
             `Gate de omisiones de integración API: PASS (${discovered.size} specs; ${omittedCount} ${omittedLabel}; B5 17/17; K2 5/5)`,
           );
           API_INTEGRATION_GATE
+
+      # Presupuestos de latencia N1/N2/N3 (HLD §7) sin otras suites en paralelo.
+      # Mismo umbral de 300 ms; solo cambia que nada compite por la CPU ni por la base.
+      - name: Integration tests — API presupuestos de latencia (en serie)
+        timeout-minutes: 6
+        shell: bash
+        run: |
+          set -uo pipefail
+          log=/tmp/api-latency.log
+          IWANA_DB_INTEGRATION_AVAILABLE=true E2E_TENANT_SLUG=test \
+            pnpm --filter @iwana/api exec jest \
+              --config jest.integration.config.js \
+              --runInBand \
+              --testPathPattern 'dashboard.*\.postgres\.integration\.spec\.ts$' \
+              -t 'p95' 2>&1 | tee "$log"
+          status=${PIPESTATUS[0]}
+          if (( status != 0 )); then exit "$status"; fi
+          # Un verde con 0 pruebas medidas no vale: deben correr las tres.
+          if ! grep -qE '^Tests:.* 3 passed' "$log"; then
+            echo "❌ Se esperaban 3 presupuestos de latencia ejecutados"; exit 1
+          fi
 
       # Integración del worker (R0.3): el spec exige `R0_3_REAL_DB=1` y tira error
       # si no está; crea su propio schema efímero tenant_r03_relay_* y lo limpia en
