@@ -322,5 +322,9 @@ Queda fuera, por decisión del CTO: F4-D3 (permisos de plataforma asignables). R
 | `sec-eng` | GO; 7 condiciones de §7 vigentes |
 | `boundary-reviewer` · `contract-drift-reviewer` · `test-change-reviewer` | sin bloqueantes |
 
-**Deudas:** S1 (baja): lectura previa, UPSERT y auditoría sin transacción común. Sin spec propio de la migración 037. El `down` de la 037 no se ejecutó en vivo (el hook del repo bloquea la reversión). El doble E2E no valida el cuerpo del `PUT`.
+**Deudas cerradas (2026-11-23, a pedido de la sesión principal):**
 
+- ~~S1: lectura previa, UPSERT y auditoría sin transacción común~~ → `setTenantUsageGrantedRoles` bloquea la fila (`SELECT … FOR UPDATE`), escribe y audita en una transacción con `PlatformAuditService.logWithin` (propaga errores). Integración `platform-access-settings.postgres.integration.spec.ts`: si la auditoría falla, el ajuste no cambia y no queda fila; dos escrituras concurrentes dejan filas que encadenan (2/2, tres corridas).
+- ~~Sin spec de la migración 037~~ → `037_tenant_usage_viewer_roles.spec.ts` (3/3).
+- ~~`down` de la 037 sin ejecutar~~ → `037_tenant_usage_viewer_roles.integration.spec.ts`: `down` y `up` en una transacción revertida sobre `test` y el CHECK rechaza `SYSTEM_ADMIN` (1/1); sin tocar `dbiw` ni el hook.
+- ~~El doble E2E no valida el `PUT`~~ → el mock responde 400 fuera del contrato y la prueba comprueba los cuerpos en orden: conceder `['IWANA_SUPPORT']`, retirar `[]`.

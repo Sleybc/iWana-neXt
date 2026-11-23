@@ -150,8 +150,13 @@ test.describe('Configuración → Equipo (ADR-114 §9)', () => {
   const LABEL = /^Mostrar uso por empresa a Soporte iWana/;
 
   test.describe('administrador', () => {
+    const putBodies: unknown[] = [];
+    test.beforeEach(() => {
+      putBodies.length = 0;
+    });
     test.beforeEach(
       setupWebApiMocks({
+        visibilityPutBodies: putBodies,
         platformRole: 'SYSTEM_ADMIN',
         tenantUsage: USAGE,
         onUnhandledApiRoute: '404',
@@ -178,6 +183,8 @@ test.describe('Configuración → Equipo (ADR-114 §9)', () => {
         page.getByText('Listo. Soporte iWana ya no ve el uso por empresa.'),
       ).toBeVisible();
       await expect(toggle).not.toBeChecked();
+      // El mock solo acepta el contrato (400 si no): conceder y retirar, en ese orden.
+      expect(putBodies).toEqual([{ grantedRoles: ['IWANA_SUPPORT'] }, { grantedRoles: [] }]);
     });
   });
 

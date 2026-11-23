@@ -332,6 +332,8 @@ interface SetupWebApiMocksOptions {
    * `PUT /tenants/usage/visibility` solo para `SYSTEM_ADMIN` y cambia este valor en la página.
    */
   tenantUsageGrantedRoles?: readonly string[];
+  /** Recibe, en orden, cada cuerpo válido de `PUT /tenants/usage/visibility`. */
+  visibilityPutBodies?: unknown[];
 }
 
 /**
@@ -540,6 +542,7 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
 
   return async ({ page }: { page: import('@playwright/test').Page }) => {
     let grantedUsageRoles: string[] = [...(options.tenantUsageGrantedRoles ?? [])];
+    const visibilityPutBodies = options.visibilityPutBodies ?? [];
     const canViewUsage = () =>
       platformRole === 'SYSTEM_ADMIN' || grantedUsageRoles.includes(platformRole);
     let isLoggedIn = false;
@@ -660,8 +663,28 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
             });
             return;
           }
-          const body = (route.request().postDataJSON() ?? {}) as { grantedRoles?: string[] };
-          grantedUsageRoles = [...(body.grantedRoles ?? [])];
+          // Mismo contrato que `UpdateTenantUsageVisibilitySchema`: solo `grantedRoles`, sin
+          // repetidos y solo roles autorizables; si no, 400 como el API real.
+          const body = route.request().postDataJSON() as unknown;
+          const roles =
+            body && typeof body === 'object' && !Array.isArray(body)
+              ? (body as Record<string, unknown>)['grantedRoles']
+              : undefined;
+          const valid =
+            Object.keys(body ?? {}).join() === 'grantedRoles' &&
+            Array.isArray(roles) &&
+            roles.every((role) => role === 'IWANA_SUPPORT') &&
+            new Set(roles).size === roles.length;
+          if (!valid) {
+            await route.fulfill({
+              status: 400,
+              contentType: 'application/json',
+              body: JSON.stringify({ code: 'VALIDATION_ERROR', message: 'Cuerpo inválido' }),
+            });
+            return;
+          }
+          visibilityPutBodies.push(body);
+          grantedUsageRoles = [...(roles as string[])];
         }
         await route.fulfill({
           status: 200,

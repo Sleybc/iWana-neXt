@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Brackets, DataSource, SelectQueryBuilder } from 'typeorm';
+import { Brackets, DataSource, type EntityManager, SelectQueryBuilder } from 'typeorm';
 import { PlatformAuditLog, summarizeErrorForLog } from '@iwana/db';
 import { AUDIT_SESSION_ACTIONS, PLATFORM_AUDIT_ACCESS_ACTIONS } from '@iwana/shared';
 import {
@@ -89,6 +89,27 @@ export class PlatformAuditService {
           `[action=${entry.action} entity=${entry.entityType}:${entry.entityId}]: ${summarizeErrorForLog(err)}`,
       );
     }
+  }
+
+  /**
+   * Registra una entrada en la transacción del llamador (`platform_audit_logs`).
+   *
+   * A diferencia de `log()`, los errores se propagan: la operación de negocio se revierte
+   * junto con su auditoría (p. ej. cambios de permisos de plataforma, ADR-114 v1.3 §9).
+   */
+  async logWithin(entry: AuditEntryInput, manager: EntityManager): Promise<void> {
+    const logEntry = manager.create(PlatformAuditLog, {
+      userId: entry.userId ?? null,
+      action: entry.action,
+      entityType: entry.entityType,
+      entityId: entry.entityId,
+      oldValue: sanitizeAuditPayload(entry.oldValue ?? null),
+      newValue: sanitizeAuditPayload(entry.newValue ?? null),
+      ipAddress: entry.ipAddress ?? null,
+      userAgent: entry.userAgent ?? null,
+      requestId: entry.requestId ?? null,
+    });
+    await manager.save(PlatformAuditLog, logEntry);
   }
 
   /**
