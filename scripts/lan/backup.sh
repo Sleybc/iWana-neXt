@@ -16,6 +16,8 @@
 #                     del host y el script lo avisa en el journal.
 # Retención de dumps: los 48 más recientes y nada mayor de 14 días.
 set -euo pipefail
+# Los respaldos contienen PII cifrada y metadatos: solo el operador los lee.
+umask 077
 
 : "${IWANA_REPO:?}" "${IWANA_ENV_FILE:?}" "${IWANA_BACKUP_DIR:?}"
 COMPOSE=(docker compose -f "$IWANA_REPO/docker-compose.yml" -f "$IWANA_REPO/docker-compose.prod.yml"

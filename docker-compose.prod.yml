@@ -104,7 +104,8 @@ services:
         limits:
           memory: ${TYPESENSE_MEM_LIMIT:-1g}
           cpus: '${TYPESENSE_CPU_LIMIT:-1}'
-          pids: 256
+          # Typesense abre 8 hilos por núcleo del host (160 con 20 núcleos): 256 no alcanzaba.
+          pids: 1024
 
   nginx-prod:
     image: ${NGINX_IMAGE:?NGINX_IMAGE is required}

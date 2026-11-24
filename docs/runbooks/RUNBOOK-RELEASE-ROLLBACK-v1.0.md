@@ -102,6 +102,15 @@ Mientras cualquiera de estos bloqueos afecte al entorno objetivo, el paso operat
 
    El build necesita salida a `registry.npmjs.org`, `cdn.playwright.dev` y los repositorios de Debian, con DNS estable durante todo el `--build`: el worker descarga ~110 MiB de Chromium y las librerías del sistema por `apt`. Un `EAI_AGAIN` en el log es un fallo de DNS del daemon, no del Dockerfile; se repite el build. Verificado el 2026-11-24: `apps/worker/Dockerfile` construye la imagen y lanza Chromium sin ningún archivo fuera del repo.
 
+   **Base vacía: permisos tras la primera migración.** El migrador crea las tablas, pero no concede los permisos de mínimo privilegio. Sin ellos la API cae en bucle con `permission denied for table tenants`. Tras el primer `up`, aplica SEC-04 contra el contenedor de producción, con las variables `DB_*` del `.env` del entorno, y reinicia la API:
+
+   ```bash
+   POSTGRES_CONTAINER=iwana_postgres_prod pnpm db:apply-least-privilege
+   docker restart iwana_api_prod
+   ```
+
+   El script lee `.env` y `.env.local` del repo para las variables que falten, así que todas las `DB_*` deben venir del entorno. Verificado el 2026-11-24 sobre Docker Engine 29.10: tras este paso los 11 servicios quedaron sanos.
+
 5. Desde el equipo cliente, abre `http://<IP-LAN>`. Comprueba que redirige a `https://<IP-LAN>`, que el navegador acepta el certificado y que `https://<IP-LAN>/api/v1/health` responde por la misma IP. Entra en la consola, completa el MFA cuando corresponda y recarga para verificar la sesión. En los logs de `iwana_nginx_prod` debe figurar la IP del equipo cliente, no la de un gateway `172.x`.
 6. Habilita `iwana-backup-db.timer` (dump global cada hora, retención de 48 dumps o 14 días), `iwana-backup-media.timer` (espejo diario del bucket) e `iwana-healthwatch.timer`. Este último vigila cada 5 minutos la salud de la API, los contenedores `unhealthy`, el disco por encima del 80 % y el certificado a menos de 30 días; sus fallos salen con prioridad `err` en el journal. Los respaldos caen en `/var/backups/iwana`. Mientras `IWANA_OFFSITE_CMD` no apunte a un destino cifrado fuera del host, el respaldo no cubre la pérdida del servidor. Ensaya el restore según §6.3 antes de contarlo como respaldo.
 

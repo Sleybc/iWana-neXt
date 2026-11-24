@@ -3,6 +3,9 @@
 IWANA_REPO=@REPO@
 IWANA_ENV_FILE=@REPO@/.env.stable
 IWANA_BACKUP_DIR=/var/backups/iwana
+# Engine del sistema, no el contexto de Docker Desktop del usuario.
+DOCKER_HOST=unix:///var/run/docker.sock
+COMPOSE_PROJECT_NAME=iwana-stable
 # IWANA_OFFSITE_CMD=  # pendiente: destino fuera del host (decisión del CTO)
 IWANA_LAN_IFACE=eno1
 IWANA_LAN_SERVER_IP=10.0.0.254

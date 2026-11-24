@@ -294,8 +294,9 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
     }),
     // Umbrales operativos del relay: no hay valores por defecto aprobados.
     // Si faltan, health expone la medición con "sin umbral aprobado" y no emite veredicto.
-    OUTBOX_RELAY_LAG_DEGRADED_SECONDS: Joi.number().integer().min(0).optional(),
-    OUTBOX_RELAY_LAG_STOPPED_SECONDS: Joi.number().integer().min(0).optional(),
+    // Compose los pasa como '' cuando la plantilla los deja vacíos: '' equivale a ausente.
+    OUTBOX_RELAY_LAG_DEGRADED_SECONDS: Joi.number().integer().min(0).empty('').optional(),
+    OUTBOX_RELAY_LAG_STOPPED_SECONDS: Joi.number().integer().min(0).empty('').optional(),
     // Clave global, sin datos de tenant, compartida por worker y API para el
     // timestamp del último ciclo real del scanner.
     OUTBOX_RELAY_SCAN_TIMESTAMP_KEY: Joi.string()
