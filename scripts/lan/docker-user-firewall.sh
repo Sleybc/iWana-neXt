@@ -14,6 +14,9 @@
 #   docker-user-firewall.sh remove
 #   docker-user-firewall.sh print   (no toca nada: imprime las reglas que aplicaría)
 #
+# Variable IWANA_LAN_PORTS: puertos abiertos (por defecto "80 443"). Las pruebas
+# por IP suman 8443 (portal) y 9443 (archivos), con aprobación del CTO.
+#
 # Alta inicial con base vacía: `apply --allow <IP-del-operador>/32` y, creada la
 # cuenta, `apply` de nuevo con el valor por defecto. `apply` es idempotente:
 # vacía y rellena su propia cadena IWANA-LAN y deja una sola regla de salto.
@@ -27,6 +30,7 @@ ACTION=${1:-}
 IFACE=${IWANA_LAN_IFACE:-eno1}
 SERVER_IP=${IWANA_LAN_SERVER_IP:-10.0.0.254}
 ALLOW=${IWANA_LAN_ALLOW:-10.0.0.0/24}
+PORTS=${IWANA_LAN_PORTS:-80 443}
 IPT=${IPTABLES:-iptables}
 
 while [ $# -gt 0 ]; do
@@ -40,13 +44,14 @@ done
 
 valid_ipv4() { [[ $1 =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; }
 valid_cidr() { [[ $1 =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$ ]]; }
+[[ $PORTS =~ ^[0-9]{1,5}( [0-9]{1,5})*$ ]] || { echo "IWANA_LAN_PORTS inválido: $PORTS" >&2; exit 2; }
 valid_ipv4 "$SERVER_IP" || { echo "--server-ip inválida: $SERVER_IP" >&2; exit 2; }
 valid_cidr "$ALLOW" || { echo "--allow debe ser un CIDR IPv4: $ALLOW" >&2; exit 2; }
 [[ $IFACE =~ ^[A-Za-z0-9_.-]{1,15}$ ]] || { echo "--iface inválida: $IFACE" >&2; exit 2; }
 
 rules() {
   echo "-A $CHAIN -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN"
-  for port in 80 443; do
+  for port in $PORTS; do
     echo "-A $CHAIN -i $IFACE -p tcp -s $ALLOW -m conntrack --ctorigdst $SERVER_IP --ctorigdstport $port -j RETURN"
   done
   echo "-A $CHAIN -i $IFACE -j DROP"
@@ -63,7 +68,7 @@ case "$ACTION" in
     $IPT -N "$CHAIN" 2>/dev/null || $IPT -F "$CHAIN"
     rules | while read -r -a rule; do $IPT "${rule[@]}"; done
     $IPT -C DOCKER-USER -j "$CHAIN" 2>/dev/null || $IPT -I DOCKER-USER 1 -j "$CHAIN"
-    echo "DOCKER-USER: 80/443 hacia $SERVER_IP desde $ALLOW por $IFACE; el resto se descarta."
+    echo "DOCKER-USER: $PORTS hacia $SERVER_IP desde $ALLOW por $IFACE; el resto se descarta."
     ;;
   remove)
     while $IPT -D DOCKER-USER -j "$CHAIN" 2>/dev/null; do :; done

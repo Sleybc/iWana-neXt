@@ -1,0 +1,8 @@
+# Pruebas por IP en la LAN: publica el portal (8443) y los archivos (9443).
+# Se añade tras docker-compose.prod.yml con PROXY_NGINX_CONFIG generado por
+# scripts/lan/render-nginx-ip-ports.sh. Exige una IP: nunca en todas las interfaces.
+services:
+  nginx-prod:
+    ports:
+      - '${PROXY_BIND_IP:?PROXY_BIND_IP is required}:8443:8443'
+      - '${PROXY_BIND_IP:?PROXY_BIND_IP is required}:9443:9443'

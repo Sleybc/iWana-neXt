@@ -144,3 +144,17 @@ test('offsite copy pins the SSH host, only adds backups and rejects unsafe confi
   file('restic', '#!/bin/sh\nexit 7\n', 0o755);
   assert.equal(offsite(dir).status, 7, 'el fallo del destino llega a systemd');
 });
+
+test('IP-port proxy config serves portal and files on their own ports', () => {
+  const { status, stdout } = run('bash', [join(lan, 'render-nginx-ip-ports.sh')]);
+  assert.equal(status, 0);
+  assert.doesNotMatch(stdout, /server_name .*REPLACE_ME/);
+  assert.equal(stdout.match(/listen 8443 ssl;/g).length, 1);
+  assert.equal(stdout.match(/listen 9443 ssl;/g).length, 1);
+  assert.doesNotMatch(stdout.slice(stdout.indexOf('listen 8443')), /Host \$host;/);
+
+  const fw = (ports) =>
+    run('bash', [join(lan, 'docker-user-firewall.sh'), 'print'], { IWANA_LAN_PORTS: ports });
+  assert.match(fw('80 443 8443 9443').stdout, /ctorigdstport 9443 -j RETURN/);
+  assert.equal(fw('443 -j ACCEPT').status, 2);
+});
