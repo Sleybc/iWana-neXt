@@ -67,7 +67,7 @@ Requiere `sudo`; lo ejecuta el operador. Es una ventana con corte.
 
 ## Fase 3 — Respaldo y operación
 
-- [ ] **3.1 Respaldo programado (H9).** Timer de systemd que ejecute `pnpm db:backup` cada hora y `pnpm db:purge-backups` según retención; copia diaria del bucket. Destino **fuera del host** y cifrado (runbook §6). *Artefacto listo: `scripts/lan/backup.sh` y timers `iwana-backup-db` (cada hora, 48 dumps o 14 días) e `iwana-backup-media` (diario). El destino fuera del host (`IWANA_OFFSITE_CMD`) espera la decisión del CTO.* *Timers activos; probados `db` y `media` a mano; el timer `db` ya generó dumps a las 11:02 y 12:01. Destino elegido por el CTO (2026-11-24): equipo Linux en otra sede. Artefacto listo: `scripts/lan/offsite-restic.sh` (restic por SSH, solo añadir; runbook §1.3 paso 7), probado con un `restic` simulado. Falta instalarlo y probarlo de extremo a extremo.*
+- [ ] **3.1 Respaldo programado (H9).** Timer de systemd que ejecute `pnpm db:backup` cada hora y `pnpm db:purge-backups` según retención; copia diaria del bucket. Destino **fuera del host** y cifrado (runbook §6). *Artefacto listo: `scripts/lan/backup.sh` y timers `iwana-backup-db` (cada hora, 48 dumps o 14 días) e `iwana-backup-media` (diario). El destino fuera del host (`IWANA_OFFSITE_CMD`) espera la decisión del CTO.* *Timers activos; probados `db` y `media` a mano; el timer `db` ya generó dumps a las 11:02 y 12:01. Copia fuera del host **aplazada a producción** por el CTO (2026-11-24): no hay otro equipo. Hasta entonces la pérdida del disco o del servidor pierde los datos; se acepta porque son de prueba. Artefacto listo para ese momento: `scripts/lan/offsite-restic.sh` (restic por SSH, solo añadir; runbook §1.3 paso 7), probado con un `restic` simulado. Instalarlo y probarlo de extremo a extremo es requisito de la fase 4.*
 - [ ] **3.2 Ensayo de restore.** Restaurar un respaldo global y uno por tenant en una base aislada y registrar tiempos (runbook §6.3 y §7). Sin restore ensayado, el respaldo no cuenta.
 - [x] **3.3 Monitoreo mínimo.** Alerta si `/api/v1/health` deja de responder, si un contenedor queda `unhealthy`, si el disco pasa del 80 % y a 30 días del vencimiento del certificado. *Artefacto listo: `scripts/lan/healthwatch.sh` y timer cada 5 min, con fallos en el journal como `err`. Sin SMTP no hay correo de alerta.* *Hecho: `iwana-healthwatch.timer` activo; primer ciclo «ok».*
 - [x] **3.4 Documentos.** Actualizar el runbook §1.3 (Docker Engine obligatorio, `DOCKER-USER`, ruta de respaldo) y la nota del piloto en el informe Docker, retirando sus dos pendientes cuando 1.4 los cubra. *Runbook v1.5 y nota del informe hechas; los dos pendientes siguen hasta 1.4.*
@@ -84,7 +84,7 @@ Se activa cuando el CTO declare la beta mínima (ADR-095 §Activación). Lo que 
 | ¿Acceso por IP o por nombre interno (DNS de la LAN)? Un nombre permite probar portal y archivos | CTO | 2.2 |
 | `pgbouncer`: usarlo o retirarlo del perfil | AI-EM-ARCH | 0.5 |
 | Relay SMTP a usar | CTO | 2.4 |
-| Destino de los respaldos fuera del host | CTO | 3.1 |
+| Destino de los respaldos fuera del host (aplazada a producción, CTO 2026-11-24) | CTO | Fase 4; no cargar datos reales antes |
 
 ## No verificado al escribir este plan
 
