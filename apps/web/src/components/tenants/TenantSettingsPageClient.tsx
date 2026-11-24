@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@iwana/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { tenantApi } from '@/lib/api-client';
+import { TenantAdminAccess } from './TenantAdminAccess';
 import { TenantSettingsForm } from './TenantSettingsForm';
 
 interface TenantSettingsPageClientProps {
@@ -12,14 +13,17 @@ interface TenantSettingsPageClientProps {
 
 export function TenantSettingsPageClient({ tenantId }: TenantSettingsPageClientProps) {
   const [tenantName, setTenantName] = useState<string>('');
+  const [tenantStatus, setTenantStatus] = useState<string>('');
 
   useEffect(() => {
     const loadTenantName = async () => {
       try {
         const tenant = await tenantApi.getOne(tenantId);
         setTenantName(tenant.name);
+        setTenantStatus(tenant.status);
       } catch {
         setTenantName('');
+        setTenantStatus('');
       }
     };
 
@@ -49,6 +53,14 @@ export function TenantSettingsPageClient({ tenantId }: TenantSettingsPageClientP
           </Suspense>
         </CardContent>
       </Card>
+
+      {tenantStatus && (
+        <TenantAdminAccess
+          tenantId={tenantId}
+          tenantName={tenantName}
+          tenantStatus={tenantStatus}
+        />
+      )}
     </div>
   );
 }
