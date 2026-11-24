@@ -65,8 +65,17 @@ services:
           cpus: '${REDIS_CPU_LIMIT:-1}'
           pids: 128
 
+  # pgBouncer fuera del perfil `production` (plan 2026-11-24 §0.5, decisión del CTO del
+  # 2026-11-24). Ningún cliente de producción lo usaba, y el worker no puede usarlo: al
+  # aprovisionar un tenant abre conexiones con `-c search_path` en el arranque
+  # (createTenantDataSource), y en modo transacción pgBouncer no conserva ese parámetro.
+  # Las migraciones caerían en el schema equivocado. API (10) + worker (10) + migrator
+  # quedan muy por debajo de `max_connections`. Volver a activarlo exige un ADR y un
+  # enrutamiento solo para la API.
   pgbouncer:
     container_name: iwana_pgbouncer_prod
+    profiles: !override
+      - development
 
   minio:
     container_name: iwana_minio_prod

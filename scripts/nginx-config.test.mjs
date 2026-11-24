@@ -159,3 +159,10 @@ test('nginx prod container healthcheck probes /health through the proxy', async 
   const block = composeServiceBlock(compose, 'nginx-prod') ?? '';
   assert.match(block, /https:\/\/127\.0\.0\.1\/health/);
 });
+
+test('pgbouncer stays out of the production profile (plan 2026-11-24 §0.5)', async () => {
+  const compose = await readFile(prodComposePath, 'utf8');
+  const block = composeServiceBlock(compose, 'pgbouncer') ?? '';
+  assert.match(block, /profiles: !override\n\s+- development\n/);
+  assert.doesNotMatch(block, /- production/);
+});
