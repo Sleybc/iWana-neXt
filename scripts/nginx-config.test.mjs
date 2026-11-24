@@ -120,7 +120,7 @@ test('nginx prod storage vhost only serves signed reads of the media bucket (D2 
   // La firma SigV4 incluye el host: se reenvía el que firmó la API.
   assert.match(bucket, /proxy_set_header Host \$host;/);
   assert.match(locationBody(block, '/') ?? '', /return 404;/);
-  assert.match(config, /upstream storage \{\s*server minio:9000;/);
+  assert.match(config, /upstream storage \{\s*zone storage 64k;\s*server minio:9000 resolve;/);
   // El resto de vhosts nunca llega a MinIO.
   for (const other of serverBlocks(config).filter(
     (item) => !item.includes('server_name archivos.'),
@@ -175,4 +175,14 @@ test('platform admin bootstrap only runs on demand and never under `production` 
   assert.match(block, /--output=\/bootstrap\/platform-admin\.txt/);
   assert.match(block, /read_only: true/);
   assert.match(block, /restart: 'no'/);
+});
+
+test('nginx re-resolves every upstream when a container is recreated', async () => {
+  const config = await readFile(prodConfigPath, 'utf8');
+  assert.match(config, /resolver 127\.0\.0\.11 valid=5s ipv6=off;/);
+  const upstreams = [...config.matchAll(/upstream (\w+) \{([^}]*)\}/g)];
+  assert.equal(upstreams.length, 4);
+  for (const [, name, body] of upstreams) {
+    assert.match(body, new RegExp(`zone ${name} 64k;\\s*server \\S+ resolve;`), name);
+  }
 });
