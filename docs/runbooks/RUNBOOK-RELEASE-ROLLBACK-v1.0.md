@@ -70,6 +70,37 @@ Mientras cualquiera de estos bloqueos afecte al entorno objetivo, el paso operat
 
 ---
 
+### 1.3 Piloto de consola por IP en la LAN
+
+1. En un host Linux con Docker Engine y Compose, reserva una IPv4 de la LAN de administración. Deja libres TCP 80 y 443 en esa IP. Limita el acceso a esos puertos desde el firewall de la red o con reglas que filtren los puertos publicados por Docker. Para el primer arranque con una base vacía, permite solo el equipo del operador y verifica el bloqueo desde otro equipo antes de crear el primer administrador desde la consola. Usa datos de prueba y volúmenes propios del piloto.
+2. Copia `.env.production.example` a `.env.pilot`, que Git ignora. Completa las credenciales, claves y referencias requeridas. Para un piloto con datos de prueba puedes usar las referencias de imagen concretas de `.env.example`. Deja `SMTP_HOST` vacío. Monta en una carpeta local `fullchain.pem` y `privkey.pem` emitidos por una CA interna, con la IPv4 en el SAN del certificado. Instala solo el certificado raíz de la CA en el equipo cliente. Conserva `COOKIE_SECURE=true`.
+3. Ajusta estas variables a la IP y a la carpeta elegidas. La URL relativa de la API se incorpora al construir la imagen web y permite servirla desde la misma IP o desde un dominio. El portal empresarial y los archivos firmados quedan fuera de la prueba por IP, aunque el stack arranca sus dependencias. Usa valores de prueba para sus orígenes de build, por ejemplo `NEXT_PUBLIC_PORTAL_API_URL=/api/v1` y `S3_PUBLIC_ENDPOINT=https://archivos.iwana.test`.
+
+   ```dotenv
+   PROXY_BIND_IP=192.0.2.50
+   PROXY_HTTP_PORT=80
+   PROXY_HTTPS_PORT=443
+   PROXY_TLS_DIR=./secrets/lan
+   NEXT_PUBLIC_WEB_API_URL=/api/v1
+   CORS_ORIGIN=https://192.0.2.50
+   FRONTEND_URL=https://192.0.2.50
+   ```
+
+4. Desde la raíz del repositorio, valida y arranca con los mismos dos archivos Compose. Usa un host dedicado al piloto o comprueba que los nombres y volúmenes del perfil `production` no pertenecen a otro despliegue en ese daemon. El orden de dependencias del perfil ejecuta el bootstrap del bucket y el migrador antes de arrancar la API.
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+     --profile production --env-file .env.pilot config --quiet
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+     --profile production --env-file .env.pilot up -d --build --wait
+   ```
+
+5. Desde el equipo cliente, abre `http://<IP-LAN>`. Comprueba que redirige a `https://<IP-LAN>`, que el navegador acepta el certificado y que `https://<IP-LAN>/api/v1/health` responde por la misma IP. Entra en la consola, completa el MFA cuando corresponda y recarga para verificar la sesión.
+
+**Paso posterior a VPS.** Usa los mismos archivos Compose con `.env.production`. Deja `PROXY_BIND_IP` vacío para conservar la publicación por defecto de Docker o fija la interfaz de entrada del VPS. Apunta los dominios aprobados al VPS. Si la base está vacía, restringe el 443 al equipo del operador hasta crear y verificar la cuenta inicial. Prepara el puerto 80 y el webroot de HTTP-01 según §8.2 y [ADR-095](../adrs/ADR-095-Topologia-Productiva-Dominio-TLS-Hosting.md). La configuración base de Nginx redirige el 80 a HTTPS.
+
+Crea una copia local de `nginx/nginx.prod.conf` fuera del repositorio. En esa copia, sustituye los nombres marcadores por los del portal y de archivos cuando estén aprobados. Configura `PROXY_NGINX_CONFIG` con la ruta a la copia, monta el certificado que cubra los nombres publicados con `PROXY_TLS_DIR` y actualiza `CORS_ORIGIN`, `FRONTEND_URL` y `S3_PUBLIC_ENDPOINT`. Si cambias las variables de build del navegador, reconstruye las imágenes afectadas según §5.2.
+
 ## 2. Registro de release y prerrequisitos
 
 Crear el registro de la ventana **fuera del repositorio** y sin secretos. Como mínimo debe contener:

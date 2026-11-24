@@ -115,13 +115,24 @@ const CREATED_TASK = {
 } as never;
 
 describe('TaskIntakeClient', () => {
+  // El typeahead del responsable espera 300 ms de debounce (CA-PICK-02). Con
+  // reloj real ese tiempo se come el presupuesto de 1 s de `findByRole` cuando
+  // el runner va lento (medido: 345 ms en local sin carga); con reloj falso el
+  // debounce y la espera corren en tiempo virtual y la prueba no depende de la
+  // carga de la máquina. Mismo criterio que CreateTaskSchedulingDialog.spec.
   beforeEach(() => {
+    jest.useFakeTimers();
     mockPush.mockClear();
     mockReplace.mockClear();
     // URL de llegada limpia: los casos de M3.1 la sobreescriben con su
     // `returnTo` (el mock de `useSearchParams` lee `window.location.search`).
     window.history.pushState({}, '', '/dashboard/operations/tasks/new');
     jest.mocked(tasksApi.create).mockResolvedValue(CREATED_TASK);
+  });
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
   });
 
   it('muestra el panel de alta con su acción principal "Crear tarea"', async () => {
@@ -133,7 +144,7 @@ describe('TaskIntakeClient', () => {
   });
 
   it('D-A3: el alta exitosa redirige a /tasks?taskId=<nuevo> sin alerta de éxito', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
 
     render(<TaskIntakeClient />);
 
@@ -159,7 +170,7 @@ describe('TaskIntakeClient', () => {
   });
 
   it('M3.1: el alta exitosa restaura el estado de origen con el detalle abierto', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const returnTo = '/dashboard/operations/tasks?status=OPEN&page=3';
     window.history.pushState(
       {},
@@ -183,7 +194,7 @@ describe('TaskIntakeClient', () => {
   });
 
   it('M3.1: cancelar vuelve al estado de origen sin parámetro de detalle', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const returnTo = '/dashboard/operations/tasks?status=OPEN&page=3&taskId=task-previa';
     window.history.pushState(
       {},
@@ -198,7 +209,7 @@ describe('TaskIntakeClient', () => {
   });
 
   it('cancelar sin returnTo vuelve a la bandeja por defecto', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
 
     render(<TaskIntakeClient />);
     await user.click(screen.getByRole('button', { name: 'Cancelar' }));
@@ -207,7 +218,7 @@ describe('TaskIntakeClient', () => {
   });
 
   it('descarta un returnTo que no apunte a la bandeja de tareas', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     window.history.pushState(
       {},
       '',

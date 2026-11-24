@@ -38,6 +38,18 @@ function locationBody(block, header) {
   return block.slice(start, end);
 }
 
+test('nginx redirects IP access to HTTPS and routes the default host to web and API', async () => {
+  const config = await readFile(prodConfigPath, 'utf8');
+  const blocks = serverBlocks(config);
+  const http = blocks.find((block) => block.includes('listen 80 default_server;'));
+  const https = blocks.find((block) => block.includes('listen 443 ssl default_server;'));
+
+  assert.match(http ?? '', /return 301 https:\/\/\$host\$request_uri;/);
+  assert.ok(https, 'falta el sitio HTTPS predeterminado');
+  assert.match(locationBody(https, '/') ?? '', /proxy_pass http:\/\/web;/);
+  assert.match(locationBody(https, '/api/') ?? '', /proxy_pass http:\/\/api;/);
+});
+
 test('nginx prod keeps 10M as the vhost body limit and widens only the bounded routes', async () => {
   const config = await readFile(prodConfigPath, 'utf8');
   const tlsBlocks = serverBlocks(config).filter(

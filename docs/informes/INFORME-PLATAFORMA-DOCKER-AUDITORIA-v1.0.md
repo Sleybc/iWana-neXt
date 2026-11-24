@@ -15,6 +15,10 @@
 > 1. **B4 gana consumidor y pierde una opción de diseño.** Sigue **Delegado y abierto** en §2.1 y §7 — este frente **no lo cierra**. Pero la sonda `background` de la nueva superficie de estado de arranque leerá la marca de vida del worker, y por eso la elección de medio que `PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md` dejaba abierta **queda cerrada a favor de Redis**: la API debe leerla desde otro contenedor, y un archivo local del worker no es observable desde allí. Desempate registrado en ADR-079 §Consecuencias.
 > 2. **La condición de dependencia de `nginx-prod` cambiará, y con ella su probe.** ADR-079 Decisión 4 relaja las condiciones `service_healthy` sobre `api-prod`, `web-prod` y `portal-prod` para que el proxy pueda servir una pantalla de arranque durante las migraciones. **No es una regresión del endurecimiento que este informe respaldó**: el error 502 que aquella decisión evitaba deja de ser observable porque se sustituye por la pantalla. La relajación es inseparable de mover el healthcheck de `nginx-prod` de `/` a `/health` — sin eso, el contenedor se declararía sano sirviendo una pantalla de "arrancando".
 
+> **Piloto LAN — 2026-11-23.** El mismo Compose permite fijar la IPv4 de Nginx y montar TLS y configuración desde rutas locales. La [operación del piloto y el paso a VPS](../runbooks/RUNBOOK-RELEASE-ROLLBACK-v1.0.md#13-piloto-de-consola-por-ip-en-la-lan) mantienen HTTPS y cookies seguras. `docker compose config --quiet` validó la configuración base, LAN y VPS. `node --test scripts/nginx-config.test.mjs` pasó de 5/5 en la línea base (`11138acc`) a 6/6, con 0 omitidas en ambas corridas. En Docker, Nginx redirigió HTTP, validó TLS por IP y enrutó a web, API y portal según el origen con servicios de prueba.
+>
+> Pendientes del piloto: arranque del stack completo en el servidor LAN y prueba desde otro equipo con inicio de sesión, MFA y renovación de sesión.
+
 ## 1. Objetivo y alcance
 
 El informe de limpieza del 2026-08-02 cerró la higiene del daemon local y dejó

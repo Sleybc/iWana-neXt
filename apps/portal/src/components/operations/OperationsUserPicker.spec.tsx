@@ -45,12 +45,21 @@ function renderPicker(props: Partial<ComponentProps<typeof OperationsUserPicker>
 }
 
 describe('OperationsUserPicker', () => {
+  // El typeahead de personas espera 300 ms de debounce (CA-PICK-02): reloj falso
+  // para que `findByRole` no dependa de la carga del runner (ver
+  // CreateTaskSchedulingDialog.spec).
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.clearAllMocks();
   });
 
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+  });
+
   it('busca con el typeahead canónico (q + límite ≤20) y entrega la selección', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     jest.mocked(usersApi.searchForPicker).mockResolvedValue({
       data: [{ id: 'user-001', label: 'Carlos López', sublabel: 'Técnico' }],
       total: 1,
@@ -74,7 +83,7 @@ describe('OperationsUserPicker', () => {
   });
 
   it('D-P1 (Salida 2): un 403 muestra el aviso visible y accionable, nunca silencioso', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     jest
       .mocked(usersApi.searchForPicker)
       .mockRejectedValue(new ApiError(403, 'FORBIDDEN', 'Sin permiso'));
@@ -91,7 +100,7 @@ describe('OperationsUserPicker', () => {
   });
 
   it('un error distinto de 403 sí escala al estado de error del picker con reintento', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     jest
       .mocked(usersApi.searchForPicker)
       .mockRejectedValue(new ApiError(500, 'INTERNAL', 'Fallo interno'));

@@ -83,13 +83,22 @@ jest.mock('@iwana/ui', () => {
 });
 
 describe('TaskForm', () => {
+  // El typeahead de personas espera 300 ms de debounce (CA-PICK-02): reloj falso
+  // para que `findByRole` no dependa de la carga del runner (ver
+  // CreateTaskSchedulingDialog.spec).
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
   });
 
   it('submits task form with responsible and recipient fields', async () => {
     const onSubmit = jest.fn().mockResolvedValue(undefined);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
 
     render(
       <TaskForm
@@ -123,7 +132,7 @@ describe('TaskForm', () => {
 
   it('requires due date when execution mode is due date', async () => {
     const onSubmit = jest.fn().mockResolvedValue(undefined);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
 
     render(
       <TaskForm
@@ -146,15 +155,19 @@ describe('TaskForm', () => {
     await user.selectOptions(screen.getByLabelText('Destinatario'), 'operations-area');
     await user.click(screen.getByRole('button', { name: 'Crear tarea' }));
 
-    expect(
-      screen.getByText('La fecha objetivo es obligatoria para este modo de ejecución.'),
-    ).toBeInTheDocument();
+    // La validación de react-hook-form es asíncrona; con reloj falso la
+    // espera es explícita en vez de depender de un macrotask real.
+    await waitFor(() => {
+      expect(
+        screen.getByText('La fecha objetivo es obligatoria para este modo de ejecución.'),
+      ).toBeInTheDocument();
+    });
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('loads prospect recipients from existing crm records', async () => {
     const onSubmit = jest.fn().mockResolvedValue(undefined);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
 
     render(
       <TaskForm
@@ -202,7 +215,7 @@ describe('TaskForm', () => {
 
   it('loads subscriber recipients from existing records', async () => {
     const onSubmit = jest.fn().mockResolvedValue(undefined);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
 
     render(
       <TaskForm
@@ -249,7 +262,7 @@ describe('TaskForm', () => {
   });
 
   it('offers follow-up scheduling actions for tasks that require a visit', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
 
     render(
       <TaskForm
@@ -289,7 +302,7 @@ describe('TaskForm', () => {
 
   it('submits ticketId and assurance origin when initialized from a ticket', async () => {
     const onSubmit = jest.fn().mockResolvedValue(undefined);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
 
     render(
       <TaskForm
@@ -326,7 +339,7 @@ describe('TaskForm', () => {
 
   it('ofrece «Cancelar» (secundaria) en el pie de creación y delega en onCancel', async () => {
     const onCancel = jest.fn();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
 
     render(
       <TaskForm

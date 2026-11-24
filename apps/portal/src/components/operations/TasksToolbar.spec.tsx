@@ -49,9 +49,18 @@ function renderToolbar(props: Partial<ComponentProps<typeof TasksToolbar>> = {})
 }
 
 describe('TasksToolbar', () => {
+  // El typeahead de personas espera 300 ms de debounce (CA-PICK-02): reloj falso
+  // para que `findByRole` no dependa de la carga del runner (ver
+  // CreateTaskSchedulingDialog.spec).
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.clearAllMocks();
     jest.mocked(usersApi.searchForPicker).mockResolvedValue({ data: [], total: 0 } as never);
+  });
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
   });
 
   it('monta estado, tipo, responsable y ticket (filtros ampliados de F5)', () => {
@@ -76,7 +85,7 @@ describe('TasksToolbar', () => {
   });
 
   it('emite el patch de estado y de tipo con los enums del contrato', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const { onFilterChange } = renderToolbar();
 
     await user.click(screen.getByRole('combobox', { name: 'Estado' }));
@@ -89,7 +98,7 @@ describe('TasksToolbar', () => {
   });
 
   it('el filtro de ticket es exacto: no emite al teclear, solo al confirmar con Enter', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const { onFilterChange } = renderToolbar();
 
     const ticketInput = screen.getByLabelText('Ticket');
@@ -101,7 +110,7 @@ describe('TasksToolbar', () => {
   });
 
   it('el filtro de ticket confirma al salir del campo y recorta espacios', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const { onFilterChange } = renderToolbar();
 
     const ticketInput = screen.getByLabelText('Ticket');
@@ -121,7 +130,7 @@ describe('TasksToolbar', () => {
   });
 
   it('el responsable usa el typeahead y emite su id al seleccionar', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     jest.mocked(usersApi.searchForPicker).mockResolvedValue({
       data: [{ id: 'user-001', label: 'Laura Ruiz' }],
       total: 1,
@@ -145,7 +154,7 @@ describe('TasksToolbar', () => {
   });
 
   it('«Limpiar filtros» aparece solo con filtros activos y emite onClearFilters', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     renderToolbar();
     expect(screen.queryByRole('button', { name: 'Limpiar filtros' })).not.toBeInTheDocument();
 
