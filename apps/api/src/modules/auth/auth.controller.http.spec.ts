@@ -400,6 +400,31 @@ describe('AuthController HTTP', () => {
   // detecta. Por eso se verifica sobre la respuesta HTTP real.
   // ---------------------------------------------------------------------------
 
+  describe('POST /api/v1/auth/login — contraseña temporal (ADR-117)', () => {
+    it('serializa el indicador, no emite sesión y borra la anterior', async () => {
+      mockAuthService.login.mockResolvedValue({
+        accessToken: 'jwt-scoped-tenant',
+        passwordResetRequired: true,
+        refreshToken: '',
+      });
+
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .set('X-Tenant-Slug', 'isp-demo')
+        .send({ email: 'admin@example.test', password: 'Passw0rd!!' })
+        .expect(200);
+
+      expect(response.body).toEqual({
+        data: { accessToken: 'jwt-scoped-tenant', passwordResetRequired: true },
+      });
+      const cookies = response.headers['set-cookie'] as unknown as string[];
+      expect(cookies).toHaveLength(2);
+      for (const cookie of cookies) {
+        expect(cookie).toMatch(/=; .*Expires=Thu, 01 Jan 1970/);
+      }
+    });
+  });
+
   describe('POST /api/v1/auth/platform/login — indicador de cambio forzado', () => {
     it('serializa passwordResetRequired=true en el cuerpo de la respuesta', async () => {
       mockAuthService.loginPlatform.mockResolvedValue({

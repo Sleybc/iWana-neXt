@@ -496,6 +496,39 @@ export class AuthService {
           }
         }
 
+        // Un restablecimiento simultáneo (que bloquea primero esta fila) no puede dejar viva la
+        // sesión que se está emitiendo: se bloquea y se comprueba que la credencial sigue vigente.
+        const locked = await qr.manager.findOne(User, {
+          where: { id: user.id },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (
+          !locked ||
+          locked.passwordHash !== user.passwordHash ||
+          locked.status !== user.status ||
+          locked.passwordResetRequired !== user.passwordResetRequired
+        ) {
+          throw new UnauthorizedException('Credenciales invalidas.');
+        }
+
+        // ADR-117 D1: la contraseña temporal solo sirve para cambiarla, antes de configurar MFA.
+        if (user.passwordResetRequired) {
+          const { accessToken } = this.signAccessToken(user, 'password-change');
+          void this.auditService.log({
+            action: AuditAction.LOGIN,
+            entityType: 'User',
+            entityId: user.id,
+            userId: user.id,
+            newValue: { alcance: 'CAMBIO_OBLIGATORIO' },
+            ipAddress: ipAddress ?? null,
+            userAgent: userAgent ?? null,
+          });
+          return {
+            kind: 'success',
+            response: { accessToken, passwordResetRequired: true, refreshToken: '' },
+          };
+        }
+
         // Enforcement MFA por rol critico: si el rol requiere MFA pero no esta configurado,
         // emitir token de alcance limitado (scope='mfa-setup') en lugar de tokens completos.
         // RF-AUTH-04, RF-MFA-04 (HLD-MOD02 §3.2 — DA-MOD02-01)
@@ -596,7 +629,7 @@ export class AuthService {
   ): Promise<{ accessToken: string; refreshToken: string }> {
     const { schemaName } = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+    const tokens = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const tokenHash = this.hashToken(rawRefreshToken);
 
       const existing = await qr.manager.findOne(RefreshToken, {
@@ -610,19 +643,23 @@ export class AuthService {
 
       // Detectar reuse attack: token ya revocado
       if (existing.revokedAt !== null) {
+        // Bloqueo antes de revocar: una rotación simultánea no deja vivo a su sucesor.
+        await qr.manager.findOne(User, {
+          where: { id: existing.userId },
+          lock: { mode: 'pessimistic_write' },
+        });
         // Revocar toda la familia de tokens de la sesion comprometida
         await qr.manager.update(
           RefreshToken,
-          { familyId: existing.familyId, revokedAt: undefined },
+          { familyId: existing.familyId, revokedAt: IsNull() },
           { revokedAt: new Date(), revokeReason: 'REUSE_ATTACK' },
         );
         // Solo el prefijo del familyId: diagnosticable sin exponer el identificador completo.
         this.logger.warn(
           `REFRESH_REUSE_DETECTED — familia ${existing.familyId.slice(0, 8)} revocada (tenant).`,
         );
-        throw new UnauthorizedException(
-          'Sesion invalida detectada. Se cerraron todas las sesiones activas.',
-        );
+        // La excepción se lanza tras el commit: dentro, el rollback desharía la revocación.
+        return null;
       }
 
       // Verificar expiracion
@@ -632,17 +669,27 @@ export class AuthService {
       }
 
       // Buscar el usuario para emitir nuevo access token
-      const user = await qr.manager.findOne(User, { where: { id: existing.userId } });
-      if (!user || user.status !== UserStatus.ACTIVE) {
+      // Fila bloqueada: un restablecimiento simultáneo espera y revoca también al sucesor, o ya
+      // terminó y la revocación condicional de abajo no afecta filas (ADR-117 D5).
+      const user = await qr.manager.findOne(User, {
+        where: { id: existing.userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!user || user.status !== UserStatus.ACTIVE || user.passwordResetRequired) {
         this.logger.warn('REFRESH_USER_UNAVAILABLE — usuario de tenant ausente o inactivo.');
         throw new UnauthorizedException('Usuario no disponible.');
       }
 
       // Revocar el token actual (rotacion)
-      await qr.manager.update(RefreshToken, existing.id, {
-        revokedAt: new Date(),
-        revokeReason: 'ROTATION',
-      });
+      const rotated = await qr.manager.update(
+        RefreshToken,
+        { id: existing.id, revokedAt: IsNull() },
+        { revokedAt: new Date(), revokeReason: 'ROTATION' },
+      );
+      if (rotated.affected !== 1) {
+        this.logger.warn('REFRESH_RACE_LOST — el refresh de tenant se revocó en paralelo.');
+        throw new UnauthorizedException('Refresh token invalido.');
+      }
 
       // Emitir nuevo access token y nuevo refresh token
       const { accessToken } = this.signAccessToken(user);
@@ -666,6 +713,13 @@ export class AuthService {
 
       return { accessToken, refreshToken: newRawRefreshToken };
     });
+
+    if (!tokens) {
+      throw new UnauthorizedException(
+        'Sesion invalida detectada. Se cerraron todas las sesiones activas.',
+      );
+    }
+    return tokens;
   }
 
   // ---------------------------------------------------------------------------
@@ -1198,6 +1252,8 @@ export class AuthService {
       // UISP solo se activa con la invitación del administrador (spec «usuarios» §2.4, U3).
       // Misma respuesta que un correo inexistente: no revela el estado.
       if (user.status === UserStatus.PENDING_VERIFICATION) return;
+      // ADR-117 D6: una cuenta activada por contraseña temporal no probó que el buzón sea suyo.
+      if (!user.emailVerified) return;
 
       const token = crypto.randomBytes(32).toString('hex');
       const tokenExpiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS);
@@ -1283,7 +1339,7 @@ export class AuthService {
       // Revocar todos los refresh tokens activos del usuario
       await qr.manager.update(
         RefreshToken,
-        { userId: user.id, revokedAt: undefined },
+        { userId: user.id, revokedAt: IsNull() },
         { revokedAt: new Date(), revokeReason: 'PASSWORD_CHANGE' },
       );
 
@@ -1336,7 +1392,11 @@ export class AuthService {
       this.dataSource,
       schemaName,
       async (qr): Promise<ChangePasswordFailedOutcome | null> => {
-        const user = await qr.manager.findOne(User, { where: { id: userId } });
+        // Bloqueada: un restablecimiento simultáneo no se pisa.
+        const user = await qr.manager.findOne(User, {
+          where: { id: userId },
+          lock: { mode: 'pessimistic_write' },
+        });
         if (!user) throw new NotFoundException('Usuario no encontrado.');
 
         // P-09: contador de fallos por cuenta — mismos umbrales del login
@@ -1358,19 +1418,32 @@ export class AuthService {
           };
         }
 
+        if (user.passwordResetRequired && dto.newPassword === dto.currentPassword) {
+          throw new BadRequestException('Elige una contraseña diferente de la temporal.');
+        }
+
         const newHash = await bcrypt.hash(dto.newPassword, 12);
+
+        // ADR-117 D3: el cambio obligatorio activa la cuenta; el correo sigue sin verificar.
+        const activatesAccount =
+          user.passwordResetRequired && user.status === UserStatus.PENDING_VERIFICATION;
 
         await qr.manager.update(User, userId, {
           passwordHash: newHash,
           passwordResetRequired: false,
+          passwordResetExpiresAt: null,
+          // Un enlace de recuperación anterior al cambio no sigue canjeable.
+          passwordResetToken: null,
+          passwordResetTokenExpiresAt: null,
           failedLoginAttempts: 0,
           lockedUntil: null,
+          ...(activatesAccount ? { status: UserStatus.ACTIVE } : {}),
         });
 
         // Revocar todos los refresh tokens activos del usuario
         await qr.manager.update(
           RefreshToken,
-          { userId, revokedAt: undefined },
+          { userId, revokedAt: IsNull() },
           { revokedAt: new Date(), revokeReason: 'PASSWORD_CHANGE' },
         );
 
@@ -1390,6 +1463,7 @@ export class AuthService {
           entityType: 'User',
           entityId: userId,
           userId,
+          ...(activatesAccount ? { newValue: { status: UserStatus.ACTIVE } } : {}),
         });
 
         return null;
@@ -1743,9 +1817,13 @@ export class AuthService {
    * @param user - Entidad User del tenant
    * @param scope - Si es 'mfa-setup', emite un token de alcance limitado que solo
    *   permite acceder a /auth/mfa/setup y /auth/mfa/verify. Usar cuando un rol
-   *   critico (ADMIN, NOC, ACCOUNTANT) no tiene MFA configurado.
+   *   critico (ADMIN, NOC, ACCOUNTANT) no tiene MFA configurado. Con 'password-change'
+   *   solo alcanza /auth/change-password (ADR-117).
    */
-  private signAccessToken(user: User, scope?: 'mfa-setup'): { accessToken: string; jti: string } {
+  private signAccessToken(
+    user: User,
+    scope?: 'mfa-setup' | 'password-change',
+  ): { accessToken: string; jti: string } {
     const jti = crypto.randomUUID();
     const tenantContext = TenantContext.getOrThrow();
     const payload: Omit<JwtPayload, 'iat' | 'exp'> = {

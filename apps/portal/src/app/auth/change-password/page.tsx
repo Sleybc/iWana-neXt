@@ -26,8 +26,8 @@ import {
  * Se muestra cuando un suscriptor o usuario del tenant inicia sesion con
  * credenciales temporales asignadas por el administrador (passwordResetRequired=true).
  *
- * Flujo: login → AuthProvider detecta passwordResetRequired → redirige aqui
- * → usuario cambia contrasena → redirige a /dashboard.
+ * Flujo: login → token limitado en memoria (ADR-117) → redirige aqui
+ * → usuario cambia contrasena → vuelve a /auth/login.
  */
 export default function ChangePasswordPage() {
   const router = useRouter();
@@ -47,14 +47,19 @@ export default function ChangePasswordPage() {
   const onSubmit = async (data: ChangePasswordFormValues) => {
     setServerError(null);
     try {
-      await authApi.changePassword(data.currentPassword, data.newPassword);
-      // Tras cambio obligatorio, el backend invalida la sesion. Forzamos limpieza local y re-login.
-      await authApi.logout();
+      await authApi.changeTemporaryPassword(data.currentPassword, data.newPassword);
+      // No hay sesión que cerrar: se vuelve a entrar con la contraseña nueva.
       router.push('/auth/login');
     } catch (err) {
       if (err instanceof ApiError) {
-        if (err.status === 401) {
-          setServerError('La contrasena actual es incorrecta.');
+        if (err.code === 'PASSWORD_CHANGE_TOKEN_MISSING') {
+          setServerError(err.message);
+        } else if (err.status === 401) {
+          setServerError(
+            'La contraseña temporal no es correcta o el tiempo para cambiarla terminó. Si la escribiste bien, inicia sesión de nuevo.',
+          );
+        } else if (err.status === 400) {
+          setServerError('Elige una contraseña nueva, distinta de la temporal.');
         } else {
           setServerError('Ocurrio un error al cambiar la contrasena. Intenta de nuevo.');
         }

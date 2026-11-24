@@ -430,6 +430,9 @@ let inMemoryAccessToken: string | null = null;
  */
 let inMemoryMfaSetupToken: string | null = null;
 
+/** Token de alcance limitado `password-change`, solo en memoria (ADR-117 D2). */
+let inMemoryPasswordChangeToken: string | null = null;
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -1280,11 +1283,13 @@ export const networkApi = {
 
 export const authApi = {
   tenantLogin: async (email: string, password: string, tenantSlug?: string, totpCode?: string) => {
+    inMemoryPasswordChangeToken = null;
     const resolvedTenantSlug = getTenantSlug(tenantSlug);
     const response = await request<{
       accessToken: string;
       mfaRequired?: boolean;
       mfaSetupRequired?: boolean;
+      passwordResetRequired?: boolean;
     }>(
       '/auth/login',
       {
@@ -1299,7 +1304,10 @@ export const authApi = {
     // Persistimos el ultimo tenant valido para reutilizarlo en MFA y reingresos.
     persistTenantSlug(resolvedTenantSlug);
 
-    if (response.mfaSetupRequired && response.accessToken) {
+    if (response.passwordResetRequired && response.accessToken) {
+      inMemoryPasswordChangeToken = response.accessToken;
+      persistAccessToken('');
+    } else if (response.mfaSetupRequired && response.accessToken) {
       // Token de alcance limitado: almacenar por separado, NO como token de sesion
       persistMfaSetupToken(response.accessToken);
       persistAccessToken('');
@@ -1365,6 +1373,48 @@ export const authApi = {
       tenantSlug,
     ),
 
+  /**
+   * Cambio obligatorio de la contraseña temporal con el token limitado del ingreso
+   * (ADR-117). No usa la sesión ni su renovación: todavía no existe.
+   */
+  changeTemporaryPassword: async (
+    currentPassword: string,
+    newPassword: string,
+    tenantSlug?: string,
+  ) => {
+    if (!inMemoryPasswordChangeToken) {
+      throw new ApiError(
+        401,
+        'PASSWORD_CHANGE_TOKEN_MISSING',
+        'El tiempo para cambiar la contraseña terminó. Inicia sesión de nuevo.',
+      );
+    }
+
+    const res = await fetch(`${resolveApiBase()}/auth/change-password`, {
+      method: 'POST',
+      headers: new Headers({
+        'Content-Type': 'application/json',
+        'X-Tenant-Slug': getTenantSlug(tenantSlug),
+        Authorization: `Bearer ${inMemoryPasswordChangeToken}`,
+        'X-Requested-With': 'XMLHttpRequest',
+      }),
+      body: JSON.stringify({ currentPassword, newPassword }),
+      credentials: 'include',
+    });
+
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      throw new ApiError(
+        res.status,
+        typeof body['code'] === 'string' ? body['code'] : 'UNKNOWN',
+        typeof body['message'] === 'string'
+          ? body['message']
+          : 'No fue posible cambiar la contraseña.',
+      );
+    }
+    inMemoryPasswordChangeToken = null;
+  },
+
   logout: async (tenantSlug?: string) => {
     try {
       await request<{ message: string }>('/auth/logout', { method: 'POST' }, tenantSlug);
@@ -1378,6 +1428,7 @@ export const authApi = {
       persistTenantSlug('');
       clearPendingTenantMfaLogin();
       clearMfaSetupTokenFromMemory();
+      inMemoryPasswordChangeToken = null;
     }
   },
 

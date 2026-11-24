@@ -75,7 +75,9 @@ function setupAdminFirstAccessMocks() {
           await route.fulfill({
             status: 200,
             contentType: 'application/json',
-            body: JSON.stringify({ data: { accessToken: 'mock-token-temporal' } }),
+            body: JSON.stringify({
+              data: { accessToken: 'mock-token-temporal', passwordResetRequired: true },
+            }),
           });
           return;
         }

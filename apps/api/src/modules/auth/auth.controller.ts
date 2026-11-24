@@ -149,8 +149,19 @@ export class AuthController {
     // Cookie de access (ADR-081): solo cuando el login fue completo. El token
     // de alcance limitado (mfa-setup) queda fuera de la cookie: vive en memoria
     // en el cliente (decision 6 del ADR), nunca en almacenamiento persistente.
-    if (!result.mfaRequired && !result.mfaSetupRequired && result.accessToken) {
+    if (
+      !result.mfaRequired &&
+      !result.mfaSetupRequired &&
+      !result.passwordResetRequired &&
+      result.accessToken
+    ) {
       res.cookie(tenantAccessCookieName(), result.accessToken, this.accessCookieOptions());
+    }
+
+    // ADR-117: sin esto, la sesión anterior de otra persona en el mismo navegador seguiría viva.
+    if (result.passwordResetRequired) {
+      res.clearCookie(tenantAccessCookieName(), { path: '/' });
+      res.clearCookie(tenantRefreshCookieName(), { path: REFRESH_COOKIE_PATH });
     }
 
     if (!result.mfaRequired && result.refreshToken) {
@@ -165,6 +176,7 @@ export class AuthController {
         // Propagado al cliente para que el portal redirija al flujo de MFA setup
         // sin intentar llamar a /auth/me con un token de alcance limitado.
         ...(result.mfaSetupRequired ? { mfaSetupRequired: true } : {}),
+        ...(result.passwordResetRequired ? { passwordResetRequired: true } : {}),
       },
     };
   }

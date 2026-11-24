@@ -192,6 +192,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const result = await authApi.tenantLogin(email, password, resolvedTenantSlug);
 
+      // Contraseña temporal: token limitado en memoria, sin sesión (ADR-117).
+      if (result.passwordResetRequired) {
+        setUser(null);
+        clearPendingTenantMfaLogin();
+        return 'password_reset_required';
+      }
+
       // Rol critico sin MFA configurado: token de alcance limitado ya persistido en api-client
       // El usuario NO queda autenticado — user permanece null
       if (result.mfaSetupRequired) {
@@ -256,6 +263,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (result.mfaRequired) {
       throw new ApiError(401, 'MFA_CODE_INVALID', 'Código incorrecto. Intenta de nuevo.');
+    }
+
+    if (result.passwordResetRequired) {
+      setUser(null);
+      clearPendingTenantMfaLogin();
+      return 'password_reset_required';
     }
 
     const profile = await authApi.me(pendingLogin.tenantSlug);

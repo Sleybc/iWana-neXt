@@ -123,6 +123,7 @@ function buildUser(overrides: Partial<User> = {}): User {
     passwordResetToken: null,
     passwordResetExpiresAt: null,
     passwordResetTokenExpiresAt: null,
+    emailVerified: true,
     passwordResetRequired: false,
     createdAt: new Date('2025-01-01'),
     updatedAt: new Date('2025-01-01'),
@@ -508,9 +509,57 @@ describe('AuthService', () => {
       // El token antiguo debe haberse revocado
       expect(manager.update).toHaveBeenCalledWith(
         RefreshToken,
-        tokenEntity.id,
+        { id: tokenEntity.id, revokedAt: IsNull() },
         expect.objectContaining({ revokedAt: expect.any(Date) }),
       );
+    });
+
+    it.each([
+      ['se revocó en paralelo', { affected: 0 }, {}],
+      [
+        'la cuenta tiene un cambio de contraseña pendiente',
+        { affected: 1 },
+        { passwordResetRequired: true },
+      ],
+    ])('no emite tokens si %s', async (_caso, updated, overrides) => {
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'rt-1',
+            userId: 'user-uuid-1',
+            familyId: 'family-uuid-1',
+            revokedAt: null,
+            expiresAt: new Date(Date.now() + 86400000),
+          })
+          .mockResolvedValueOnce(buildUser(overrides as Partial<User>)),
+        update: jest.fn().mockResolvedValue(updated),
+      });
+
+      await expect(service.refreshTokens('f'.repeat(96))).rejects.toThrow(UnauthorizedException);
+      expect(manager['save']).not.toHaveBeenCalled();
+    });
+
+    it('confirma la revocación por reuso: la excepción sale después de la transacción', async () => {
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue({
+          id: 'rt-old',
+          userId: 'user-uuid-1',
+          familyId: 'family-uuid-1',
+          revokedAt: new Date(),
+          expiresAt: new Date(Date.now() + 86400000),
+        }),
+      });
+      const run = mockRunInTenantSchema.getMockImplementation()!;
+      let committed = false;
+      mockRunInTenantSchema.mockImplementation(async (...args) => {
+        const result = await run(...args);
+        committed = true;
+        return result;
+      });
+
+      await expect(service.refreshTokens('g'.repeat(96))).rejects.toThrow(UnauthorizedException);
+      expect(committed).toBe(true);
     });
 
     it('revoca la familia completa ante reuse attack (token ya revocado)', async () => {
@@ -1618,6 +1667,15 @@ describe('AuthService', () => {
       expect(mailerService.sendMail).not.toHaveBeenCalled();
     });
 
+    it('ADR-117 D6: no emite enlace a un correo sin verificar; respuesta idéntica', async () => {
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(buildUser({ emailVerified: false })),
+      });
+
+      await expect(service.forgotPassword({ email: 'a@demo.co' })).resolves.toBeUndefined();
+      expect(manager['update']).not.toHaveBeenCalled();
+    });
+
     it('genera el token de reset y envia el correo cuando el usuario existe', async () => {
       const user = buildUser();
 
@@ -1845,6 +1903,91 @@ describe('AuthService', () => {
       expect(mailerService.sendMail).toHaveBeenCalledWith(
         expect.objectContaining({ to: 'usuario@example.com' }),
       );
+    });
+  });
+
+  describe('contraseña temporal del portal (ADR-117)', () => {
+    const temporary = (overrides: Partial<User> = {}) =>
+      buildUser({ passwordResetRequired: true, mfaRequired: true, ...overrides });
+
+    it('entrega solo el token password-change, sin refresh y antes de configurar MFA', async () => {
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(temporary()),
+      });
+
+      const result = await service.login({ email: 'a@demo.co', password: 'Temporal1!' });
+
+      expect(result).toEqual({
+        accessToken: 'mock.jwt.token',
+        passwordResetRequired: true,
+        refreshToken: '',
+      });
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ scope: 'password-change', type: 'tenant' }),
+        expect.anything(),
+      );
+      expect(manager['save']).not.toHaveBeenCalled();
+    });
+
+    it('con MFA activo exige el código antes de entregar el token', async () => {
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(temporary({ mfaEnabled: true })),
+      });
+      jwtService.sign.mockClear();
+
+      const result = await service.login({ email: 'a@demo.co', password: 'Temporal1!' });
+
+      expect(result).toEqual({ accessToken: '', mfaRequired: true, refreshToken: '' });
+      expect(jwtService.sign).not.toHaveBeenCalled();
+    });
+
+    it('no emite nada si la contraseña se restableció mientras se validaba', async () => {
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      setupRunInTenantSchema({
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(buildUser())
+          .mockResolvedValueOnce(buildUser({ passwordHash: 'otro-hash' })),
+      });
+
+      await expect(service.login({ email: 'a@demo.co', password: 'Passw0rd!' })).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it.each([
+      ['activa una cuenta pendiente', UserStatus.PENDING_VERIFICATION, true, UserStatus.ACTIVE],
+      ['no toca una cuenta suspendida', UserStatus.SUSPENDED, true, undefined],
+      ['sin cambio obligatorio no activa', UserStatus.PENDING_VERIFICATION, false, undefined],
+    ])('el cambio %s', async (_caso, status, passwordResetRequired, expected) => {
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      const user = buildUser({ status, passwordResetRequired });
+      const { manager } = setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(user) });
+
+      await service.changePassword(tenantActor(user.id), {
+        currentPassword: 'Temporal1!',
+        newPassword: 'Definitiva1!',
+      });
+
+      const [, , patch] = manager['update']!.mock.calls[0] as [unknown, unknown, Partial<User>];
+      expect(patch.status).toBe(expected);
+      expect(patch).not.toHaveProperty('emailVerified');
+    });
+
+    it('rechaza repetir la contraseña temporal', async () => {
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      const user = temporary();
+      const { manager } = setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(user) });
+
+      await expect(
+        service.changePassword(tenantActor(user.id), {
+          currentPassword: 'Temporal1!',
+          newPassword: 'Temporal1!',
+        }),
+      ).rejects.toThrow('diferente de la temporal');
+      expect(manager['update']).not.toHaveBeenCalled();
     });
   });
 
