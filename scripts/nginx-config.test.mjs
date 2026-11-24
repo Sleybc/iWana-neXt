@@ -128,3 +128,34 @@ test('nginx prod storage vhost only serves signed reads of the media bucket (D2 
     assert.doesNotMatch(other, /proxy_pass http:\/\/storage/);
   }
 });
+
+// ── Healthchecks de las imágenes propias (H1, plan 2026-11-24 §0.1) ─────────
+// Las imágenes de api, web, portal y worker son node:*-slim sin wget ni curl: un
+// probe con esas herramientas deja el servicio `unhealthy` y bloquea a nginx.
+const prodComposePath = fileURLToPath(new URL('../docker-compose.prod.yml', import.meta.url));
+
+function composeServiceBlock(compose, name) {
+  const start = compose.indexOf(`\n  ${name}:\n`);
+  if (start === -1) return null;
+  const rest = compose.slice(start + 1);
+  const next = rest.slice(1).search(/\n {2}[a-z][\w-]*:\n/);
+  return next === -1 ? rest : rest.slice(0, next + 1);
+}
+
+test('compose prod healthchecks of own images do not call wget or curl', async () => {
+  const compose = await readFile(prodComposePath, 'utf8');
+  for (const name of ['api-prod', 'web-prod', 'portal-prod', 'worker-prod']) {
+    const block = composeServiceBlock(compose, name);
+    assert.ok(block, `falta el servicio ${name}`);
+    assert.match(block, /image: \$\{IMAGE_REPOSITORY:-iwana\}\//, name);
+    const healthcheck = block.match(/\n {4}healthcheck:\n([\s\S]*?)\n {4}[a-z_]+:/)?.[1] ?? '';
+    assert.match(healthcheck, /test:/, `${name} sin healthcheck`);
+    assert.doesNotMatch(healthcheck, /\b(wget|curl)\b/, name);
+  }
+});
+
+test('nginx prod container healthcheck probes /health through the proxy', async () => {
+  const compose = await readFile(prodComposePath, 'utf8');
+  const block = composeServiceBlock(compose, 'nginx-prod') ?? '';
+  assert.match(block, /https:\/\/127\.0\.0\.1\/health/);
+});

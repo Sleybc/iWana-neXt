@@ -910,6 +910,12 @@ async function main() {
   // accionable debe verse en la terminal normal y no dentro del buffer alterno.
   assertDevEnv();
 
+  const dockerContext = readEnvFile(join(rootCwd, '.env')).get('DOCKER_CONTEXT');
+  if (dockerContext && !process.env.DOCKER_CONTEXT) {
+    process.env.DOCKER_CONTEXT = dockerContext;
+    delete process.env.DOCKER_HOST;
+  }
+
   const dashboard = createDashboard();
   const registry = createProcessRegistry();
   const { shutdownAll, trackStep: trackChild } = registry;

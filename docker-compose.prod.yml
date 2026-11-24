@@ -37,6 +37,9 @@ x-cap-drop: &default-cap-drop
 # grande—. `pids_limit` acota además el fork bomb accidental de un job.
 
 services:
+  # Límites de datos (H11, plan 2026-11-24 §0.4): 4,5 GiB con los defaults; con API,
+  # worker, web y portal (3,5 GiB) el stack queda acotado a 8 GiB. Ajustar por variable
+  # según la RAM del host. Postgres lleva el mayor margen.
   # Los servicios de datos comparten la definición base, pero producción usa
   # nombres de contenedor y volúmenes propios para no tocar el estado de dev.
   postgres:
@@ -44,11 +47,23 @@ services:
     volumes:
       - iwana_postgres_data_prod:/var/lib/postgresql
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    deploy:
+      resources:
+        limits:
+          memory: ${POSTGRES_MEM_LIMIT:-2g}
+          cpus: '${POSTGRES_CPU_LIMIT:-2}'
+          pids: 512
 
   redis:
     container_name: iwana_redis_prod
     volumes:
       - iwana_redis_data_prod:/data
+    deploy:
+      resources:
+        limits:
+          memory: ${REDIS_MEM_LIMIT:-512m}
+          cpus: '${REDIS_CPU_LIMIT:-1}'
+          pids: 128
 
   pgbouncer:
     container_name: iwana_pgbouncer_prod
@@ -61,6 +76,12 @@ services:
     # (D2, adjuntos MOD09) sin entrar en la red de datos.
     networks:
       - storage-edge
+    deploy:
+      resources:
+        limits:
+          memory: ${MINIO_MEM_LIMIT:-1g}
+          cpus: '${MINIO_CPU_LIMIT:-1}'
+          pids: 256
 
   minio-init:
     container_name: iwana_minio_init_prod
@@ -69,6 +90,12 @@ services:
     container_name: iwana_typesense_prod
     volumes:
       - iwana_typesense_data_prod:/data
+    deploy:
+      resources:
+        limits:
+          memory: ${TYPESENSE_MEM_LIMIT:-1g}
+          cpus: '${TYPESENSE_CPU_LIMIT:-1}'
+          pids: 256
 
   nginx-prod:
     image: ${NGINX_IMAGE:?NGINX_IMAGE is required}
@@ -94,7 +121,9 @@ services:
       portal-prod:
         condition: service_healthy
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- https://127.0.0.1/ --no-check-certificate || exit 1']
+      # /health atraviesa nginx hasta la API (ADR-079 D4); `/` solo probaba que web respondía.
+      # `wget` es el de busybox de la imagen alpine de nginx.
+      test: ['CMD-SHELL', 'wget -qO- --no-check-certificate https://127.0.0.1/health || exit 1']
       interval: 15s
       timeout: 5s
       retries: 10
@@ -204,8 +233,15 @@ services:
         condition: service_completed_successfully
       typesense:
         condition: service_healthy
+    # La imagen de la API no trae wget ni curl (H1, plan 2026-11-24 §0.1): el probe usa Node.
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/api/v1/health || exit 1']
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 15s
       timeout: 5s
       retries: 10

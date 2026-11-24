@@ -95,6 +95,8 @@ Mientras cualquiera de estos bloqueos afecte al entorno objetivo, el paso operat
      --profile production --env-file .env.pilot up -d --build --wait
    ```
 
+   El build necesita salida a `registry.npmjs.org`, `cdn.playwright.dev` y los repositorios de Debian, con DNS estable durante todo el `--build`: el worker descarga ~110 MiB de Chromium y las librerías del sistema por `apt`. Un `EAI_AGAIN` en el log es un fallo de DNS del daemon, no del Dockerfile; se repite el build. Verificado el 2026-11-24: `apps/worker/Dockerfile` construye la imagen y lanza Chromium sin ningún archivo fuera del repo.
+
 5. Desde el equipo cliente, abre `http://<IP-LAN>`. Comprueba que redirige a `https://<IP-LAN>`, que el navegador acepta el certificado y que `https://<IP-LAN>/api/v1/health` responde por la misma IP. Entra en la consola, completa el MFA cuando corresponda y recarga para verificar la sesión.
 
 **Paso posterior a VPS.** Usa los mismos archivos Compose con `.env.production`. Deja `PROXY_BIND_IP` vacío para conservar la publicación por defecto de Docker o fija la interfaz de entrada del VPS. Apunta los dominios aprobados al VPS. Si la base está vacía, restringe el 443 al equipo del operador hasta crear y verificar la cuenta inicial. Prepara el puerto 80 y el webroot de HTTP-01 según §8.2 y [ADR-095](../adrs/ADR-095-Topologia-Productiva-Dominio-TLS-Hosting.md). La configuración base de Nginx redirige el 80 a HTTPS.

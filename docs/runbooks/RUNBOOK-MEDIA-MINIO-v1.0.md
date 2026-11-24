@@ -2,10 +2,10 @@
 
 **Sistema:** iWana neXt — Módulo MOD03 Branding Empresarial  
 **Componente:** Almacenamiento de objetos — MinIO (dev) / S3-compatible (prod)  
-**Versión:** 1.2  
-**Cambios:** v1.2 (2026-11-16) añade `S3_PUBLIC_ENDPOINT`, el vhost de archivos y la respuesta al evento `ticket_attachment_purge_failed` (D2 y D3 del [informe MOD09 adjuntos](../informes/INFORME-MOD09-ADJUNTOS-TICKETS-v1.0.md)). v1.1 (2026-10-30/31) añade «Usos privados» para `stratum_evidence` y `privacy_evidence` (INFORME T9 v1.1) y sustituye las credenciales literales de desarrollo por referencias a `.env.example` (decisión D-CK-4 del CTO).  
+**Versión:** 1.3  
+**Cambios:** v1.3 (2026-11-24) añade la cuenta de servicio limitada al bucket que crea `minio-init` (H8 del plan del entorno estable). v1.2 (2026-11-16) añade `S3_PUBLIC_ENDPOINT`, el vhost de archivos y la respuesta al evento `ticket_attachment_purge_failed` (D2 y D3 del [informe MOD09 adjuntos](../informes/INFORME-MOD09-ADJUNTOS-TICKETS-v1.0.md)). v1.1 (2026-10-30/31) añade «Usos privados» para `stratum_evidence` y `privacy_evidence` (INFORME T9 v1.1) y sustituye las credenciales literales de desarrollo por referencias a `.env.example` (decisión D-CK-4 del CTO).  
 **Ruta estable:** el sufijo `v1.0` del nombre es el del alta; la versión vigente es la de esta cabecera.  
-**Fecha:** 2026-04-30 · **Última actualización:** 2026-11-16 (secciones «Enlaces firmados en producción» y «Purga de adjuntos de tickets»)  
+**Fecha:** 2026-04-30 · **Última actualización:** 2026-11-24 (cuenta de servicio de la API)  
 **Autor:** AI-SR-FULL
 
 ---
@@ -65,9 +65,17 @@ packages/storage
 | `S3_ENDPOINT` | (proveedor S3/MinIO) | Endpoint del proveedor |
 | `S3_PUBLIC_ENDPOINT` | `https://archivos.<dominio>` | Obligatorio y https. Origen con el que la API firma los enlaces y que la CSP del portal admite (build arg de la imagen del portal) |
 | `S3_REGION` | (region del bucket) | |
-| `S3_ACCESS_KEY_ID` | (secreto) | Nunca en código |
+| `S3_ACCESS_KEY_ID` | (secreto) | Cuenta de servicio, distinta de `MINIO_ROOT_USER`. Nunca en código |
 | `S3_SECRET_ACCESS_KEY` | (secreto) | Nunca en código |
 | `S3_BUCKET` | `iwana-media-prod` | Bucket producción |
+
+**Cuenta de servicio (2026-11-24, [plan del entorno estable](../plans/2026-11-24-piloto-lan-a-entorno-estable.md) §0.3).** La API y el worker no usan la cuenta raíz. Cuando `S3_ACCESS_KEY_ID` difiere de `MINIO_ROOT_USER`, `minio-init` crea ese usuario y le asocia la política `iwana-bucket-rw`, limitada a `S3_BUCKET`: listar el bucket y leer, escribir y borrar sus objetos. No puede crear buckets ni administrar el servidor. Es idempotente: volver a ejecutar `minio-init` con un secreto nuevo lo rota. Con valores iguales, como en desarrollo, el paso se omite. Para comprobarlo:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile production \
+  --env-file .env.production run --rm --entrypoint /bin/sh minio-init -lc \
+  'mc alias set iwana-local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null && mc admin user info iwana-local "$S3_ACCESS_KEY_ID"'
+```
 | `S3_FORCE_PATH_STYLE` | `false` | Para S3 AWS estándar |
 | `S3_USE_SSL` | `true` | HTTPS siempre en prod |
 | `S3_PUBLIC_BASE_URL` | (sin definir) | Si se define en `production` o `staging`, la carga y la firma de usos privados responden 503 |

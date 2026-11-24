@@ -31,8 +31,8 @@ else
   echo "==> Generando par JWT RS256 local..."
   openssl genrsa -out "${TEMP_DIR}/jwt-private.pem" 2048
   openssl rsa -in "${TEMP_DIR}/jwt-private.pem" -pubout -out "${TEMP_DIR}/jwt-public.pem"
-  private_key="$(awk 'BEGIN { ORS="\\\\n" } { print }' "${TEMP_DIR}/jwt-private.pem")"
-  public_key="$(awk 'BEGIN { ORS="\\\\n" } { print }' "${TEMP_DIR}/jwt-public.pem")"
+  private_key="$(awk 'BEGIN { ORS="\\n" } { print }' "${TEMP_DIR}/jwt-private.pem")"
+  public_key="$(awk 'BEGIN { ORS="\\n" } { print }' "${TEMP_DIR}/jwt-public.pem")"
   append_value JWT_PRIVATE_KEY "'${private_key}'"
   append_value JWT_PUBLIC_KEY "'${public_key}'"
   echo "    ✓ JWT_* agregadas a .env.development.local"
