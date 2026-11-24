@@ -1,6 +1,6 @@
 # Del piloto LAN a un entorno estable — plan
 
-**Fecha:** 2026-11-24 · **Estado:** en ejecución; abiertos 0.7, 1.4, 2.1, 2.2, 2.4, 2.5, 3.1 y 3.2 · **Dueño de ejecución:** AI-PLAT-OPS (fases 0-3), AI-SEC-ENG audita la fase 2
+**Fecha:** 2026-11-24 · **Estado:** en ejecución; abiertos 0.7, 1.4, 2.2, 2.5 y 3.2; aplazados a producción 2.1 (cuentas personales), 2.4 y 3.1 (copia fuera del host) · **Dueño de ejecución:** AI-PLAT-OPS (fases 0-3), AI-SEC-ENG audita la fase 2
 **Origen:** auditoría del piloto del 2026-11-24 sobre `10.0.0.254` (commit `2a8ebb0e`).
 **Fuentes:** [runbook §1.3](../runbooks/RUNBOOK-RELEASE-ROLLBACK-v1.0.md#13-piloto-de-consola-por-ip-en-la-lan) · [ADR-095](../adrs/ADR-095-Topologia-Productiva-Dominio-TLS-Hosting.md) · [informe Docker](../informes/INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md)
 
@@ -62,7 +62,7 @@ Requiere `sudo`; lo ejecuta el operador. Es una ventana con corte.
 - [ ] **2.1 Administrador (H6).** Crear cuentas personales de administrador, cada una con su MFA en un autenticador propio. Desactivar la cuenta creada por el script del piloto. Borrar `pilot-admin.json`, `mfa-piloto-privado.png`, `check-browser.cjs` y los logs de `~/.local/share/iwana-pilot`. *La cuenta y los archivos del piloto se eliminaron con él (2026-11-24). Activa con MFA: `admin@iwana.co`. Faltan las cuentas personales; su alta depende de 2.4.*
 - [ ] **2.2 CA interna (H7).** Reemitir la CA con `nameConstraints` limitada a `IP:10.0.0.254` (y al nombre interno si se adopta), clave cifrada y guardada **fuera del servidor**. Emitir el certificado de servidor, instalar la nueva raíz en los clientes y **retirar la raíz anterior** de cada equipo. Anotar el vencimiento y quién renueva (runbook §8.3-8.4). *Artefacto listo: `scripts/lan/issue-internal-ca.sh`. Sin subárbol DNS, la raíz permite solo `iwana.invalid`: por RFC 5280 un tipo sin subárbol quedaría libre. Falta emitir fuera del servidor y repartir la raíz.* *Emitida 2026-11-24 (vence 2027-12-26) y verificada; `/etc/iwana/tls` instalado. `~/iwana-ca-OFFLINE` borrada del servidor; el CTO confirmó su copia. Falta confirmar la raíz en cada cliente y retirar la del piloto.*
 - [x] **2.3 Rotar secretos.** Generar un `.env` nuevo para el entorno estable (no reutilizar `.env.pilot`): contraseñas de base, Redis, MinIO raíz, cuenta de servicio S3 (0.3), Typesense y claves de firma. Las claves `MFA_ENCRYPTION_KEY`, `PII_ENCRYPTION_KEY` y `PII_HASH_KEY` solo se cambian si se parte de volúmenes vacíos; con datos, seguir `RUNBOOK-ENCRYPTION-KEY-ROTATION-v1.0.md`. `PII_DECRYPT_LEGACY_MFA=false` en una base nueva. *Hecho: `~/.config/iwana-stable/stable.env` (600) con todos los secretos nuevos y `PII_DECRYPT_LEGACY_MFA=false`.*
-- [ ] **2.4 SMTP (H10).** Configurar `SMTP_*` con un relay real y probar el alta en dos pasos de ADR-115 (en revisión) de punta a punta. Sin esto no se pueden dar de alta usuarios.
+- [ ] **2.4 SMTP (H10).** Configurar `SMTP_*` con un relay real y probar el alta en dos pasos de ADR-115 (en revisión) de punta a punta. Sin esto no se pueden dar de alta usuarios. *Aplazado a producción (CTO, 2026-11-24): hasta entonces el entorno no entrega correos y sigue con la cuenta actual. Opción recomendada para ese momento, aún sin decidir: Azure Communication Services (`iwana.co` está en Microsoft 365, que retira la contraseña SMTP en Exchange Online); publicar antes DKIM y DMARC.*
 - [ ] **2.5 Revisión.** `sec-eng` audita el resultado contra el checklist pre-producción antes de dar acceso a más personas.
 
 ## Fase 3 — Respaldo y operación
@@ -83,7 +83,7 @@ Se activa cuando el CTO declare la beta mínima (ADR-095 §Activación). Lo que 
 | ¿Se conservan los datos del piloto o se parte de cero? | CTO | 1.2, 2.3 |
 | ¿Acceso por IP o por nombre interno (DNS de la LAN)? Un nombre permite probar portal y archivos | CTO | 2.2 |
 | `pgbouncer`: usarlo o retirarlo del perfil | AI-EM-ARCH | 0.5 |
-| Relay SMTP a usar | CTO | 2.4 |
+| Relay SMTP a usar (aplazada a producción, CTO 2026-11-24) | CTO | Fase 4 |
 | Destino de los respaldos fuera del host (aplazada a producción, CTO 2026-11-24) | CTO | Fase 4; no cargar datos reales antes |
 
 ## No verificado al escribir este plan
