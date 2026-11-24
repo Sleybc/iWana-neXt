@@ -21,7 +21,7 @@ El HLD de MOD02 entrega una sesión completa a quien entra con la contraseña te
 | D3 | El cambio obligatorio activa una cuenta `PENDING_VERIFICATION`. No marca el correo como verificado. La nueva contraseña debe ser distinta de la temporal. La entrega de la credencial por un administrador equivale a la activación, también para usuarios importados de UISP a los que se les restablezca la contraseña. |
 | D4 | La renovación rechaza una cuenta con cambio pendiente. |
 | D5 | El reuso de un refresh ya usado revoca la familia y la confirma antes de responder 401. Login y renovación bloquean la fila del usuario: un restablecimiento simultáneo no deja sesiones vivas. |
-| D6 | La recuperación de contraseña por enlace exige correo verificado. Evita que D3 abra ese camino a una cuenta cuyo buzón nadie probó (regla U3 de usuarios importados). Añadida por la revisión de seguridad, pendiente de ratificar por el CTO. |
+| D6 | La recuperación de contraseña por enlace exige correo verificado. Evita que D3 abra ese camino a una cuenta cuyo buzón nadie probó (regla U3 de usuarios importados). Añadida por la revisión de seguridad y ratificada por el CTO el 2026-11-24. |
 
 ## 3. Alternativas descartadas
 
