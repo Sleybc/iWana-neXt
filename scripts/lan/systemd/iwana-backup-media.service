@@ -1,0 +1,15 @@
+# Respaldo media del entorno estable (plan 2026-11-24 §3.1).
+[Unit]
+Description=iWana: respaldo media
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=@USER@
+Group=docker
+Environment=PATH=@PATH@
+EnvironmentFile=/etc/iwana/lan.conf
+ExecStart=@REPO@/scripts/lan/backup.sh media
+Nice=10
+IOSchedulingClass=idle

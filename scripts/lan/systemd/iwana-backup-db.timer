@@ -1,0 +1,10 @@
+[Unit]
+Description=iWana: respaldo de la base cada hora
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

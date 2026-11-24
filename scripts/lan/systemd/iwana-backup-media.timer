@@ -1,0 +1,10 @@
+[Unit]
+Description=iWana: copia diaria del bucket
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

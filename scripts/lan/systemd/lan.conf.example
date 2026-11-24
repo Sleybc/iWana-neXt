@@ -1,0 +1,13 @@
+# /etc/iwana/lan.conf — configuración del entorno estable en la LAN (sin secretos).
+# Los secretos viven solo en IWANA_ENV_FILE (chmod 600, fuera de Git).
+IWANA_REPO=@REPO@
+IWANA_ENV_FILE=@REPO@/.env.stable
+IWANA_BACKUP_DIR=/var/backups/iwana
+# IWANA_OFFSITE_CMD=  # pendiente: destino fuera del host (decisión del CTO)
+IWANA_LAN_IFACE=eno1
+IWANA_LAN_SERVER_IP=10.0.0.254
+IWANA_LAN_ALLOW=10.0.0.0/24
+IWANA_HEALTH_URL=https://10.0.0.254/api/v1/health
+IWANA_TLS_DIR=/etc/iwana/tls
+IWANA_CA_FILE=/etc/iwana/tls/root-ca.crt
+IWANA_DISK_PATHS="/ /var/lib/docker /var/backups"

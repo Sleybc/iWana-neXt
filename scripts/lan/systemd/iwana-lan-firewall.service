@@ -1,0 +1,17 @@
+# Reglas DOCKER-USER del entorno estable (plan 2026-11-24 §1.3). PartOf hace que se
+# reapliquen cada vez que docker.service arranca o reinicia.
+[Unit]
+Description=iWana: filtro DOCKER-USER de 80/443 para la LAN
+After=docker.service
+PartOf=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/etc/iwana/lan.conf
+ExecStart=@REPO@/scripts/lan/docker-user-firewall.sh apply
+ExecStop=@REPO@/scripts/lan/docker-user-firewall.sh remove
+
+[Install]
+WantedBy=docker.service
