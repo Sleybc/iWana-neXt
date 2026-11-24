@@ -280,14 +280,20 @@ describe('AuthService', () => {
         {
           // AuditService: mock fire-and-forget — no debe bloquear los tests de auth
           provide: AuditService,
-          useValue: { log: jest.fn().mockResolvedValue(undefined) },
+          useValue: {
+            log: jest.fn().mockResolvedValue(undefined),
+            logWithin: jest.fn().mockResolvedValue(undefined),
+          },
         },
         {
           // PlatformAuditService: sink público (public.platform_audit_logs), el
           // trail de S-8. Es el destino de los eventos de cuentas de plataforma
           // —loginPlatform entre ellos—, que no tienen TenantContext.
           provide: PlatformAuditService,
-          useValue: { log: jest.fn().mockResolvedValue(undefined) },
+          useValue: {
+            log: jest.fn().mockResolvedValue(undefined),
+            logWithin: jest.fn().mockResolvedValue(undefined),
+          },
         },
         {
           // MailerService: mock — no enviar correos reales en tests
@@ -712,7 +718,62 @@ describe('AuthService', () => {
   // CREDENCIALES TEMPORALES DEL ADMIN INICIAL
   // ---------------------------------------------------------------------------
 
+  const credentialActor = { actorUserId: 'actor-1', ipAddress: '10.0.0.5', userAgent: 'jest' };
+
   describe('regenerateTenantAdminCredentials()', () => {
+    it('registra quién emitió la credencial en la misma transacción y sin el secreto', async () => {
+      const adminUser = buildUser({ role: UserRole.ADMIN, email: 'admin@iwana.co' });
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(adminUser),
+      });
+
+      const result = await service.regenerateTenantAdminCredentials({
+        tenantId: 'tenant-uuid-1',
+        schemaName: 'tenant_test',
+        idempotencyKey: 'idem-key-audit',
+        ...credentialActor,
+        userAgent: 'x'.repeat(600),
+      });
+
+      const { logWithin } = (
+        service as unknown as { platformAuditService: { logWithin: jest.Mock } }
+      ).platformAuditService;
+      const [entry, usedManager] = logWithin.mock.calls.at(-1) as [unknown, unknown];
+      expect(usedManager).toBe(manager);
+      expect(entry).toEqual({
+        userId: 'actor-1',
+        action: AuditAction.PASSWORD_CHANGED,
+        entityType: 'TenantAdmin',
+        entityId: adminUser.id,
+        newValue: { tenantId: 'tenant-uuid-1', expiresAt: result.expiresAt },
+        ipAddress: '10.0.0.5',
+        userAgent: 'x'.repeat(512),
+      });
+      const serialized = JSON.stringify(entry);
+      expect(serialized).not.toContain(result.temporaryPassword);
+      expect(serialized).not.toContain('admin@iwana.co');
+    });
+
+    it('si el registro falla no entrega la credencial ni marca la clave como usada', async () => {
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(buildUser({ role: UserRole.ADMIN })),
+      });
+      (
+        service as unknown as { platformAuditService: { logWithin: jest.Mock } }
+      ).platformAuditService.logWithin.mockRejectedValueOnce(new Error('auditoría caída'));
+      mockRedis.set.mockClear();
+
+      await expect(
+        service.regenerateTenantAdminCredentials({
+          tenantId: 'tenant-uuid-1',
+          schemaName: 'tenant_test',
+          idempotencyKey: 'idem-key-audit-fail',
+          ...credentialActor,
+        }),
+      ).rejects.toThrow('auditoría caída');
+      expect(mockRedis.set).not.toHaveBeenCalled();
+    });
+
     it('regenera el password temporal, lo marca como obligatorio y cachea la respuesta por idempotencia', async () => {
       const adminUser = buildUser({
         role: UserRole.ADMIN,
@@ -728,6 +789,7 @@ describe('AuthService', () => {
         tenantId: 'tenant-uuid-1',
         schemaName: 'tenant_test',
         idempotencyKey: 'idem-key-1',
+        ...credentialActor,
       });
 
       expect(result.adminEmail).toBe('admin@iwana.co');
@@ -770,6 +832,7 @@ describe('AuthService', () => {
           tenantId: 'tenant-uuid-1',
           schemaName: 'tenant_test',
           idempotencyKey: 'idem-key-2',
+          ...credentialActor,
         }),
       ).rejects.toThrow(ConflictException);
 
@@ -785,6 +848,7 @@ describe('AuthService', () => {
         tenantId: 'tenant-uuid-1',
         schemaName: 'tenant_test',
         idempotencyKey: 'idem-key-3',
+        ...credentialActor,
       });
 
       const [, cachedPayload] = mockRedis.set.mock.calls.at(-1) as [string, string];
@@ -2250,6 +2314,7 @@ describe('AuthService', () => {
           tenantId: 'tenant-uuid-2',
           schemaName: 'tenant_test',
           idempotencyKey: 'idem-key-no-admin',
+          ...credentialActor,
         }),
       ).rejects.toThrow(NotFoundException);
     });
@@ -2930,7 +2995,10 @@ describe('AuthService', () => {
           { provide: AuditService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
           {
             provide: PlatformAuditService,
-            useValue: { log: jest.fn().mockResolvedValue(undefined) },
+            useValue: {
+              log: jest.fn().mockResolvedValue(undefined),
+              logWithin: jest.fn().mockResolvedValue(undefined),
+            },
           },
           {
             provide: MailerService,

@@ -23,6 +23,7 @@ const READING_OMIT_FIELDS = new Set(['slug', 'schemaname']);
 const ENTITY_TYPE_LABELS: Record<string, string> = {
   User: 'usuario interno',
   Tenant: 'empresa',
+  TenantAdmin: 'administrador inicial de empresa',
   PlatformUser: 'usuario interno',
   Role: 'categoría base',
   AccessProfile: 'perfil de acceso',

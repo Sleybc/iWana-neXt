@@ -17,6 +17,8 @@ const ENTITY_ARTICLES: Record<string, 'el' | 'la' | 'los' | 'las'> = {
 
   Tenant: 'la',
 
+  TenantAdmin: 'el',
+
   PlatformUser: 'el',
 
   Role: 'la',

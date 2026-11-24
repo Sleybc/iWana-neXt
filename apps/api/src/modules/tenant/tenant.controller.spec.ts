@@ -1,3 +1,5 @@
+import type { Request as ExpressRequest } from 'express';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 jest.mock('../auth/auth.service', () => ({
   AuthService: class AuthService {},
 }));
@@ -44,6 +46,12 @@ describe('TenantController', () => {
     getSummary: jest.fn(),
   };
 
+  const actor = { sub: 'actor-1' } as JwtPayload;
+  const request = {
+    ip: '10.0.0.5',
+    headers: { 'user-agent': 'jest' },
+  } as unknown as ExpressRequest;
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TenantController],
@@ -64,9 +72,9 @@ describe('TenantController', () => {
   });
 
   it('rechaza la regeneracion si falta Idempotency-Key', async () => {
-    await expect(controller.regenerateAdminCredentials('tenant-uuid-1', undefined)).rejects.toThrow(
-      BadRequestException,
-    );
+    await expect(
+      controller.regenerateAdminCredentials('tenant-uuid-1', actor, request, undefined),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('suspende un tenant usando el servicio de tenant', async () => {
@@ -163,13 +171,21 @@ describe('TenantController', () => {
       expiresAt: '2026-03-20T00:00:00.000Z',
     });
 
-    const result = await controller.regenerateAdminCredentials('tenant-uuid-1', ' idem-1 ');
+    const result = await controller.regenerateAdminCredentials(
+      'tenant-uuid-1',
+      actor,
+      request,
+      ' idem-1 ',
+    );
 
     expect(tenantService.findOne).toHaveBeenCalledWith('tenant-uuid-1');
     expect(authService.regenerateTenantAdminCredentials).toHaveBeenCalledWith({
       tenantId: 'tenant-uuid-1',
       schemaName: 'tenant_isp_test',
       idempotencyKey: 'idem-1',
+      actorUserId: 'actor-1',
+      ipAddress: '10.0.0.5',
+      userAgent: 'jest',
     });
     expect(result.data.temporaryPassword).toBe('IwN!a9-newpass');
   });

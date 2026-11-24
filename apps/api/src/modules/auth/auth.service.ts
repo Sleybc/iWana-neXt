@@ -1631,6 +1631,9 @@ export class AuthService {
     tenantId: string;
     schemaName: string;
     idempotencyKey: string;
+    actorUserId: string;
+    ipAddress: string | null;
+    userAgent: string | null;
   }): Promise<{
     message: string;
     adminEmail: string;
@@ -1687,6 +1690,21 @@ export class AuthService {
         failedLoginAttempts: 0,
         lockedUntil: null,
       });
+
+      // En la misma transacción: sin rastro no hay credencial. `entityType` no es 'Tenant':
+      // ese alimenta las series de estado de empresa.
+      await this.platformAuditService.logWithin(
+        {
+          userId: input.actorUserId,
+          action: AuditAction.PASSWORD_CHANGED,
+          entityType: 'TenantAdmin',
+          entityId: adminUser.id,
+          newValue: { tenantId: input.tenantId, expiresAt: expiresAt.toISOString() },
+          ipAddress: input.ipAddress?.slice(0, 45) ?? null,
+          userAgent: input.userAgent?.slice(0, 512) ?? null,
+        },
+        qr.manager,
+      );
 
       const response = {
         message: 'Credenciales temporales regeneradas para el ADMIN inicial del tenant.',

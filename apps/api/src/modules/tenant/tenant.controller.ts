@@ -15,6 +15,7 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -32,6 +33,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Request as ExpressRequest } from 'express';
 import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -1142,8 +1144,8 @@ export class TenantController {
    */
   @Post(':id/regenerate-admin-credentials')
   @Roles(PlatformRole.SYSTEM_ADMIN)
-  // Igual que el endpoint de bootstrap: devuelve la contraseña en claro y no
-  // debe apoyarse solo en el saneado del interceptor.
+  // Devuelve la contraseña en claro y no debe apoyarse solo en el saneado del
+  // interceptor: AuthService escribe su propia entrada, sin el secreto.
   @SkipAudit()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Regenerar credenciales temporales del ADMIN inicial del tenant' })
@@ -1156,6 +1158,8 @@ export class TenantController {
   @ApiResponse({ status: 400, description: 'Idempotency-Key faltante.' })
   async regenerateAdminCredentials(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+    @Req() req: ExpressRequest,
     @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<{
     data: {
@@ -1174,6 +1178,9 @@ export class TenantController {
       tenantId: tenant.id,
       schemaName: tenant.schemaName,
       idempotencyKey: idempotencyKey.trim(),
+      actorUserId: user.sub,
+      ipAddress: req.ip ?? req.socket?.remoteAddress ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
     });
 
     return { data: credentials };
