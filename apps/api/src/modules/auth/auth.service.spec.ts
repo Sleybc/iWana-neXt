@@ -28,7 +28,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcryptjs';
 import { ConfigService } from '@nestjs/config';
-import { DataSource } from 'typeorm';
+import { DataSource, IsNull } from 'typeorm';
 import { PlatformUser, RefreshToken, User } from '@iwana/db';
 import { AuditAction, UserRole, UserStatus } from '@iwana/shared';
 import { createHash } from 'crypto';
@@ -749,6 +749,11 @@ describe('AuthService', () => {
         ipAddress: '10.0.0.5',
         userAgent: 'x'.repeat(512),
       });
+      expect(manager['update']).toHaveBeenCalledWith(
+        RefreshToken,
+        { userId: adminUser.id, revokedAt: IsNull() },
+        { revokedAt: expect.any(Date), revokeReason: 'ADMIN' },
+      );
       const serialized = JSON.stringify(entry);
       expect(serialized).not.toContain(result.temporaryPassword);
       expect(serialized).not.toContain('admin@iwana.co');

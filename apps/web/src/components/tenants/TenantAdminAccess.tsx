@@ -73,7 +73,8 @@ export function TenantAdminAccess({ tenantId, tenantName, tenantStatus }: Tenant
         description={
           <>
             La contraseña actual del administrador inicial de <strong>{tenantName}</strong> dejará
-            de servir, aunque ya la haya cambiado. Deberá entrar con la nueva y elegir otra.
+            de servir, aunque ya la haya cambiado, y sus sesiones se cerrarán en unos minutos.
+            Deberá entrar con la nueva y elegir otra.
           </>
         }
         confirmLabel="Emitir contraseña"

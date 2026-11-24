@@ -103,13 +103,19 @@ describe('UsersService — administrador principal y objetivos de plataforma', (
     getPrincipalAdminUserId: jest.Mock;
     setPrincipalAdminUserId: jest.Mock;
   };
-  let managerMock: { findOne: jest.Mock; softRemove: jest.Mock; save: jest.Mock };
+  let managerMock: {
+    findOne: jest.Mock;
+    softRemove: jest.Mock;
+    save: jest.Mock;
+    update: jest.Mock;
+  };
 
   function setupManager(user: Record<string, unknown> | null): void {
     managerMock = {
       findOne: jest.fn().mockResolvedValue(user),
       softRemove: jest.fn().mockResolvedValue(user),
       save: jest.fn().mockImplementation(async (_entity: unknown, value: unknown) => value),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
     };
 
     mockRunInTenantSchema.mockImplementation(

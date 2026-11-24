@@ -16,7 +16,7 @@ import * as crypto from 'crypto';
 import { TOTP, NobleCryptoPlugin, ScureBase32Plugin } from 'otplib';
 import * as qrcode from 'qrcode';
 import Redis from 'ioredis';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, IsNull, Repository } from 'typeorm';
 import { PlatformUser, RefreshToken, User } from '@iwana/db';
 import { UserRole, UserStatus, AuditAction } from '@iwana/shared';
 import { runInTenantSchema, summarizeErrorForLog, TenantContext } from '@iwana/db';
@@ -1690,6 +1690,13 @@ export class AuthService {
         failedLoginAttempts: 0,
         lockedUntil: null,
       });
+
+      // Quien tuviera una sesión abierta no la renueva; el access token en curso vence solo.
+      await qr.manager.update(
+        RefreshToken,
+        { userId: adminUser.id, revokedAt: IsNull() },
+        { revokedAt: new Date(), revokeReason: 'ADMIN' },
+      );
 
       // En la misma transacción: sin rastro no hay credencial. `entityType` no es 'Tenant':
       // ese alimenta las series de estado de empresa.

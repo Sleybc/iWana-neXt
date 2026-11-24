@@ -14,9 +14,15 @@ import { Queue } from 'bullmq';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import Redis from 'ioredis';
-import { DataSource, FindOptionsWhere, In, MoreThan } from 'typeorm';
+import { DataSource, FindOptionsWhere, In, IsNull, MoreThan } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { User, runInTenantSchema, summarizeErrorForLog, TenantContext } from '@iwana/db';
+import {
+  RefreshToken,
+  User,
+  runInTenantSchema,
+  summarizeErrorForLog,
+  TenantContext,
+} from '@iwana/db';
 import {
   AuditAction,
   DocumentType,
@@ -1646,6 +1652,12 @@ export class UsersService {
       user.failedLoginAttempts = 0;
       user.lockedUntil = null;
       await qr.manager.save(User, user);
+      // Quien tuviera una sesión abierta no la renueva; el access token en curso vence solo.
+      await qr.manager.update(
+        RefreshToken,
+        { userId: user.id, revokedAt: IsNull() },
+        { revokedAt: new Date(), revokeReason: 'ADMIN' },
+      );
 
       await this.auditService.log({
         action: AuditAction.PASSWORD_CHANGED,

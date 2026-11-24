@@ -25,8 +25,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
 import * as bcrypt from 'bcryptjs';
-import { DataSource } from 'typeorm';
-import { User } from '@iwana/db';
+import { DataSource, IsNull } from 'typeorm';
+import { RefreshToken, User } from '@iwana/db';
 import {
   BadRequestException,
   ConflictException,
@@ -547,6 +547,12 @@ describe('UsersService', () => {
           entityType: 'UserPasswordReset',
           entityId: 'usr-target',
         }),
+      );
+      // Cierra las sesiones abiertas en la misma transacción, solo las vigentes.
+      expect(mgr.update).toHaveBeenCalledWith(
+        RefreshToken,
+        { userId: 'usr-target', revokedAt: IsNull() },
+        { revokedAt: expect.any(Date), revokeReason: 'ADMIN' },
       );
     });
 
