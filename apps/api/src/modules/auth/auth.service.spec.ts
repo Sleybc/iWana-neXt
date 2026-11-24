@@ -974,6 +974,39 @@ describe('AuthService', () => {
       expect(result.mfaRequired).toBeUndefined();
     });
 
+    // ADR-116 (A-01 de la revisión de AI-SEC-ENG): la cuenta del CLI de arranque nace
+    // PENDING_VERIFICATION. Ni el primer ingreso ni el siguiente al cambio de contraseña
+    // pueden entregar una sesión completa sin enrolar MFA.
+    it('cuenta del CLI de arranque: cambio de contraseña y luego solo enrolamiento MFA', async () => {
+      const bootstrapAdmin = {
+        id: 'platform-bootstrap-uuid',
+        emailHash: 'platform-hash',
+        passwordHash: '$2b$12$hash',
+        role: 'SYSTEM_ADMIN',
+        status: UserStatus.PENDING_VERIFICATION,
+        mfaEnabled: false,
+        mfaSecret: null,
+        passwordResetRequired: true,
+        lastLoginAt: null,
+      };
+      platformUserRepo.update.mockResolvedValue({ affected: 1 });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      const dto = { email: 'admin@iwana.co', password: 'Passw0rd!' };
+
+      platformUserRepo.findOne.mockResolvedValue(bootstrapAdmin);
+      const first = await service.loginPlatform(dto);
+      expect(first).toMatchObject({ passwordResetRequired: true });
+      expect(first.refreshToken).toBeUndefined();
+
+      platformUserRepo.findOne.mockResolvedValue({
+        ...bootstrapAdmin,
+        passwordResetRequired: false,
+      });
+      const afterChange = await service.loginPlatform(dto);
+      expect(afterChange).toMatchObject({ mfaSetupRequired: true });
+      expect(afterChange.refreshToken).toBeUndefined();
+    });
+
     it('usa la clave HMAC inyectada si PII_HASH_KEY no está en process.env', async () => {
       const previousPiiHashKey = process.env.PII_HASH_KEY;
       delete process.env.PII_HASH_KEY;

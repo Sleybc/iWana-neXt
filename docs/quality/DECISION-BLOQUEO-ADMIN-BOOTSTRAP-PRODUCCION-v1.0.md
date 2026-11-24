@@ -1,8 +1,8 @@
 # DECISIÓN DE BLOQUEO TÉCNICO — Primer administrador de plataforma en producción
 
 **Identificador del bloqueo:** B-01
-**Versión:** 1.0
-**Estado:** **Abierto — escalado al CTO**
+**Versión:** 1.1 (2026-11-24: resolución)
+**Estado:** **Resuelto** — el CTO eligió la opción 1 el 2026-11-24 («Implementar opción 1»). Implementada por [ADR-116](../adrs/ADR-116-Alta-del-Primer-Administrador-de-Plataforma.md), con la revisión de AI-SEC-ENG en su §6.
 
 ## Identificación
 

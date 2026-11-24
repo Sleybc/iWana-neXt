@@ -507,6 +507,42 @@ services:
     networks:
       - data
 
+  # Alta del primer administrador de plataforma (B-01, opción 1; ADR-116). Perfil propio:
+  # `up` nunca lo arranca. El operador lo ejecuta una vez con su uid, para que la
+  # credencial quede suya y en 0600:
+  #   docker compose ... --profile production --profile bootstrap run --rm --user "$(id -u):$(id -g)" \
+  #     platform-admin-bootstrap --email=<correo>
+  # La contraseña solo va al archivo. Si ya existe un administrador, no hace nada.
+  platform-admin-bootstrap:
+    image: ${IMAGE_REPOSITORY:-iwana}/api:${IMAGE_TAG:-local}
+    profiles:
+      - bootstrap
+    entrypoint:
+      - node
+      - dist/cli/bootstrap-platform-admin.js
+      - --output=/bootstrap/platform-admin.txt
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_APP_USER:?DB_APP_USER is required}
+      DB_PASSWORD: ${DB_APP_PASSWORD:?DB_APP_PASSWORD is required}
+      DB_NAME: ${DB_NAME:-dbiw}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?MFA_ENCRYPTION_KEY is required}
+      PII_HASH_KEY: ${PII_HASH_KEY:?PII_HASH_KEY is required}
+    volumes:
+      - ${PLATFORM_ADMIN_BOOTSTRAP_DIR:-./secrets/bootstrap}:/bootstrap
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    restart: 'no'
+    logging: *default-logging
+    security_opt: *default-security-opt
+    cap_drop: *default-cap-drop
+    networks:
+      - data
+
 volumes:
   iwana_postgres_data_prod:
     name: iwana_postgres_data_prod

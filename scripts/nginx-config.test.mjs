@@ -166,3 +166,13 @@ test('pgbouncer stays out of the production profile (plan 2026-11-24 §0.5)', as
   assert.match(block, /profiles: !override\n\s+- development\n/);
   assert.doesNotMatch(block, /- production/);
 });
+
+test('platform admin bootstrap only runs on demand and never under `production` (ADR-116)', async () => {
+  const compose = await readFile(prodComposePath, 'utf8');
+  const block = composeServiceBlock(compose, 'platform-admin-bootstrap') ?? '';
+  assert.match(block, /profiles:\n\s+- bootstrap\n/);
+  assert.doesNotMatch(block, /- production/);
+  assert.match(block, /--output=\/bootstrap\/platform-admin\.txt/);
+  assert.match(block, /read_only: true/);
+  assert.match(block, /restart: 'no'/);
+});

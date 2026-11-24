@@ -111,6 +111,18 @@ Mientras cualquiera de estos bloqueos afecte al entorno objetivo, el paso operat
 
    El script lee `.env` y `.env.local` del repo para las variables que falten, así que todas las `DB_*` deben venir del entorno. Verificado el 2026-11-24 sobre Docker Engine 29.10: tras este paso los 11 servicios quedaron sanos.
 
+   **Base vacía: primer administrador de plataforma** ([ADR-116](../adrs/ADR-116-Alta-del-Primer-Administrador-de-Plataforma.md)). Con el 443 todavía limitado al operador, crea la carpeta de salida (si no existe, Docker la crearía como root y el alta fallaría) y ejecuta el servicio de un solo uso con tu uid:
+
+   ```bash
+   install -d -m 700 secrets/bootstrap
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile production --profile bootstrap \
+     --env-file <env> run --rm --user "$(id -u):$(id -g)" platform-admin-bootstrap --email=<correo>
+   ```
+
+   La contraseña queda solo en `secrets/bootstrap/platform-admin.txt` (0600). El correo queda en el historial del shell; es aceptado, pero no pongas ahí nada más. En el primer ingreso la consola exige cambiar la contraseña. El siguiente ingreso exige enrolar el autenticador; solo después se habilita la consola. Borra el archivo entonces. Si ya existe un administrador, el servicio no hace nada.
+
+   Si el alta termina en error, revisa la tabla `platform_users`. Puede que la caída de la conexión ocurriera durante la confirmación: entonces la cuenta quedó creada sin credencial conocida y un reintento la omitirá. En ese caso, borra esa cuenta con auditoría, por SQL con el rol bootstrap y anotando el motivo, y repite el alta.
+
 5. Desde el equipo cliente, abre `http://<IP-LAN>`. Comprueba que redirige a `https://<IP-LAN>`, que el navegador acepta el certificado y que `https://<IP-LAN>/api/v1/health` responde por la misma IP. Entra en la consola, completa el MFA cuando corresponda y recarga para verificar la sesión. En los logs de `iwana_nginx_prod` debe figurar la IP del equipo cliente, no la de un gateway `172.x`.
 6. Habilita `iwana-backup-db.timer` (dump global cada hora, retención de 48 dumps o 14 días), `iwana-backup-media.timer` (espejo diario del bucket) e `iwana-healthwatch.timer`. Este último vigila cada 5 minutos la salud de la API, los contenedores `unhealthy`, el disco por encima del 80 % y el certificado a menos de 30 días; sus fallos salen con prioridad `err` en el journal. Los respaldos caen en `/var/backups/iwana`. Mientras `IWANA_OFFSITE_CMD` no apunte a un destino cifrado fuera del host, el respaldo no cubre la pérdida del servidor. Ensaya el restore según §6.3 antes de contarlo como respaldo.
 

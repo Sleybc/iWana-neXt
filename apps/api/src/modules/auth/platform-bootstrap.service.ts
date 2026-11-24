@@ -64,22 +64,9 @@ export class PlatformBootstrapService implements OnApplicationBootstrap {
       return;
     }
 
-    const passwordHash = await bcrypt.hash(password, 12);
-
-    const superAdmin = this.platformUserRepository.create({
-      email: this.encryptValue(email.toLowerCase().trim()),
-      emailHash,
-      passwordHash,
-      role: PlatformRole.SYSTEM_ADMIN,
-      status: UserStatus.ACTIVE,
-      mfaEnabled: false,
-      mfaSecret: null,
-      // La credencial de arranque viene del entorno y es conocida por quien
-      // despliega: la cuenta no opera hasta cambiarla en el primer ingreso.
-      passwordResetRequired: true,
-      lastLoginAt: null,
-      deletedAt: null,
-    });
+    const superAdmin = this.platformUserRepository.create(
+      await buildBootstrapSuperAdmin(email, password, this.encryptionKey, this.piiHashKey),
+    );
 
     const saved = await this.platformUserRepository.save(superAdmin);
 
@@ -96,8 +83,35 @@ export class PlatformBootstrapService implements OnApplicationBootstrap {
 
     this.logger.log('Bootstrap de superusuario de plataforma completado.');
   }
+}
 
-  private encryptValue(plaintext: string): string {
-    return encryptAes256Gcm(plaintext, this.encryptionKey);
-  }
+/**
+ * Campos del superusuario creado por un bootstrap (entorno de desarrollo o el CLI
+ * `bootstrap-platform-admin` de producción). Única fuente para ambos caminos: correo
+ * cifrado con la clave activa, HMAC para búsquedas y cambio de contraseña obligatorio,
+ * porque en los dos casos la credencial la conoce alguien más que el titular.
+ */
+export async function buildBootstrapSuperAdmin(
+  email: string,
+  password: string,
+  encryptionKey: Buffer,
+  piiHashKey: Buffer,
+  options: { requireMfaEnrollment: boolean } = { requireMfaEnrollment: false },
+): Promise<Partial<PlatformUser>> {
+  const normalized = email.toLowerCase().trim();
+  return {
+    email: encryptAes256Gcm(normalized, encryptionKey),
+    emailHash: hashEmail(normalized, piiHashKey),
+    passwordHash: await bcrypt.hash(password, 12),
+    role: PlatformRole.SYSTEM_ADMIN,
+    // PENDING_VERIFICATION: tras cambiar la contraseña, el login solo entrega el token de
+    // enrolamiento MFA (mismo camino que las altas desde consola). Sin esto, un ACTIVE sin
+    // MFA obtendría sesión completa con solo contraseña (revisión AI-SEC-ENG de ADR-116, A-01).
+    status: options.requireMfaEnrollment ? UserStatus.PENDING_VERIFICATION : UserStatus.ACTIVE,
+    mfaEnabled: false,
+    mfaSecret: null,
+    passwordResetRequired: true,
+    lastLoginAt: null,
+    deletedAt: null,
+  };
 }
