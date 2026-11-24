@@ -11,9 +11,9 @@
 #   IWANA_ENV_FILE    .env del entorno estable (DB_*, MINIO_ROOT_*, S3_BUCKET)
 #   IWANA_BACKUP_DIR  carpeta local de respaldos; db/ y media/ cuelgan de ella
 #   IWANA_OFFSITE_CMD comando opcional que recibe IWANA_BACKUP_DIR como $1 y
-#                     copia cifrado fuera del host. Destino pendiente de
-#                     decisión del CTO: sin él, el respaldo NO cuenta como fuera
-#                     del host y el script lo avisa en el journal.
+#                     copia cifrado fuera del host (offsite-restic.sh). Sin
+#                     él, el respaldo NO cuenta como fuera del host y el
+#                     script lo avisa en el journal.
 # Retención de dumps: los 48 más recientes y nada mayor de 14 días.
 set -euo pipefail
 # Los respaldos contienen PII cifrada y metadatos: solo el operador los lee.

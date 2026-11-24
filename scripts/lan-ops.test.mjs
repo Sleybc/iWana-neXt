@@ -2,7 +2,15 @@
 // fases 1 a 3): firewall DOCKER-USER, CA interna con nameConstraints y unidades systemd.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -99,4 +107,40 @@ test('systemd units point to versioned scripts and backups fail closed without c
   for (const script of readdirSync(lan).filter((f) => f.endsWith('.sh'))) {
     assert.equal(run('bash', ['-n', join(lan, script)]).status, 0, script);
   }
+});
+
+test('offsite copy pins the SSH host, only adds backups and rejects unsafe config', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'iwana-offsite-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = (name, body, mode) => {
+    writeFileSync(join(dir, name), body);
+    chmodSync(join(dir, name), mode);
+    return join(dir, name);
+  };
+  file('restic', '#!/bin/sh\nprintf "%s\\n" "$@"\n', 0o755);
+  const env = {
+    PATH: `${dir}:${process.env.PATH}`,
+    IWANA_OFFSITE_SSH: 'iwana-backup@10.8.0.2',
+    IWANA_OFFSITE_KEY: file('key', 'x', 0o600),
+    IWANA_OFFSITE_KNOWN_HOSTS: file('known', 'x', 0o644),
+    RESTIC_PASSWORD_FILE: file('pass', 'x', 0o600),
+  };
+  const offsite = (arg, extra = {}) =>
+    run('bash', [join(lan, 'offsite-restic.sh'), arg], { ...env, ...extra });
+
+  const ok = offsite(dir);
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.match(
+    ok.stdout,
+    /rclone\.program=ssh .*StrictHostKeyChecking=yes .*iwana-backup@10\.8\.0\.2\n/,
+  );
+  assert.match(ok.stdout, /\nbackup\n--quiet\n/);
+  assert.equal(offsite('forget').status, 2);
+  assert.equal(offsite(join(dir, 'no-existe')).status, 2);
+  for (const ssh of ['-oProxyCommand=x@h', 'a@h -oProxyCommand=x', 'a@-h']) {
+    assert.equal(offsite(dir, { IWANA_OFFSITE_SSH: ssh }).status, 2, ssh);
+  }
+  assert.equal(offsite(dir, { RESTIC_PASSWORD_FILE: file('open', 'x', 0o644) }).status, 2);
+  file('restic', '#!/bin/sh\nexit 7\n', 0o755);
+  assert.equal(offsite(dir).status, 7, 'el fallo del destino llega a systemd');
 });
