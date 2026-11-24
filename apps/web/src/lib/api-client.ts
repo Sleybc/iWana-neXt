@@ -168,11 +168,18 @@ export function persistAccessToken(token: string): void {
   inMemoryAccessToken = token || null;
 }
 
+/**
+ * La consola declara su superficie: si comparte host con el portal, el
+ * navegador envía las cookies de ambos y la API debe usar la de plataforma.
+ */
+const SESSION_AUDIENCE_HEADERS = { 'X-Session-Audience': 'platform' } as const;
+
 async function executeRefreshAccessToken(): Promise<string> {
   const res = await fetch(`${API_BASE}/auth/refresh`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...SESSION_AUDIENCE_HEADERS,
       // C-2 (ADR-081): el refresh se autentica por la cookie httpOnly de
       // refresh; todo método mutante cookie-autenticado exige la cabecera CSRF.
       'X-Requested-With': 'XMLHttpRequest',
@@ -218,6 +225,7 @@ function wait(ms: number, signal?: AbortSignal): Promise<void> {
 async function authorizeAndFetch(path: string, options?: RequestOptions): Promise<Response> {
   const token = getStoredAccessToken();
   const headers = new Headers(options?.headers);
+  headers.set('X-Session-Audience', SESSION_AUDIENCE_HEADERS['X-Session-Audience']);
   const isFormDataBody = typeof FormData !== 'undefined' && options?.body instanceof FormData;
 
   if (!headers.has('Content-Type') && options?.body !== undefined && !isFormDataBody) {

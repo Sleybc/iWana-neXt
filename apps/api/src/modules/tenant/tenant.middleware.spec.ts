@@ -4,6 +4,7 @@ import { TenantContext, Tenant } from '@iwana/db';
 import { TenantStatus } from '@iwana/shared';
 import { Request, Response } from 'express';
 import {
+  platformAccessCookieName,
   platformRefreshCookieName,
   tenantAccessCookieName,
 } from '../auth/session-cookies.constants';
@@ -298,6 +299,46 @@ describe('TenantMiddleware', () => {
 
     expect(jwtService.verify).toHaveBeenCalledWith('cookie.jwt.token');
     expect(tenantService.findById).toHaveBeenCalledWith(tenant.id);
+    expect(tenantService.findBySlug).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('la consola declarada no entra en el contexto de la sesión del portal', async () => {
+    jwtService.verify.mockReturnValue({ sub: 'sa', type: 'platform', jti: 'j' });
+    const request = buildRequest({
+      headers: { 'x-session-audience': 'platform' },
+      cookies: {
+        [tenantAccessCookieName()]: 'jwt-portal',
+        [platformAccessCookieName()]: 'jwt-consola',
+      },
+    });
+    const next = jest.fn(() => expect(TenantContext.get()).toBeUndefined());
+
+    await middleware.use(request, {} as Response, next);
+
+    expect(jwtService.verify).toHaveBeenCalledTimes(1);
+    expect(jwtService.verify).toHaveBeenCalledWith('jwt-consola');
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('con slug ajeno, el contexto sigue saliendo del token de la cookie (C-1)', async () => {
+    const tenant = buildTenant();
+    jwtService.verify.mockReturnValue({
+      sub: 'u',
+      type: 'tenant',
+      jti: 'j',
+      tenantId: tenant.id,
+      schemaName: tenant.schemaName,
+    });
+    tenantService.findById.mockResolvedValue(tenant);
+    const request = buildRequest({
+      headers: { 'x-session-audience': 'tenant', 'x-tenant-slug': 'empresa-ajena' },
+      cookies: { [tenantAccessCookieName()]: 'jwt-portal' },
+    });
+    const next = jest.fn(() => expect(TenantContext.get()?.tenantId).toBe(tenant.id));
+
+    await middleware.use(request, {} as Response, next);
+
     expect(tenantService.findBySlug).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledTimes(1);
   });

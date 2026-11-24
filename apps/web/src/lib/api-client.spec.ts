@@ -65,6 +65,22 @@ describe('api-client', () => {
     expect(authMeAuthHeaders).toContain('Bearer renewed-token');
   });
 
+  it('declara la superficie de consola en la petición y en el refresh', async () => {
+    persistAccessToken('');
+    const audiences: Record<string, string | null> = {};
+    (global.fetch as jest.Mock).mockImplementation(async (url: string, init?: RequestInit) => {
+      const path = url.split('/').pop() as string;
+      const retried = path in audiences;
+      audiences[path] = new Headers(init?.headers).get('X-Session-Audience');
+      if (path === 'refresh') return buildJsonResponse({ data: { accessToken: 'nuevo' } });
+      return retried ? buildJsonResponse({ data: {} }) : buildJsonResponse({}, 401);
+    });
+
+    await authApi.me();
+
+    expect(audiences).toEqual({ me: 'platform', refresh: 'platform' });
+  });
+
   it('normaliza arrays de validación y expone un mensaje legible', async () => {
     (global.fetch as jest.Mock).mockResolvedValue(
       buildJsonResponse(

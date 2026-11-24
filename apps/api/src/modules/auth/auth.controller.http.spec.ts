@@ -300,6 +300,48 @@ describe('AuthController HTTP', () => {
     );
   });
 
+  describe('consola y portal comparten navegador e IP', () => {
+    const bothRefresh = ['refreshToken=portal-1', 'webRefreshToken=consola-1'];
+
+    it.each([
+      ['portal', 'test-access-token', ['portal-1', undefined], 'refreshToken', 'webRefreshToken'],
+      [
+        'consola',
+        'platform-self-test',
+        [undefined, 'consola-1'],
+        'webRefreshToken',
+        'refreshToken',
+      ],
+    ])('cerrar sesión en %s no toca la otra', async (_s, token, args, cleared, kept) => {
+      mockAuthService.logout.mockResolvedValue(undefined);
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/auth/logout')
+        .set('Authorization', `Bearer ${token}`)
+        .set('Cookie', bothRefresh)
+        .expect(200);
+
+      expect(mockAuthService.logout).toHaveBeenCalledWith(expect.anything(), ...args);
+      const names = (response.headers['set-cookie'] as unknown as string[]).map(
+        (cookie) => cookie.split('=')[0],
+      );
+      expect(names).toContain(cleared);
+      expect(names).not.toContain(kept);
+    });
+
+    it('la consola no rota la sesión del portal si la suya falla o falta', async () => {
+      mockAuthService.refreshPlatformTokens.mockRejectedValue(new UnauthorizedException());
+      for (const cookie of [bothRefresh, ['refreshToken=portal-1']]) {
+        await request(app.getHttpServer())
+          .post('/api/v1/auth/refresh')
+          .set('X-Session-Audience', 'platform')
+          .set('Cookie', cookie)
+          .expect(401);
+      }
+      expect(mockAuthService.refreshPlatformTokens).toHaveBeenCalledTimes(1);
+      expect(mockAuthService.refreshTokens).not.toHaveBeenCalled();
+    });
+  });
+
   it('expone GET /api/v1/auth/me y retorna el payload autenticado', async () => {
     const response = await request(app.getHttpServer())
       .get('/api/v1/auth/me')

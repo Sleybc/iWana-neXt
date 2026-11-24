@@ -1,4 +1,6 @@
 import {
+  accessCookieCandidates,
+  declaredSessionAudience,
   isCookieSecure,
   platformAccessCookieName,
   platformRefreshCookieName,
@@ -96,5 +98,41 @@ describe('isCookieSecure — acople a producción en runtime (ADR-081 C-5)', () 
     withEnv({ NODE_ENV: 'development', COOKIE_SECURE: 'true' }, () => {
       expect(isCookieSecure()).toBe(true);
     });
+  });
+});
+
+describe('accessCookieCandidates — consola y portal en la misma IP', () => {
+  const cookies = { portalAccessToken: 'jwt-portal', webAccessToken: 'jwt-consola' };
+  const platform = { 'x-session-audience': 'platform' };
+  const slug = { 'x-tenant-slug': 'empresa' };
+
+  it.each([
+    ['la consola usa solo la suya', platform, cookies, ['jwt-consola']],
+    [
+      'la consola manda aunque indique una empresa',
+      { ...platform, ...slug },
+      cookies,
+      ['jwt-consola'],
+    ],
+    ['el portal usa solo la suya', slug, cookies, ['jwt-portal']],
+    ['sin declarar conserva el orden', {}, cookies, ['jwt-portal', 'jwt-consola']],
+    [
+      'un valor desconocido no declara nada',
+      { 'x-session-audience': 'x' },
+      cookies,
+      ['jwt-portal', 'jwt-consola'],
+    ],
+    ['la consola no toma la del portal', platform, { portalAccessToken: 'jwt-portal' }, []],
+    ['el portal no toma la de la consola', slug, { webAccessToken: 'jwt-consola' }, []],
+  ])('%s', (_name, headers, jar, expected) => {
+    expect(accessCookieCandidates({ headers, cookies: jar })).toEqual(expected);
+  });
+
+  it('tolera cabeceras repetidas', () => {
+    for (const value of ['platform, x', ['platform', 'x']]) {
+      expect(declaredSessionAudience({ headers: { 'x-session-audience': value } })).toBe(
+        'platform',
+      );
+    }
   });
 });

@@ -44,6 +44,7 @@ import {
   platformRefreshCookieName,
   tenantAccessCookieName,
   tenantRefreshCookieName,
+  declaredSessionAudience,
 } from './session-cookies.constants';
 import { resolveAccessTokenTtlSeconds, resolveRefreshTokenTtlSeconds } from './token-ttl.constants';
 import { resolveRouteRateLimit } from '../../common/rate-limit-env';
@@ -237,8 +238,7 @@ export class AuthController {
    * Rota el refresh token. Lee la cookie httpOnly, emite nuevos tokens.
    *
    * Ruteo por audiencia: el cliente declara su audiencia con el header
-   * `X-Tenant-Slug` (el portal lo envia SIEMPRE; la consola de plataforma
-   * NUNCA).
+   * `X-Tenant-Slug` (el portal lo envia SIEMPRE) o `X-Session-Audience`.
    *
    * - Con audiencia tenant declarada: fail-fast. Solo se intenta la rama
    *   tenant. Si la cookie tenant falta o es rechazada, se responde 401
@@ -246,7 +246,8 @@ export class AuthController {
    *   (una sesion de plataforma jamas autoriza al portal, asi que el fallback
    *   seria un ciclo desperdiciado que rota tokens inutilmente y pospone el
    *   error que de todos modos termina en el modal de recuperacion).
-   * - Sin header (plataforma y clientes sin declarar): platform-first con
+   * - Con `X-Session-Audience: platform` (consola): solo la rama de plataforma.
+   * - Sin header (clientes sin declarar): platform-first con
    *   fallback a tenant por retrocompatibilidad con llamadas que solo traen
    *   esa credencial.
    *
@@ -273,21 +274,27 @@ export class AuthController {
     const ipAddress = req.ip ?? req.socket?.remoteAddress;
     const userAgent = req.headers['user-agent'];
 
-    // `X-Tenant-Slug` duplicado llega como `string[]` en Express: se toma el
-    // primero (misma tolerancia que el TenantMiddleware con el slug).
-    const tenantSlugHeader = req.headers['x-tenant-slug'];
-    const declaredSlug = Array.isArray(tenantSlugHeader) ? tenantSlugHeader[0] : tenantSlugHeader;
-    const declaresTenant = typeof declaredSlug === 'string' && declaredSlug.trim().length > 0;
+    const audience = declaredSessionAudience(req);
 
     // Fail-fast: con audiencia tenant declarada, la sesion de plataforma no
     // autoriza nada y se ignora sin consumirla.
-    if (declaresTenant) {
+    if (audience === 'tenant') {
       if (!rawTenantRefreshToken) {
         this.logger.warn('REFRESH_COOKIE_MISSING — audiencia tenant declarada sin cookie tenant.');
         throw new UnauthorizedException('No se encontro el refresh token.');
       }
 
       return this.refreshTenantSession(rawTenantRefreshToken, ipAddress, userAgent, res);
+    }
+
+    // Simétrico: la consola no consume ni rota la sesión del portal.
+    if (audience === 'platform') {
+      if (!rawPlatformRefreshToken) {
+        this.logger.warn('REFRESH_COOKIE_MISSING — audiencia de plataforma sin su cookie.');
+        throw new UnauthorizedException('No se encontro el refresh token.');
+      }
+
+      return this.refreshPlatformSession(rawPlatformRefreshToken, ipAddress, userAgent, res);
     }
 
     if (!rawTenantRefreshToken && !rawPlatformRefreshToken) {
@@ -390,14 +397,17 @@ export class AuthController {
     const rawRefreshToken = cookies[tenantRefreshCookieName()];
     const rawPlatformRefreshToken = cookies[platformRefreshCookieName()];
 
-    await this.authService.logout(user, rawRefreshToken, rawPlatformRefreshToken);
-
-    // Limpiar las cookies de la sesion: access (Path=/) y refresh (Path=/api/v1/auth)
-    // en ambas audiencias, para que el logout no dependa de cual estaba presente.
-    res.clearCookie(tenantRefreshCookieName(), { path: REFRESH_COOKIE_PATH });
-    res.clearCookie(platformRefreshCookieName(), { path: REFRESH_COOKIE_PATH });
-    res.clearCookie(tenantAccessCookieName(), { path: '/' });
-    res.clearCookie(platformAccessCookieName(), { path: '/' });
+    // Se cierra la sesion del token verificado; la de la otra superficie, que
+    // puede compartir navegador e IP, no se revoca ni se borra.
+    if (user.type === 'platform') {
+      await this.authService.logout(user, undefined, rawPlatformRefreshToken);
+      res.clearCookie(platformRefreshCookieName(), { path: REFRESH_COOKIE_PATH });
+      res.clearCookie(platformAccessCookieName(), { path: '/' });
+    } else {
+      await this.authService.logout(user, rawRefreshToken, undefined);
+      res.clearCookie(tenantRefreshCookieName(), { path: REFRESH_COOKIE_PATH });
+      res.clearCookie(tenantAccessCookieName(), { path: '/' });
+    }
 
     return { data: { message: 'Sesion cerrada correctamente.' } };
   }

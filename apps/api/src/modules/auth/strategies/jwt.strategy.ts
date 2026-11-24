@@ -11,7 +11,7 @@ import {
   JWT_CLAIMS_BY_TOKEN_TYPE,
 } from '../auth.constants';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
-import { platformAccessCookieName, tenantAccessCookieName } from '../session-cookies.constants';
+import { accessCookieCandidates } from '../session-cookies.constants';
 
 /**
  * Estrategia JWT RS256 para Passport.
@@ -56,7 +56,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
    *
    * 1. Cabecera `Authorization: Bearer` — sigue operativa durante la transición.
    * 2. Cookie de access por audiencia (`portalAccessToken` / `webAccessToken`,
-   *    `__Host-` en producción) — el navegador la adjunta sola, httpOnly.
+   *    `__Host-` en producción) — el navegador la adjunta sola, httpOnly. Si
+   *    viajan las dos, manda la superficie declarada por la petición.
    *
    * La coherencia (`iss`, `aud`) ↔ `type` la verifica `validate()`, de modo que
    * leer ambas cookies no abre la frontera de audiencias (ADR-061).
@@ -71,8 +72,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       }
     }
 
-    const cookies = (req.cookies ?? {}) as Record<string, string>;
-    return cookies[tenantAccessCookieName()] ?? cookies[platformAccessCookieName()] ?? null;
+    return accessCookieCandidates(req)[0] ?? null;
   }
 
   /**

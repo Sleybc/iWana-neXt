@@ -13,9 +13,9 @@ import { TenantContext } from '@iwana/db';
 import { TenantStatus } from '@iwana/shared';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import {
-  platformAccessCookieName,
+  accessCookieCandidates,
+  declaredSessionAudience,
   platformRefreshCookieName,
-  tenantAccessCookieName,
   tenantRefreshCookieName,
 } from '../auth/session-cookies.constants';
 import { PUBLIC_ROUTES_WITH_TENANT, PUBLIC_ROUTES_WITHOUT_TENANT } from './public-routes';
@@ -140,16 +140,12 @@ export class TenantMiddleware implements NestMiddleware {
    * de access por audiencia (C-1). Devuelve el primer payload que verifica;
    * ante un token invalido o expirado prueba la siguiente fuente de la lista.
    * La lista de candidatos es de un solo elemento si hay Bearer (un Bearer
-   * invalido no cae a las cookies); sin Bearer contiene la cookie de tenant y
-   * luego la de plataforma, de modo que una cookie de tenant invalida sí
-   * prueba la de plataforma. Si ninguna fuente verifica, no resuelve contexto.
+   * invalido no cae a las cookies). Sin Bearer contiene la cookie de la
+   * superficie declarada; si no se declara, la de tenant y luego la de
+   * plataforma. Si ninguna fuente verifica, no resuelve contexto.
    */
   private tryExtractJwtPayload(req: Request): JwtPayload | null {
     for (const candidate of this.readAccessTokenCandidates(req)) {
-      if (!candidate) {
-        continue;
-      }
-
       try {
         return this.jwtService.verify<JwtPayload>(candidate);
       } catch {
@@ -161,7 +157,7 @@ export class TenantMiddleware implements NestMiddleware {
   }
 
   /** Fuentes del access token: cabecera Bearer y cookies de access de ambas audiencias. */
-  private readAccessTokenCandidates(req: Request): Array<string | undefined> {
+  private readAccessTokenCandidates(req: Request): string[] {
     const authHeader = req.headers.authorization;
 
     if (authHeader?.startsWith('Bearer ')) {
@@ -171,8 +167,7 @@ export class TenantMiddleware implements NestMiddleware {
       }
     }
 
-    const cookies = (req.cookies ?? {}) as Record<string, string>;
-    return [cookies[tenantAccessCookieName()], cookies[platformAccessCookieName()]];
+    return accessCookieCandidates(req);
   }
 
   private normalizeTenantSlug(rawSlug: string | undefined): string {
@@ -216,7 +211,7 @@ export class TenantMiddleware implements NestMiddleware {
 
     if (this.getNormalizedPath(req) === '/auth/refresh') {
       const cookies = (req.cookies ?? {}) as Record<string, string>;
-      if (cookies[platformRefreshCookieName()]) {
+      if (declaredSessionAudience(req) === 'platform' || cookies[platformRefreshCookieName()]) {
         return false;
       }
       // V-2 (WEB-DASHBOARD Ola 2): sin ninguna cookie de refresh no hay sesión que

@@ -55,3 +55,52 @@ export function platformRefreshCookieName(): string {
 export function isCookieSecure(): boolean {
   return process.env['NODE_ENV'] === 'production' || process.env['COOKIE_SECURE'] === 'true';
 }
+
+/** Cabecera con la que la consola declara qué sesión de navegador usa. */
+export const SESSION_AUDIENCE_HEADER = 'x-session-audience';
+
+export type SessionAudience = 'tenant' | 'platform';
+
+interface SessionRequest {
+  headers: Record<string, string | string[] | undefined>;
+  cookies?: unknown;
+}
+
+function headerValue(req: SessionRequest, name: string): string {
+  const value = req.headers[name];
+  // Node une las cabeceras repetidas con comas: cuenta la primera.
+  const first = Array.isArray(value) ? value[0] : value;
+  return first?.split(',')[0]?.trim().toLowerCase() ?? '';
+}
+
+/**
+ * Superficie que hace la petición, o `null` si no la declara.
+ *
+ * Las cookies no distinguen puertos: con consola y portal en la misma IP el
+ * navegador envía las de ambos. La consola se declara con
+ * `X-Session-Audience: platform`; el portal, con `X-Tenant-Slug`.
+ *
+ * Solo elige entre credenciales que el navegador ya envió. No autoriza ni
+ * resuelve el tenant: ambas cosas salen del token firmado (ADR-061, C-1).
+ */
+export function declaredSessionAudience(req: SessionRequest): SessionAudience | null {
+  const declared = headerValue(req, SESSION_AUDIENCE_HEADER);
+  if (declared === 'platform' || declared === 'tenant') {
+    return declared;
+  }
+  return headerValue(req, 'x-tenant-slug') ? 'tenant' : null;
+}
+
+/**
+ * Cookies de access utilizables por la petición, en orden. Con superficie
+ * declarada, solo la suya; sin declarar, se conserva el orden tenant → plataforma.
+ */
+export function accessCookieCandidates(req: SessionRequest): string[] {
+  const cookies = (req.cookies ?? {}) as Record<string, string | undefined>;
+  const tenant = cookies[tenantAccessCookieName()];
+  const platform = cookies[platformAccessCookieName()];
+  const audience = declaredSessionAudience(req);
+  const candidates =
+    audience === 'platform' ? [platform] : audience === 'tenant' ? [tenant] : [tenant, platform];
+  return candidates.filter((token): token is string => Boolean(token));
+}

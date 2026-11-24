@@ -98,3 +98,18 @@ describe('JwtStrategy.validate() — coherencia entre (iss, aud) y el tipo de to
     );
   });
 });
+
+describe('JwtStrategy — elección de la cookie con las dos sesiones abiertas', () => {
+  const extract = (headers: Record<string, string>): string | null =>
+    (
+      JwtStrategy as unknown as { extractAccessToken: (req: unknown) => string | null }
+    ).extractAccessToken({
+      headers,
+      cookies: { portalAccessToken: 'jwt-portal', webAccessToken: 'jwt-consola' },
+    });
+
+  it('toma la de la superficie que hace la petición', () => {
+    expect(extract({ 'x-session-audience': 'platform' })).toBe('jwt-consola');
+    expect(extract({ 'x-tenant-slug': 'empresa' })).toBe('jwt-portal');
+  });
+});
