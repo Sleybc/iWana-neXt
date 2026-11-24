@@ -170,9 +170,9 @@ Los alcances `password-change` y `mfa-setup` se guardan hoy en almacenamiento lo
 
 ---
 
-## Enmienda propuesta (2026-11-24) — superficie de sesión con host compartido
+## Enmienda (2026-11-24) — superficie de sesión con host compartido
 
-**Estado:** en revisión; pendiente de ratificación del CTO.
+**Estado:** aprobada — CTO Humano, 2026-11-24.
 
 Las cookies no distinguen puertos. Con consola y portal en la misma IP, la API tomaba siempre la cookie del portal y la consola recibía 403.
 
@@ -180,4 +180,4 @@ Las cookies no distinguen puertos. Con consola y portal en la misma IP, la API t
 - La cabecera elige entre credenciales ya enviadas: no autoriza ni resuelve el tenant. C-1, C-2 y ADR-061 se conservan.
 - El cierre de sesión revoca y borra solo la audiencia del token verificado. En equipos compartidos hay que cerrar ambas.
 
-**Riesgo residual (medio, ya existía):** con host compartido, un XSS en el portal puede pedir el refresh de la consola. El aislamiento completo exige hosts distintos; se cierra con los nombres internos, aplazados a producción. Aceptarlo hasta entonces corresponde al CTO.
+**Riesgo residual (medio, ya existía):** con host compartido, un XSS en el portal puede pedir el refresh de la consola. El aislamiento completo exige hosts distintos; se cierra con los nombres internos, aplazados a producción. El CTO lo acepta hasta entonces (2026-11-24).
