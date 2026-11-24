@@ -432,6 +432,11 @@ export class PlatformUsersService {
     dto: CreatePlatformUserBootstrapDto,
     requestContext: AuditRequestContext = {},
   ): Promise<PlatformUserResponseDto> {
+    // ADR-116: en producción el primer administrador nace solo por el CLI. Este alta es
+    // pública y entrega una cuenta ACTIVE sin MFA; con la tabla vacía sería de quien llegue antes.
+    if (process.env['NODE_ENV'] === 'production') {
+      throw new NotFoundException();
+    }
     const count = await this.platformUserRepo.count();
     if (count > 0) {
       throw new ConflictException(

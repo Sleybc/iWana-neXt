@@ -465,6 +465,34 @@ describe('AuthController HTTP', () => {
         expect(cookie).toMatch(/=; .*Expires=Thu, 01 Jan 1970/);
       }
     });
+
+    it('borra la sesión anterior con Secure: sin él el navegador ignora el borrado de `__Host-`', async () => {
+      const originalCookieSecure = process.env.COOKIE_SECURE;
+      process.env.COOKIE_SECURE = 'true';
+      try {
+        mockAuthService.login.mockResolvedValue({
+          accessToken: 'jwt-scoped-tenant',
+          passwordResetRequired: true,
+          refreshToken: '',
+        });
+
+        const response = await request(app.getHttpServer())
+          .post('/api/v1/auth/login')
+          .set('X-Tenant-Slug', 'isp-demo')
+          .send({ email: 'admin@example.test', password: 'Passw0rd!!' })
+          .expect(200);
+
+        const cookies = response.headers['set-cookie'] as unknown as string[];
+        expect(cookies).toHaveLength(2);
+        for (const cookie of cookies) {
+          expect(cookie).toMatch(/=; .*Expires=Thu, 01 Jan 1970/);
+          expect(cookie).toMatch(/; Secure/);
+        }
+      } finally {
+        if (originalCookieSecure === undefined) delete process.env.COOKIE_SECURE;
+        else process.env.COOKIE_SECURE = originalCookieSecure;
+      }
+    });
   });
 
   describe('POST /api/v1/auth/platform/login — indicador de cambio forzado', () => {

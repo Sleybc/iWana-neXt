@@ -89,6 +89,9 @@ export class AuthController {
    *
    * `Secure` lo resuelve `isCookieSecure()` (C-5, ADR-081). El prefijo
    * `__Host-` en produccion lo resuelve el nombre de la cookie.
+   *
+   * Los borrados usan estas mismas opciones: el navegador descarta un
+   * `Set-Cookie` de nombre `__Host-` sin `Secure`, y la cookie seguiria viva.
    */
   private accessCookieOptions(): CookieOptions {
     return {
@@ -161,8 +164,8 @@ export class AuthController {
 
     // ADR-117: sin esto, la sesión anterior de otra persona en el mismo navegador seguiría viva.
     if (result.passwordResetRequired) {
-      res.clearCookie(tenantAccessCookieName(), { path: '/' });
-      res.clearCookie(tenantRefreshCookieName(), { path: REFRESH_COOKIE_PATH });
+      res.clearCookie(tenantAccessCookieName(), this.accessCookieOptions());
+      res.clearCookie(tenantRefreshCookieName(), this.refreshCookieOptions());
     }
 
     if (!result.mfaRequired && result.refreshToken) {
@@ -401,12 +404,12 @@ export class AuthController {
     // puede compartir navegador e IP, no se revoca ni se borra.
     if (user.type === 'platform') {
       await this.authService.logout(user, undefined, rawPlatformRefreshToken);
-      res.clearCookie(platformRefreshCookieName(), { path: REFRESH_COOKIE_PATH });
-      res.clearCookie(platformAccessCookieName(), { path: '/' });
+      res.clearCookie(platformRefreshCookieName(), this.refreshCookieOptions());
+      res.clearCookie(platformAccessCookieName(), this.accessCookieOptions());
     } else {
       await this.authService.logout(user, rawRefreshToken, undefined);
-      res.clearCookie(tenantRefreshCookieName(), { path: REFRESH_COOKIE_PATH });
-      res.clearCookie(tenantAccessCookieName(), { path: '/' });
+      res.clearCookie(tenantRefreshCookieName(), this.refreshCookieOptions());
+      res.clearCookie(tenantAccessCookieName(), this.accessCookieOptions());
     }
 
     return { data: { message: 'Sesion cerrada correctamente.' } };
@@ -634,7 +637,7 @@ export class AuthController {
     // revocado. El cliente cierra sesion tras el cambio voluntario (C-3, FE).
     res.clearCookie(
       user.type === 'platform' ? platformAccessCookieName() : tenantAccessCookieName(),
-      { path: '/' },
+      this.accessCookieOptions(),
     );
     return { data: { message: 'Contrasena actualizada correctamente.' } };
   }
