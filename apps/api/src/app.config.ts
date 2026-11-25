@@ -69,33 +69,41 @@ function classifyProductionOrigin(raw: string): OriginVerdict {
   return 'ok';
 }
 
-/** Valida una lista de orígenes separada por comas (formato de CORS_ORIGIN). */
-const productionOriginListValidator: Joi.CustomValidator<string> = (value, helpers) => {
-  const origins = value
+const HOST_LABELS =
+  /^(?:\[[0-9a-f:.]+\]|[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*)$/u;
+
+/**
+ * Origen https tal como lo envía el navegador: la API compara la cabecera Origin carácter a
+ * carácter (surface-origin.ts).
+ */
+function exactHttpsOriginError(raw: string): string | null {
+  const verdict = classifyProductionOrigin(raw);
+  if (verdict === 'not-absolute') return 'iwana.origin.notAbsolute';
+  if (verdict === 'development-only') return 'iwana.origin.developmentOnly';
+  const parsed = new URL(raw);
+  if (parsed.protocol !== 'https:') return 'iwana.origin.notHttps';
+  // `URL` conserva comodines y etiquetas vacías en el nombre: se excluyen aparte.
+  if (parsed.origin !== raw || !HOST_LABELS.test(parsed.hostname)) return 'iwana.origin.notExact';
+  return null;
+}
+
+const splitOrigins = (value: string): string[] =>
+  value
     .split(',')
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);
+
+/** Valida una lista de orígenes separada por comas (formato de CORS_ORIGIN). */
+const productionOriginListValidator: Joi.CustomValidator<string> = (value, helpers) => {
+  const origins = splitOrigins(value);
 
   if (origins.length === 0) {
     return helpers.error('iwana.origin.notAbsolute');
   }
 
   for (const origin of origins) {
-    const verdict = classifyProductionOrigin(origin);
-
-    if (verdict === 'not-absolute') {
-      return helpers.error('iwana.origin.notAbsolute');
-    }
-
-    if (verdict === 'development-only') {
-      return helpers.error('iwana.origin.developmentOnly');
-    }
-
-    // La API compara la cabecera Origin carácter a carácter (surface-origin.ts). `URL`
-    // conserva el comodín tal cual, así que se excluye aparte.
-    if (new URL(origin).origin !== origin || origin.includes('*')) {
-      return helpers.error('iwana.origin.notExact');
-    }
+    const problem = exactHttpsOriginError(origin);
+    if (problem) return helpers.error(problem);
   }
 
   // Se devuelve el valor sin normalizar: main.ts lee process.env directamente y
@@ -116,6 +124,13 @@ const productionUrlValidator: Joi.CustomValidator<string> = (value, helpers) => 
   }
 
   return value;
+};
+
+/** Origen https exacto (formato de PORTAL_URL); tolera una barra final y la quita. */
+const productionExactOriginValidator: Joi.CustomValidator<string> = (value, helpers) => {
+  const origin = value.trim().replace(/\/$/u, '');
+  const problem = exactHttpsOriginError(origin);
+  return problem ? helpers.error(problem) : origin;
 };
 
 /** Origen público https sin ruta (lo ve el navegador: enlaces firmados del almacenamiento). */
@@ -349,6 +364,7 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
           'CORS_ORIGIN debe ser una lista de orígenes absolutos http(s) separados por comas.',
         'iwana.origin.notAbsolute':
           'CORS_ORIGIN debe ser una lista de orígenes absolutos http(s) separados por comas.',
+        'iwana.origin.notHttps': 'CORS_ORIGIN debe usar https en todos sus orígenes.',
         'iwana.origin.notExact':
           'CORS_ORIGIN debe llevar orígenes exactos: en minúsculas, sin ruta, barra final, comodines ni puerto por defecto.',
         'iwana.origin.developmentOnly':
@@ -416,14 +432,13 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
     SMTP_PASS: Joi.string().allow('').optional(),
     SMTP_FROM: Joi.string().allow('').optional(),
     SMTP_SECURE: Joi.boolean().optional(),
-    // Base de los enlaces de los correos transaccionales (reset de contraseña y
-    // verificación de email, apps/api/src/modules/auth/auth.service.ts).
-    // Producción: obligatoria y sin default a localhost — riesgo 1 de ADR-070.
+    // Origen de la consola. En producción es obligatoria (ADR-070) y debe estar en CORS_ORIGIN;
+    // los enlaces de correo usan PORTAL_URL. Fuera de producción sirve de respaldo de esta.
     FRONTEND_URL: Joi.when('NODE_ENV', {
       is: 'production',
       then: Joi.string().trim().required().custom(productionUrlValidator).messages({
         'any.required':
-          'FRONTEND_URL es obligatoria con NODE_ENV=production: sin ella los correos de reset y verificación saldrían apuntando a localhost sin fallo visible al arrancar.',
+          'FRONTEND_URL es obligatoria con NODE_ENV=production: identifica el origen de la consola.',
         'string.empty': 'FRONTEND_URL debe ser una URL absoluta http(s).',
         'iwana.origin.notAbsolute': 'FRONTEND_URL debe ser una URL absoluta http(s).',
         'iwana.origin.developmentOnly':
@@ -436,11 +451,14 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
     // páginas no existen en la consola y el enlace llevaría el token a otro vhost.
     PORTAL_URL: Joi.when('NODE_ENV', {
       is: 'production',
-      then: Joi.string().trim().custom(productionUrlValidator).required().messages({
+      then: Joi.string().trim().custom(productionExactOriginValidator).required().messages({
         'any.required':
           'PORTAL_URL es obligatoria con NODE_ENV=production: sin ella los enlaces del personal de la empresa apuntarían a la consola.',
         'string.empty': 'PORTAL_URL debe ser una URL absoluta http(s).',
         'iwana.origin.notAbsolute': 'PORTAL_URL debe ser una URL absoluta http(s).',
+        'iwana.origin.notHttps': 'PORTAL_URL debe usar https en producción.',
+        'iwana.origin.notExact':
+          'PORTAL_URL debe ser un origen exacto: sin credenciales, ruta, query, fragmento, comodines ni puerto por defecto.',
         'iwana.origin.developmentOnly':
           'PORTAL_URL no puede apuntar a localhost/127.0.0.1 con NODE_ENV=production.',
       }),
@@ -501,7 +519,9 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
       .default('CHANGE_ME_TYPESENSE_DEV_KEY')
       .when('NODE_ENV', { is: 'production', then: Joi.required() }),
     TYPESENSE_TIMEOUT_MS: Joi.number().integer().min(100).default(3000),
-  }).custom(validateSessionMax);
+  })
+    .custom(validateSessionMax)
+    .custom(validateProductionOrigins);
 }
 
 /**
@@ -523,6 +543,25 @@ function validateSessionMax(
       ({ env, value }) =>
         `${env} debe ser al menos JWT_ACCESS_EXPIRATION y, en producción, ${value} como máximo.`,
     );
+  if (problems.length > 0) return helpers.message({ custom: problems.join(' ') });
+  return config;
+}
+
+/** Consola y portal son orígenes distintos y ambos figuran en CORS_ORIGIN. */
+function validateProductionOrigins(
+  config: Record<string, string>,
+  helpers: Joi.CustomHelpers,
+): Record<string, string> | Joi.ErrorReport {
+  const { NODE_ENV, CORS_ORIGIN, FRONTEND_URL, PORTAL_URL: portal } = config;
+  // Las reglas de cada clave ya exigen que las tres existan y sean válidas en producción.
+  if (NODE_ENV !== 'production' || !CORS_ORIGIN || !FRONTEND_URL || !portal) return config;
+  const allowed = splitOrigins(CORS_ORIGIN);
+  const consola = new URL(FRONTEND_URL).origin;
+  const problems = [
+    ...(portal === consola ? ['PORTAL_URL debe ser distinta de FRONTEND_URL.'] : []),
+    ...(allowed.includes(portal) ? [] : ['PORTAL_URL debe estar en CORS_ORIGIN.']),
+    ...(allowed.includes(consola) ? [] : ['FRONTEND_URL debe estar en CORS_ORIGIN.']),
+  ];
   if (problems.length > 0) return helpers.message({ custom: problems.join(' ') });
   return config;
 }

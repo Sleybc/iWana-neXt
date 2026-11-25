@@ -73,7 +73,7 @@ describe('createAppConfigurationSchema — CORS_ORIGIN y FRONTEND_URL en producc
 
       expect(error).toBeDefined();
       expect(error?.message).toContain('FRONTEND_URL es obligatoria con NODE_ENV=production');
-      expect(error?.message).toContain('correos de reset y verificación');
+      expect(error?.message).toContain('identifica el origen de la consola');
     });
 
     it('rechaza el arranque sin CORS_ORIGIN con un mensaje explícito', () => {
@@ -136,6 +136,7 @@ describe('createAppConfigurationSchema — CORS_ORIGIN y FRONTEND_URL en producc
       'https://App.ejemplo.example',
       'https://usuario@app.ejemplo.example',
       'https://*.ejemplo.example',
+      'https://app..ejemplo.example',
     ])('rechaza en CORS_ORIGIN lo que el navegador no envía como origen: %s', (origin) => {
       const { error } = validate({
         ...buildProductionEnv(),
@@ -145,10 +146,19 @@ describe('createAppConfigurationSchema — CORS_ORIGIN y FRONTEND_URL en producc
       expect(error?.message).toContain('CORS_ORIGIN debe llevar orígenes exactos');
     });
 
+    it('rechaza en CORS_ORIGIN un origen sin https', () => {
+      const { error } = validate({
+        ...buildProductionEnv(),
+        CORS_ORIGIN: `${PRODUCTION_ORIGIN},http://portal.ejemplo.example`,
+      });
+
+      expect(error?.message).toContain('CORS_ORIGIN debe usar https');
+    });
+
     it('admite en CORS_ORIGIN un puerto propio y espacios entre orígenes', () => {
       const { error } = validate({
         ...buildProductionEnv(),
-        CORS_ORIGIN: `${PRODUCTION_ORIGIN}, https://10.0.0.1:8443`,
+        CORS_ORIGIN: `${PRODUCTION_ORIGIN}, ${PORTAL_ORIGIN}, https://10.0.0.1:8443`,
       });
 
       expect(error).toBeUndefined();
@@ -222,56 +232,56 @@ describe('createAppConfigurationSchema — CORS_ORIGIN y FRONTEND_URL en producc
 });
 
 /**
+ * Aplica el entorno sobre `process.env` y lo restaura siempre. No se sustituye
+ * el objeto completo: Jest y Node leen otras variables del proceso durante la
+ * ejecución. Las claves con `undefined` se eliminan para simular su ausencia.
+ */
+const CONFIG_SCHEMA_KEYS = Object.keys(
+  (createAppConfigurationSchema().describe() as { keys: Record<string, unknown> }).keys,
+);
+
+async function bootConfigModule(env: Record<string, string | undefined>): Promise<void> {
+  const snapshot = { ...process.env };
+
+  try {
+    // Este helper superpone el entorno sobre el `process.env` real: un `.env.development`
+    // cargado por otra suite del mismo worker colaba claves prohibidas en producción
+    // (credencial de plataforma, MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS) y el arranque
+    // correcto fallaba solo bajo carga. Se borra toda clave del esquema que el escenario
+    // no declare, no una lista a mano.
+    for (const key of CONFIG_SCHEMA_KEYS) delete process.env[key];
+
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+
+    // `forRoot` es `static async`: rechaza la promesa, no lanza en la llamada.
+    await ConfigModule.forRoot({
+      isGlobal: true,
+      ignoreEnvFile: true,
+      validationSchema: createAppConfigurationSchema(),
+      validationOptions: { abortEarly: false },
+    });
+  } finally {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in snapshot)) {
+        delete process.env[key];
+      }
+    }
+    Object.assign(process.env, snapshot);
+  }
+}
+
+/**
  * El bloque anterior valida el esquema; este valida el arranque real: es
  * `ConfigModule.forRoot` quien ejecuta la validación durante el bootstrap de
  * AppModule, con las mismas opciones que app.module.ts.
  */
 describe('ConfigModule.forRoot — fail-fast de arranque en perfil producción', () => {
-  /**
-   * Aplica el entorno sobre `process.env` y lo restaura siempre. No se sustituye
-   * el objeto completo: Jest y Node leen otras variables del proceso durante la
-   * ejecución. Las claves con `undefined` se eliminan para simular su ausencia.
-   */
-  const CONFIG_SCHEMA_KEYS = Object.keys(
-    (createAppConfigurationSchema().describe() as { keys: Record<string, unknown> }).keys,
-  );
-
-  async function bootConfigModule(env: Record<string, string | undefined>): Promise<void> {
-    const snapshot = { ...process.env };
-
-    try {
-      // Este helper superpone el entorno sobre el `process.env` real: un `.env.development`
-      // cargado por otra suite del mismo worker colaba claves prohibidas en producción
-      // (credencial de plataforma, MIGRATION_UISP_ALLOWED_PRIVATE_HOSTS) y el arranque
-      // correcto fallaba solo bajo carga. Se borra toda clave del esquema que el escenario
-      // no declare, no una lista a mano.
-      for (const key of CONFIG_SCHEMA_KEYS) delete process.env[key];
-
-      for (const [key, value] of Object.entries(env)) {
-        if (value === undefined) {
-          delete process.env[key];
-        } else {
-          process.env[key] = value;
-        }
-      }
-
-      // `forRoot` es `static async`: rechaza la promesa, no lanza en la llamada.
-      await ConfigModule.forRoot({
-        isGlobal: true,
-        ignoreEnvFile: true,
-        validationSchema: createAppConfigurationSchema(),
-        validationOptions: { abortEarly: false },
-      });
-    } finally {
-      for (const key of Object.keys(process.env)) {
-        if (!(key in snapshot)) {
-          delete process.env[key];
-        }
-      }
-      Object.assign(process.env, snapshot);
-    }
-  }
-
   it('aborta el arranque si faltan FRONTEND_URL y CORS_ORIGIN', async () => {
     await expect(
       bootConfigModule({
@@ -313,6 +323,44 @@ describe('createAppConfigurationSchema — PORTAL_URL (invitación al portal emp
     delete env['PORTAL_URL'];
     const { error } = validate(value === undefined ? env : { ...env, PORTAL_URL: value });
     expect(error?.message).toMatch(/^PORTAL_URL (?:es obligatoria|debe ser una URL absoluta)/u);
+  });
+
+  it.each([
+    ['http://portal.ejemplo.example', 'PORTAL_URL debe usar https'],
+    ['https://portal.ejemplo.example@otro.example', 'PORTAL_URL debe ser un origen exacto'],
+    ['https://portal.ejemplo.example/ruta', 'PORTAL_URL debe ser un origen exacto'],
+    ['https://portal.ejemplo.example//', 'PORTAL_URL debe ser un origen exacto'],
+    ['https://portal.ejemplo.example?x=1', 'PORTAL_URL debe ser un origen exacto'],
+    ['https://portal.ejemplo.example/?', 'PORTAL_URL debe ser un origen exacto'],
+    ['https://portal.ejemplo.example#x', 'PORTAL_URL debe ser un origen exacto'],
+    ['https://*.ejemplo.example', 'PORTAL_URL debe ser un origen exacto'],
+    ['https://portal.ejemplo.example:443', 'PORTAL_URL debe ser un origen exacto'],
+    [PRODUCTION_ORIGIN, 'PORTAL_URL debe ser distinta de FRONTEND_URL'],
+    ['https://otro.ejemplo.example', 'PORTAL_URL debe estar en CORS_ORIGIN'],
+  ])('%s aborta el arranque real', async (PORTAL_URL, message) => {
+    const env = { ...buildProductionEnv(), PORTAL_URL };
+    expect(validate(env).error?.message).toContain(message);
+    await expect(bootConfigModule(env)).rejects.toThrow(message);
+  });
+
+  it('tolera una barra final y la quita', () => {
+    const { error, value } = validate({ ...buildProductionEnv(), PORTAL_URL: `${PORTAL_ORIGIN}/` });
+    expect(error).toBeUndefined();
+    expect(value['PORTAL_URL']).toBe(PORTAL_ORIGIN);
+  });
+
+  it('FRONTEND_URL debe estar en CORS_ORIGIN, con o sin barra final', async () => {
+    const env = { ...buildProductionEnv(), FRONTEND_URL: `${PRODUCTION_ORIGIN}/` };
+    expect(validate(env).error).toBeUndefined();
+    const missing = { ...buildProductionEnv(), CORS_ORIGIN: PORTAL_ORIGIN };
+    await expect(bootConfigModule(missing)).rejects.toThrow(
+      'FRONTEND_URL debe estar en CORS_ORIGIN',
+    );
+  });
+
+  it('FRONTEND_URL con la barra final sigue contando como la misma que PORTAL_URL', () => {
+    const { error } = validate({ ...buildProductionEnv(), FRONTEND_URL: `${PORTAL_ORIGIN}/` });
+    expect(error?.message).toContain('PORTAL_URL debe ser distinta de FRONTEND_URL');
   });
 
   it('en desarrollo sigue siendo opcional', () => {

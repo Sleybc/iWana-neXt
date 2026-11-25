@@ -24,7 +24,7 @@ describe('AppModule configuration', () => {
       S3_SECRET_ACCESS_KEY: 'synthetic-secret',
       TYPESENSE_HOST: 'typesense',
       TYPESENSE_API_KEY: 'synthetic-key',
-      CORS_ORIGIN: 'https://app.example.test',
+      CORS_ORIGIN: 'https://app.example.test,https://portal.example.test',
       FRONTEND_URL: 'https://app.example.test',
       PORTAL_URL: 'https://portal.example.test',
       ...overrides,
@@ -187,7 +187,7 @@ describe('AppModule configuration', () => {
         // Obligatorias en producción desde la Puerta 1 del plan PLAT-OPS-G7
         // (riesgos 1 y 2 de ADR-070). Cobertura propia en
         // app.config.production-urls.spec.ts.
-        CORS_ORIGIN: 'https://app.ejemplo.example',
+        CORS_ORIGIN: 'https://app.ejemplo.example,https://portal.example.test',
         FRONTEND_URL: 'https://app.ejemplo.example',
         PORTAL_URL: 'https://portal.example.test',
       },

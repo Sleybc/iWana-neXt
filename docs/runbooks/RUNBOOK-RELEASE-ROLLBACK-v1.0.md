@@ -90,7 +90,7 @@ Mientras cualquiera de estos bloqueos afecte al entorno objetivo, el paso operat
    PROXY_TLS_DIR=./secrets/lan
    PROXY_CONSOLE_ALLOW=/ruta/fuera/del/repo/console-allow.conf # paso 8; sin él, la consola da 403
    NEXT_PUBLIC_WEB_API_URL=/api/v1
-   CORS_ORIGIN=https://192.0.2.50
+   CORS_ORIGIN=https://192.0.2.50,https://192.0.2.50:8443
    FRONTEND_URL=https://192.0.2.50
    PORTAL_URL=https://192.0.2.50:8443 # obligatoria; el portal se habilita en el paso 8
    ```
@@ -140,15 +140,18 @@ Mientras cualquiera de estos bloqueos afecte al entorno objetivo, el paso operat
    **Consola (spec 2026-11-25 §5).** Copia `nginx/console-allow.conf` fuera del repositorio, añade antes de `deny all` los rangos de la VPN, o en la LAN los de los administradores, e indícalo en `PROXY_CONSOLE_ALLOW`. Sin ese archivo nadie entra a la consola. **Nunca permitas la pasarela ni rangos de Docker** (172.16.0.0/12): abriría la consola a todos. Apunta `IWANA_HEALTH_URL` al portal (en la LAN, `https://<IP>:8443/api/v1/health`). Comprueba en el log de nginx que `$remote_addr` es la IP del cliente y no la pasarela. Regenera la configuración por IP.
 
    **Orden al actualizar un entorno en marcha.** nginx antes que la API. El nginx anterior reenvía la cabecera `X-Iwana-Surface` que mande el cliente: con la API nueva detrás, el control sería falsificable y los administradores quedarían fuera. Siempre con `--no-deps`, porque `nginx-prod` depende de las aplicaciones y las recrearía antes. Los comandos llevan el mismo prefijo `docker compose` del entorno.
+
+   **Antes de empezar: variables, antes de actualizar el checkout.** Guarda una copia protegida del `.env` y edítalo; desde ahí no ejecutes `up` con el checkout anterior, porque recrearía contenedores con los valores nuevos. Revisa: `PROXY_CONSOLE_ALLOW`, `PROXY_BIND_IP`, `FRONTEND_URL` (consola), `PORTAL_URL` (portal, distinta) y `CORS_ORIGIN` con los orígenes https exactos de ambas (con puerto si no es 443). Sin `PORTAL_URL`, el Compose nuevo rechaza **cualquier** orden sobre ese entorno: arrancar, `stop`, revertir y también la copia de archivos (`backup.sh media`, que corre por temporizador). El Compose anterior ignora las variables que no conoce.
    1. **Acta y respaldo.** Registra el `IMAGE_TAG` en marcha, el SHA nuevo, la configuración no secreta y las migraciones aplicadas. Congela las escrituras (§3 paso 0) hasta cerrar la ventana: lo escrito después del backup se pierde si hay que restaurar. Toma el backup de §6 y comprueba su checksum.
    2. **Imágenes.** Construye desde una copia limpia del SHA (`git clone` y `git checkout <SHA>`, sin cambios locales) con `IMAGE_TAG=<SHA>`: un tag por release, nunca reutilizado. Conserva las imágenes del anterior.
-   3. **Variables.** `PROXY_CONSOLE_ALLOW`, `PROXY_BIND_IP`, `PORTAL_URL`, y `CORS_ORIGIN` con los orígenes exactos de consola y portal (con puerto si no es 443): el que falte recibirá 403. Regenera o copia la configuración de nginx y conserva la anterior.
-   4. **Preflight de nginx antes de recrear**, sin tocar el proxy en marcha: `run --rm --no-deps -T nginx-prod nginx -t` y `run --rm --no-deps -T nginx-prod nginx -T`. Este último debe mostrar `X-Iwana-Surface console` y `portal`, `X-Iwana-Origin`, y la lista seguida de `deny all`. Si falla, detente: nada cambió.
-   5. **nginx.** `up -d --no-deps --force-recreate nginx-prod` (una recarga no basta: falta el montaje nuevo) y `exec -T nginx-prod nginx -t`.
-   6. **Migrador.** `run --rm --no-deps -T migrator-prod; echo "código=$?"`. Solo con código 0, y con las migraciones verificadas en `public` y en cada empresa, se sigue.
-   7. **API.** `up -d --no-deps api-prod`, hasta `healthy`.
-   8. **Worker.** `up -d --no-deps worker-prod`.
-   9. **Web y portal.** `up -d --no-deps web-prod portal-prod`.
+   3. **Regenera o copia la configuración de nginx** con el checkout nuevo y conserva la anterior.
+   4. **Preflight del esquema, con la imagen nueva y antes de recrear nada.** Con `IMAGE_TAG=<SHA>`, comprueba que existe (`docker image inspect <IMAGE_REPOSITORY>/api:<SHA>`): si falta, Compose la construiría desde el checkout. Después, `run --rm --no-deps -T api-prod node dist/cli/check-config.js; echo "código=$?"`. Nombra las claves inválidas sin mostrar valores y no abre conexiones. Solo con código 0 se sigue.
+   5. **Preflight de nginx antes de recrear**, sin tocar el proxy en marcha: `run --rm --no-deps -T nginx-prod nginx -t` y `run --rm --no-deps -T nginx-prod nginx -T`. Este último debe mostrar `X-Iwana-Surface console` y `portal`, `X-Iwana-Origin`, y la lista seguida de `deny all`. Si falla, detente: nada cambió.
+   6. **nginx.** `up -d --no-deps --force-recreate nginx-prod` (una recarga no basta: falta el montaje nuevo) y `exec -T nginx-prod nginx -t`.
+   7. **Migrador.** `run --rm --no-deps -T migrator-prod; echo "código=$?"`. Solo con código 0, y con las migraciones verificadas en `public` y en cada empresa, se sigue.
+   8. **API.** `up -d --no-deps api-prod`, hasta `healthy`.
+   9. **Worker.** `up -d --no-deps worker-prod`.
+   10. **Web y portal.** `up -d --no-deps web-prod portal-prod`.
 
    **Reversión:** web y portal, worker, API y nginx al final; con `--no-deps` y el `IMAGE_TAG` anterior. **No reviertas nginx con la API nueva activa.** Las migraciones no se revierten.
 

@@ -46,7 +46,7 @@ function buildProductionEnv(): Record<string, string> {
     S3_SECRET_ACCESS_KEY: 'test-only-secret-access-key',
     TYPESENSE_HOST: 'typesense',
     TYPESENSE_API_KEY: 'test-only-typesense-key',
-    CORS_ORIGIN: PRODUCTION_ORIGIN,
+    CORS_ORIGIN: `${PRODUCTION_ORIGIN},https://portal.example.test`,
     FRONTEND_URL: PRODUCTION_ORIGIN,
     PORTAL_URL: 'https://portal.example.test',
   };
