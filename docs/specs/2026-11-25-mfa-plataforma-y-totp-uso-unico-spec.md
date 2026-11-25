@@ -121,6 +121,8 @@ Las pruebas nuevas se ven rojas antes del cambio.
 
 CA-3 se prueba sin petición HTTP en el 404 (servicio y arranque real de la configuración). CA-2 y CA-16 se prueban con PostgreSQL real y un doble de Redis en memoria; el E2E operativo ejerce Redis real en el camino normal.
 
+**CA-15, 2026-11-25, sobre `5c5de908`:** CI 45634096471, E2E operativo 397 pasadas, 0 fallidas, 4 omitidas. Corrida aparte de los diez specs en servicios desechables: 30 pruebas, 26 pasadas, 2 fallidas y 2 sin ejecutar. **No cerrado:** `portal-importacion-uisp-live` y `portal-importacion-uisp-usuarios-live` fallan después de ingresar, al promover un lote, por una carrera ajena al MFA: `requestPromotion` encola antes de confirmar y el trabajo se omite si lee el lote todavía simulado.
+
 ## 8. Puntos del G0 del CTO (aprobados el 2026-11-25)
 
 1. §3.1: MFA obligatorio en el login y en la renovación. **Recomendado.**

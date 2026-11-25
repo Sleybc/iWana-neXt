@@ -5,12 +5,13 @@
 
 ## Cuándo
 
-| Motivo (`--reason`)      | Caso                                                               |
-| ------------------------ | ------------------------------------------------------------------ |
-| `PERDIDA_DISPOSITIVO`    | El titular ya no tiene su aplicación autenticadora                 |
-| `BLOQUEO_SEGUNDO_FACTOR` | Códigos erróneos repetidos mantienen la cuenta en espera           |
-| `RELOJ_DESFASADO`        | El reloj del servidor se adelantó y los códigos nuevos se rechazan |
-| `SECRETO_INDESCIFRABLE`  | La clave de cifrado cambió sin ventana de doble lectura            |
+| Motivo (`--reason`)       | Caso                                                               |
+| ------------------------- | ------------------------------------------------------------------ |
+| `PERDIDA_DISPOSITIVO`     | El titular ya no tiene su aplicación autenticadora                 |
+| `BLOQUEO_SEGUNDO_FACTOR`  | Códigos erróneos repetidos mantienen la cuenta en espera           |
+| `RELOJ_DESFASADO`         | El reloj del servidor se adelantó y los códigos nuevos se rechazan |
+| `CONTRASENA_COMPROMETIDA` | Códigos erróneos que el titular no reconoce; exige `--output`      |
+| `SECRETO_INDESCIFRABLE`   | La clave de cifrado cambió sin ventana de doble lectura            |
 
 La espera dura 30 minutos como máximo y no cierra sesiones abiertas: si el titular conserva su aplicación, basta esperar.
 
@@ -22,14 +23,25 @@ La espera dura 30 minutos como máximo y no cierra sesiones abiertas: si el titu
 
 ### Contraseña comprometida
 
-Escala a AI-SEC-ENG. Cada paso manual se anota en el incidente con actor, hora y motivo, porque el SQL directo no deja auditoría.
+Escala a AI-SEC-ENG y ejecuta la recuperación con rotación. Todo va en una transacción auditada, sin SQL manual ni suspensión: la contraseña anterior deja de servir a la vez que se retira el MFA y las sesiones ya no se renuevan; los access tokens emitidos vencen solos, 15 minutos por defecto. Vale para una cuenta administradora única. No activa ni reactiva cuentas pendientes o suspendidas.
 
-1. Suspende la cuenta (`status = 'SUSPENDED'`): corta la renovación de sus sesiones.
-2. Rota la contraseña con una temporal aleatoria, cambio obligatorio (`password_reset_required = true`) y entrega por canal seguro.
-3. Reactiva (`status = 'ACTIVE'`) con el titular presente.
-4. Ejecuta la recuperación y acompaña de inmediato el cambio de contraseña y la inscripción.
+```bash
+docker exec iwana_api_prod node dist/cli/reset-platform-mfa.js --account=<uuid> --actor=<uuid> --reason=CONTRASENA_COMPROMETIDA --output=/tmp/recuperacion.txt
+```
 
-**Cuenta única:** mismos pasos y en la misma ventana de mantenimiento. Suspendida no hay actor válido, así que la recuperación va siempre después de reactivar. Mantener dos administradores con código evita este caso.
+La temporal queda solo en ese archivo del contenedor (0600). Léela en una terminal sin grabación, entrégala por canal seguro y bórrala enseguida. No uses `docker cp`: deja otra copia en el servidor.
+
+```bash
+docker exec iwana_api_prod cat /tmp/recuperacion.txt
+```
+
+```bash
+docker exec iwana_api_prod rm /tmp/recuperacion.txt
+```
+
+Acompaña de inmediato el cambio de contraseña y la inscripción del MFA. Si el contenedor se recrea antes de leerla, repite con `--output`.
+
+**Resultado incierto:** si el comando lo avisa, busca `PASSWORD_CHANGED` con origen `RECUPERACION_CLI`. Si existe, usa el archivo. Si no, bórralo y repite.
 
 ## Ejecución
 
@@ -37,13 +49,13 @@ Escala a AI-SEC-ENG. Cada paso manual se anota en el incidente con actor, hora y
 docker exec iwana_api_prod node dist/cli/reset-platform-mfa.js --account=<uuid> --actor=<uuid> --reason=PERDIDA_DISPOSITIVO
 ```
 
-En una transacción quita el MFA, pone a cero contador y espera, deja en NULL el último paso y registra `MFA_DISABLED` con actor y motivo. Si algo falla, no cambia nada.
+En una transacción quita el MFA, pone a cero contador y espera, deja en NULL el último paso y registra `MFA_DISABLED` con actor y motivo. Si falla antes de confirmar, no cambia nada.
 
 ## Después
 
 1. Acompaña al titular: su siguiente ingreso pide inscribir el MFA. Hazlo de inmediato.
 2. Las sesiones anteriores no se renuevan. Los access tokens ya emitidos vencen solos, 15 minutos por defecto.
-3. Comprueba en la auditoría de plataforma el `MFA_DISABLED` y el `MFA_ENABLED` posterior.
+3. Comprueba en la auditoría de plataforma el `MFA_DISABLED` (si la cuenta tenía MFA), el `PASSWORD_CHANGED` (si rotaste) y el `MFA_ENABLED` posterior.
 
 ## Alerta
 

@@ -9,6 +9,9 @@
  * SEGURIDAD: correos sintéticos y claves de laboratorio; sin PII ni secretos en logs.
  */
 import { randomUUID } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
@@ -1057,6 +1060,87 @@ describeWithDb('Carreras de credencial (PostgreSQL real)', () => {
           save.mockRestore();
         }
         expect((await readPlatform(id)).mfaEnabled).toBe(true);
+      });
+
+      it('con salida rota la contraseña: la anterior no entra y la temporal exige cambio', async () => {
+        const { id, enter } = await seedLogin();
+        const actor = await seedPlatformUser();
+        await dataSource
+          .getRepository(PlatformUser)
+          .update(actor, { role: PlatformRole.SYSTEM_ADMIN });
+        const folder = mkdtempSync(join(tmpdir(), 'reset-mfa-'));
+        const output = join(folder, 'temporal.txt');
+        const recover = () =>
+          resetPlatformMfa(dataSource, {
+            account: id,
+            actor,
+            reason: 'CONTRASENA_COMPROMETIDA',
+            output,
+          });
+        try {
+          const save = jest
+            .spyOn(EntityManager.prototype, 'save')
+            .mockRejectedValueOnce(new Error('auditoría caída'));
+          await expect(recover()).rejects.toThrow('auditoría');
+          save.mockRestore();
+          expect(existsSync(output)).toBe(false);
+          expect((await readPlatform(id)).mfaEnabled).toBe(true);
+
+          await recover();
+          expect(statSync(output).mode & 0o777).toBe(0o600);
+          const temporary = /^contrasena=(.+)$/mu.exec(readFileSync(output, 'utf8'))![1]!;
+          expect((await enter()).status).toBe(401);
+          expect((await enter(temporary)).value).toMatchObject({ passwordResetRequired: true });
+          await expect(recover()).rejects.toMatchObject({ code: 'EEXIST' });
+          expect((await enter(temporary)).status).toBe(200);
+          const logs = JSON.stringify(
+            await dataSource.query(
+              `SELECT action, new_value FROM public.platform_audit_logs WHERE entity_id = $1`,
+              [id],
+            ),
+          );
+          expect(logs).toContain('PASSWORD_CHANGED');
+          expect(logs).not.toContain(temporary);
+        } finally {
+          rmSync(folder, { recursive: true });
+        }
+      });
+
+      it('si el resultado del commit es incierto, conserva la temporal, que sí entra', async () => {
+        const { id, enter } = await seedLogin();
+        const actor = await seedPlatformUser();
+        await dataSource
+          .getRepository(PlatformUser)
+          .update(actor, { role: PlatformRole.SYSTEM_ADMIN });
+        const folder = mkdtempSync(join(tmpdir(), 'reset-mfa-'));
+        const output = join(folder, 'temporal.txt');
+        const original = dataSource.transaction.bind(dataSource) as (
+          run: (manager: EntityManager) => Promise<unknown>,
+        ) => Promise<unknown>;
+        const lost = jest.spyOn(dataSource, 'transaction').mockImplementationOnce((async (
+          run: (manager: EntityManager) => Promise<unknown>,
+        ) => {
+          await original(run);
+          throw new Error('conexión perdida');
+        }) as never);
+        const stderr = jest.spyOn(process.stderr, 'write').mockReturnValue(true);
+        try {
+          await expect(
+            resetPlatformMfa(dataSource, {
+              account: id,
+              actor,
+              reason: 'CONTRASENA_COMPROMETIDA',
+              output,
+            }),
+          ).rejects.toThrow('conexión perdida');
+          expect(stderr).toHaveBeenCalledWith(expect.stringContaining('Resultado incierto'));
+          const temporary = /^contrasena=(.+)$/mu.exec(readFileSync(output, 'utf8'))![1]!;
+          expect((await enter(temporary)).value).toMatchObject({ passwordResetRequired: true });
+        } finally {
+          lost.mockRestore();
+          stderr.mockRestore();
+          rmSync(folder, { recursive: true });
+        }
       });
 
       it('la recuperación rechaza un actor que no es administrador activo', async () => {

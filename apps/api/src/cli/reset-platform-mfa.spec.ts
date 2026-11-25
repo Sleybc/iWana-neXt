@@ -10,7 +10,26 @@ describe('parseResetPlatformMfaArgs', () => {
     ).toEqual({ account: A, actor: B, reason: 'RELOJ_DESFASADO' });
   });
 
+  it('acepta la rotación con archivo de salida', () => {
+    expect(
+      parseResetPlatformMfaArgs([
+        `--account=${A}`,
+        `--actor=${B}`,
+        '--reason=CONTRASENA_COMPROMETIDA',
+        '--output=/tmp/x',
+      ]),
+    ).toMatchObject({ output: '/tmp/x' });
+  });
+
   it.each([
+    [
+      'contraseña comprometida sin rotación',
+      [`--account=${A}`, `--actor=${B}`, '--reason=CONTRASENA_COMPROMETIDA'],
+    ],
+    [
+      'salida relativa',
+      [`--account=${A}`, `--actor=${B}`, '--reason=RELOJ_DESFASADO', '--output=x'],
+    ],
     ['sin actor', [`--account=${A}`, '--reason=RELOJ_DESFASADO']],
     ['con motivo libre', [`--account=${A}`, `--actor=${B}`, '--reason=me llamó']],
     ['con correo', ['--account=a@b.co', `--actor=${B}`, '--reason=RELOJ_DESFASADO']],
