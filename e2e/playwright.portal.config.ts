@@ -42,6 +42,10 @@ function shouldUseSystemChrome(): boolean {
 const useSystemChrome = shouldUseSystemChrome();
 const markerReporterPath = process.env.E2E_MARKER_REPORTER_PATH;
 const jsonReportPath = process.env.PLAYWRIGHT_JSON_OUTPUT_NAME;
+// Solo el job «E2E portal» (red simulada) la activa. R4.1 usa este config con API
+// real y credenciales efímeras: nunca genera trazas por aquí, ni heredando la
+// variable, porque siempre fija E2E_MARKER_REPORTER_PATH.
+const retainFailureTrace = process.env.IWANA_PORTAL_E2E_TRACE === '1' && !markerReporterPath;
 const PORTAL_ORIGIN = portalOrigin();
 
 export default defineConfig({
@@ -59,7 +63,7 @@ export default defineConfig({
       : [['list']],
   use: {
     baseURL: PORTAL_ORIGIN,
-    trace: 'on-first-retry',
+    trace: retainFailureTrace ? 'retain-on-failure' : 'on-first-retry',
     screenshot: 'only-on-failure',
     video: useSystemChrome ? 'off' : 'retain-on-failure',
   },

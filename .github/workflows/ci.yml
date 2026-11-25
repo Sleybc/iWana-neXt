@@ -1486,7 +1486,8 @@ jobs:
             down --remove-orphans --volumes --timeout 30 2>/dev/null || true
 
   # Suite completa bloqueante: un fallo no cuarentenado, una omisión sin motivo o
-  # cualquier flaky falla el job. El resumen publica conteos, nunca reportes crudos.
+  # cualquier flaky falla el job. El resumen publica conteos, nunca reportes crudos;
+  # si la suite falla, se sube test-results/ (red simulada) como evidencia.
   e2e-portal:
     name: E2E portal
     needs: changes
@@ -1561,6 +1562,8 @@ jobs:
         shell: bash
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: /tmp/portal-e2e-report.json
+          # Traza solo al fallar; exclusiva de este job (red simulada), nunca en R4.1.
+          IWANA_PORTAL_E2E_TRACE: '1'
           # Origen sintético del almacenamiento: el build del portal lo pone en la CSP y la E2E
           # de adjuntos (MOD09) simula sus enlaces firmados en él; nunca se contacta.
           S3_ENDPOINT: http://127.0.0.1:9000
@@ -1687,3 +1690,14 @@ jobs:
             `E2E portal: passed=${counts.passed}, failed=${counts.failed}, skipped=${counts.skipped}, quarantined=${counts.quarantined}, flaky=${counts.flaky}`,
           );
           E2E_SUMMARY
+
+      # Repo público: el artefacto es descargable. Este job no recibe secretos y su
+      # red es simulada; no copiar este paso a R4.1 (API real).
+      - name: Upload Portal E2E failure evidence
+        if: failure() && steps.portal-e2e.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-portal-failure-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: warn
+          retention-days: 5
