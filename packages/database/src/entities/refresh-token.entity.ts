@@ -41,6 +41,10 @@ export class RefreshToken {
   @Column({ name: 'family_id' })
   familyId: string;
 
+  /** Ingreso que abrió la sesión: se hereda en cada rotación. Null en filas anteriores a la 219. */
+  @Column({ name: 'family_started_at', type: 'timestamptz', nullable: true })
+  familyStartedAt: Date | null;
+
   /** Cuando expira el token (7 dias desde creacion) */
   @Column({ name: 'expires_at', type: 'timestamptz' })
   expiresAt: Date;
@@ -54,7 +58,7 @@ export class RefreshToken {
 
   /**
    * Razon de revocacion.
-   * Valores: LOGOUT | ROTATION | REUSE_ATTACK | PASSWORD_CHANGE | ADMIN
+   * Valores: LOGOUT | ROTATION | REUSE_ATTACK | PASSWORD_CHANGE | ADMIN | SESSION_MAX
    */
   @Column({ name: 'revoke_reason', type: 'varchar', length: 50, nullable: true })
   revokeReason: string | null;

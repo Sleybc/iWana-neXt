@@ -19,6 +19,7 @@ jest.mock('../guards/jwt-auth.guard', () => ({
   },
 }));
 
+import { SessionEndedException } from '../auth-errors';
 import { AuthController } from '../auth.controller';
 import { AuthService } from '../auth.service';
 
@@ -127,6 +128,80 @@ describe('AuthController POST /auth/refresh — ruteo por audiencia (fail-fast) 
     expect(findCookie(cookies, 'portalAccessToken')).toContain('portalAccessToken=jwt-tenant-1');
     expect(findCookie(cookies, 'webRefreshToken')).toBeUndefined();
     expect(findCookie(cookies, 'webAccessToken')).toBeUndefined();
+  });
+
+  it('las cookies viven lo que le queda a la sesión', async () => {
+    mockAuthService.refreshPlatformTokens.mockResolvedValue({
+      accessToken: 'a',
+      refreshToken: 'r',
+      cookieTtl: { accessSeconds: 600, refreshSeconds: 601 },
+    });
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .set('Cookie', ['webRefreshToken=p'])
+      .set('X-Session-Audience', 'platform')
+      .expect(200);
+    const cookies = setCookies(response);
+    expect(findCookie(cookies, 'webAccessToken')).toContain('Max-Age=600');
+    expect(findCookie(cookies, 'webRefreshToken')).toContain('Max-Age=601');
+  });
+
+  it.each([
+    ['platform', 'refreshPlatformTokens', ['webAccessToken', 'webRefreshToken']],
+    ['tenant', 'refreshTokens', ['portalAccessToken', 'refreshToken']],
+  ] as const)(
+    'sesión terminada en %s: 401 y borra solo sus cookies; perder la carrera no borra',
+    async (audience, method, own) => {
+      const send = () =>
+        request(app.getHttpServer())
+          .post('/api/v1/auth/refresh')
+          .set('Cookie', ['refreshToken=t', 'webRefreshToken=p'])
+          .set('X-Session-Audience', audience)
+          .expect(401);
+      mockAuthService[method].mockRejectedValueOnce(new SessionEndedException('fin'));
+      const cleared = setCookies(await send());
+      expect(cleared.map((cookie) => cookie.split('=')[0]).sort()).toEqual([...own].sort());
+      for (const cookie of cleared) expect(cookie).toContain('Expires=Thu, 01 Jan 1970');
+
+      mockAuthService[method].mockRejectedValueOnce(new UnauthorizedException('carrera'));
+      expect(setCookies(await send())).toEqual([]);
+    },
+  );
+
+  it.each([
+    [
+      'plataforma terminada y empresa vigente',
+      'ended',
+      'ok',
+      ['webAccessToken', 'webRefreshToken'],
+    ],
+    [
+      'ambas terminadas',
+      'ended',
+      'ended',
+      ['portalAccessToken', 'refreshToken', 'webAccessToken', 'webRefreshToken'],
+    ],
+    [
+      'plataforma pierde la carrera y empresa terminada',
+      'race',
+      'ended',
+      ['portalAccessToken', 'refreshToken'],
+    ],
+  ])('sin audiencia, %s', async (_caso, platform, tenant, expected) => {
+    const outcome = (kind: string): unknown =>
+      kind === 'ended' ? new SessionEndedException('fin') : new UnauthorizedException('carrera');
+    mockAuthService.refreshPlatformTokens.mockRejectedValueOnce(outcome(platform));
+    if (tenant === 'ok') {
+      mockAuthService.refreshTokens.mockResolvedValueOnce({ accessToken: 'a', refreshToken: 'r' });
+    } else {
+      mockAuthService.refreshTokens.mockRejectedValueOnce(outcome(tenant));
+    }
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .set('Cookie', ['refreshToken=t', 'webRefreshToken=p'])
+      .expect(tenant === 'ok' ? 200 : 401);
+    const cleared = setCookies(response).filter((cookie) => cookie.includes('Expires=Thu, 01 Jan'));
+    expect(cleared.map((cookie) => cookie.split('=')[0]).sort()).toEqual(expected);
   });
 
   it('ambas cookies sin X-Tenant-Slug: intenta primero la rama de plataforma', async () => {

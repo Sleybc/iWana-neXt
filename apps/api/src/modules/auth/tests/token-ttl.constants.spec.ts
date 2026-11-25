@@ -6,6 +6,7 @@ import {
   parseDurationToSeconds,
   resolveAccessTokenTtlSeconds,
   resolveRefreshTokenTtlSeconds,
+  sessionWindow,
 } from '../token-ttl.constants';
 
 /**
@@ -75,5 +76,35 @@ describe('resolveRefreshTokenTtlSeconds', () => {
   it('usa el default 7d cuando la variable no esta definida', () => {
     expect(resolveRefreshTokenTtlSeconds(configReturning(undefined))).toBe(604800);
     expect(parseDurationToSeconds(DEFAULT_REFRESH_TOKEN_TTL, 0)).toBe(604800);
+  });
+});
+
+describe('sessionWindow', () => {
+  const ttl = { access: 900, refresh: 604_800, max: 43_200 };
+  const now = Date.parse('2026-11-25T12:00:00Z');
+  const ago = (seconds: number): Date => new Date(now - seconds * 1000);
+
+  it.each([
+    ['recién abierta: manda el máximo', 0, 900, 43_200],
+    ['a 10 minutos del máximo: acota también el access', 42_600, 600, 600],
+    ['a 1 segundo del máximo', 43_199, 1, 1],
+  ])('%s', (_caso, age, accessSeconds, refreshSeconds) => {
+    expect(sessionWindow(ago(age), ttl, now)).toMatchObject({ accessSeconds, refreshSeconds });
+  });
+
+  it('sin acercarse al máximo conserva los plazos configurados', () => {
+    expect(sessionWindow(ago(60), { ...ttl, max: 2_592_000 }, now)).toMatchObject({
+      accessSeconds: 900,
+      refreshSeconds: 604_800,
+    });
+  });
+
+  it.each([
+    ['en el máximo', ago(43_200)],
+    ['con menos de un segundo', new Date(now - 43_199_500)],
+    ['con inicio futuro', ago(-1)],
+    ['con inicio inválido', new Date('x')],
+  ])('%s: terminada', (_caso, startedAt) => {
+    expect(sessionWindow(startedAt, ttl, now)).toBeNull();
   });
 });

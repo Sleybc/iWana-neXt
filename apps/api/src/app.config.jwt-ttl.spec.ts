@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type * as Joi from 'joi';
+import * as Joi from 'joi';
 import { createAppConfigurationSchema } from './app.config';
 
 /**
@@ -34,6 +34,15 @@ function validate(env: Record<string, string | undefined>): Joi.ValidationResult
   return createAppConfigurationSchema().validate(env, VALIDATION_OPTIONS);
 }
 
+/** Esquema real con las demás claves neutras: Joi omite la regla de objeto si otra clave falla. */
+function validateSessionKeys(env: Record<string, string>): Joi.ValidationResult {
+  const schema = createAppConfigurationSchema();
+  const others = Object.keys(schema.describe()['keys'] as object).filter(
+    (key) => !/^(NODE_ENV|JWT_\w+_EXPIRATION|SESSION_MAX_\w+)$/u.test(key),
+  );
+  return schema.fork(others, () => Joi.any()).validate(env, VALIDATION_OPTIONS);
+}
+
 describe('createAppConfigurationSchema — TTL de sesion configurables', () => {
   it('aplica los defaults 15m y 7d cuando las variables faltan', () => {
     const env = buildDevelopmentEnv();
@@ -43,6 +52,32 @@ describe('createAppConfigurationSchema — TTL de sesion configurables', () => {
     expect(error).toBeUndefined();
     expect(value['JWT_ACCESS_EXPIRATION']).toBe('15m');
     expect(value['JWT_REFRESH_EXPIRATION']).toBe('7d');
+  });
+
+  it('la vida absoluta vale 12h y 30d por defecto', () => {
+    const { error, value } = validate(buildDevelopmentEnv());
+    expect(error).toBeUndefined();
+    expect(value).toMatchObject({ SESSION_MAX_PLATFORM: '12h', SESSION_MAX_TENANT: '30d' });
+  });
+
+  it.each([
+    ['SESSION_MAX_PLATFORM', '13h'],
+    ['SESSION_MAX_TENANT', '31d'],
+  ])('rechaza el valor por defecto de %s si el access lo supera', (key, access) => {
+    const { error } = validate({ ...buildDevelopmentEnv(), JWT_ACCESS_EXPIRATION: access });
+    expect(error?.message).toContain(key);
+  });
+
+  it.each([
+    ['menor que el access', 'SESSION_MAX_PLATFORM', '10m', 'development', false],
+    ['de formato inválido', 'SESSION_MAX_TENANT', '1 mes', 'development', false],
+    ['por encima del tope en desarrollo', 'SESSION_MAX_PLATFORM', '24h', 'development', true],
+    ['por encima del tope en producción', 'SESSION_MAX_PLATFORM', '24h', 'production', false],
+    ['por debajo del tope en producción', 'SESSION_MAX_TENANT', '7d', 'production', true],
+  ])('vida absoluta %s', (_caso, key, raw, nodeEnv, accepted) => {
+    const { error } = validateSessionKeys({ NODE_ENV: nodeEnv, [key]: raw });
+    const rejected = error?.message.includes(key) ?? false;
+    expect(rejected).toBe(!accepted);
   });
 
   it.each([

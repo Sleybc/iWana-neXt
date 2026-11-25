@@ -15,6 +15,7 @@ import {
   DEFAULT_REFRESH_TOKEN_TTL,
   MIN_ACCESS_TOKEN_TTL_SECONDS,
   parseDurationToSeconds,
+  SESSION_MAX_DEFAULTS,
 } from './modules/auth/token-ttl.constants';
 
 type ApiDataSourceOptions = Pick<
@@ -260,6 +261,15 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
         'string.pattern.base':
           'JWT_REFRESH_EXPIRATION debe usar el formato <numero><s|m|h|d> (ej. 15m, 7d).',
       }),
+    // Vida absoluta de la sesión (spec 2026-11-25 §3.7); sus límites, al final del esquema.
+    ...Object.fromEntries(
+      Object.values(SESSION_MAX_DEFAULTS).map(({ env, value: fallback }) => [
+        env,
+        Joi.string()
+          .pattern(/^\d+(s|m|h|d)$/)
+          .default(fallback),
+      ]),
+    ),
     // Secreto HMAC para idempotencia durable de comandos de órdenes de ejecución.
     EXECUTION_ORDER_IDEMPOTENCY_SECRET: Joi.string().min(32).required(),
     // D8 (MOD11↔MOD12): la clave de firma de Redis solo se exige en producción.
@@ -481,5 +491,28 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
       .default('CHANGE_ME_TYPESENSE_DEV_KEY')
       .when('NODE_ENV', { is: 'production', then: Joi.required() }),
     TYPESENSE_TIMEOUT_MS: Joi.number().integer().min(100).default(3000),
-  });
+  }).custom(validateSessionMax);
+}
+
+/**
+ * No menor que el access y, en producción, no mayor que el valor por defecto. Va sobre el objeto
+ * completo porque Joi no ejecuta las reglas de una clave sobre su valor por defecto.
+ */
+function validateSessionMax(
+  config: Record<string, string>,
+  helpers: Joi.CustomHelpers,
+): Record<string, string> | Joi.ErrorReport {
+  const access = parseDurationToSeconds(config['JWT_ACCESS_EXPIRATION'], Number.NaN);
+  const problems = Object.values(SESSION_MAX_DEFAULTS)
+    .filter(({ env, seconds: cap }) => {
+      const seconds = parseDurationToSeconds(config[env], Number.NaN);
+      const tooLong = config['NODE_ENV'] === 'production' && seconds > cap;
+      return !(seconds >= Math.max(MIN_ACCESS_TOKEN_TTL_SECONDS, access)) || tooLong;
+    })
+    .map(
+      ({ env, value }) =>
+        `${env} debe ser al menos JWT_ACCESS_EXPIRATION y, en producción, ${value} como máximo.`,
+    );
+  if (problems.length > 0) return helpers.message({ custom: problems.join(' ') });
+  return config;
 }

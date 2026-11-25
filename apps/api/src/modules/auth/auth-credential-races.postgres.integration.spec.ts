@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, type QueryRunner, Repository } from 'typeorm';
 import {
   AuditLog,
   dataSourceOptions,
@@ -28,6 +28,7 @@ import {
 } from '@iwana/db';
 import { PlatformRole, UserRole, UserStatus } from '@iwana/shared';
 import { resetPlatformMfa } from '../../cli/reset-platform-mfa';
+import { SessionEndedException } from './auth-errors';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { PlatformUsersService } from '../platform-users/platform-users.service';
@@ -37,11 +38,12 @@ import { MailerService } from '../mailer/mailer.service';
 import { hashEmail } from '../../common/crypto/hash-email.util';
 import { hashOpaqueToken } from '../../common/crypto/hash-opaque-token.util';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
-import type Redis from 'ioredis';
+import IORedis, { type Redis } from 'ioredis';
 import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
 } from '../../../../../packages/database/src/migrations/tenant/runner';
+import { AddRefreshTokenFamilyStartedAt2190000000219 } from '../../../../../packages/database/src/migrations/tenant/219_add_refresh_token_family_started_at';
 import { ephemeralSchemaName } from '../../../../../packages/database/test/ephemeral-schema';
 
 // otplib@13 arrastra @scure/base (ESM-only) que Jest-CJS no puede cargar.
@@ -195,13 +197,13 @@ describeWithDb('Carreras de credencial (PostgreSQL real)', () => {
     ({ ...signed.at(-1), exp: Math.floor(Date.now() / 1000) + 900 }) as unknown as JwtPayload;
 
   /** Espera a que otra sesión quede bloqueada por la fila: la carrera ocurre de verdad. */
-  async function untilBlocked(): Promise<void> {
+  async function untilBlocked(sessions = 1): Promise<void> {
     for (let attempt = 0; attempt < 200; attempt += 1) {
       const [row] = (await dataSource.query(
         `SELECT count(*)::int AS n FROM pg_stat_activity
           WHERE datname = current_database() AND wait_event_type = 'Lock'`,
       )) as Array<{ n: number }>;
-      if (row!.n > 0) return;
+      if (row!.n >= sessions) return;
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     throw new Error('la segunda operación nunca esperó el bloqueo');
@@ -484,6 +486,148 @@ describeWithDb('Carreras de credencial (PostgreSQL real)', () => {
       expect(row['mfa_secret']).toBeNull();
     });
 
+    describe('vida absoluta de la sesión', () => {
+      const DAY = 86_400_000;
+      const rows = (id: string): Promise<Array<Record<string, any>>> =>
+        dataSource.query(
+          `SELECT * FROM ${qSchema()}.refresh_tokens WHERE user_id = $1 ORDER BY created_at`,
+          [id],
+        );
+      const refresh = (raw: string): Promise<Outcome> =>
+        settle(inTenant(() => auth.refreshTokens(raw)));
+      const open = async (): Promise<{ id: string; raw: string }> => {
+        const id = await seedUser();
+        return { id, raw: (await login(id, OLD)).value.refreshToken as string };
+      };
+      const age = (id: string, set: string, days: number): Promise<unknown> =>
+        dataSource.query(`UPDATE ${qSchema()}.refresh_tokens SET ${set} WHERE user_id = $1`, [
+          id,
+          new Date(Date.now() - days * DAY),
+        ]);
+
+      it('rotar hereda el inicio y acota el vencimiento', async () => {
+        const { id, raw } = await open();
+        await age(id, 'family_started_at = $2, created_at = $2', 29);
+        const rotated = await refresh(raw);
+
+        expect(rotated.status).toBe(200);
+        expect(rotated.value.cookieTtl.refreshSeconds).toBeLessThanOrEqual(86_400);
+        const successor = (await rows(id)).find((row) => row['revoked_at'] === null)!;
+        expect(Date.now() - successor['family_started_at'].getTime()).toBeGreaterThan(28 * DAY);
+        expect(successor['expires_at'].getTime() - Date.now()).toBeLessThanOrEqual(DAY);
+      });
+
+      it('superado el máximo: 401 y la familia queda revocada en la base, aunque esté vencida', async () => {
+        const { id, raw } = await open();
+        await age(id, 'family_started_at = $2, created_at = $2, expires_at = $2', 30);
+        // Una hermana viva de la misma familia y otra sesión de la misma cuenta.
+        await dataSource.query(
+          `INSERT INTO ${qSchema()}.refresh_tokens (user_id, token_hash, family_id, expires_at)
+           SELECT user_id, $2, family_id, now() + interval '1 day'
+             FROM ${qSchema()}.refresh_tokens WHERE user_id = $1`,
+          [id, randomUUID()],
+        );
+        await login(id, OLD);
+        expect((await refresh(raw)).status).toBe(401);
+
+        const reasons = (await rows(id)).map((row) => row['revoke_reason']);
+        expect(reasons.filter((reason) => reason === 'SESSION_MAX')).toHaveLength(2);
+        expect(reasons.filter((reason) => reason === null)).toHaveLength(1);
+      });
+
+      it('sesión anterior a la 219: toma el token más antiguo que quede de su familia', async () => {
+        const { id, raw } = await open();
+        const rotated = await refresh(raw);
+        await dataSource.query(
+          `UPDATE ${qSchema()}.refresh_tokens SET family_started_at = NULL,
+                  created_at = CASE WHEN revoked_at IS NULL THEN created_at ELSE $2 END
+            WHERE user_id = $1`,
+          [id, new Date(Date.now() - 31 * DAY)],
+        );
+        expect((await refresh(rotated.value.refreshToken)).status).toBe(401);
+      });
+
+      it('con la familia purgada cuenta desde el propio token', async () => {
+        const { id, raw } = await open();
+        await age(id, 'family_started_at = NULL, created_at = $2', 5);
+        expect((await refresh(raw)).status).toBe(200);
+        const successor = (await rows(id)).find((row) => row['revoked_at'] === null)!;
+        const started = Date.now() - successor['family_started_at'].getTime();
+        expect(Math.round(started / DAY)).toBe(5);
+      });
+
+      it('una fila del código anterior toma el inicio de su hermana', async () => {
+        const { id, raw } = await open();
+        await age(id, 'family_started_at = $2, created_at = $2', 29);
+        const rotated = await refresh(raw);
+        await dataSource.query(
+          `UPDATE ${qSchema()}.refresh_tokens SET family_started_at = NULL
+            WHERE user_id = $1 AND revoked_at IS NULL`,
+          [id],
+        );
+        expect(
+          (await refresh(rotated.value.refreshToken)).value.cookieTtl.refreshSeconds,
+        ).toBeLessThanOrEqual(86_400);
+      });
+
+      it('dos renovaciones simultáneas: una gana, hereda el inicio y la otra no borra cookies', async () => {
+        const { id, raw } = await open();
+        await age(id, 'family_started_at = $2, created_at = $2', 10);
+        const holder = dataSource.createQueryRunner();
+        await holder.connect();
+        await holder.startTransaction();
+        await holder.query(`SELECT 1 FROM ${qSchema()}.users WHERE id = $1 FOR UPDATE`, [id]);
+        // Ambas leen el token vigente y esperan la fila del usuario.
+        const errors: unknown[] = [];
+        const attempts = [0, 1].map(() =>
+          inTenant(() => auth.refreshTokens(raw)).then(
+            () => 200,
+            (error: unknown) => {
+              errors.push(error);
+              return (error as { status: number }).status;
+            },
+          ),
+        );
+        try {
+          await untilBlocked(2);
+          await holder.commitTransaction();
+        } finally {
+          if (holder.isTransactionActive) await holder.rollbackTransaction();
+          await holder.release();
+        }
+        expect((await Promise.all(attempts)).sort()).toEqual([200, 401]);
+        expect(errors[0]).not.toBeInstanceOf(SessionEndedException);
+        const all = await rows(id);
+        expect(all).toHaveLength(2);
+        for (const row of all) {
+          expect(Date.now() - row['family_started_at'].getTime()).toBeGreaterThan(9 * DAY);
+        }
+      });
+
+      it('la 219 es reversible y conserva las filas', async () => {
+        const { id } = await open();
+        const migration = new AddRefreshTokenFamilyStartedAt2190000000219();
+        const column = (qr: QueryRunner): Promise<unknown[]> =>
+          qr.query(
+            `SELECT data_type, is_nullable FROM information_schema.columns
+              WHERE table_schema = $1 AND table_name = 'refresh_tokens'
+                AND column_name = 'family_started_at'`,
+            [schemaName],
+          );
+        await runInTenantSchema(dataSource, schemaName, async (qr) => {
+          await migration.down(qr);
+          expect(await column(qr)).toEqual([]);
+          await migration.up(qr);
+          expect(await column(qr)).toEqual([
+            { data_type: 'timestamp with time zone', is_nullable: 'YES' },
+          ]);
+          expect(
+            await qr.query('SELECT 1 FROM refresh_tokens WHERE user_id = $1', [id]),
+          ).toHaveLength(1);
+        });
+      });
+    });
+
     const sameStep = (step: number): void => {
       mockTotpVerify.mockResolvedValue({ valid: true, timeStep: step });
     };
@@ -763,9 +907,12 @@ describeWithDb('Carreras de credencial (PostgreSQL real)', () => {
     const session = async (id: string): Promise<string> =>
       (
         auth as unknown as {
-          createPlatformRefreshToken: (user: PlatformUser) => Promise<string>;
+          createPlatformRefreshToken: (user: PlatformUser, window: unknown) => Promise<string>;
         }
-      ).createPlatformRefreshToken(await readPlatform(id));
+      ).createPlatformRefreshToken(
+        await readPlatform(id),
+        (auth as unknown as { openSession: (surface: string) => unknown }).openSession('platform'),
+      );
     const change = (id: string): Promise<void> =>
       platform.changePassword(id, { currentPassword: OLD, newPassword: NEW });
 
@@ -1222,6 +1369,87 @@ describeWithDb('Carreras de credencial (PostgreSQL real)', () => {
           .update(id, { mfaSecret: encryptSecret('ANTERIOR') });
 
         expect((await verify(await enrollmentActor(id))).status).toBe(401);
+      });
+    });
+
+    /** Con REDIS_TEST_URL usa Redis real; sin ella, el doble en memoria. */
+    async function withStore(
+      run: (store: IORedis | MemoryRedis, real: IORedis | null) => Promise<void>,
+    ): Promise<void> {
+      const url = process.env['REDIS_TEST_URL'];
+      const real = url ? new IORedis(url) : null;
+      const target = auth as unknown as { redis: unknown };
+      const previous = target.redis;
+      if (real) target.redis = real;
+      try {
+        await run(real ?? redis, real);
+      } finally {
+        target.redis = previous;
+        await real?.quit();
+      }
+    }
+    const refreshKey = (raw: string): string => `platform:refresh:token:${hashOpaqueToken(raw)}`;
+
+    it('rotar no reinicia el inicio y a las 12 h la familia cae', async () => {
+      await withStore(async (store, real) => {
+        const id = await seedPlatformUser();
+        let refresh = await session(id);
+        const started = JSON.parse((await store.get(refreshKey(refresh)))!).startedAt as string;
+        refresh = (await auth.refreshPlatformTokens(refresh)).refreshToken;
+        const record = JSON.parse((await store.get(refreshKey(refresh)))!) as Record<
+          string,
+          unknown
+        >;
+        expect(record['startedAt']).toBe(started);
+
+        await store.set(
+          refreshKey(refresh),
+          JSON.stringify({ ...record, startedAt: new Date(Date.now() - 12 * 3600_000) }),
+        );
+        await expect(auth.refreshPlatformTokens(refresh)).rejects.toBeInstanceOf(
+          SessionEndedException,
+        );
+        expect(await store.get(refreshKey(refresh))).toBeNull();
+        const marker = `platform:refresh:family-revoked:${record['familyId'] as string}`;
+        expect(await store.get(marker)).toBe('1');
+        if (real) {
+          // La marca cubre el registro más largo posible.
+          const ttl = await real.ttl(marker);
+          expect(ttl).toBeGreaterThan(7 * 86_400);
+          expect(ttl).toBeLessThanOrEqual(14 * 86_400);
+        }
+      });
+    });
+
+    it('dos renovaciones simultáneas: una gana y hereda el inicio', async () => {
+      await withStore(async (store, real) => {
+        const id = await seedPlatformUser();
+        const raw = await session(id);
+        const started = JSON.parse((await store.get(refreshKey(raw)))!).startedAt as string;
+        // Las dos leen el registro vigente antes de que ninguna rote.
+        const record = await store.get(refreshKey(raw));
+        const read = jest.spyOn(store as { get: (k: string) => Promise<string | null> }, 'get');
+        read.mockResolvedValueOnce(record).mockResolvedValueOnce(record);
+        const results = await Promise.all(
+          [0, 1].map(() =>
+            auth.refreshPlatformTokens(raw).then(
+              (value) => ({ value, error: null as unknown }),
+              (error: unknown) => ({ value: null, error }),
+            ),
+          ),
+        );
+        read.mockRestore();
+        const winner = results.filter((result) => result.value);
+        const loser = results.filter((result) => result.error);
+        expect([winner.length, loser.length]).toEqual([1, 1]);
+        expect(loser[0]!.error).not.toBeInstanceOf(SessionEndedException);
+        const key = refreshKey(winner[0]!.value!.refreshToken);
+        expect(JSON.parse((await store.get(key))!).startedAt).toBe(started);
+        if (real) {
+          const ttl = await real.ttl(key);
+          expect(ttl).toBeGreaterThan(0);
+          expect(ttl).toBeLessThanOrEqual(12 * 3600);
+        }
       });
     });
 

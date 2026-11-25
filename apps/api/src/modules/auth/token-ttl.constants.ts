@@ -78,3 +78,43 @@ export function resolveRefreshTokenTtlSeconds(config: ConfigService): number {
     parseDurationToSeconds(DEFAULT_REFRESH_TOKEN_TTL, 7 * 24 * 60 * 60),
   );
 }
+
+/** Vida absoluta de la sesión desde el ingreso, por superficie. Es también su tope en producción. */
+export const SESSION_MAX_DEFAULTS = {
+  platform: { env: 'SESSION_MAX_PLATFORM', value: '12h', seconds: 12 * 60 * 60 },
+  tenant: { env: 'SESSION_MAX_TENANT', value: '30d', seconds: 30 * 24 * 60 * 60 },
+} as const;
+
+export function resolveSessionMaxSeconds(
+  config: ConfigService,
+  surface: keyof typeof SESSION_MAX_DEFAULTS,
+): number {
+  const { env, seconds } = SESSION_MAX_DEFAULTS[surface];
+  return parseDurationToSeconds(config.get<string | undefined>(env), seconds);
+}
+
+/** Plazos de una sesión en un instante; null si ya superó su máximo. */
+export interface SessionWindow {
+  startedAt: Date;
+  expiresAt: Date;
+  accessSeconds: number;
+  refreshSeconds: number;
+}
+
+export function sessionWindow(
+  startedAt: Date,
+  ttl: { access: number; refresh: number; max: number },
+  now = Date.now(),
+): SessionWindow | null {
+  const started = startedAt.getTime();
+  if (Number.isNaN(started) || started > now) return null;
+  const expires = Math.min(now + ttl.refresh * 1000, started + ttl.max * 1000);
+  const refreshSeconds = Math.floor((expires - now) / 1000);
+  if (refreshSeconds < 1) return null;
+  return {
+    startedAt,
+    expiresAt: new Date(expires),
+    accessSeconds: Math.min(ttl.access, refreshSeconds),
+    refreshSeconds,
+  };
+}

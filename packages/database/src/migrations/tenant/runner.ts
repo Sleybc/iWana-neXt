@@ -175,6 +175,7 @@ import { RestoreVisitTicketLinks2150000000215 } from './215_restore_visit_ticket
 import { ResolveInstallationTicketsWithExecutedOrder2160000000216 } from './216_resolve_installation_tickets_with_executed_order';
 import { RewordInstallationTicketDescription2170000000217 } from './217_reword_installation_ticket_description';
 import { AddUserMfaLastUsedStep2180000000218 } from './218_add_user_mfa_last_used_step';
+import { AddRefreshTokenFamilyStartedAt2190000000219 } from './219_add_refresh_token_family_started_at';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -431,6 +432,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   ResolveInstallationTicketsWithExecutedOrder2160000000216,
   RewordInstallationTicketDescription2170000000217,
   AddUserMfaLastUsedStep2180000000218,
+  AddRefreshTokenFamilyStartedAt2190000000219,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

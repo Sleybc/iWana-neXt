@@ -27,11 +27,13 @@ import { JwtService } from '@nestjs/jwt';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { DataSource, IsNull } from 'typeorm';
 import { PlatformUser, RefreshToken, User } from '@iwana/db';
 import { AuditAction, PlatformRole, UserRole, UserStatus } from '@iwana/shared';
 import { createHash } from 'crypto';
+import { SessionEndedException } from './auth-errors';
 import { AuthService } from './auth.service';
 import { JWT_CLAIMS_BY_TOKEN_TYPE } from './auth.constants';
 import { REDIS_CLIENT } from '../redis/redis.module';
@@ -198,7 +200,11 @@ function setupRunInTenantSchema(managerOverrides: Record<string, jest.Mock> = {}
     update: jest.fn().mockResolvedValue({ affected: 1 }),
     // `manager.query` en Postgres devuelve las sentencias UPDATE como tupla
     // `[filas, rowCount]` — el mock reproduce esa forma real.
-    query: jest.fn().mockResolvedValue([[{ failed_login_attempts: 1, locked_until: null }], 1]),
+    query: jest.fn(async (sql: string) =>
+      sql.includes('min(LEAST')
+        ? [{ started: new Date(Date.now() - 60_000) }]
+        : [[{ failed_login_attempts: 1, locked_until: null }], 1],
+    ),
     save: jest.fn().mockResolvedValue({}),
     create: jest.fn().mockImplementation((_, partial) => partial),
     ...managerOverrides,
@@ -1985,6 +1991,7 @@ describe('AuthService', () => {
         revokedAt: null,
         credentialVersion: platformCredentialVersion(PLATFORM_HASH),
         mfaVersion: platformCredentialVersion('MFA'),
+        startedAt: new Date(Date.now() - 60_000).toISOString(),
         ...overrides,
       };
     }
@@ -2029,7 +2036,12 @@ describe('AuthService', () => {
         credentialVersion: platformCredentialVersion(PLATFORM_HASH),
       });
       // El registro revocado conserva el TTL completo para detectar reuso.
-      expect(mockRedis.eval.mock.calls[0]?.[5]).toBe(String(successor?.[3]));
+      expect(Number(mockRedis.eval.mock.calls[0]?.[5])).toBeGreaterThanOrEqual(
+        Number(successor?.[3]),
+      );
+      // 12 h desde el ingreso, hace un minuto: ni 7 días ni un inicio nuevo.
+      expect(Number(successor?.[3])).toBeLessThanOrEqual(12 * 3600 - 60);
+      expect(JSON.parse(String(successor?.[1])).startedAt).toBe(JSON.parse(presented).startedAt);
     });
 
     it.each([
@@ -2060,6 +2072,141 @@ describe('AuthService', () => {
       expect(mockRedis.sadd).not.toHaveBeenCalled();
       expect(mockRedis.del).toHaveBeenCalledWith('platform:refresh:token:hash-1');
       expect(mockRedis.del).toHaveBeenCalledWith('platform:refresh:family:family-uuid-1');
+    });
+
+    it.each<[string, Record<string, unknown>]>([
+      ['no se conoce su inicio', { startedAt: undefined }],
+      ['su inicio no es una fecha', { startedAt: 'x' }],
+      ['su inicio está en el futuro', { startedAt: new Date(Date.now() + 60_000).toISOString() }],
+      [
+        'superó las 12 horas, aunque el registro esté vencido',
+        {
+          startedAt: new Date(Date.now() - 12 * 3600_000).toISOString(),
+          expiresAt: new Date(Date.now() - 1000).toISOString(),
+        },
+      ],
+    ])('la sesión terminó cuando %s: borra cookies, revoca y no emite', async (_caso, record) => {
+      mockRedis.get.mockResolvedValue(JSON.stringify(platformRecord(record)));
+      mockRedis.smembers.mockResolvedValue(['hash-1']);
+
+      await expect(service.refreshPlatformTokens('synthetic.token')).rejects.toBeInstanceOf(
+        SessionEndedException,
+      );
+      expect(mockRedis.eval).not.toHaveBeenCalled();
+      expect(mockRedis.sadd).not.toHaveBeenCalled();
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        'platform:refresh:family-revoked:family-uuid-1',
+        '1',
+        'EX',
+        expect.any(Number),
+      );
+      expect(mockRedis.del).toHaveBeenCalledWith('platform:refresh:token:hash-1');
+    });
+
+    describe('reloj controlado: el access nunca vence después del máximo', () => {
+      const keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+      const pem = { type: 'pkcs8', format: 'pem' } as const;
+      const base = Date.parse('2026-11-25T12:00:00Z');
+      let clock: number;
+      let spy: jest.SpyInstance;
+
+      beforeEach(() => {
+        clock = base;
+        spy = jest.spyOn(Date, 'now').mockImplementation(() => clock);
+        (service as unknown as { jwtService: JwtService }).jwtService = new JwtService({
+          privateKey: keys.privateKey.export(pem) as string,
+        });
+      });
+      afterEach(() => spy.mockRestore());
+
+      const expOf = (token: string): number =>
+        (new JwtService({}).decode(token) as { exp: number }).exp * 1000;
+
+      const platform = (wait: number): Promise<{ accessToken: string; cookieTtl: any }> => {
+        mockRedis.get.mockResolvedValue(
+          JSON.stringify(
+            platformRecord({
+              startedAt: new Date(base - 12 * 3600_000 + 100_000).toISOString(),
+              expiresAt: new Date(base + 100_000_000_000).toISOString(),
+            }),
+          ),
+        );
+        mockRedis.smembers.mockResolvedValue(['hash-1']);
+        mockRedis.exists.mockResolvedValueOnce(0).mockImplementationOnce(async () => {
+          clock += wait;
+          return 0;
+        });
+        platformUserRepo.findOne.mockResolvedValue({
+          id: 'platform-uuid-1',
+          status: UserStatus.ACTIVE,
+          role: 'system_admin',
+          mfaEnabled: true,
+          mfaSecret: (service as any).encryptSecret('MFA'),
+          passwordHash: PLATFORM_HASH,
+          passwordResetRequired: false,
+        });
+        return service.refreshPlatformTokens('synthetic.token');
+      };
+
+      const tenant = (wait: number) => {
+        const { manager } = setupRunInTenantSchema({
+          findOne: jest
+            .fn()
+            .mockResolvedValueOnce({
+              id: 'rt',
+              userId: 'user-uuid-1',
+              familyId: 'family-uuid-1',
+              revokedAt: null,
+              expiresAt: new Date(base + 100_000_000_000),
+            })
+            .mockResolvedValueOnce(buildUser()),
+          query: jest
+            .fn()
+            .mockResolvedValue([{ started: new Date(base - 30 * 86_400_000 + 100_000) }]),
+          save: jest.fn(async () => {
+            clock += wait;
+            return {};
+          }),
+        });
+        return { manager, run: () => service.refreshTokens('x'.repeat(96)) };
+      };
+
+      it.each([
+        ['plataforma', () => platform(60_000)],
+        ['empresa', () => tenant(60_000).run()],
+      ])('%s: lo que tardó la renovación se descuenta', async (_caso, run) => {
+        const result = await run();
+        expect(expOf(result.accessToken)).toBeLessThanOrEqual(base + 100_000);
+        expect(result.cookieTtl).toMatchObject({ accessSeconds: 40, refreshSeconds: 40 });
+      });
+
+      it('plataforma: si venció durante la renovación, revoca la familia y termina', async () => {
+        await expect(platform(100_000)).rejects.toBeInstanceOf(SessionEndedException);
+        expect(mockRedis.set).toHaveBeenCalledWith(
+          'platform:refresh:family-revoked:family-uuid-1',
+          '1',
+          'EX',
+          expect.any(Number),
+        );
+      });
+
+      it('empresa: si venció durante la renovación, confirma la revocación y termina', async () => {
+        const { manager, run } = tenant(100_000);
+        let committed = false;
+        const inner = mockRunInTenantSchema.getMockImplementation()!;
+        mockRunInTenantSchema.mockImplementation(async (...args: unknown[]) => {
+          const result = await (inner as (...a: unknown[]) => Promise<unknown>)(...args);
+          committed = true;
+          return result;
+        });
+        await expect(run()).rejects.toBeInstanceOf(SessionEndedException);
+        expect(committed).toBe(true);
+        expect(manager['update']).toHaveBeenLastCalledWith(
+          RefreshToken,
+          expect.objectContaining({ familyId: 'family-uuid-1' }),
+          expect.objectContaining({ revokeReason: 'SESSION_MAX' }),
+        );
+      });
     });
 
     it('el login guarda la huella, nunca el hash de la contraseña', async () => {
@@ -2209,9 +2356,11 @@ describe('AuthService', () => {
         passwordResetRequired: false,
       });
 
-      await expect(service.refreshPlatformTokens('synthetic.token')).rejects.toThrow(
-        UnauthorizedException,
-      );
+      const error: unknown = await service
+        .refreshPlatformTokens('synthetic.token')
+        .catch((reason: unknown) => reason);
+      expect(error).toBeInstanceOf(UnauthorizedException);
+      expect(error).not.toBeInstanceOf(SessionEndedException);
       expect(mockRedis.sadd).not.toHaveBeenCalled();
       expect(mockRedis.eval).toHaveBeenCalledTimes(1);
       // Paridad con el portal: perder la carrera no revoca la familia.
@@ -3760,6 +3909,7 @@ describe('AuthService', () => {
         revokedAt: null,
         credentialVersion: platformCredentialVersion(PLATFORM_HASH),
         mfaVersion: platformCredentialVersion('MFA'),
+        startedAt: new Date(Date.now() - 60_000).toISOString(),
         ...overrides,
       };
     }
@@ -3957,6 +4107,7 @@ describe('AuthService', () => {
       const { service: ttlService } = await compileServiceWithConfig({
         JWT_ACCESS_EXPIRATION: '1h',
         JWT_REFRESH_EXPIRATION: '30d',
+        SESSION_MAX_TENANT: '60d',
       });
 
       const creado = await refreshConTokenValido(ttlService);

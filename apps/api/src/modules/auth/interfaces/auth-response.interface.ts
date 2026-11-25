@@ -31,6 +31,12 @@ export interface AuthResponse {
   passwordResetRequired?: boolean;
 }
 
+/** Vida de las cookies de una sesión; nunca se serializa al cliente. */
+export interface SessionCookieTtl {
+  accessSeconds: number;
+  refreshSeconds: number;
+}
+
 /**
  * Respuesta del endpoint POST /api/v1/auth/mfa/setup.
  * Contiene el QR code en base64 y el URI otpauth para el authenticator.

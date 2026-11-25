@@ -36,7 +36,12 @@ import {
   ResetPasswordDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { AuthResponse, MfaSetupResponse } from './interfaces/auth-response.interface';
+import {
+  AuthResponse,
+  MfaSetupResponse,
+  SessionCookieTtl,
+} from './interfaces/auth-response.interface';
+import { SessionEndedException } from './auth-errors';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import {
   isCookieSecure,
@@ -94,12 +99,12 @@ export class AuthController {
    * Los borrados usan estas mismas opciones: el navegador descarta un
    * `Set-Cookie` de nombre `__Host-` sin `Secure`, y la cookie seguiria viva.
    */
-  private accessCookieOptions(): CookieOptions {
+  private accessCookieOptions(ttl?: SessionCookieTtl): CookieOptions {
     return {
       httpOnly: true,
       secure: isCookieSecure(),
       sameSite: 'strict',
-      maxAge: resolveAccessTokenTtlSeconds(this.configService) * 1000,
+      maxAge: (ttl?.accessSeconds ?? resolveAccessTokenTtlSeconds(this.configService)) * 1000,
       path: '/',
     };
   }
@@ -109,12 +114,12 @@ export class AuthController {
    * sincronizado con el TTL configurado del token (JWT_REFRESH_EXPIRATION).
    * `Secure` lo resuelve `isCookieSecure()` (C-5, ADR-081).
    */
-  private refreshCookieOptions(): CookieOptions {
+  private refreshCookieOptions(ttl?: SessionCookieTtl): CookieOptions {
     return {
       httpOnly: true,
       secure: isCookieSecure(),
       sameSite: 'strict',
-      maxAge: resolveRefreshTokenTtlSeconds(this.configService) * 1000,
+      maxAge: (ttl?.refreshSeconds ?? resolveRefreshTokenTtlSeconds(this.configService)) * 1000,
       path: REFRESH_COOKIE_PATH,
     };
   }
@@ -166,7 +171,11 @@ export class AuthController {
       !result.passwordResetRequired &&
       result.accessToken
     ) {
-      res.cookie(tenantAccessCookieName(), result.accessToken, this.accessCookieOptions());
+      res.cookie(
+        tenantAccessCookieName(),
+        result.accessToken,
+        this.accessCookieOptions(result.cookieTtl),
+      );
     }
 
     // ADR-117: sin esto, la sesión anterior de otra persona en el mismo navegador seguiría viva.
@@ -177,7 +186,11 @@ export class AuthController {
 
     if (!result.mfaRequired && result.refreshToken) {
       // Solo emitir cookie si el login fue completo (no requiere MFA)
-      res.cookie(REFRESH_TOKEN_COOKIE, result.refreshToken, this.refreshCookieOptions());
+      res.cookie(
+        REFRESH_TOKEN_COOKIE,
+        result.refreshToken,
+        this.refreshCookieOptions(result.cookieTtl),
+      );
     }
 
     return {
@@ -230,11 +243,19 @@ export class AuthController {
     const fullSession =
       !result.mfaRequired && !result.passwordResetRequired && !result.mfaSetupRequired;
     if (fullSession && result.accessToken) {
-      res.cookie(platformAccessCookieName(), result.accessToken, this.accessCookieOptions());
+      res.cookie(
+        platformAccessCookieName(),
+        result.accessToken,
+        this.accessCookieOptions(result.cookieTtl),
+      );
     }
 
     if (fullSession && result.refreshToken) {
-      res.cookie(platformRefreshCookieName(), result.refreshToken, this.refreshCookieOptions());
+      res.cookie(
+        platformRefreshCookieName(),
+        result.refreshToken,
+        this.refreshCookieOptions(result.cookieTtl),
+      );
     }
 
     return {
@@ -279,7 +300,11 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Rotar el refresh token (cookie httpOnly)' })
   @ApiResponse({ status: 200, description: 'Nuevo access token emitido.' })
-  @ApiResponse({ status: 401, description: 'Refresh token invalido, expirado o revocado.' })
+  @ApiResponse({
+    status: 401,
+    description:
+      'Refresh token invalido, expirado, revocado o sesion con su duracion maxima superada.',
+  })
   @ApiResponse({ status: 429, description: 'Demasiadas solicitudes.' })
   async refresh(
     @Request() req: ExpressRequest,
@@ -361,12 +386,28 @@ export class AuthController {
     userAgent: string | undefined,
     res: ExpressResponse,
   ): Promise<{ data: { accessToken: string } }> {
-    const result = await this.authService.refreshTokens(rawRefreshToken, ipAddress, userAgent);
+    const result = await this.authService
+      .refreshTokens(rawRefreshToken, ipAddress, userAgent)
+      .catch((error: unknown) => {
+        if (error instanceof SessionEndedException) {
+          res.clearCookie(tenantAccessCookieName(), this.accessCookieOptions());
+          res.clearCookie(tenantRefreshCookieName(), this.refreshCookieOptions());
+        }
+        throw error;
+      });
 
     // La cookie de access tambien se rota: el cliente no puede escribirla
     // (httpOnly), asi que la emite el servidor en cada renovacion.
-    res.cookie(tenantAccessCookieName(), result.accessToken, this.accessCookieOptions());
-    res.cookie(REFRESH_TOKEN_COOKIE, result.refreshToken, this.refreshCookieOptions());
+    res.cookie(
+      tenantAccessCookieName(),
+      result.accessToken,
+      this.accessCookieOptions(result.cookieTtl),
+    );
+    res.cookie(
+      REFRESH_TOKEN_COOKIE,
+      result.refreshToken,
+      this.refreshCookieOptions(result.cookieTtl),
+    );
 
     return { data: { accessToken: result.accessToken } };
   }
@@ -381,14 +422,26 @@ export class AuthController {
     userAgent: string | undefined,
     res: ExpressResponse,
   ): Promise<{ data: { accessToken: string } }> {
-    const result = await this.authService.refreshPlatformTokens(
-      rawRefreshToken,
-      ipAddress,
-      userAgent,
-    );
+    const result = await this.authService
+      .refreshPlatformTokens(rawRefreshToken, ipAddress, userAgent)
+      .catch((error: unknown) => {
+        if (error instanceof SessionEndedException) {
+          res.clearCookie(platformAccessCookieName(), this.accessCookieOptions());
+          res.clearCookie(platformRefreshCookieName(), this.refreshCookieOptions());
+        }
+        throw error;
+      });
 
-    res.cookie(platformAccessCookieName(), result.accessToken, this.accessCookieOptions());
-    res.cookie(platformRefreshCookieName(), result.refreshToken, this.refreshCookieOptions());
+    res.cookie(
+      platformAccessCookieName(),
+      result.accessToken,
+      this.accessCookieOptions(result.cookieTtl),
+    );
+    res.cookie(
+      platformRefreshCookieName(),
+      result.refreshToken,
+      this.refreshCookieOptions(result.cookieTtl),
+    );
 
     return { data: { accessToken: result.accessToken } };
   }

@@ -10,6 +10,9 @@ export const AUTH_ERROR_CODES = {
 
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[keyof typeof AUTH_ERROR_CODES];
 
+/** La sesión terminó: el controlador borra las cookies de su superficie. */
+export class SessionEndedException extends UnauthorizedException {}
+
 /** Añade `code` al cuerpo que Nest ya entregaba (`statusCode`, `error` y `message` no cambian). */
 export function unauthorizedWithCode(code: AuthErrorCode, message: string): UnauthorizedException {
   return new UnauthorizedException({ statusCode: 401, error: 'Unauthorized', code, message });

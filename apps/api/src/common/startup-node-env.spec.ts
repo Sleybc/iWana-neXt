@@ -20,7 +20,7 @@ describe('isExplicitDevelopment', () => {
         ignoreEnvFile: true,
         validationSchema: createAppConfigurationSchema().fork(
           Object.keys(createAppConfigurationSchema().describe()['keys'] as object).filter(
-            (key) => key !== 'NODE_ENV',
+            (key) => !/^(NODE_ENV|JWT_\w+_EXPIRATION|SESSION_MAX_\w+)$/u.test(key),
           ),
           () => require('joi').any(),
         ),

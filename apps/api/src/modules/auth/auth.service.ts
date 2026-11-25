@@ -52,9 +52,19 @@ import {
   ResetPasswordDto,
 } from './dto/auth.dto';
 import { JWT_CLAIMS_BY_TOKEN_TYPE } from './auth.constants';
-import { AUTH_ERROR_CODES, unauthorizedWithCode } from './auth-errors';
-import { resolveAccessTokenTtlSeconds, resolveRefreshTokenTtlSeconds } from './token-ttl.constants';
-import { AuthResponse, MfaSetupResponse } from './interfaces/auth-response.interface';
+import { AUTH_ERROR_CODES, SessionEndedException, unauthorizedWithCode } from './auth-errors';
+import {
+  resolveAccessTokenTtlSeconds,
+  resolveRefreshTokenTtlSeconds,
+  resolveSessionMaxSeconds,
+  sessionWindow,
+  type SessionWindow,
+} from './token-ttl.constants';
+import {
+  AuthResponse,
+  MfaSetupResponse,
+  SessionCookieTtl,
+} from './interfaces/auth-response.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import {
   decryptAes256Gcm,
@@ -119,7 +129,10 @@ type PlatformLoginFailureReason =
  * no hay nada que revertir en esos caminos.
  */
 type LoginTxOutcome =
-  | { kind: 'success'; response: AuthResponse & { refreshToken: string } }
+  | {
+      kind: 'success';
+      response: AuthResponse & { refreshToken: string; cookieTtl?: SessionCookieTtl };
+    }
   | {
       kind: 'failed-password' | 'failed-mfa';
       userId: string;
@@ -269,7 +282,7 @@ export class AuthService {
     dto: LoginDto,
     ipAddress?: string,
     userAgent?: string,
-  ): Promise<AuthResponse & { refreshToken?: string }> {
+  ): Promise<AuthResponse & { refreshToken?: string; cookieTtl?: SessionCookieTtl }> {
     const emailHash = hashEmail(dto.email, this.piiHashKey);
 
     const user = await this.platformUserRepository.findOne({
@@ -382,10 +395,11 @@ export class AuthService {
       throw unauthorizedWithCode(AUTH_ERROR_CODES.MFA_CODE_INVALID, MFA_CODE_REJECTED);
     }
 
-    const { accessToken } = this.signPlatformAccessToken(user);
+    const window = this.openSession('platform');
+    const { accessToken } = this.signPlatformAccessToken(user, undefined, window.accessSeconds);
     // El código ya se consumió: si Redis falla no hay sesión y se espera el siguiente.
     const refreshToken = await this.orUnavailable(() =>
-      this.createPlatformRefreshToken(user, ipAddress, userAgent),
+      this.createPlatformRefreshToken(user, window),
     );
 
     await this.platformAuditService.log({
@@ -398,7 +412,7 @@ export class AuthService {
       newValue: { mfaAplicado: user.mfaEnabled },
     });
 
-    return { accessToken, refreshToken };
+    return { accessToken, refreshToken, cookieTtl: window };
   }
 
   /**
@@ -544,7 +558,7 @@ export class AuthService {
     dto: LoginDto,
     ipAddress?: string,
     userAgent?: string,
-  ): Promise<AuthResponse & { refreshToken: string }> {
+  ): Promise<AuthResponse & { refreshToken: string; cookieTtl?: SessionCookieTtl }> {
     const { schemaName } = TenantContext.getOrThrow();
 
     const outcome = await runInTenantSchema(
@@ -701,10 +715,12 @@ export class AuthService {
         });
 
         // Emitir tokens
-        const { accessToken, jti } = this.signAccessToken(user);
+        const window = this.openSession('tenant');
+        const { accessToken, jti } = this.signAccessToken(user, undefined, window.accessSeconds);
         const rawRefreshToken = await this.createRefreshToken(
           qr.manager,
           user.id,
+          window,
           ipAddress,
           userAgent,
         );
@@ -721,7 +737,7 @@ export class AuthService {
 
         return {
           kind: 'success',
-          response: { accessToken, refreshToken: rawRefreshToken },
+          response: { accessToken, refreshToken: rawRefreshToken, cookieTtl: window },
         };
       },
     );
@@ -779,7 +795,7 @@ export class AuthService {
     rawRefreshToken: string,
     ipAddress?: string,
     userAgent?: string,
-  ): Promise<{ accessToken: string; refreshToken: string }> {
+  ): Promise<{ accessToken: string; refreshToken: string; cookieTtl: SessionCookieTtl }> {
     const { schemaName } = TenantContext.getOrThrow();
 
     const tokens = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
@@ -791,7 +807,7 @@ export class AuthService {
 
       if (!existing) {
         this.logger.warn('REFRESH_INVALID — refresh de tenant no encontrado.');
-        throw new UnauthorizedException('Refresh token invalido.');
+        throw new SessionEndedException('Refresh token invalido.');
       }
 
       // Detectar reuse attack: token ya revocado
@@ -815,19 +831,37 @@ export class AuthService {
         return null;
       }
 
-      // Verificar expiracion
-      if (existing.expiresAt < new Date()) {
-        this.logger.warn('REFRESH_EXPIRED — refresh de tenant vencido.');
-        throw new UnauthorizedException('Refresh token expirado.');
-      }
-
-      // Buscar el usuario para emitir nuevo access token
       // Fila bloqueada: un restablecimiento simultáneo espera y revoca también al sucesor, o ya
       // terminó y la revocación condicional de abajo no afecta filas (ADR-117 D5).
       const user = await qr.manager.findOne(User, {
         where: { id: existing.userId },
         lock: { mode: 'pessimistic_write' },
       });
+
+      // Vida absoluta, antes del vencimiento. Cota: la purga pudo borrar los primeros tokens.
+      const [family] = (await qr.manager.query(
+        `SELECT min(LEAST(family_started_at, created_at)) AS started
+           FROM refresh_tokens WHERE family_id = $1`,
+        [existing.familyId],
+      )) as Array<{ started: Date | string | null }>;
+      // El 401 se lanza tras el commit, igual que el reuso.
+      const endSession = async (): Promise<'ended'> => {
+        await qr.manager.update(
+          RefreshToken,
+          { familyId: existing.familyId, revokedAt: IsNull() },
+          { revokedAt: new Date(), revokeReason: 'SESSION_MAX' },
+        );
+        this.logger.warn('REFRESH_SESSION_MAX — la sesión de tenant superó su vida máxima.');
+        return 'ended';
+      };
+      const window = this.continueSession('tenant', family?.started ?? null);
+      if (!window) return endSession();
+
+      if (existing.expiresAt < new Date()) {
+        this.logger.warn('REFRESH_EXPIRED — refresh de tenant vencido.');
+        throw new SessionEndedException('Refresh token expirado.');
+      }
+
       if (!user || user.status !== UserStatus.ACTIVE || user.passwordResetRequired) {
         this.logger.warn('REFRESH_USER_UNAVAILABLE — usuario de tenant ausente o inactivo.');
         throw new UnauthorizedException('Usuario no disponible.');
@@ -845,14 +879,18 @@ export class AuthService {
       }
 
       // Emitir nuevo access token y nuevo refresh token
-      const { accessToken } = this.signAccessToken(user);
       const newRawRefreshToken = await this.createRefreshToken(
         qr.manager,
         user.id,
+        window,
         ipAddress,
         userAgent,
         existing.familyId, // Mantener la familia de sesion
       );
+      // Plazos de este instante: lo que tardó la renovación no alarga la sesión.
+      const signing = this.continueSession('tenant', window.startedAt);
+      if (!signing) return endSession();
+      const { accessToken } = this.signAccessToken(user, undefined, signing.accessSeconds);
 
       // Registrar rotacion de sesion en audit trail — RF-AUD-02 (HLD-MOD02 §4.2)
       void this.auditService.log({
@@ -864,9 +902,12 @@ export class AuthService {
         userAgent: userAgent ?? null,
       });
 
-      return { accessToken, refreshToken: newRawRefreshToken };
+      return { accessToken, refreshToken: newRawRefreshToken, cookieTtl: signing };
     });
 
+    if (tokens === 'ended') {
+      throw new SessionEndedException('La sesion alcanzo su duracion maxima.');
+    }
     if (!tokens) {
       throw new UnauthorizedException(
         'Sesion invalida detectada. Se cerraron todas las sesiones activas.',
@@ -901,6 +942,28 @@ export class AuthService {
     return `platform:refresh:family-revoked:${familyId}`;
   }
 
+  private sessionTtl(surface: 'platform' | 'tenant') {
+    return {
+      access: this.accessTokenTtlSeconds,
+      refresh: this.refreshTokenTtlSeconds,
+      max: resolveSessionMaxSeconds(this.configService, surface),
+    };
+  }
+
+  /** Sesión nueva: empieza ahora. */
+  private openSession(surface: 'platform' | 'tenant'): SessionWindow {
+    const now = Date.now();
+    return sessionWindow(new Date(now), this.sessionTtl(surface), now)!;
+  }
+
+  /** Sesión que continúa; null si superó su máximo o no se conoce su inicio. */
+  private continueSession(
+    surface: 'platform' | 'tenant',
+    startedAt: Date | string | null,
+  ): SessionWindow | null {
+    return startedAt ? sessionWindow(new Date(startedAt), this.sessionTtl(surface)) : null;
+  }
+
   /** Cambia con la contraseña; liga cada token a la credencial que lo originó. */
   private credentialVersion(passwordHash: string): string {
     return crypto.createHash('sha256').update(passwordHash).digest('hex');
@@ -922,14 +985,12 @@ export class AuthService {
    */
   private async createPlatformRefreshToken(
     user: Pick<PlatformUser, 'id' | 'passwordHash' | 'mfaSecret'>,
-    ipAddress?: string,
-    userAgent?: string,
+    window: SessionWindow,
     familyId?: string,
   ): Promise<string> {
     const rawToken = crypto.randomBytes(48).toString('hex');
     const tokenHash = this.hashToken(rawToken);
     const sessionFamilyId = familyId ?? crypto.randomUUID();
-    const expiresAt = new Date(Date.now() + this.refreshTokenTtlSeconds * 1000).toISOString();
 
     await this.redis.set(
       this.platformRefreshKey(tokenHash),
@@ -938,11 +999,12 @@ export class AuthService {
         familyId: sessionFamilyId,
         credentialVersion: this.credentialVersion(user.passwordHash),
         mfaVersion: this.mfaVersion(user),
-        expiresAt,
+        startedAt: window.startedAt.toISOString(),
+        expiresAt: window.expiresAt.toISOString(),
         revokedAt: null,
       }),
       'EX',
-      this.refreshTokenTtlSeconds,
+      window.refreshSeconds,
     );
 
     await this.redis.sadd(this.platformRefreshFamilyKey(sessionFamilyId), tokenHash);
@@ -962,13 +1024,13 @@ export class AuthService {
     rawRefreshToken: string,
     ipAddress?: string,
     userAgent?: string,
-  ): Promise<{ accessToken: string; refreshToken: string }> {
+  ): Promise<{ accessToken: string; refreshToken: string; cookieTtl: SessionCookieTtl }> {
     const tokenHash = this.hashToken(rawRefreshToken);
     const recordRaw = await this.redis.get(this.platformRefreshKey(tokenHash));
 
     if (!recordRaw) {
       this.logger.warn('PLATFORM_REFRESH_INVALID — refresh de plataforma no encontrado.');
-      throw new UnauthorizedException('Refresh token invalido.');
+      throw new SessionEndedException('Refresh token invalido.');
     }
 
     const record = JSON.parse(recordRaw) as {
@@ -976,6 +1038,7 @@ export class AuthService {
       familyId: string;
       credentialVersion?: string;
       mfaVersion?: string | null;
+      startedAt?: string;
       expiresAt: string;
       revokedAt: string | null;
     };
@@ -991,9 +1054,17 @@ export class AuthService {
       );
     }
 
+    const endSession = async (): Promise<never> => {
+      await this.revokePlatformRefreshFamily(record.familyId);
+      this.logger.warn('PLATFORM_REFRESH_SESSION_MAX — la sesión superó su vida máxima.');
+      throw new SessionEndedException('La sesion alcanzo su duracion maxima.');
+    };
+    const window = this.continueSession('platform', record.startedAt ?? null);
+    if (!window) return endSession();
+
     if (new Date(record.expiresAt) < new Date()) {
       this.logger.warn('PLATFORM_REFRESH_EXPIRED — refresh de plataforma vencido.');
-      throw new UnauthorizedException('Refresh token expirado.');
+      throw new SessionEndedException('Refresh token expirado.');
     }
 
     if (await this.redis.exists(this.platformRefreshFamilyRevokedKey(record.familyId))) {
@@ -1039,18 +1110,16 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token invalido.');
     }
 
-    const newRawRefreshToken = await this.createPlatformRefreshToken(
-      user,
-      ipAddress,
-      userAgent,
-      record.familyId,
-    );
+    const newRawRefreshToken = await this.createPlatformRefreshToken(user, window, record.familyId);
     // Un logout o reuso durante la rotación no debe terminar entregando tokens.
     if (await this.redis.exists(this.platformRefreshFamilyRevokedKey(record.familyId))) {
       this.logger.warn('PLATFORM_REFRESH_FAMILY_REVOKED — revocada durante la rotación.');
       throw new UnauthorizedException('Refresh token invalido.');
     }
-    const { accessToken } = this.signPlatformAccessToken(user);
+    // Plazos de este instante: lo que tardó la renovación no alarga la sesión.
+    const signing = this.continueSession('platform', window.startedAt);
+    if (!signing) return endSession();
+    const { accessToken } = this.signPlatformAccessToken(user, undefined, signing.accessSeconds);
 
     void this.platformAuditService.log({
       action: AuditAction.REFRESH,
@@ -1061,7 +1130,7 @@ export class AuthService {
       userAgent: userAgent ?? null,
     });
 
-    return { accessToken, refreshToken: newRawRefreshToken };
+    return { accessToken, refreshToken: newRawRefreshToken, cookieTtl: signing };
   }
 
   /** Cierra la sesión del refresh presentado, con sus sucesores (logout). */
@@ -2148,6 +2217,7 @@ export class AuthService {
   private signAccessToken(
     user: User,
     scope?: 'mfa-setup' | 'password-change',
+    ttlSeconds = this.accessTokenTtlSeconds,
   ): { accessToken: string; jti: string } {
     const jti = crypto.randomUUID();
     const tenantContext = TenantContext.getOrThrow();
@@ -2167,7 +2237,7 @@ export class AuthService {
     };
 
     const accessToken = this.jwtService.sign(payload, {
-      expiresIn: `${this.accessTokenTtlSeconds}s`,
+      expiresIn: `${ttlSeconds}s`,
       algorithm: 'RS256',
       // Audiencia de tenant: un token emitido aqui no verifica como token de plataforma.
       issuer: JWT_CLAIMS_BY_TOKEN_TYPE.tenant.issuer,
@@ -2187,6 +2257,7 @@ export class AuthService {
   private signPlatformAccessToken(
     user: PlatformUser,
     scope?: 'password-change' | 'platform-mfa-setup',
+    ttlSeconds = this.accessTokenTtlSeconds,
   ): { accessToken: string; jti: string } {
     const jti = crypto.randomUUID();
     const payload: Omit<JwtPayload, 'iat' | 'exp'> = {
@@ -2208,7 +2279,7 @@ export class AuthService {
     };
 
     const accessToken = this.jwtService.sign(payload, {
-      expiresIn: `${this.accessTokenTtlSeconds}s`,
+      expiresIn: `${ttlSeconds}s`,
       algorithm: 'RS256',
       // Audiencia de plataforma: solo estos tokens verifican en la consola de plataforma.
       issuer: JWT_CLAIMS_BY_TOKEN_TYPE.platform.issuer,
@@ -2231,6 +2302,7 @@ export class AuthService {
   private async createRefreshToken(
     manager: import('typeorm').EntityManager,
     userId: string,
+    window: SessionWindow,
     ipAddress?: string,
     userAgent?: string,
     familyId?: string,
@@ -2243,7 +2315,8 @@ export class AuthService {
       userId,
       tokenHash,
       familyId: sessionFamilyId,
-      expiresAt: new Date(Date.now() + this.refreshTokenTtlSeconds * 1000),
+      familyStartedAt: window.startedAt,
+      expiresAt: window.expiresAt,
       revokedAt: null,
       ipAddress: ipAddress ?? null,
       userAgent: userAgent ?? null,
