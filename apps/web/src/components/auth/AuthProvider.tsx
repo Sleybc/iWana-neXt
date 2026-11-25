@@ -221,7 +221,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const result = await authApi.platformLogin(pendingLogin.email, pendingLogin.password, code);
     if (result.mfaRequired) {
-      throw new ApiError(401, 'MFA_CODE_INVALID', 'Código incorrecto. Intenta de nuevo.');
+      throw new ApiError(
+        401,
+        'MFA_CODE_INVALID',
+        'Código incorrecto o ya usado. Espera el siguiente código.',
+      );
     }
 
     clearPendingPlatformMfaLogin();

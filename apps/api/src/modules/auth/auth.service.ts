@@ -72,6 +72,12 @@ const PASSWORD_RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 
 /** Duracion de las credenciales temporales del ADMIN inicial (24 horas) */
 const TEMPORARY_PASSWORD_TTL_SECONDS = 24 * 60 * 60;
+/** Espera del segundo factor de plataforma: al quinto fallo y en cada fallo posterior. */
+const PLATFORM_MFA_LOCK_SECONDS = 30 * 60;
+
+const MFA_CODE_REJECTED = 'Código incorrecto o ya usado. Espera el siguiente código.';
+const MFA_REUSED_AUDIT = { motivo: 'MFA_CODIGO_REUTILIZADO' };
+
 const PLATFORM_SELF_MFA_TTL_MS = 5 * 60 * 1000;
 
 interface PlatformSelfMfaChallenge {
@@ -93,7 +99,10 @@ type PlatformLoginFailureReason =
   | 'CUENTA_INACTIVA'
   | 'CONTRASENA_INVALIDA'
   | 'MFA_SIN_SECRETO'
-  | 'MFA_INVALIDO';
+  | 'MFA_INVALIDO'
+  | 'MFA_CODIGO_REUTILIZADO'
+  | 'MFA_EN_ESPERA'
+  | 'CREDENCIAL_CAMBIADA';
 
 /** Login bootstrap fijo del ADMIN inicial sembrado por el worker */
 
@@ -115,12 +124,13 @@ type LoginTxOutcome =
       userId: string;
       failedLoginAttempts: number;
       lockedUntil: Date | null;
-    };
+    }
+  | { kind: 'reused-mfa'; userId: string };
 
 /** Fallo de `disableMfa` dentro de su transacción. */
-type DisableMfaFailedOutcome = ChangePasswordFailedOutcome & {
-  kind: 'failed-password' | 'failed-mfa';
-};
+type DisableMfaFailedOutcome =
+  | (ChangePasswordFailedOutcome & { kind: 'failed-password' | 'failed-mfa' })
+  | { kind: 'reused-mfa'; userId: string };
 
 /** Resultado de `changePassword` dentro de su transacción (mismo arreglo que login). */
 interface ChangePasswordFailedOutcome {
@@ -353,18 +363,29 @@ export class AuthService {
       throw new UnauthorizedException('La cuenta requiere completar el setup de MFA.');
     }
 
-    const mfaValid = await this.verifyTotp(this.decryptSecret(user.mfaSecret), dto.totpCode);
-    if (!mfaValid) {
-      await this.logPlatformLoginFailed(user.id, 'MFA_INVALIDO', ipAddress, userAgent);
-      throw new UnauthorizedException('Codigo MFA invalido.');
+    const rejected = await this.consumePlatformSecondFactor(user, dto.totpCode);
+    if (rejected) {
+      await this.logPlatformLoginFailed(user.id, rejected.reason, ipAddress, userAgent);
+      if (rejected.lockedUntil) {
+        await this.reportPlatformMfaLock(user.id, rejected.lockedUntil, ipAddress, userAgent);
+      }
+      if (rejected.reason === 'CREDENCIAL_CAMBIADA') {
+        throw new UnauthorizedException('Credenciales invalidas.');
+      }
+      if (rejected.reason === 'MFA_EN_ESPERA') {
+        throw unauthorizedWithCode(
+          AUTH_ERROR_CODES.ACCOUNT_LOCKED,
+          'Cuenta en espera por códigos incorrectos. Intenta de nuevo en 30 minutos como máximo.',
+        );
+      }
+      throw unauthorizedWithCode(AUTH_ERROR_CODES.MFA_CODE_INVALID, MFA_CODE_REJECTED);
     }
 
-    await this.platformUserRepository.update(user.id, {
-      lastLoginAt: new Date(),
-    });
-
     const { accessToken } = this.signPlatformAccessToken(user);
-    const refreshToken = await this.createPlatformRefreshToken(user, ipAddress, userAgent);
+    // El código ya se consumió: si Redis falla no hay sesión y se espera el siguiente.
+    const refreshToken = await this.orUnavailable(() =>
+      this.createPlatformRefreshToken(user, ipAddress, userAgent),
+    );
 
     await this.platformAuditService.log({
       action: AuditAction.LOGIN,
@@ -377,6 +398,83 @@ export class AuthService {
     });
 
     return { accessToken, refreshToken };
+  }
+
+  /**
+   * Segundo factor de plataforma con la fila bloqueada: comprueba la espera, verifica, y
+   * consume el paso o cuenta el fallo en la misma transacción. El 401 se lanza tras el commit.
+   */
+  private consumePlatformSecondFactor(
+    read: PlatformUser,
+    totpCode: string,
+  ): Promise<{ reason: PlatformLoginFailureReason; lockedUntil?: Date } | null> {
+    return this.platformUserRepository.manager.transaction(async (manager) => {
+      const user = await manager.findOne(PlatformUser, {
+        where: { id: read.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (
+        !user?.mfaSecret ||
+        !user.mfaEnabled ||
+        user.passwordResetRequired ||
+        user.status !== read.status ||
+        user.passwordHash !== read.passwordHash ||
+        user.mfaSecret !== read.mfaSecret
+      ) {
+        return { reason: 'CREDENCIAL_CAMBIADA' };
+      }
+
+      const [wait] = (await manager.query(
+        `SELECT coalesce(mfa_locked_until > now(), false) AS waiting
+           FROM public.platform_users WHERE id = $1`,
+        [user.id],
+      )) as Array<{ waiting: boolean }>;
+      if (!wait || wait.waiting) return { reason: 'MFA_EN_ESPERA' };
+
+      const step = await this.matchTotpStep(this.decryptSecret(user.mfaSecret), totpCode);
+      if (step === null) {
+        const [rows] = (await manager.query(
+          `UPDATE public.platform_users
+              SET mfa_failed_attempts = mfa_failed_attempts + 1,
+                  mfa_locked_until = CASE WHEN mfa_failed_attempts + 1 >= $1
+                    THEN now() + ($2 * interval '1 second') ELSE mfa_locked_until END,
+                  updated_at = now()
+            WHERE id = $3
+            RETURNING CASE WHEN mfa_failed_attempts >= $1 THEN mfa_locked_until END AS locked_until`,
+          [MAX_FAILED_ATTEMPTS, PLATFORM_MFA_LOCK_SECONDS, user.id],
+        )) as [Array<{ locked_until: Date | null }>, number];
+        const lockedUntil = rows[0]?.locked_until;
+        return { reason: 'MFA_INVALIDO', ...(lockedUntil ? { lockedUntil } : {}) };
+      }
+      if (!(await this.consumeTotpStep(manager, 'public.platform_users', user.id, step))) {
+        return { reason: 'MFA_CODIGO_REUTILIZADO' };
+      }
+      await manager.update(PlatformUser, user.id, {
+        mfaFailedAttempts: 0,
+        mfaLockedUntil: null,
+        lastLoginAt: new Date(),
+      });
+      return null;
+    });
+  }
+
+  /** Inicio de cada espera: fila de auditoría y evento de error estable para alertar. */
+  private async reportPlatformMfaLock(
+    userId: string,
+    lockedUntil: Date,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<void> {
+    this.logger.error(`PLATFORM_MFA_LOCKED — cuenta ${userId} en espera por códigos incorrectos.`);
+    await this.platformAuditService.log({
+      action: AuditAction.ACCOUNT_LOCKED,
+      entityType: PLATFORM_USER_ENTITY_TYPE,
+      entityId: userId,
+      userId,
+      ipAddress: ipAddress ?? null,
+      userAgent: userAgent ?? null,
+      newValue: { lockedUntil, motivo: 'MFA_INVALIDO' },
+    });
   }
 
   /**
@@ -492,6 +590,7 @@ export class AuthService {
         }
 
         // Verificar MFA si esta habilitado
+        let totpStep: number | null = null;
         if (user.mfaEnabled) {
           if (!dto.totpCode) {
             // Cliente debe reenviar con totpCode incluido
@@ -506,8 +605,8 @@ export class AuthService {
           }
 
           // Descifrar el secret antes de verificar — está almacenado cifrado con AES-256-GCM
-          const mfaValid = await this.verifyTotp(this.decryptSecret(user.mfaSecret!), dto.totpCode);
-          if (!mfaValid) {
+          totpStep = await this.matchTotpStep(this.decryptSecret(user.mfaSecret!), dto.totpCode);
+          if (totpStep === null) {
             // Mismo criterio que la contraseña: el intento se confirma y se lanza tras el commit.
             const registered = await this.registerFailedAttempt(qr.manager, user.id);
             return {
@@ -536,6 +635,13 @@ export class AuthService {
           (locked.lockedUntil && locked.lockedUntil > new Date())
         ) {
           throw new UnauthorizedException('Credenciales invalidas.');
+        }
+
+        if (
+          totpStep !== null &&
+          !(await this.consumeTotpStep(qr.manager, 'users', user.id, totpStep))
+        ) {
+          return { kind: 'reused-mfa', userId: user.id };
         }
 
         // ADR-117 D1: la contraseña temporal solo sirve para cambiarla, antes de configurar MFA.
@@ -615,9 +721,10 @@ export class AuthService {
         userId: outcome.userId,
         ipAddress: ipAddress ?? null,
         userAgent: userAgent ?? null,
+        ...(outcome.kind === 'reused-mfa' ? { newValue: MFA_REUSED_AUDIT } : {}),
       });
 
-      if (outcome.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
+      if (outcome.kind !== 'reused-mfa' && outcome.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
         await this.auditService.log({
           action: AuditAction.ACCOUNT_LOCKED,
           entityType: 'User',
@@ -630,8 +737,8 @@ export class AuthService {
         });
       }
 
-      if (outcome.kind === 'failed-mfa') {
-        throw unauthorizedWithCode(AUTH_ERROR_CODES.MFA_CODE_INVALID, 'Codigo MFA invalido.');
+      if (outcome.kind !== 'failed-password') {
+        throw unauthorizedWithCode(AUTH_ERROR_CODES.MFA_CODE_INVALID, MFA_CODE_REJECTED);
       }
       throw new UnauthorizedException('Credenciales invalidas.');
     }
@@ -1068,10 +1175,13 @@ export class AuthService {
     const stored = await this.orUnavailable(() => this.redis.get(key));
     await this.platformUserRepository.manager.transaction(async (manager) => {
       const user = await this.lockPlatformMfaEnrollment(actor, manager);
-      if (!stored || !(await this.verifyTotp(this.decryptSecret(stored), dto.totpCode))) {
+      const step = stored
+        ? await this.matchTotpStep(this.decryptSecret(stored), dto.totpCode)
+        : null;
+      if (!stored || step === null) {
         throw new UnauthorizedException('Código incorrecto. Revisa tu aplicación autenticadora.');
       }
-      await this.activatePlatformMfa(manager, user.id, stored, context);
+      await this.activatePlatformMfa(manager, user.id, stored, step, context);
     });
     // Ya activa, el token no puede inscribir de nuevo: un fallo aquí no revierte la activación.
     try {
@@ -1163,10 +1273,17 @@ export class AuthService {
           'Vuelve a iniciar la configuración de la verificación en dos pasos.',
         );
       }
-      if (!(await this.verifyTotp(ticket.secret, dto.totpCode))) {
+      const step = await this.matchTotpStep(ticket.secret, dto.totpCode);
+      if (step === null) {
         throw new UnauthorizedException('Código incorrecto. Revisa tu aplicación autenticadora.');
       }
-      await this.activatePlatformMfa(manager, user.id, this.encryptSecret(ticket.secret), context);
+      await this.activatePlatformMfa(
+        manager,
+        user.id,
+        this.encryptSecret(ticket.secret),
+        step,
+        context,
+      );
     });
   }
 
@@ -1189,11 +1306,15 @@ export class AuthService {
     manager: EntityManager,
     id: string,
     encryptedSecret: string,
+    step: number,
     context: AuditRequestContext,
   ): Promise<void> {
     await manager.update(PlatformUser, id, {
       mfaEnabled: true,
       mfaSecret: encryptedSecret,
+      mfaLastUsedStep: step,
+      mfaFailedAttempts: 0,
+      mfaLockedUntil: null,
       status: UserStatus.ACTIVE,
     });
     await this.platformAuditService.logWithin(
@@ -1317,14 +1438,9 @@ export class AuthService {
       );
     }
 
-    // Verificar el codigo TOTP con la API async de otplib@13
-    const verifyResult = await this.totp.verify(dto.totpCode, {
-      secret: pendingSecret,
-      epochTolerance: 30,
-    });
-    const isValid = verifyResult.valid;
-    if (!isValid) {
-      throw unauthorizedWithCode(AUTH_ERROR_CODES.MFA_CODE_INVALID, 'Codigo MFA invalido.');
+    const step = await this.matchTotpStep(pendingSecret, dto.totpCode);
+    if (step === null) {
+      throw unauthorizedWithCode(AUTH_ERROR_CODES.MFA_CODE_INVALID, MFA_CODE_REJECTED);
     }
 
     // Activar MFA en la DB del tenant
@@ -1337,6 +1453,7 @@ export class AuthService {
       await qr.manager.update(User, userId, {
         mfaEnabled: true,
         mfaSecret: this.encryptSecret(pendingSecret), // Cifrado AES-256-GCM antes de persistir
+        mfaLastUsedStep: step,
       });
     });
 
@@ -1360,7 +1477,9 @@ export class AuthService {
    *
    * RF-AUTH-03
    */
-  async disableMfa(userId: string, dto: MfaDisableDto): Promise<{ mfaEnabled: boolean }> {
+  async disableMfa(actor: JwtPayload, dto: MfaDisableDto): Promise<{ mfaEnabled: boolean }> {
+    this.assertTenantMfaActor(actor);
+    const userId = actor.sub;
     const { schemaName } = TenantContext.getOrThrow();
 
     // D1 (igual que `login`): el intento fallido se confirma y la excepción se lanza tras el commit.
@@ -1389,20 +1508,29 @@ export class AuthService {
         }
 
         // Descifrar el secret almacenado antes de verificar el codigo TOTP
-        if (!(await this.verifyTotp(this.decryptSecret(user.mfaSecret!), dto.totpCode))) {
+        const step = await this.matchTotpStep(this.decryptSecret(user.mfaSecret!), dto.totpCode);
+        if (step === null) {
           const registered = await this.registerFailedAttempt(qr.manager, userId);
           return { kind: 'failed-mfa', userId, ...registered };
         }
 
-        await qr.manager.update(User, userId, { mfaEnabled: false, mfaSecret: null });
+        if (!(await this.consumeTotpStep(qr.manager, 'users', userId, step))) {
+          return { kind: 'reused-mfa', userId };
+        }
+
+        await qr.manager.update(User, userId, {
+          mfaEnabled: false,
+          mfaSecret: null,
+          mfaLastUsedStep: null,
+        });
         return null;
       },
     );
 
     if (failed) {
       await this.auditFailedAttempt(failed);
-      if (failed.kind === 'failed-mfa') {
-        throw unauthorizedWithCode(AUTH_ERROR_CODES.MFA_CODE_INVALID, 'Codigo MFA invalido.');
+      if (failed.kind !== 'failed-password') {
+        throw unauthorizedWithCode(AUTH_ERROR_CODES.MFA_CODE_INVALID, MFA_CODE_REJECTED);
       }
       throw new UnauthorizedException('Contrasena incorrecta.');
     }
@@ -2171,9 +2299,19 @@ export class AuthService {
   }
 
   /** Audita un intento fallido de un usuario autenticado; se llama después del commit. */
-  private async auditFailedAttempt(failed: ChangePasswordFailedOutcome): Promise<void> {
-    const { userId, failedLoginAttempts, lockedUntil } = failed;
-    const target = { entityType: 'User', entityId: userId, userId };
+  private async auditFailedAttempt(
+    failed: ChangePasswordFailedOutcome | DisableMfaFailedOutcome,
+  ): Promise<void> {
+    const target = { entityType: 'User', entityId: failed.userId, userId: failed.userId };
+    if (!('failedLoginAttempts' in failed)) {
+      await this.auditService.log({
+        action: AuditAction.LOGIN_FAILED,
+        ...target,
+        newValue: MFA_REUSED_AUDIT,
+      });
+      return;
+    }
+    const { failedLoginAttempts, lockedUntil } = failed;
     await this.auditService.log({ action: AuditAction.LOGIN_FAILED, ...target });
     if (failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
       await this.auditService.log({
@@ -2254,13 +2392,29 @@ export class AuthService {
     return decryptAes256Gcm(encrypted, this.mfaEncryptionKey, this.mfaEncryptionKeyPrevious);
   }
 
-  /**   * Verifica un codigo TOTP contra el secret del usuario.
-   * Usa epochTolerance de 30s para tolerar pequenos desfases de reloj.
-   * API otplib@13: verify(token, options) es async y retorna { valid, delta }.
+  /**
+   * Paso TOTP al que corresponde el código, o null si no es válido. Único punto que verifica.
+   * Tolera 30 s de desfase. No usa `afterTimeStep`: lanza si el reloj retrocede.
    */
-  private async verifyTotp(secret: string, token: string): Promise<boolean> {
+  private async matchTotpStep(secret: string, token: string): Promise<number | null> {
     const result = await this.totp.verify(token, { secret, epochTolerance: 30 });
-    return result.valid;
+    return result.valid ? result.timeStep : null;
+  }
+
+  /** Marca el paso como usado; false si ya se usó ese u otro posterior. */
+  private async consumeTotpStep(
+    manager: EntityManager,
+    table: 'users' | 'public.platform_users',
+    userId: string,
+    step: number,
+  ): Promise<boolean> {
+    const [, affected] = (await manager.query(
+      `UPDATE ${table} SET mfa_last_used_step = $1
+        WHERE id = $2 AND mfa_enabled
+          AND (mfa_last_used_step IS NULL OR mfa_last_used_step < $1)`,
+      [step, userId],
+    )) as [unknown, number];
+    return affected === 1;
   }
 
   /**

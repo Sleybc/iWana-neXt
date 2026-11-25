@@ -57,7 +57,12 @@ export function MfaVerifyForm() {
       setHasError(true);
       setCode('');
       if (err instanceof ApiError) {
-        if (err.status === 401) setError('Código incorrecto. Intenta de nuevo.');
+        // En espera, el mensaje del servidor dice cuánto falta.
+        if (err.code === 'AUTH_ACCOUNT_LOCKED') setError(err.message);
+        else if (err.status === 401 && err.code.endsWith('MFA_CODE_INVALID'))
+          setError('Código incorrecto o ya usado. Espera el siguiente código.');
+        else if (err.status === 401)
+          setError('No fue posible verificar tu ingreso. Inicia sesión de nuevo.');
         else if (err.status === 429)
           setError('Demasiados intentos. Cuenta temporalmente bloqueada.');
         else setError('Error al verificar el código. Intenta de nuevo.');

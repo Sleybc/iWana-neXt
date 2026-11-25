@@ -65,8 +65,8 @@ export default function PlatformMfaSetupPage() {
         <div className="space-y-4">
           {confirmed && (
             <p role="status">
-              Verificación en dos pasos activada. Inicia sesión con tu contraseña y un código de tu
-              aplicación autenticadora.
+              Verificación en dos pasos activada. Inicia sesión con tu contraseña y el siguiente
+              código de tu aplicación autenticadora.
             </p>
           )}
           {!setup && !error && !confirmed && <p role="status">Preparando el código QR…</p>}

@@ -16,6 +16,7 @@ import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import {
   AuditLog,
   dataSourceOptions,
+  PlatformAuditLog,
   PlatformUser,
   RefreshToken,
   runInTenantSchema,
@@ -23,6 +24,7 @@ import {
   User,
 } from '@iwana/db';
 import { PlatformRole, UserRole, UserStatus } from '@iwana/shared';
+import { resetPlatformMfa } from '../../cli/reset-platform-mfa';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { PlatformUsersService } from '../platform-users/platform-users.service';
@@ -41,6 +43,7 @@ import { ephemeralSchemaName } from '../../../../../packages/database/test/ephem
 
 // otplib@13 arrastra @scure/base (ESM-only) que Jest-CJS no puede cargar.
 const mockTotpVerify = jest.fn();
+let totpStep = 0;
 jest.mock('otplib', () => ({
   TOTP: jest.fn().mockImplementation(() => ({
     generateSecret: () => 'SECRETOPENDIENTE',
@@ -302,42 +305,38 @@ describeWithDb('Carreras de credencial (PostgreSQL real)', () => {
     return new PlatformUsersService(paused, platformAudit, config);
   }
 
-  beforeAll(async () => {
-    process.env['PII_HASH_KEY'] = PII_KEY;
-    dataSource = new DataSource({
-      ...dataSourceOptions,
-      entities: [AuditLog, PlatformUser, RefreshToken, User],
-      migrations: [],
-      logging: false,
-      extra: { ...(dataSourceOptions.extra ?? {}), max: 15, min: 1 },
-    });
-    await dataSource.initialize();
-    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+  /**
+   * La migración 092 exige un tenant canónico en public.tenants. El esquema lo crea la cadena
+   * de migraciones, con constraints y triggers reales, no un DDL escrito a mano.
+   */
+  async function provisionTenant(id: string, schema: string): Promise<void> {
+    const slug = `auth-races-${id.slice(0, 8)}`;
     await dataSource.query(
       `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
        VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
-      [
-        tenantId,
-        'Auth carreras sintético',
-        `auth-races-${tenantId.slice(0, 8)}`,
-        schemaName,
-        'auth-races@example.invalid',
-      ],
+      [id, 'Auth carreras sintético', slug, schema, 'auth-races@example.invalid'],
     );
-    // El esquema lo crea la cadena de migraciones del tenant: users, refresh_tokens y
-    // audit_logs con sus columnas, constraints y triggers reales, no un DDL escrito a mano.
-    await dataSource.query(`CREATE SCHEMA ${qSchema()}`);
-    const tenantDataSource = createTenantDataSource(
-      dataSource,
-      schemaName,
-      `auth-races-${tenantId.slice(0, 8)}`,
-    );
+    await dataSource.query(`CREATE SCHEMA "${schema}"`);
+    const tenantDataSource = createTenantDataSource(dataSource, schema, slug);
     await tenantDataSource.initialize();
     try {
       await applyTenantMigrationsInOrder(tenantDataSource);
     } finally {
       await tenantDataSource.destroy();
     }
+  }
+
+  beforeAll(async () => {
+    process.env['PII_HASH_KEY'] = PII_KEY;
+    dataSource = new DataSource({
+      ...dataSourceOptions,
+      entities: [AuditLog, PlatformAuditLog, PlatformUser, RefreshToken, User],
+      migrations: [],
+      logging: false,
+      extra: { ...(dataSourceOptions.extra ?? {}), max: 15, min: 1 },
+    });
+    await dataSource.initialize();
+    await provisionTenant(tenantId, schemaName);
     const jwt = {
       sign: (claims: Record<string, unknown>) => {
         signed.push(claims);
@@ -385,7 +384,10 @@ describeWithDb('Carreras de credencial (PostgreSQL real)', () => {
 
   beforeEach(() => {
     redis.clear();
-    mockTotpVerify.mockReset().mockResolvedValue({ valid: true });
+    // Cada verificación válida corresponde a un paso nuevo, como códigos sucesivos.
+    mockTotpVerify
+      .mockReset()
+      .mockImplementation(async () => ({ valid: true, timeStep: (totpStep += 1) }));
   });
 
   afterAll(async () => {
@@ -413,14 +415,21 @@ describeWithDb('Carreras de credencial (PostgreSQL real)', () => {
       for (let n = 0; n < 5; n += 1) {
         expect((await login(id, OLD, '000000')).status).toBe(401);
       }
-      mockTotpVerify.mockResolvedValue({ valid: true });
+      mockTotpVerify.mockResolvedValue({ valid: true, timeStep: 1 });
 
       expect((await readUser(id)).failed_login_attempts).toBe(5);
       expect((await login(id, OLD, '123456')).status).toBe(401);
     });
 
     const disableMfa = (id: string, password: string): Promise<Outcome> =>
-      settle(inTenant(() => auth.disableMfa(id, { password, totpCode: '123456' })));
+      settle(
+        inTenant(() =>
+          auth.disableMfa({ sub: id, type: 'tenant' } as JwtPayload, {
+            password,
+            totpCode: '123456',
+          }),
+        ),
+      );
 
     it.each([
       ['intentos de contraseña', 'Errada12345!', true],
@@ -429,9 +438,9 @@ describeWithDb('Carreras de credencial (PostgreSQL real)', () => {
       'cinco %s inválidos al desactivar MFA bloquean la cuenta',
       async (_caso, password, valid) => {
         const id = await seedUser({ mfa_enabled: true, mfa_secret: encrypted() });
-        mockTotpVerify.mockResolvedValue({ valid });
+        mockTotpVerify.mockResolvedValue({ valid, timeStep: 1 });
         for (let n = 0; n < 5; n += 1) expect((await disableMfa(id, password)).status).toBe(401);
-        mockTotpVerify.mockResolvedValue({ valid: true });
+        mockTotpVerify.mockResolvedValue({ valid: true, timeStep: 1 });
 
         expect((await disableMfa(id, OLD)).status).toBe(401);
         const row = await readUser(id);
@@ -470,6 +479,86 @@ describeWithDb('Carreras de credencial (PostgreSQL real)', () => {
       const row = await readUser(id);
       expect(row['mfa_enabled']).toBe(false);
       expect(row['mfa_secret']).toBeNull();
+    });
+
+    const sameStep = (step: number): void => {
+      mockTotpVerify.mockResolvedValue({ valid: true, timeStep: step });
+    };
+
+    it('dos ingresos simultáneos con el mismo código: una sesión y ningún fallo contado', async () => {
+      const id = await seedUser({ mfa_enabled: true, mfa_secret: encrypted() });
+      sameStep(10);
+      const results = await Promise.all([login(id, OLD, '123456'), login(id, OLD, '123456')]);
+
+      expect(results.map((r) => r.status).sort()).toEqual([200, 401]);
+      const row = await readUser(id);
+      expect(row['mfa_last_used_step']).toBe(10);
+      expect(row['failed_login_attempts']).toBe(0);
+    });
+
+    it('ingreso y desactivación simultáneos con el mismo código: uno solo', async () => {
+      const id = await seedUser({ mfa_enabled: true, mfa_secret: encrypted() });
+      sameStep(10);
+      const results = await Promise.all([login(id, OLD, '123456'), disableMfa(id, OLD)]);
+
+      expect(results.map((r) => r.status).sort()).toEqual([200, 401]);
+    });
+
+    it('un paso anterior al último usado se rechaza', async () => {
+      const id = await seedUser({ mfa_enabled: true, mfa_secret: encrypted() });
+      sameStep(11);
+      expect((await login(id, OLD, '123456')).status).toBe(200);
+      sameStep(10);
+      expect((await login(id, OLD, '123456')).status).toBe(401);
+    });
+
+    it('el ingreso que termina en cambio obligatorio también consume', async () => {
+      const id = await seedUser({
+        mfa_enabled: true,
+        mfa_secret: encrypted(),
+        password_reset_required: true,
+      });
+      sameStep(10);
+      expect((await login(id, OLD, '123456')).value).toMatchObject({ passwordResetRequired: true });
+      expect((await login(id, OLD, '123456')).status).toBe(401);
+    });
+
+    it('ni la petición sin código ni la contraseña errónea consumen', async () => {
+      const id = await seedUser({ mfa_enabled: true, mfa_secret: encrypted() });
+      sameStep(10);
+      expect((await login(id, OLD)).value).toMatchObject({ mfaRequired: true });
+      expect((await login(id, 'Errada12345!', '123456')).status).toBe(401);
+      expect((await login(id, OLD, '123456')).status).toBe(200);
+    });
+
+    it('si la transacción se revierte, el código sigue disponible', async () => {
+      const id = await seedUser({ mfa_enabled: true, mfa_secret: encrypted() });
+      sameStep(10);
+      const spy = jest
+        .spyOn(
+          auth as unknown as { createRefreshToken: () => Promise<string> },
+          'createRefreshToken',
+        )
+        .mockRejectedValueOnce(Object.assign(new Error('fallo'), { status: 500 }));
+      expect((await login(id, OLD, '123456')).status).toBe(500);
+      spy.mockRestore();
+      expect((await login(id, OLD, '123456')).status).toBe(200);
+    });
+
+    it('reinscribir tras desactivar no deja fuera al titular aunque el paso sea menor', async () => {
+      const id = await seedUser({ mfa_enabled: true, mfa_secret: encrypted() });
+      sameStep(100);
+      expect((await disableMfa(id, OLD)).status).toBe(200);
+      expect((await readUser(id))['mfa_last_used_step']).toBeNull();
+
+      await login(id, OLD);
+      const actor = lastActor();
+      await inTenant(() => auth.setupMfa(actor));
+      sameStep(20);
+      await inTenant(() => auth.verifyMfaSetup(actor, { totpCode: '123456' }));
+      expect((await login(id, OLD, '123456')).status).toBe(401);
+      sameStep(21);
+      expect((await login(id, OLD, '123456')).status).toBe(200);
     });
 
     it('un login en vuelo no entra si la cuenta se bloquea mientras valida', async () => {
@@ -737,6 +826,247 @@ describeWithDb('Carreras de credencial (PostgreSQL real)', () => {
         expect((await settle(auth.refreshPlatformTokens(refresh))).status).toBe(401);
       }
       expect((await settle(auth.refreshPlatformTokens(await session(id)))).status).toBe(200);
+    });
+
+    describe('segundo factor', () => {
+      /** Cuenta con correo conocido para entrar por `loginPlatform`. */
+      const seedLogin = async (): Promise<{
+        id: string;
+        enter: (password?: string) => Promise<Outcome>;
+      }> => {
+        const id = await seedPlatformUser();
+        const email = `plataforma-${id}@example.invalid`;
+        await dataSource.getRepository(PlatformUser).update(id, {
+          emailHash: hashEmail(email, Buffer.from(PII_KEY, 'hex')),
+        });
+        return {
+          id,
+          enter: (password: string = OLD) =>
+            settle(auth.loginPlatform({ email, password, totpCode: '123456' })),
+        };
+      };
+      const sameStep = (step: number): void => {
+        mockTotpVerify.mockResolvedValue({ valid: true, timeStep: step });
+      };
+
+      it('dos ingresos simultáneos con el mismo código: una sesión', async () => {
+        const { id, enter } = await seedLogin();
+        sameStep(10);
+        const results = await Promise.all([enter(), enter()]);
+
+        expect(results.map((r) => r.status).sort()).toEqual([200, 401]);
+        expect(await readPlatform(id)).toMatchObject({ mfaLastUsedStep: 10, mfaFailedAttempts: 0 });
+      });
+
+      it('diez códigos erróneos en paralelo: se verifican cinco y la cuenta espera', async () => {
+        const { id, enter } = await seedLogin();
+        mockTotpVerify.mockResolvedValue({ valid: false });
+        const results = await Promise.all(Array.from({ length: 10 }, () => enter()));
+
+        expect(results.every((r) => r.status === 401)).toBe(true);
+        expect(mockTotpVerify).toHaveBeenCalledTimes(5);
+        sameStep(10);
+        expect((await enter()).status).toBe(401);
+        const row = await readPlatform(id);
+        expect(row.mfaFailedAttempts).toBe(5);
+        const wait = row.mfaLockedUntil!.getTime() - Date.now();
+        expect(wait).toBeGreaterThan(28 * 60_000);
+        expect(wait).toBeLessThan(31 * 60_000);
+      });
+
+      it('vencida la espera, un fallo la reabre y un ingreso correcto la limpia', async () => {
+        const { id, enter } = await seedLogin();
+        const repository = dataSource.getRepository(PlatformUser);
+        const expire = () =>
+          repository.update(id, { mfaFailedAttempts: 5, mfaLockedUntil: new Date(0) });
+        await expire();
+        mockTotpVerify.mockResolvedValue({ valid: false });
+        expect((await enter()).status).toBe(401);
+        expect((await readPlatform(id)).mfaLockedUntil!.getTime()).toBeGreaterThan(Date.now());
+
+        await expire();
+        sameStep(10);
+        expect((await enter()).status).toBe(200);
+        expect(await readPlatform(id)).toMatchObject({
+          mfaFailedAttempts: 0,
+          mfaLockedUntil: null,
+        });
+      });
+
+      it('las contraseñas erróneas no bloquean', async () => {
+        const { id, enter } = await seedLogin();
+        for (let n = 0; n < 8; n += 1) {
+          expect((await enter('Errada12345!')).status).toBe(401);
+        }
+        expect((await readPlatform(id)).mfaFailedAttempts).toBe(0);
+        sameStep(10);
+        expect((await enter()).status).toBe(200);
+      });
+
+      it('un cambio de contraseña en vuelo anula el ingreso sin consumir', async () => {
+        const { id, enter } = await seedLogin();
+        sameStep(10);
+        const runner = dataSource.createQueryRunner();
+        await runner.connect();
+        await runner.startTransaction();
+        try {
+          await runner.query('SELECT 1 FROM public.platform_users WHERE id = $1 FOR UPDATE', [id]);
+          const pending = enter();
+          await untilBlocked();
+          await runner.query('UPDATE public.platform_users SET password_hash = $2 WHERE id = $1', [
+            id,
+            await bcrypt.hash(NEW, 4),
+          ]);
+          await runner.commitTransaction();
+          expect((await pending).status).toBe(401);
+        } finally {
+          if (runner.isTransactionActive) await runner.rollbackTransaction();
+          await runner.release();
+        }
+        expect((await readPlatform(id)).mfaLastUsedStep).toBeNull();
+      });
+
+      it('la recuperación limpia el segundo factor, audita y corta la renovación', async () => {
+        const { id } = await seedLogin();
+        const actor = await seedPlatformUser();
+        const repository = dataSource.getRepository(PlatformUser);
+        await repository.update(actor, { role: PlatformRole.SYSTEM_ADMIN });
+        await repository.update(id, {
+          mfaLastUsedStep: 99,
+          mfaFailedAttempts: 7,
+          mfaLockedUntil: new Date(Date.now() + 600_000),
+        });
+        const refresh = await session(id);
+        await resetPlatformMfa(dataSource, {
+          account: id,
+          actor,
+          reason: 'PERDIDA_DISPOSITIVO',
+        });
+
+        expect(await readPlatform(id)).toMatchObject({
+          mfaEnabled: false,
+          mfaSecret: null,
+          mfaLastUsedStep: null,
+          mfaFailedAttempts: 0,
+          mfaLockedUntil: null,
+        });
+        expect((await settle(auth.refreshPlatformTokens(refresh))).status).toBe(401);
+        const [log] = (await dataSource.query(
+          `SELECT user_id, action, new_value FROM public.platform_audit_logs WHERE entity_id = $1`,
+          [id],
+        )) as Array<Record<string, any>>;
+        expect(log).toMatchObject({
+          user_id: actor,
+          action: 'MFA_DISABLED',
+          new_value: { origen: 'RECUPERACION_CLI', motivo: 'PERDIDA_DISPOSITIVO' },
+        });
+      });
+
+      it('dos empresas y la plataforma no comparten el paso usado', async () => {
+        const other = ephemeralSchemaName('tenant_authrb_');
+        const otherContext = { ...context, schemaName: other, tenantId: randomUUID() };
+        const secret = encryptSecret('SECRETO');
+        const id = await seedUser({ mfa_enabled: true, mfa_secret: secret });
+        try {
+          await provisionTenant(otherContext.tenantId, other);
+          await dataSource.query(
+            `INSERT INTO "${other}".users SELECT * FROM ${qSchema()}.users WHERE id = $1`,
+            [id],
+          );
+          const { id: platformId, enter } = await seedLogin();
+          const otherStep = async (): Promise<unknown> =>
+            (
+              (await dataSource.query(`SELECT mfa_last_used_step FROM "${other}".users`)) as Array<
+                Record<string, unknown>
+              >
+            )[0]!['mfa_last_used_step'];
+          sameStep(10);
+
+          expect((await login(id, OLD, '123456')).status).toBe(200);
+          expect(await otherStep()).toBeNull();
+          expect((await readPlatform(platformId)).mfaLastUsedStep).toBeNull();
+
+          const inOther = await settle(
+            TenantContext.run(otherContext, () =>
+              auth.login({
+                email: `races-${id}@example.invalid`,
+                password: OLD,
+                totpCode: '123456',
+              }),
+            ),
+          );
+          expect(inOther.status).toBe(200);
+          expect(await otherStep()).toBe(10);
+          expect((await enter()).status).toBe(200);
+        } finally {
+          await dataSource.query(`DROP SCHEMA IF EXISTS "${other}" CASCADE`);
+          await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [
+            otherContext.tenantId,
+          ]);
+        }
+      }, 60_000);
+
+      it('la recuperación propia exige ser la única cuenta administradora', async () => {
+        const actor = await seedPlatformUser();
+        const repository = dataSource.getRepository(PlatformUser);
+        const admins = { role: PlatformRole.SYSTEM_ADMIN, status: UserStatus.ACTIVE };
+        await repository.update(actor, { role: PlatformRole.SYSTEM_ADMIN });
+        const second = await seedPlatformUser();
+        await repository.update(second, { role: PlatformRole.SYSTEM_ADMIN });
+        const recover = () =>
+          resetPlatformMfa(dataSource, {
+            account: actor,
+            actor,
+            reason: 'BLOQUEO_SEGUNDO_FACTOR',
+          });
+        await expect(recover()).rejects.toThrow('Otro administrador');
+
+        const others = (await repository.find({ where: admins })).filter(
+          (admin) => admin.id !== actor,
+        );
+        await repository.update(
+          { id: In(others.map((admin) => admin.id)) },
+          { status: UserStatus.SUSPENDED },
+        );
+        try {
+          await recover();
+          expect((await readPlatform(actor)).mfaEnabled).toBe(false);
+          await expect(recover()).rejects.toThrow('no tiene MFA');
+        } finally {
+          await repository.update(
+            { id: In(others.map((admin) => admin.id)) },
+            { status: UserStatus.ACTIVE },
+          );
+        }
+      });
+
+      it('si la auditoría falla, la recuperación se revierte', async () => {
+        const { id } = await seedLogin();
+        const actor = await seedPlatformUser();
+        await dataSource
+          .getRepository(PlatformUser)
+          .update(actor, { role: PlatformRole.SYSTEM_ADMIN });
+        const save = jest
+          .spyOn(EntityManager.prototype, 'save')
+          .mockRejectedValueOnce(new Error('auditoría caída'));
+        try {
+          await expect(
+            resetPlatformMfa(dataSource, { account: id, actor, reason: 'RELOJ_DESFASADO' }),
+          ).rejects.toThrow('auditoría');
+        } finally {
+          save.mockRestore();
+        }
+        expect((await readPlatform(id)).mfaEnabled).toBe(true);
+      });
+
+      it('la recuperación rechaza un actor que no es administrador activo', async () => {
+        const { id } = await seedLogin();
+        const support = await seedPlatformUser();
+        await expect(
+          resetPlatformMfa(dataSource, { account: id, actor: support, reason: 'RELOJ_DESFASADO' }),
+        ).rejects.toThrow('administrador');
+        expect((await readPlatform(id)).mfaEnabled).toBe(true);
+      });
     });
 
     const encryptSecret = (value: string): string =>

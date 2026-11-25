@@ -256,7 +256,17 @@ describeWithDb('PlatformUsersService.getSummary — PostgreSQL real', () => {
         accessToken: '',
         mfaRequired: true,
       });
-      const session = await auth.loginPlatform({ email, password: newPassword, totpCode });
+      // El código de la inscripción ya se usó; entra el siguiente.
+      await expect(
+        auth.loginPlatform({ email, password: newPassword, totpCode }),
+      ).rejects.toMatchObject({ status: 401 });
+      const nextCode = (value: string): Promise<string> =>
+        totp.generate({ secret: value, epoch: Math.floor(Date.now() / 1000) + 30 });
+      const session = await auth.loginPlatform({
+        email,
+        password: newPassword,
+        totpCode: await nextCode(secret),
+      });
       expect(session.refreshToken).toBeDefined();
       expect(
         jwt.verify<JwtPayload>(session.accessToken, { algorithms: ['RS256'] }).scope,
@@ -313,7 +323,7 @@ describeWithDb('PlatformUsersService.getSummary — PostgreSQL real', () => {
       const activeSession = await auth.loginPlatform({
         email: activeEmail,
         password: activePassword,
-        totpCode: activeCode,
+        totpCode: await nextCode(activeSecret),
       });
       expect(activeSession.refreshToken).toBeDefined();
       expect(
@@ -382,7 +392,7 @@ describeWithDb('PlatformUsersService.getSummary — PostgreSQL real', () => {
           await auth.loginPlatform({
             email: existingEmail,
             password: existing.temporaryPassword,
-            totpCode: selfCode,
+            totpCode: await nextCode(selfSecret),
           })
         ).refreshToken,
       ).toBeDefined();

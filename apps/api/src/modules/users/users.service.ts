@@ -310,6 +310,7 @@ export class UsersService {
       tenantId,
       mfaEnabled: false,
       mfaSecret: null,
+      mfaLastUsedStep: null,
       mfaRequired: dto.mfaRequired ?? false,
       isOperationalResource,
       passwordResetRequired: !dto.password,

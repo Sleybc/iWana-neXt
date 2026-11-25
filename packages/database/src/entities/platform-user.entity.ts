@@ -63,8 +63,8 @@ export class PlatformUser {
   status: UserStatus;
 
   /**
-   * MFA TOTP — siempre habilitado para usuarios de plataforma.
-   * Default true refleja la politica de seguridad obligatoria.
+   * MFA TOTP — obligatorio en plataforma: lo impone `AuthService.loginPlatform`, no este
+   * default. Sin MFA solo se entrega el alcance de inscripción.
    */
   @Column({ name: 'mfa_enabled', default: true })
   mfaEnabled: boolean;
@@ -75,6 +75,18 @@ export class PlatformUser {
    */
   @Column({ name: 'mfa_secret', type: 'varchar', length: 512, nullable: true })
   mfaSecret: string | null;
+
+  /** Último paso TOTP usado: un código no sirve dos veces. */
+  @Column({ name: 'mfa_last_used_step', type: 'integer', nullable: true })
+  mfaLastUsedStep: number | null;
+
+  /** Códigos erróneos tras contraseña correcta desde el último ingreso. */
+  @Column({ name: 'mfa_failed_attempts', type: 'integer', default: 0 })
+  mfaFailedAttempts: number;
+
+  /** Hasta cuándo no se verifica el segundo factor. */
+  @Column({ name: 'mfa_locked_until', type: 'timestamptz', nullable: true })
+  mfaLockedUntil: Date | null;
 
   /** Nombre del usuario de plataforma */
   @Column({ name: 'first_name', type: 'varchar', length: 100, nullable: true })

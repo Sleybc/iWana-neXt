@@ -84,6 +84,10 @@ export class User {
   @Column({ name: 'mfa_secret', type: 'varchar', length: 512, nullable: true })
   mfaSecret: string | null;
 
+  /** Último paso TOTP usado: un código no sirve dos veces. */
+  @Column({ name: 'mfa_last_used_step', type: 'integer', nullable: true })
+  mfaLastUsedStep: number | null;
+
   /**
    * Si true, el usuario debe completar el setup de MFA antes de acceder.
    * El admin lo define al crear el usuario o puede cambiarlo después.

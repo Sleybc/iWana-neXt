@@ -75,7 +75,7 @@ jest.mock('otplib', () => ({
   TOTP: jest.fn().mockImplementation(() => ({
     generateSecret: jest.fn().mockReturnValue('MOCK_TOTP_SECRET_BASE32'),
     generate: jest.fn().mockResolvedValue('123456'),
-    verify: jest.fn().mockResolvedValue({ valid: true, delta: 0 }),
+    verify: jest.fn().mockResolvedValue({ valid: true, delta: 0, timeStep: 1 }),
     toURI: jest.fn().mockReturnValue('otpauth://totp/iWana%20Test:user%40example.com'),
   })),
   NobleCryptoPlugin: jest.fn(),
@@ -183,6 +183,13 @@ function mfaPendingKey(): string {
 }
 
 /** Configura mockRunInTenantSchema para ejecutar el callback con un EntityManager mockeado */
+/** Consultas del segundo factor de plataforma: sin espera, y UPDATE de una fila. */
+const mockPlatformQuery = jest.fn();
+const platformQuery =
+  (waiting = false, affected = 1, lockedUntil: Date | null = null) =>
+  async (sql: string): Promise<unknown> =>
+    sql.startsWith('SELECT') ? [{ waiting }] : [[{ locked_until: lockedUntil }], affected];
+
 function setupRunInTenantSchema(managerOverrides: Record<string, jest.Mock> = {}): {
   manager: Record<string, jest.Mock>;
 } {
@@ -235,6 +242,7 @@ describe('AuthService', () => {
 
   beforeEach(async () => {
     process.env.PII_HASH_KEY = injectedPiiHashKeyHex;
+    mockPlatformQuery.mockImplementation(platformQuery());
     mockRedis = {
       get: jest.fn().mockResolvedValue(null),
       set: jest.fn().mockResolvedValue('OK'),
@@ -258,7 +266,23 @@ describe('AuthService', () => {
         },
         {
           provide: getRepositoryToken(PlatformUser),
-          useValue: { findOne: jest.fn(), update: jest.fn() },
+          useFactory: () => {
+            const repository: Record<string, unknown> = {
+              findOne: jest.fn(),
+              update: jest.fn().mockResolvedValue({ affected: 1 }),
+            };
+            // La fila bloqueada es la misma que leyó el login; la espera y el consumo los fija cada prueba.
+            const manager = {
+              findOne: () => (repository['findOne'] as jest.Mock)({}),
+              update: jest.fn(),
+              query: mockPlatformQuery,
+            };
+            repository['manager'] = {
+              ...manager,
+              transaction: (run: (m: unknown) => unknown) => run(manager),
+            };
+            return repository;
+          },
         },
         {
           provide: getRepositoryToken(RefreshToken),
@@ -482,13 +506,19 @@ describe('AuthService', () => {
 
       // Mock del metodo privado verifyTotp para retornar false
       jest
-        .spyOn(service as unknown as { verifyTotp: () => Promise<boolean> }, 'verifyTotp')
-        .mockResolvedValue(false);
+        .spyOn(
+          service as unknown as { matchTotpStep: () => Promise<number | null> },
+          'matchTotpStep',
+        )
+        .mockResolvedValue(null);
 
       const dto: LoginDto = { email: 'mfa@example.com', password: 'Passw0rd!', totpCode: '000000' };
       await expect(service.login(dto)).rejects.toMatchObject({
         status: 401,
-        response: { code: 'AUTH_MFA_CODE_INVALID', message: 'Codigo MFA invalido.' },
+        response: {
+          code: 'AUTH_MFA_CODE_INVALID',
+          message: 'Código incorrecto o ya usado. Espera el siguiente código.',
+        },
       });
     });
 
@@ -513,8 +543,11 @@ describe('AuthService', () => {
             ]),
         });
         jest
-          .spyOn(service as unknown as { verifyTotp: () => Promise<boolean> }, 'verifyTotp')
-          .mockResolvedValue(false);
+          .spyOn(
+            service as unknown as { matchTotpStep: () => Promise<number | null> },
+            'matchTotpStep',
+          )
+          .mockResolvedValue(null);
         const { auditService } = service as unknown as { auditService: { log: jest.Mock } };
         auditService.log.mockClear();
 
@@ -522,7 +555,10 @@ describe('AuthService', () => {
           service.login({ email: 'mfa@example.com', password: 'Passw0rd!', totpCode: '000000' }),
         ).rejects.toMatchObject({
           status: 401,
-          response: { code: 'AUTH_MFA_CODE_INVALID', message: 'Codigo MFA invalido.' },
+          response: {
+            code: 'AUTH_MFA_CODE_INVALID',
+            message: 'Código incorrecto o ya usado. Espera el siguiente código.',
+          },
         });
 
         expect(manager.query).toHaveBeenCalledWith(
@@ -814,8 +850,11 @@ describe('AuthService', () => {
       const pendingSecret = 'PENDINGBASE32SECRET';
       mockRedis.get.mockResolvedValue(pendingSecret);
       jest
-        .spyOn(service as unknown as { verifyTotp: () => Promise<boolean> }, 'verifyTotp')
-        .mockResolvedValue(true);
+        .spyOn(
+          service as unknown as { matchTotpStep: () => Promise<number | null> },
+          'matchTotpStep',
+        )
+        .mockResolvedValue(1);
 
       const { manager } = setupRunInTenantSchema({
         findOne: jest.fn().mockResolvedValue(buildUser()),
@@ -869,7 +908,10 @@ describe('AuthService', () => {
       const dto: MfaVerifyDto = { totpCode: '999999' };
       await expect(service.verifyMfaSetup(mfaActor(), dto)).rejects.toMatchObject({
         status: 401,
-        response: { code: 'AUTH_MFA_CODE_INVALID', message: 'Codigo MFA invalido.' },
+        response: {
+          code: 'AUTH_MFA_CODE_INVALID',
+          message: 'Código incorrecto o ya usado. Espera el siguiente código.',
+        },
       });
     });
   });
@@ -885,8 +927,11 @@ describe('AuthService', () => {
       const user = buildUser({ mfaEnabled: true, mfaSecret: encryptedSecret });
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       jest
-        .spyOn(service as unknown as { verifyTotp: () => Promise<boolean> }, 'verifyTotp')
-        .mockResolvedValue(true);
+        .spyOn(
+          service as unknown as { matchTotpStep: () => Promise<number | null> },
+          'matchTotpStep',
+        )
+        .mockResolvedValue(1);
 
       const { manager } = setupRunInTenantSchema({
         findOne: jest.fn().mockResolvedValue(user),
@@ -894,12 +939,13 @@ describe('AuthService', () => {
       });
 
       const dto: MfaDisableDto = { password: 'Passw0rd!', totpCode: '654321' };
-      const result = await service.disableMfa('user-uuid-1', dto);
+      const result = await service.disableMfa(mfaActor(), dto);
 
       expect(result.mfaEnabled).toBe(false);
       expect(manager.update).toHaveBeenCalledWith(User, 'user-uuid-1', {
         mfaEnabled: false,
         mfaSecret: null,
+        mfaLastUsedStep: null,
       });
     });
 
@@ -907,7 +953,7 @@ describe('AuthService', () => {
       setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(null) });
 
       const dto: MfaDisableDto = { password: 'Passw0rd!', totpCode: '123456' };
-      await expect(service.disableMfa('ghost-uuid', dto)).rejects.toThrow(NotFoundException);
+      await expect(service.disableMfa(mfaActor(), dto)).rejects.toThrow(NotFoundException);
     });
 
     it('lanza UnauthorizedException cuando la contrasena es incorrecta', async () => {
@@ -917,19 +963,22 @@ describe('AuthService', () => {
       setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(user) });
 
       const dto: MfaDisableDto = { password: 'WrongPass!', totpCode: '000000' };
-      await expect(service.disableMfa('user-uuid-1', dto)).rejects.toThrow(UnauthorizedException);
+      await expect(service.disableMfa(mfaActor(), dto)).rejects.toThrow(UnauthorizedException);
     });
 
     it.each([
       ['contraseña', false, 'Contrasena incorrecta.'],
-      ['TOTP', true, 'Codigo MFA invalido.'],
+      ['TOTP', true, 'Código incorrecto o ya usado. Espera el siguiente código.'],
     ])('cuenta el fallo de %s y lanza después del commit', async (_caso, passwordOk, message) => {
       const mfaSecret = (service as any).encryptSecret('MFASECRET123') as string;
       const user = buildUser({ mfaEnabled: true, mfaSecret });
       (bcrypt.compare as jest.Mock).mockResolvedValue(passwordOk);
       jest
-        .spyOn(service as unknown as { verifyTotp: () => Promise<boolean> }, 'verifyTotp')
-        .mockResolvedValue(false);
+        .spyOn(
+          service as unknown as { matchTotpStep: () => Promise<number | null> },
+          'matchTotpStep',
+        )
+        .mockResolvedValue(null);
       const { manager } = setupRunInTenantSchema({
         findOne: jest.fn().mockResolvedValue(user),
         query: jest
@@ -945,7 +994,7 @@ describe('AuthService', () => {
       });
 
       await expect(
-        service.disableMfa(user.id, { password: 'Passw0rd!', totpCode: '000000' }),
+        service.disableMfa(mfaActor(), { password: 'Passw0rd!', totpCode: '000000' }),
       ).rejects.toThrow(message);
 
       expect(committed).toBe(true);
@@ -961,13 +1010,48 @@ describe('AuthService', () => {
       }
     });
 
+    it('rechaza un token de plataforma sin tocar el tenant', async () => {
+      mockRunInTenantSchema.mockClear();
+      await expect(
+        service.disableMfa({ ...mfaActor(), type: 'platform' } as JwtPayload, {
+          password: 'Passw0rd!',
+          totpCode: '123456',
+        }),
+      ).rejects.toMatchObject({ status: 403 });
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+    });
+
+    it('un código ya usado no desactiva ni cuenta como fallo', async () => {
+      const user = buildUser({
+        mfaEnabled: true,
+        mfaSecret: (service as any).encryptSecret('MFASECRET123'),
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        query: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      await expect(
+        service.disableMfa(mfaActor(), { password: 'Passw0rd!', totpCode: '123456' }),
+      ).rejects.toMatchObject({ status: 401, response: { code: 'AUTH_MFA_CODE_INVALID' } });
+
+      expect(manager.update).not.toHaveBeenCalled();
+      expect(manager.query).toHaveBeenCalledTimes(1);
+      expect(manager.query?.mock.calls[0]?.[0]).toContain('mfa_last_used_step');
+      const { auditService } = service as unknown as { auditService: { log: jest.Mock } };
+      expect(auditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({ newValue: { motivo: 'MFA_CODIGO_REUTILIZADO' } }),
+      );
+    });
+
     it('rechaza una cuenta bloqueada sin comparar la contraseña', async () => {
       const user = buildUser({ mfaEnabled: true, lockedUntil: new Date(Date.now() + 600_000) });
       (bcrypt.compare as jest.Mock).mockClear();
       setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(user) });
 
       await expect(
-        service.disableMfa(user.id, { password: 'Passw0rd!', totpCode: '123456' }),
+        service.disableMfa(mfaActor(), { password: 'Passw0rd!', totpCode: '123456' }),
       ).rejects.toMatchObject({ status: 401, response: { code: 'AUTH_ACCOUNT_LOCKED' } });
       expect(bcrypt.compare).not.toHaveBeenCalled();
     });
@@ -1334,6 +1418,92 @@ describe('AuthService', () => {
       },
     );
 
+    describe('segundo factor', () => {
+      const audit = (): jest.Mock =>
+        (service as unknown as { platformAuditService: { log: jest.Mock } }).platformAuditService
+          .log;
+      const attempt = () =>
+        service.loginPlatform({
+          email: 'admin@iwana.co',
+          password: 'Passw0rd!',
+          totpCode: '123456',
+        });
+      const verify = (): jest.Mock =>
+        (service as unknown as { totp: { verify: jest.Mock } }).totp.verify;
+
+      beforeEach(() => {
+        platformUserRepo.findOne.mockResolvedValue({
+          id: 'p1',
+          emailHash: 'h',
+          passwordHash: '$2b$12$hash',
+          status: UserStatus.ACTIVE,
+          passwordResetRequired: false,
+          mfaEnabled: true,
+          mfaSecret: (service as any).encryptSecret('MFA'),
+        });
+        (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+        audit().mockClear();
+      });
+
+      it('en espera no verifica el código', async () => {
+        mockPlatformQuery.mockImplementation(platformQuery(true));
+        await expect(attempt()).rejects.toMatchObject({
+          status: 401,
+          response: { code: 'AUTH_ACCOUNT_LOCKED' },
+        });
+        expect(verify()).not.toHaveBeenCalled();
+      });
+
+      it('una contraseña errónea no llega al segundo factor', async () => {
+        (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+        await expect(attempt()).rejects.toMatchObject({ status: 401 });
+        expect(mockPlatformQuery).not.toHaveBeenCalled();
+      });
+
+      it('el código erróneo cuenta y el inicio de la espera se audita y se registra', async () => {
+        const lockedUntil = new Date();
+        const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+        mockPlatformQuery.mockImplementation(platformQuery(false, 1, lockedUntil));
+        verify().mockResolvedValueOnce({ valid: false });
+
+        await expect(attempt()).rejects.toMatchObject({
+          response: { code: 'AUTH_MFA_CODE_INVALID' },
+        });
+
+        expect(
+          mockPlatformQuery.mock.calls.some(([sql]) =>
+            String(sql).includes('mfa_failed_attempts = mfa_failed_attempts + 1'),
+          ),
+        ).toBe(true);
+        expect(audit()).toHaveBeenCalledWith(
+          expect.objectContaining({ action: AuditAction.ACCOUNT_LOCKED, entityId: 'p1' }),
+        );
+        expect(error).toHaveBeenCalledWith(expect.stringContaining('PLATFORM_MFA_LOCKED'));
+        error.mockRestore();
+      });
+
+      it('un código reutilizado o de un paso anterior da 401 y no cuenta', async () => {
+        mockPlatformQuery.mockImplementation(platformQuery(false, 0));
+        await expect(attempt()).rejects.toMatchObject({
+          status: 401,
+          response: { code: 'AUTH_MFA_CODE_INVALID' },
+        });
+        const statements = mockPlatformQuery.mock.calls.map(([sql]) => String(sql));
+        expect(statements.some((sql) => sql.includes('mfa_failed_attempts'))).toBe(false);
+        expect(audit()).toHaveBeenCalledWith(
+          expect.objectContaining({ newValue: { motivo: 'MFA_CODIGO_REUTILIZADO' } }),
+        );
+      });
+
+      it('si Redis falla tras consumir el código responde 503 sin sesión', async () => {
+        mockRedis.set.mockRejectedValueOnce(new Error('caído'));
+        await expect(attempt()).rejects.toMatchObject({ status: 503 });
+        expect(
+          mockPlatformQuery.mock.calls.some(([sql]) => String(sql).includes('mfa_last_used_step')),
+        ).toBe(true);
+      });
+    });
+
     describe('inscripción de MFA', () => {
       const actor = () =>
         ({
@@ -1541,8 +1711,11 @@ describe('AuthService', () => {
       });
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       jest
-        .spyOn(service as unknown as { verifyTotp: () => Promise<boolean> }, 'verifyTotp')
-        .mockResolvedValue(false);
+        .spyOn(
+          service as unknown as { matchTotpStep: () => Promise<number | null> },
+          'matchTotpStep',
+        )
+        .mockResolvedValue(null);
 
       const dto = { email: 'admin@iwana.co', password: 'Passw0rd!', totpCode: '000000' };
       await expect(service.loginPlatform(dto)).rejects.toThrow(UnauthorizedException);
@@ -1689,8 +1862,11 @@ describe('AuthService', () => {
         });
         (bcrypt.compare as jest.Mock).mockResolvedValue(true);
         jest
-          .spyOn(service as unknown as { verifyTotp: () => Promise<boolean> }, 'verifyTotp')
-          .mockResolvedValue(false);
+          .spyOn(
+            service as unknown as { matchTotpStep: () => Promise<number | null> },
+            'matchTotpStep',
+          )
+          .mockResolvedValue(null);
 
         await expect(
           service.loginPlatform({

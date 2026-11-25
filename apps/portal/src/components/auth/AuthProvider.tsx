@@ -262,7 +262,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     if (result.mfaRequired) {
-      throw new ApiError(401, 'MFA_CODE_INVALID', 'Código incorrecto. Intenta de nuevo.');
+      throw new ApiError(
+        401,
+        'MFA_CODE_INVALID',
+        'Código incorrecto o ya usado. Espera el siguiente código.',
+      );
     }
 
     if (result.passwordResetRequired) {

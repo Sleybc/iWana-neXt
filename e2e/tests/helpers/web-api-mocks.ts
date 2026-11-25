@@ -917,10 +917,21 @@ export async function loginAsPlatformAdmin(
     await page.waitForURL(/\/(dashboard|auth\/mfa\/verify)/);
     if (page.url().includes('/auth/mfa/verify')) {
       const digits = page.getByLabel(/^Dígito \d de 6$/);
-      for (const [index, digit] of [...(await nextTotpCode(secret))].entries()) {
-        await digits.nth(index).fill(digit);
+      // Otro proceso pudo usar ese código: se intenta una vez más con el siguiente. Al sexto
+      // dígito el formulario se envía solo.
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        for (const [index, digit] of [...(await nextTotpCode(secret))].entries()) {
+          await digits.nth(index).fill(digit);
+        }
+        const outcome = await Promise.race([
+          page.waitForURL(/\/dashboard/).then(() => 'dentro'),
+          page
+            .getByText('Código incorrecto o ya usado')
+            .waitFor()
+            .then(() => 'rechazado'),
+        ]).catch(() => 'sin respuesta');
+        if (outcome !== 'rechazado') break;
       }
-      await page.getByRole('button', { name: 'Verificar código' }).click();
     }
   }
   await expect(page).toHaveURL(/\/dashboard/);

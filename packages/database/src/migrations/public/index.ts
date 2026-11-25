@@ -42,6 +42,7 @@ import { PlatformHealthSamples1784419222000 } from './034_platform_health_sample
 import { TenantUsageSnapshots1784419223000 } from './035_tenant_usage_snapshots';
 import { PlatformAuditTenantStatusEventsIndex1784419224000 } from './036_platform_audit_tenant_status_events_index';
 import { TenantUsageViewerRoles1784419225000 } from './037_tenant_usage_viewer_roles';
+import { PlatformUserMfaAttempts1784419226000 } from './038_platform_user_mfa_attempts';
 
 /**
  * Migraciones del schema público, en orden.
@@ -94,6 +95,7 @@ export const PUBLIC_MIGRATIONS: (new () => MigrationInterface)[] = [
   TenantUsageSnapshots1784419223000,
   PlatformAuditTenantStatusEventsIndex1784419224000,
   TenantUsageViewerRoles1784419225000,
+  PlatformUserMfaAttempts1784419226000,
 ];
 
 /**

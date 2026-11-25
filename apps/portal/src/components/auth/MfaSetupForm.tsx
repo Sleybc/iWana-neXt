@@ -139,7 +139,9 @@ export function MfaSetupForm() {
           </svg>
         </div>
         <h3 className="text-lg font-bold text-[#17163A]">MFA activado correctamente</h3>
-        <p className="text-sm text-[#6B7280]">Redirigiendo al inicio de sesión...</p>
+        <p className="text-sm text-[#6B7280]">
+          Redirigiendo al inicio de sesión. Usa el siguiente código de tu aplicación.
+        </p>
       </div>
     );
   }

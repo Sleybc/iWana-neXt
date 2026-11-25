@@ -207,7 +207,12 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Iniciar sesion de plataforma (SYSTEM_ADMIN / IWANA_SUPPORT)' })
   @ApiResponse({ status: 200, description: 'Login de plataforma exitoso.' })
-  @ApiResponse({ status: 401, description: 'Credenciales invalidas o cuenta bloqueada.' })
+  @ApiResponse({
+    status: 401,
+    description:
+      'Credenciales invalidas (sin `code`), `AUTH_MFA_CODE_INVALID` o `AUTH_ACCOUNT_LOCKED`.',
+  })
+  @ApiResponse({ status: 503, description: 'Servicio temporalmente no disponible.' })
   @ApiResponse({ status: 429, description: 'Demasiadas solicitudes.' })
   async platformLogin(
     @Body() dto: LoginDto,
@@ -602,13 +607,14 @@ export class AuthController {
     description:
       'Contrasena incorrecta o token de acceso invalido (sin `code`), `AUTH_MFA_CODE_INVALID` o `AUTH_ACCOUNT_LOCKED`.',
   })
+  @ApiResponse({ status: 403, description: 'Solo usuarios de empresa.' })
   @ApiResponse({ status: 409, description: 'MFA no esta activo.' })
   @ApiResponse({ status: 429, description: 'Demasiados intentos.' })
   async disableMfa(
     @CurrentUser() user: JwtPayload,
     @Body() dto: MfaDisableDto,
   ): Promise<{ data: { mfaEnabled: boolean } }> {
-    const result = await this.authService.disableMfa(user.sub, dto);
+    const result = await this.authService.disableMfa(user, dto);
     return { data: result };
   }
 

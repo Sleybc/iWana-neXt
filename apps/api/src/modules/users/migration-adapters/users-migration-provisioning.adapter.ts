@@ -142,6 +142,7 @@ export class UsersMigrationProvisioningAdapter extends MigrationUserProvisioning
       tenantId: ctx.tenantId,
       mfaEnabled: false,
       mfaSecret: null,
+      mfaLastUsedStep: null,
       mfaRequired: false,
       isOperationalResource,
       passwordResetRequired: true,

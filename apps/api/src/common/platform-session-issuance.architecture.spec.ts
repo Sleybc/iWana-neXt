@@ -46,3 +46,7 @@ it('solo los dos firmantes llaman a jwtService.sign', () => {
     'signPlatformAccessToken',
   ]);
 });
+
+it('solo matchTotpStep verifica códigos TOTP', () => {
+  expect(callers('totp.verify', () => true)).toEqual(['matchTotpStep']);
+});

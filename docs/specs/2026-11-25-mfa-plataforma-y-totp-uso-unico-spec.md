@@ -53,7 +53,7 @@ La spec del 2026-11-06 aceptó P4 porque «tiene MFA obligatorio». Esa cita es 
 
 4. La petición sin código no consume. Un código con contraseña errónea tampoco. El ingreso que termina en `password-change` sí.
 5. La inscripción guarda siempre su paso. El primer ingreso espera el siguiente código, normalmente menos de 30 s; la pantalla lo indica.
-6. `disableMfa` consume el código antes de apagar y deja la columna en NULL.
+6. `disableMfa` consume el código antes de apagar y deja la columna en NULL. Solo admite usuarios de empresa (403 con token de plataforma). Bloquea la fila, respeta `lockedUntil` y cuenta los fallos de contraseña y de código en el mismo contador del login; confirma el intento y lanza tras el COMMIT. Desactivar con éxito no reinicia el contador.
 7. Un código reutilizado responde 401, no suma al bloqueo y se audita con motivo `MFA_CODIGO_REUTILIZADO`. El `code` y el mensaje son los mismos que el del código erróneo: «Código incorrecto o ya usado. Espera el siguiente código.»
 
 ### 3.3 Freno del segundo factor en plataforma (P4)
@@ -62,8 +62,8 @@ La spec del 2026-11-06 aceptó P4 porque «tiene MFA obligatorio». Esa cita es 
 2. Solo cuenta un código erróneo enviado **tras contraseña correcta**. La contraseña fallida no bloquea.
 3. Al quinto fallo y en cada fallo posterior, espera de 30 minutos. El contador vuelve a cero solo con un ingreso correcto. Sin ingreso correcto del titular: 6 fallos en menos de una hora, 52 en menos de 24 h y 48 por día después. Cada ingreso correcto permite hasta 4 fallos más sin espera. Acertar: cerca de 0,016 % por día, 5 % al año si nadie actúa.
 4. Tras validar la contraseña: `FOR UPDATE`, comprobar `mfa_locked_until` con `now()` de la base, verificar, y consumir o incrementar en la misma transacción. El 401 se lanza tras el COMMIT. El modelo es `disableMfa`, no `login`, que verifica antes de bloquear.
-5. En espera, un código responde 401 `AUTH_ACCOUNT_LOCKED` sin verificarse. El inicio de cada espera se audita y genera una alerta. Las sesiones abiertas no se afectan.
-6. Quien ya tenga la contraseña puede retrasar al titular. Se acepta: en ese caso conviene cortar. La recuperación es por runbook, con actor y motivo auditados; hoy no existe y entra en la ola c. La activación y el runbook ponen a cero contador y espera; el runbook además deja `mfa_last_used_step` en NULL y revoca sesiones.
+5. En espera, un código responde 401 `AUTH_ACCOUNT_LOCKED` sin verificarse. El inicio de cada espera se audita y genera una alerta: evento `PLATFORM_MFA_LOCKED` en nivel error. No hay todavía canal de avisos. Las sesiones abiertas no se afectan.
+6. Quien ya tenga la contraseña puede retrasar al titular. Se acepta: en ese caso conviene cortar. La recuperación es por runbook, con actor y motivo auditados; procedimiento en el [runbook](../runbooks/RUNBOOK-RECUPERACION-MFA-PLATAFORMA-v1.0.md). La activación y el runbook ponen a cero contador y espera; el runbook además deja `mfa_last_used_step` en NULL y revoca sesiones.
 7. `login` y `platform/login` cuentan siempre por IP, aunque la petición lleve un JWT de empresa. Se hace con `getTracker` por ruta en `@Throttle`, sin comparar rutas. Los valores 30 y 5 no cambian.
 
 ## 4. Migraciones

@@ -22,7 +22,7 @@ export function mfaLoginUnauthorizedMessage(error: ApiError): string {
       return error.message;
     case AUTH_ERROR_CODES.MFA_CODE_INVALID:
     case MFA_CODE_REQUESTED_AGAIN:
-      return 'Código incorrecto. Intenta de nuevo.';
+      return 'Código incorrecto o ya usado. Espera el siguiente código.';
     default:
       // Sin código no se sabe qué falló: no se afirma que sea el código.
       return 'No fue posible verificar tu ingreso. Revisa el código o inicia sesión de nuevo.';

@@ -172,7 +172,11 @@ describe('SessionRecoveryModal', () => {
   });
 
   it.each([
-    ['AUTH_MFA_CODE_INVALID', 'detalle', 'Código incorrecto. Intenta de nuevo.'],
+    [
+      'AUTH_MFA_CODE_INVALID',
+      'detalle',
+      'Código incorrecto o ya usado. Espera el siguiente código.',
+    ],
     ['AUTH_ACCOUNT_LOCKED', 'Espera 15 minuto(s).', 'Espera 15 minuto(s).'],
     [
       'UNKNOWN',
