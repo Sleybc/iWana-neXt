@@ -19,6 +19,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -118,6 +119,7 @@ describe('S-8 — invariantes del audit trail de plataforma', () => {
           useValue: {
             findOne: jest.fn(),
             save: jest.fn(),
+            update: jest.fn(),
             count: jest.fn(),
             create: jest.fn(),
           },
@@ -132,13 +134,13 @@ describe('S-8 — invariantes del audit trail de plataforma', () => {
     repo = module.get(getRepositoryToken(PlatformUser));
   });
 
-  /** Prepara el repo para que devuelva y persista la misma entidad. */
-  function prepararUsuarioExistente(id: string): void {
-    const entity = buildPlatformUser(id);
-    repo.findOne.mockResolvedValue(entity);
-    (repo.save as unknown as jest.Mock).mockImplementation(
-      async (data: unknown) => ({ ...entity, ...(data as object) }) as PlatformUser,
-    );
+  /**
+   * Prepara un usuario existente. Las ediciones escriben con un `update`
+   * condicionado: `affected: 0` es la cuenta que cambió entre lectura y escritura.
+   */
+  function prepararUsuarioExistente(id: string, affected = 1): void {
+    repo.findOne.mockResolvedValue(buildPlatformUser(id));
+    repo.update.mockResolvedValue({ affected, raw: [], generatedMaps: [] });
   }
 
   /** Prepara el repo para un alta desde cero con el id indicado. */
@@ -245,6 +247,50 @@ describe('S-8 — invariantes del audit trail de plataforma', () => {
       expect(entrada.entityId).toBe(id);
       // Actor del sistema: el arranque del proceso, no una persona
       expect(entrada.userId).toBeNull();
+    });
+  });
+
+  describe('una escritura que no afecta filas rechaza y no audita un éxito', () => {
+    it('updateProfile', async () => {
+      const id = randomUUID();
+      prepararUsuarioExistente(id, 0);
+
+      await expect(service.updateProfile(id, { language: 'en-US' })).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+
+      expect(repo.update).toHaveBeenCalledTimes(1);
+      expect(entradas).toHaveLength(0);
+    });
+
+    it('changeLoginEmail', async () => {
+      const id = randomUUID();
+      prepararUsuarioExistente(id, 0);
+
+      await expect(
+        service.changeLoginEmail(id, {
+          email: 'nuevo-acceso@ejemplo.invalid',
+          currentPassword: 'ClaveFicticiaDePrueba!1',
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      expect(repo.update).toHaveBeenCalledTimes(1);
+      expect(entradas).toHaveLength(0);
+    });
+
+    it('changePassword', async () => {
+      const id = randomUUID();
+      prepararUsuarioExistente(id, 0);
+
+      await expect(
+        service.changePassword(id, {
+          currentPassword: 'ClaveFicticiaDePrueba!1',
+          newPassword: 'OtraClaveFicticia!2',
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      expect(repo.update).toHaveBeenCalledTimes(1);
+      expect(entradas).toHaveLength(0);
     });
   });
 

@@ -181,3 +181,16 @@ Las cookies no distinguen puertos. Con consola y portal en la misma IP, la API t
 - El cierre de sesión revoca y borra solo la audiencia del token verificado. En equipos compartidos hay que cerrar ambas.
 
 **Riesgo residual (medio, ya existía):** con host compartido, un XSS en el portal puede pedir el refresh de la consola. El aislamiento completo exige hosts distintos; se cierra con los nombres internos, aplazados a producción. El CTO lo acepta hasta entonces (2026-11-24).
+
+---
+
+## Enmienda 2 (2026-11-24) — revocación y credencial vigente
+
+**Estado:** aprobada — CTO Humano, 2026-11-24.
+
+- El refresh de plataforma queda ligado a la contraseña: cambiarla o exigir su cambio impide renovarlo. Solo puede rotarse una vez. El cierre de sesión revoca su familia.
+- El JWT de empresa lleva `credentialVersion`, usado solo para inscribir MFA.
+- El access token ya emitido vence en 15 minutos como máximo. Se conservan la lista de JTI y la separación de audiencias.
+- Al desplegar, la consola pide ingresar una vez más; en el portal, solo a quien inscriba MFA con un token anterior.
+
+Precisa «Fuera de alcance» (mecanismo de revocación), que delimitaba la migración de OLA1-b.

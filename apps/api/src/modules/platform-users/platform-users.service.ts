@@ -276,30 +276,43 @@ export class PlatformUsersService {
     }
 
     const before = this.toDto(user);
+    const changes: Partial<PlatformUserWithProfile> = {};
 
     if (dto.timezone !== undefined) {
       this.assertValidTimezone(dto.timezone);
-      user.timezone = dto.timezone;
+      changes.timezone = dto.timezone;
     }
 
     if (dto.language !== undefined) {
       this.assertValidLanguage(dto.language);
-      user.language = dto.language;
+      changes.language = dto.language;
     }
 
     if (dto.firstName !== undefined) {
-      user.firstName = dto.firstName.trim() || null;
+      changes.firstName = dto.firstName.trim() || null;
     }
 
     if (dto.lastName !== undefined) {
-      user.lastName = dto.lastName.trim() || null;
+      changes.lastName = dto.lastName.trim() || null;
     }
 
     if (dto.phone !== undefined) {
-      user.phone = dto.phone.trim() || null;
+      changes.phone = dto.phone.trim() || null;
     }
 
-    const saved = (await this.platformUserRepo.save(user)) as PlatformUserWithProfile;
+    // Solo las columnas propias: `save(user)` reescribiría la fila leída y restauraría
+    // una contraseña cambiada en paralelo.
+    if (Object.keys(changes).length > 0) {
+      changes.updatedAt = new Date();
+      const result = await this.platformUserRepo.update(
+        { id: user.id, deletedAt: IsNull() },
+        changes,
+      );
+      if (!result.affected) {
+        throw new NotFoundException(`Usuario de plataforma ${userId} no encontrado.`);
+      }
+    }
+    const saved = { ...user, ...changes };
 
     // Una operación de plataforma no tiene TenantContext: su trail es
     // public.platform_audit_logs, vía PlatformAuditService (S-8).
@@ -364,10 +377,22 @@ export class PlatformUsersService {
       );
     }
 
-    user.email = this.encryptValue(normalizedEmail);
-    user.emailHash = nextEmailHash;
-
-    const saved = (await this.platformUserRepo.save(user)) as PlatformUserWithProfile;
+    const changes = {
+      email: this.encryptValue(normalizedEmail),
+      emailHash: nextEmailHash,
+      updatedAt: new Date(),
+    };
+    try {
+      await this.updateIfPasswordUnchanged(user, changes, { emailHash: user.emailHash });
+    } catch (error) {
+      if (error instanceof QueryFailedError && error.driverError?.code === '23505') {
+        throw new ConflictException(
+          'El nuevo correo de acceso ya está en uso por otra cuenta. Ingresa uno diferente.',
+        );
+      }
+      throw error;
+    }
+    const saved = { ...user, ...changes };
 
     // El correo nuevo y el anterior NO se persisten: son PII. Lo que hace
     // distinguible esta fila de una edición de perfil es el marcador del payload,
@@ -405,8 +430,8 @@ export class PlatformUsersService {
       );
     }
 
-    user.passwordHash = await bcrypt.hash(dto.newPassword, 12);
-    await this.platformUserRepo.save(user);
+    const passwordHash = await bcrypt.hash(dto.newPassword, 12);
+    await this.updateIfPasswordUnchanged(user, { passwordHash });
 
     await this.platformAuditService.log({
       action: AuditAction.PASSWORD_CHANGED,
@@ -485,6 +510,23 @@ export class PlatformUsersService {
     });
 
     return this.toDto(saved as PlatformUserWithProfile);
+  }
+
+  /** Escribe solo `changes`, y solo si la contraseña ya verificada sigue vigente. */
+  private async updateIfPasswordUnchanged(
+    user: Pick<PlatformUser, 'id' | 'passwordHash'>,
+    changes: Partial<Pick<PlatformUser, 'email' | 'emailHash' | 'passwordHash' | 'updatedAt'>>,
+    unchanged: Partial<Pick<PlatformUser, 'emailHash'>> = {},
+  ): Promise<void> {
+    const result = await this.platformUserRepo.update(
+      { id: user.id, passwordHash: user.passwordHash, deletedAt: IsNull(), ...unchanged },
+      changes,
+    );
+    if (!result.affected) {
+      throw new ConflictException(
+        'Tu cuenta cambió mientras guardábamos. Inicia sesión de nuevo e inténtalo otra vez.',
+      );
+    }
   }
 
   private toDto(user: PlatformUserWithProfile): PlatformUserResponseDto {

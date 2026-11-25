@@ -22,6 +22,8 @@ export interface JwtPayload {
   type: 'platform' | 'tenant';
   /** Indica si el usuario debe cambiar su contrasena en el siguiente ingreso (primer acceso con credenciales temporales) */
   passwordResetRequired?: boolean;
+  /** Huella de la contraseña vigente al emitir (tenant). Liga la inscripción de MFA a ella. */
+  credentialVersion?: string;
   /**
    * Alcance del token. Ausente o undefined = token completo sin restricciones de ruta.
    *

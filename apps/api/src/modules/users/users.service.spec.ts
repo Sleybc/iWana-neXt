@@ -556,6 +556,21 @@ describe('UsersService', () => {
       );
     });
 
+    it('bloquea la fila: un cambio simultáneo del titular no deja la temporal como definitiva', async () => {
+      const mgr = setupRunInTenantSchema({
+        findOne: jest
+          .fn()
+          .mockResolvedValue(buildUserEntity({ id: 'usr-target', role: UserRole.NOC })),
+      });
+
+      await service.resetPassword('usr-target', 'usr-admin', UserRole.ADMIN, '127.0.0.1');
+
+      expect(mgr.findOne).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+      );
+    });
+
     it('limpia bloqueo y expiracion heredados que impedirían el primer ingreso con la clave temporal', async () => {
       // Regresion del bug reportado: la clave temporal generada desde la consola
       // no permitia ingresar porque el reset no tocaba lockedUntil (login la

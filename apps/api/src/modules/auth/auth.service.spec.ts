@@ -51,6 +51,10 @@ import {
 } from './dto/auth.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 
+const PLATFORM_HASH = '$2b$12$hash';
+const platformCredentialVersion = (hash: string): string =>
+  createHash('sha256').update(hash).digest('hex');
+
 // ---------------------------------------------------------------------------
 // Mock global de bcryptjs — compare/hash son non-configurable en el modulo CJS;
 // jest.mock reemplaza todo el modulo con funciones controlables antes de la carga.
@@ -160,6 +164,24 @@ function platformActor(overrides: Partial<JwtPayload> = {}): JwtPayload {
   };
 }
 
+/** Token de tenant ligado a la contraseña de `buildUser()`. */
+function mfaActor(): JwtPayload {
+  return {
+    sub: 'user-uuid-1',
+    email: 'hash',
+    role: 'tenant_admin',
+    tenantId: 'tenant-uuid-1',
+    schemaName: 'tenant_test',
+    jti: 'jti-mfa',
+    type: 'tenant',
+    credentialVersion: platformCredentialVersion(buildUser().passwordHash),
+  };
+}
+
+function mfaPendingKey(): string {
+  return `mfa:pending:user-uuid-1:${mfaActor().credentialVersion}`;
+}
+
 /** Configura mockRunInTenantSchema para ejecutar el callback con un EntityManager mockeado */
 function setupRunInTenantSchema(managerOverrides: Record<string, jest.Mock> = {}): {
   manager: Record<string, jest.Mock>;
@@ -207,6 +229,8 @@ describe('AuthService', () => {
     sadd: jest.Mock;
     expire: jest.Mock;
     smembers: jest.Mock;
+    exists: jest.Mock;
+    eval: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -219,6 +243,8 @@ describe('AuthService', () => {
       sadd: jest.fn().mockResolvedValue(1),
       expire: jest.fn().mockResolvedValue(1),
       smembers: jest.fn().mockResolvedValue([]),
+      exists: jest.fn().mockResolvedValue(0),
+      eval: jest.fn().mockResolvedValue(1),
     };
     // Alias para compatibilidad con codigo anterior que usa 'redis'
     redis = mockRedis as unknown as typeof redis;
@@ -424,7 +450,13 @@ describe('AuthService', () => {
       const err = await service.login(dto).catch((e: UnauthorizedException) => e);
 
       expect(err).toBeInstanceOf(UnauthorizedException);
-      expect((err as UnauthorizedException).message).toMatch(/bloqueada temporalmente/i);
+      expect((err as UnauthorizedException).getResponse()).toEqual({
+        statusCode: 401,
+        error: 'Unauthorized',
+        code: 'AUTH_ACCOUNT_LOCKED',
+        message: 'Cuenta bloqueada temporalmente. Intenta en 5 minuto(s).',
+      });
+      expect(bcrypt.compare).not.toHaveBeenCalled();
     });
 
     it('retorna mfaRequired=true cuando MFA esta habilitado y no se envio totpCode', async () => {
@@ -454,7 +486,75 @@ describe('AuthService', () => {
         .mockResolvedValue(false);
 
       const dto: LoginDto = { email: 'mfa@example.com', password: 'Passw0rd!', totpCode: '000000' };
-      await expect(service.login(dto)).rejects.toThrow(UnauthorizedException);
+      await expect(service.login(dto)).rejects.toMatchObject({
+        status: 401,
+        response: { code: 'AUTH_MFA_CODE_INVALID', message: 'Codigo MFA invalido.' },
+      });
+    });
+
+    it.each([
+      [1, null, false],
+      [5, new Date(Date.now() + 900_000), true],
+    ])(
+      'un TOTP inválido cuenta como intento fallido y se audita (intentos: %s)',
+      async (attempts, lockedUntil, locks) => {
+        const user = buildUser({
+          mfaEnabled: true,
+          mfaSecret: (service as any).encryptSecret('TESTSECRET123') as string,
+        });
+        (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+        const { manager } = setupRunInTenantSchema({
+          findOne: jest.fn().mockResolvedValue(user),
+          query: jest
+            .fn()
+            .mockResolvedValue([
+              [{ failed_login_attempts: attempts, locked_until: lockedUntil }],
+              1,
+            ]),
+        });
+        jest
+          .spyOn(service as unknown as { verifyTotp: () => Promise<boolean> }, 'verifyTotp')
+          .mockResolvedValue(false);
+        const { auditService } = service as unknown as { auditService: { log: jest.Mock } };
+        auditService.log.mockClear();
+
+        await expect(
+          service.login({ email: 'mfa@example.com', password: 'Passw0rd!', totpCode: '000000' }),
+        ).rejects.toMatchObject({
+          status: 401,
+          response: { code: 'AUTH_MFA_CODE_INVALID', message: 'Codigo MFA invalido.' },
+        });
+
+        expect(manager.query).toHaveBeenCalledWith(
+          expect.stringContaining('failed_login_attempts = failed_login_attempts + 1'),
+          expect.arrayContaining([user.id]),
+        );
+        const actions = auditService.log.mock.calls.map(([entry]) => entry.action);
+        expect(actions).toEqual(locks ? ['LOGIN_FAILED', 'ACCOUNT_LOCKED'] : ['LOGIN_FAILED']);
+      },
+    );
+
+    it.each<[string, Partial<User>]>([
+      ['la cuenta se bloqueó', { lockedUntil: new Date(Date.now() + 900_000) }],
+      ['se activó el MFA', { mfaEnabled: true }],
+      ['cambió el secreto MFA', { mfaSecret: 'otro' }],
+      ['se exigió MFA', { mfaRequired: true }],
+      ['se suspendió la cuenta', { status: UserStatus.SUSPENDED }],
+    ])('no emite sesión si %s mientras se validaba', async (_caso, changes) => {
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(buildUser())
+          .mockResolvedValueOnce(buildUser(changes)),
+      });
+      jwtService.sign.mockClear();
+
+      await expect(
+        service.login({ email: 'a@example.com', password: 'Passw0rd!' }),
+      ).rejects.toThrow('Credenciales invalidas.');
+      expect(jwtService.sign).not.toHaveBeenCalled();
+      expect(manager.update).not.toHaveBeenCalled();
     });
 
     it('rechaza el primer ingreso cuando la credencial temporal del ADMIN ya expiro', async () => {
@@ -636,7 +736,8 @@ describe('AuthService', () => {
 
   describe('setupMfa()', () => {
     it('guarda el secret temporal en Redis y retorna QR code', async () => {
-      const result = await service.setupMfa('user-uuid-1', 'user@example.com');
+      setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(buildUser()) });
+      const result = await service.setupMfa(mfaActor());
 
       expect(typeof result.qrCodeBase64).toBe('string');
       expect(result.qrCodeBase64).toMatch(/^data:image\/png/);
@@ -644,18 +745,69 @@ describe('AuthService', () => {
       expect(result.otpauthUri).toMatch(/otpauth:\/\/totp\//);
 
       // Debe haber guardado el secret en Redis con TTL de 1800s (30 min)
-      expect(mockRedis.set).toHaveBeenCalledWith(
-        'mfa:pending:user-uuid-1',
-        expect.any(String),
-        'EX',
-        1800,
-      );
+      expect(mockRedis.set).toHaveBeenCalledWith(mfaPendingKey(), expect.any(String), 'EX', 1800);
     });
   });
 
   // ---------------------------------------------------------------------------
   // MFA — VERIFY SETUP
   // ---------------------------------------------------------------------------
+
+  describe('inscripción MFA ligada a la credencial vigente', () => {
+    const blocked: Array<[string, number, Partial<User>, Record<string, unknown>]> = [
+      ['el MFA ya está activo', 409, { mfaEnabled: true }, {}],
+      ['hay cambio de contraseña pendiente', 401, { passwordResetRequired: true }, {}],
+      ['la contraseña cambió tras emitir el token', 401, { passwordHash: 'otro-hash' }, {}],
+      ['el token no trae versión de credencial', 401, {}, { credentialVersion: undefined }],
+      ['el token es de plataforma', 403, {}, { type: 'platform' }],
+    ];
+
+    const expectedError = (status: number) => ({
+      status,
+      ...(status === 401 && {
+        response: {
+          code: 'AUTH_SESSION_NOT_CURRENT',
+          message: 'Tu sesión ya no es vigente. Inicia sesión de nuevo.',
+        },
+      }),
+    });
+
+    it.each(blocked)('setup se rechaza si %s', async (_caso, status, user, actor) => {
+      setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(buildUser(user)) });
+
+      await expect(
+        service.setupMfa({ ...mfaActor(), ...actor } as JwtPayload),
+      ).rejects.toMatchObject(expectedError(status));
+      expect(mockRedis.set).not.toHaveBeenCalled();
+    });
+
+    it.each(blocked)('verify se rechaza y no escribe si %s', async (_caso, status, user, actor) => {
+      mockRedis.get.mockResolvedValue('PENDING');
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(buildUser(user)),
+      });
+
+      await expect(
+        service.verifyMfaSetup({ ...mfaActor(), ...actor } as JwtPayload, { totpCode: '123456' }),
+      ).rejects.toMatchObject(expectedError(status));
+      expect(manager.update).not.toHaveBeenCalled();
+    });
+
+    it('verify revalida bajo bloqueo y no reemplaza un MFA activado en paralelo', async () => {
+      mockRedis.get.mockResolvedValue('PENDING');
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(buildUser({ mfaEnabled: true })),
+      });
+
+      await expect(service.verifyMfaSetup(mfaActor(), { totpCode: '123456' })).rejects.toThrow(
+        ConflictException,
+      );
+      expect(manager.findOne).toHaveBeenCalledWith(
+        User,
+        expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+      );
+    });
+  });
 
   describe('verifyMfaSetup()', () => {
     it('activa MFA cuando el codigo TOTP es valido', async () => {
@@ -666,11 +818,12 @@ describe('AuthService', () => {
         .mockResolvedValue(true);
 
       const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(buildUser()),
         update: jest.fn().mockResolvedValue({ affected: 1 }),
       });
 
       const dto: MfaVerifyDto = { totpCode: '123456' };
-      const result = await service.verifyMfaSetup('user-uuid-1', dto);
+      const result = await service.verifyMfaSetup(mfaActor(), dto);
 
       expect(result.mfaEnabled).toBe(true);
 
@@ -684,7 +837,7 @@ describe('AuthService', () => {
       expect(updatePayload.mfaSecret).not.toBe(pendingSecret); // no plano
       expect(updatePayload.mfaSecret.split(':')).toHaveLength(3); // formato iv:tag:ciphertext
 
-      expect(mockRedis.del).toHaveBeenCalledWith('mfa:pending:user-uuid-1');
+      expect(mockRedis.del).toHaveBeenCalledWith(mfaPendingKey());
     });
 
     it('lanza UnauthorizedException cuando no hay secret pendiente en Redis', async () => {
@@ -692,9 +845,13 @@ describe('AuthService', () => {
       setupRunInTenantSchema({});
 
       const dto: MfaVerifyDto = { totpCode: '000000' };
-      await expect(service.verifyMfaSetup('user-uuid-1', dto)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(service.verifyMfaSetup(mfaActor(), dto)).rejects.toMatchObject({
+        status: 401,
+        response: {
+          code: 'AUTH_MFA_SETUP_NOT_PENDING',
+          message: 'No hay configuracion MFA pendiente. Reinicia el setup.',
+        },
+      });
     });
 
     it('lanza UnauthorizedException cuando el codigo TOTP es invalido', async () => {
@@ -710,9 +867,10 @@ describe('AuthService', () => {
       setupRunInTenantSchema({});
 
       const dto: MfaVerifyDto = { totpCode: '999999' };
-      await expect(service.verifyMfaSetup('user-uuid-1', dto)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(service.verifyMfaSetup(mfaActor(), dto)).rejects.toMatchObject({
+        status: 401,
+        response: { code: 'AUTH_MFA_CODE_INVALID', message: 'Codigo MFA invalido.' },
+      });
     });
   });
 
@@ -1513,17 +1671,21 @@ describe('AuthService', () => {
         familyId: 'family-uuid-1',
         expiresAt: new Date(Date.now() + 3600_000).toISOString(),
         revokedAt: null,
+        credentialVersion: platformCredentialVersion(PLATFORM_HASH),
         ...overrides,
       };
     }
 
     it('rota el token y devuelve access + refresh nuevos', async () => {
-      mockRedis.get.mockResolvedValue(JSON.stringify(platformRecord()));
+      const presented = JSON.stringify(platformRecord());
+      mockRedis.get.mockResolvedValue(presented);
       platformUserRepo.findOne.mockResolvedValue({
         id: 'platform-uuid-1',
         status: UserStatus.ACTIVE,
         role: 'system_admin',
         mfaEnabled: false,
+        passwordHash: PLATFORM_HASH,
+        passwordResetRequired: false,
       });
 
       const result = await service.refreshPlatformTokens('synthetic.platform.refresh.token');
@@ -1531,16 +1693,203 @@ describe('AuthService', () => {
       expect(result.accessToken).toBe('mock.jwt.token');
       expect(result.refreshToken).toBeTruthy();
       // Rotacion: se revoca el presentado y se crea el nuevo en la misma familia
-      expect(mockRedis.set).toHaveBeenCalledWith(
+      expect(mockRedis.eval).toHaveBeenCalledWith(
+        expect.stringContaining("redis.call('GET', KEYS[1])"),
+        1,
         expect.stringContaining('platform:refresh:token:'),
-        expect.stringContaining('"revokedAt":'),
-        'EX',
-        expect.any(Number),
+        presented,
+        expect.stringMatching(/"revokedAt":"[^"]+"/),
+        expect.any(String),
       );
       expect(mockRedis.sadd).toHaveBeenCalledWith(
         'platform:refresh:family:family-uuid-1',
         expect.any(String),
       );
+      // El sucesor hereda la huella: sin ella no sobreviviría a la siguiente renovación.
+      const successor = mockRedis.set.mock.calls.find(([key]) =>
+        String(key).startsWith('platform:refresh:token:'),
+      );
+      expect(JSON.parse(String(successor?.[1]))).toMatchObject({
+        familyId: 'family-uuid-1',
+        revokedAt: null,
+        credentialVersion: platformCredentialVersion(PLATFORM_HASH),
+      });
+      // El registro revocado conserva el TTL completo para detectar reuso.
+      expect(mockRedis.eval.mock.calls[0]?.[5]).toBe(String(successor?.[3]));
+    });
+
+    it.each([
+      ['la contraseña cambió', {}, { passwordHash: '$2b$12$otro' }],
+      ['el registro no tiene huella', { credentialVersion: undefined }, {}],
+      ['hay cambio de contraseña pendiente', {}, { passwordResetRequired: true }],
+    ])('rechaza y no emite sucesor cuando %s', async (_caso, record, user) => {
+      mockRedis.get.mockResolvedValue(JSON.stringify(platformRecord(record)));
+      mockRedis.smembers.mockResolvedValue(['hash-1']);
+      platformUserRepo.findOne.mockResolvedValue({
+        id: 'platform-uuid-1',
+        status: UserStatus.ACTIVE,
+        role: 'system_admin',
+        mfaEnabled: false,
+        passwordHash: PLATFORM_HASH,
+        passwordResetRequired: false,
+        ...user,
+      });
+
+      await expect(service.refreshPlatformTokens('synthetic.token')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(mockRedis.eval).not.toHaveBeenCalled();
+      expect(mockRedis.sadd).not.toHaveBeenCalled();
+      expect(mockRedis.del).toHaveBeenCalledWith('platform:refresh:token:hash-1');
+      expect(mockRedis.del).toHaveBeenCalledWith('platform:refresh:family:family-uuid-1');
+    });
+
+    it('el login guarda la huella, nunca el hash de la contraseña', async () => {
+      platformUserRepo.findOne.mockResolvedValue({
+        id: 'platform-uuid-1',
+        status: UserStatus.ACTIVE,
+        role: 'system_admin',
+        mfaEnabled: false,
+        mfaSecret: null,
+        passwordHash: PLATFORM_HASH,
+        passwordResetRequired: false,
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      await service.loginPlatform({ email: 'admin@example.test', password: 'Sintetica123!' });
+
+      const call = mockRedis.set.mock.calls.find(([key]) =>
+        String(key).startsWith('platform:refresh:token:'),
+      );
+      expect(JSON.parse(String(call?.[1]))).toMatchObject({
+        credentialVersion: platformCredentialVersion(PLATFORM_HASH),
+      });
+      expect(String(call?.[1])).not.toContain(PLATFORM_HASH);
+    });
+
+    it('rechaza el sucesor creado mientras se revocaba su familia', async () => {
+      mockRedis.get.mockResolvedValue(JSON.stringify(platformRecord()));
+      mockRedis.exists.mockResolvedValue(1);
+
+      await expect(service.refreshPlatformTokens('synthetic.token')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(mockRedis.exists).toHaveBeenCalledWith(
+        'platform:refresh:family-revoked:family-uuid-1',
+      );
+      expect(mockRedis.eval).not.toHaveBeenCalled();
+      expect(mockRedis.sadd).not.toHaveBeenCalled();
+    });
+
+    it('renovar con la cuenta no activa revoca la familia', async () => {
+      mockRedis.get.mockResolvedValue(JSON.stringify(platformRecord()));
+      platformUserRepo.findOne.mockResolvedValue({
+        id: 'platform-uuid-1',
+        status: UserStatus.SUSPENDED,
+      });
+
+      await expect(service.refreshPlatformTokens('synthetic.token')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(mockRedis.del).toHaveBeenCalledWith('platform:refresh:family:family-uuid-1');
+    });
+
+    it('el logout marca la familia antes de borrarla: cubre al sucesor en vuelo', async () => {
+      mockRedis.get.mockResolvedValue(JSON.stringify(platformRecord()));
+      mockRedis.smembers.mockResolvedValue(['hash-1']);
+
+      await service.logout(
+        {
+          sub: 'platform-uuid-1',
+          type: 'platform',
+          jti: 'jti-1',
+          exp: 0,
+          schemaName: 'x',
+        } as never,
+        undefined,
+        'synthetic.token',
+      );
+
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        'platform:refresh:family-revoked:family-uuid-1',
+        '1',
+        'EX',
+        expect.any(Number),
+      );
+      // La marca debe sobrevivir a cualquier sucesor emitido en paralelo.
+      const { refreshTokenTtlSeconds } = service as unknown as { refreshTokenTtlSeconds: number };
+      expect(Number(mockRedis.set.mock.calls[0]?.[3])).toBeGreaterThan(refreshTokenTtlSeconds);
+      expect(mockRedis.del).toHaveBeenCalledWith('platform:refresh:family:family-uuid-1');
+      expect(mockRedis.del).toHaveBeenCalledWith('platform:refresh:token:hash-1');
+      expect(mockRedis.set.mock.invocationCallOrder[0]).toBeLessThan(
+        mockRedis.smembers.mock.invocationCallOrder[0]!,
+      );
+    });
+
+    it('si la familia se revoca mientras se emite el sucesor, no entrega tokens', async () => {
+      mockRedis.get.mockResolvedValue(JSON.stringify(platformRecord()));
+      mockRedis.exists.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+      platformUserRepo.findOne.mockResolvedValue({
+        id: 'platform-uuid-1',
+        status: UserStatus.ACTIVE,
+        role: 'system_admin',
+        passwordHash: PLATFORM_HASH,
+        passwordResetRequired: false,
+      });
+      jwtService.sign.mockClear();
+
+      await expect(service.refreshPlatformTokens('synthetic.token')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(mockRedis.sadd).toHaveBeenCalled();
+      expect(jwtService.sign).not.toHaveBeenCalled();
+    });
+
+    it('el logout revoca la familia antes de anotar el JTI: un fallo deja reintentar', async () => {
+      mockRedis.get.mockResolvedValue(JSON.stringify(platformRecord()));
+      mockRedis.set.mockRejectedValueOnce(new Error('redis caído'));
+
+      await expect(
+        service.logout(
+          {
+            sub: 'platform-uuid-1',
+            type: 'platform',
+            jti: 'jti-1',
+            exp: Math.floor(Date.now() / 1000) + 600,
+            schemaName: 'x',
+          } as never,
+          undefined,
+          'synthetic.token',
+        ),
+      ).rejects.toThrow('redis caído');
+      expect(mockRedis.set).toHaveBeenCalledTimes(1);
+      expect(mockRedis.set).not.toHaveBeenCalledWith(
+        'jti:blacklist:jti-1',
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it('quien pierde la carrera de rotación recibe 401 y no obtiene sucesor', async () => {
+      mockRedis.get.mockResolvedValue(JSON.stringify(platformRecord()));
+      mockRedis.eval.mockResolvedValue(0);
+      platformUserRepo.findOne.mockResolvedValue({
+        id: 'platform-uuid-1',
+        status: UserStatus.ACTIVE,
+        role: 'system_admin',
+        mfaEnabled: false,
+        passwordHash: PLATFORM_HASH,
+        passwordResetRequired: false,
+      });
+
+      await expect(service.refreshPlatformTokens('synthetic.token')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(mockRedis.sadd).not.toHaveBeenCalled();
+      expect(mockRedis.eval).toHaveBeenCalledTimes(1);
+      // Paridad con el portal: perder la carrera no revoca la familia.
+      expect(mockRedis.del).not.toHaveBeenCalled();
     });
 
     it('detecta reuse attack y revoca la familia completa', async () => {
@@ -1758,6 +2107,20 @@ describe('AuthService', () => {
           newPassword: 'NuevoPass1!',
         }),
       ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('bloquea la fila del token: otro canje o un restablecimiento no se pisan', async () => {
+      const user = buildUser({
+        passwordResetTokenExpiresAt: new Date(Date.now() + 60_000),
+      });
+      const { manager } = setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(user) });
+
+      await service.resetPassword({ token: 't', newPassword: 'NuevoPass1!' });
+
+      expect(manager.findOne).toHaveBeenCalledWith(
+        User,
+        expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+      );
     });
 
     it('lanza UnauthorizedException cuando el token de reset esta expirado', async () => {
@@ -2343,10 +2706,58 @@ describe('AuthService', () => {
         newPassword: 'ContrasenaElegida1!',
       });
 
-      expect(platformUserRepo.update).toHaveBeenCalledWith('platform-uuid-1', {
-        passwordHash: expect.any(String),
-        passwordResetRequired: false,
-      });
+      expect(platformUserRepo.update).toHaveBeenCalledWith(
+        { id: 'platform-uuid-1', passwordHash: '$2b$12$hash', deletedAt: IsNull() },
+        { passwordHash: expect.any(String), passwordResetRequired: false },
+      );
+    });
+
+    it('changePassword de plataforma responde 409 si la contraseña cambió en paralelo', async () => {
+      platformUserRepo.findOne.mockResolvedValue(
+        buildPlatformUser({ passwordResetRequired: false }),
+      );
+      platformUserRepo.update.mockResolvedValue({ affected: 0 });
+
+      await expect(
+        service.changePassword(
+          {
+            sub: 'platform-uuid-1',
+            type: 'platform',
+            jti: 'jti-1',
+            exp: Math.floor(Date.now() / 1000) + 600,
+          } as never,
+          { currentPassword: 'CredencialArranque1!', newPassword: 'ContrasenaElegida1!' },
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(platformUserRepo.update).toHaveBeenCalledWith(
+        { id: 'platform-uuid-1', passwordHash: '$2b$12$hash', deletedAt: IsNull() },
+        expect.anything(),
+      );
+      expect(mockRedis.set).not.toHaveBeenCalled();
+    });
+
+    it('la activación pendiente exige estado, marca y contraseña vigentes', async () => {
+      platformUserRepo.findOne.mockResolvedValue(
+        buildPlatformUser({ status: UserStatus.PENDING_VERIFICATION }),
+      );
+      platformUserRepo.update.mockResolvedValue({ affected: 0 });
+
+      await expect(
+        service.changePassword(platformActor(), {
+          currentPassword: 'CredencialArranque1!',
+          newPassword: 'ContrasenaElegida1!',
+        }),
+      ).rejects.toThrow('La contraseña temporal ya se cambió. Inicia sesión de nuevo.');
+      expect(platformUserRepo.update).toHaveBeenCalledWith(
+        {
+          id: 'platform-uuid-1',
+          deletedAt: IsNull(),
+          status: UserStatus.PENDING_VERIFICATION,
+          passwordHash: '$2b$12$hash',
+          passwordResetRequired: true,
+        },
+        expect.anything(),
+      );
     });
 
     it('changePassword de plataforma NO resuelve el usuario por TenantContext', async () => {
@@ -3021,6 +3432,7 @@ describe('AuthService', () => {
         familyId: 'family-uuid-plat',
         expiresAt: new Date(Date.now() + 3600_000).toISOString(),
         revokedAt: null,
+        credentialVersion: platformCredentialVersion(PLATFORM_HASH),
         ...overrides,
       };
     }
@@ -3067,6 +3479,34 @@ describe('AuthService', () => {
       );
 
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('PLATFORM_REFRESH_EXPIRED'));
+    });
+
+    it.each([
+      ['PLATFORM_REFRESH_CREDENTIAL_CHANGED', '$2b$12$otro', 1],
+      ['PLATFORM_REFRESH_RACE_LOST', PLATFORM_HASH, 0],
+    ])('emite %s sin exponer la familia ni el hash', async (reason, passwordHash, rotated) => {
+      mockRedis.get.mockResolvedValue(JSON.stringify(platformRecord()));
+      mockRedis.eval.mockResolvedValue(rotated);
+      (
+        service as unknown as {
+          platformUserRepository: { findOne: jest.Mock };
+        }
+      ).platformUserRepository.findOne.mockResolvedValue({
+        id: 'platform-uuid-1',
+        status: UserStatus.ACTIVE,
+        role: 'system_admin',
+        passwordHash,
+        passwordResetRequired: false,
+      });
+
+      await expect(service.refreshPlatformTokens('token-sintetico')).rejects.toThrow(
+        UnauthorizedException,
+      );
+
+      const logged = warnSpy.mock.calls.map((call) => String(call[0])).join('\n');
+      expect(logged).toContain(reason);
+      expect(logged).not.toContain('family-uuid-plat');
+      expect(logged).not.toContain(passwordHash);
     });
 
     it('emite PLATFORM_REFRESH_USER_UNAVAILABLE cuando el usuario no esta activo', async () => {

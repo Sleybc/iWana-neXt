@@ -17,6 +17,7 @@ import {
   useDeferredInitialFocus,
 } from '@iwana/ui';
 import { SESSION_EXPIRED_EVENT, ApiError, clearTerminalSessionError } from '@/lib/api-client';
+import { mfaLoginUnauthorizedMessage } from '@/lib/auth-error-codes';
 import { resolveTenantSlug } from '@/lib/tenant-resolution';
 import {
   PORTAL_MODAL_DRAWER_STATE_EVENT,
@@ -374,7 +375,7 @@ export function SessionRecoveryModal() {
       setTotpCode('');
       if (err instanceof ApiError) {
         if (err.status === 401) {
-          setErrorMessage('Código incorrecto. Intenta de nuevo.');
+          setErrorMessage(mfaLoginUnauthorizedMessage(err));
         } else if (err.status === 429) {
           setErrorMessage('Demasiados intentos. Espera 1 minuto.');
         } else {

@@ -164,6 +164,15 @@ function setupAdminFirstAccessMocks() {
       // POST /auth/change-password — aceptar cambio de password
       // -----------------------------------------------------------------------
       if (url.includes('/auth/change-password') && method === 'POST') {
+        // ADR-117: solo el token limitado, que vive en memoria, autoriza el cambio.
+        if (request.headers()['authorization'] !== 'Bearer mock-token-temporal') {
+          await route.fulfill({
+            status: 401,
+            contentType: 'application/json',
+            body: JSON.stringify({ code: 'UNAUTHORIZED', message: 'Token requerido' }),
+          });
+          return;
+        }
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -271,6 +280,27 @@ test.describe('Portal — primer acceso ADMIN (MOD02)', () => {
 
     // El portal detecta passwordResetRequired=true y redirige a change-password
     await expect(page).toHaveURL(/\/auth\/change-password/, { timeout: 10000 });
+  });
+
+  test('paso 2: el cambio usa el token limitado, sin sesión que cerrar', async ({ page }) => {
+    const afterLogin: string[] = [];
+    await page.goto('/auth/login');
+    await page.waitForLoadState('networkidle');
+    await page.getByPlaceholder('ejemplo: isp-demo').fill('isp-demo');
+    await page.getByLabel(/correo electrónico/i).fill('admin@isp.co');
+    await page.getByPlaceholder('••••••••').fill('TempPass123!');
+    page.on('request', (request) => afterLogin.push(new URL(request.url()).pathname));
+    await page.getByRole('button', { name: 'Ingresar' }).click();
+    await expect(page).toHaveURL(/\/auth\/change-password/, { timeout: 10_000 });
+
+    await page.locator('input[name="currentPassword"]').fill('TempPass123!');
+    await page.locator('input[name="newPassword"]').fill('NuevoPass456!');
+    await page.locator('input[name="confirmPassword"]').fill('NuevoPass456!');
+    await page.locator('button[type="submit"]').click();
+    await expect(page).toHaveURL(/\/auth\/login/, { timeout: 10_000 });
+
+    expect(afterLogin.filter((path) => path.endsWith('/auth/change-password'))).not.toHaveLength(0);
+    expect(afterLogin.filter((path) => path.endsWith('/auth/logout'))).toHaveLength(0);
   });
 
   test('paso 3: re-login post cambio de password → redirect a mfa/setup', async ({ page }) => {

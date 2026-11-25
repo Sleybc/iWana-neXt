@@ -13,7 +13,13 @@
 
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { ChangePasswordDto, ResetPasswordDto } from './auth.dto';
+import {
+  ChangePasswordDto,
+  LoginDto,
+  MfaDisableDto,
+  MfaVerifyDto,
+  ResetPasswordDto,
+} from './auth.dto';
 
 describe('Auth DTO password policy (Ola 2, Paso 7)', () => {
   describe('ChangePasswordDto.newPassword', () => {
@@ -93,6 +99,31 @@ describe('Auth DTO password policy (Ola 2, Paso 7)', () => {
         newPassword: 'Fuerte1!xYz9',
       });
       expect(await validate(strong)).toHaveLength(0);
+    });
+  });
+});
+
+describe('Auth DTO totpCode', () => {
+  const cases = [
+    ['LoginDto', LoginDto, { email: 'user@example.com', password: 'PruebaSegura1!' }],
+    ['MfaVerifyDto', MfaVerifyDto, {}],
+    ['MfaDisableDto', MfaDisableDto, { password: 'PruebaSegura1!' }],
+  ] as const;
+
+  describe.each(cases)('%s', (_name, Dto, base) => {
+    it.each(['abcdef', '12345a', '12 456', '-12345', '12345', '1234567', ''])(
+      'rechaza totpCode %p',
+      async (totpCode) => {
+        const errors = await validate(plainToInstance<object, object>(Dto, { ...base, totpCode }));
+        expect(errors.map((error) => error.property)).toEqual(['totpCode']);
+        expect(errors[0]?.constraints?.['matches']).toBe('Ingresa el código de seis dígitos.');
+      },
+    );
+
+    it('acepta seis dígitos', async () => {
+      expect(
+        await validate(plainToInstance<object, object>(Dto, { ...base, totpCode: '012345' })),
+      ).toHaveLength(0);
     });
   });
 });

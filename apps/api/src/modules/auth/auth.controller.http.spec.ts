@@ -1,10 +1,12 @@
 import { INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common';
 import { SKIP_AUDIT_KEY } from '../audit/decorators/skip-audit.decorator';
 import { ConfigService } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import request from 'supertest';
+import { TenantContextMissingFilter } from '../../common/filters/tenant-context-missing.filter';
+import { AUTH_ERROR_CODES, unauthorizedWithCode } from './auth-errors';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -50,6 +52,7 @@ jest.mock('./guards/jwt-auth.guard', () => ({
         tenantId: isPlatform ? null : 'tenant-test-uuid',
         schemaName: isPlatform ? null : 'tenant_test',
         jti: 'jti-http-test',
+        credentialVersion: 'huella-sintetica',
         type: isPlatform ? 'platform' : 'tenant',
         exp: Math.floor(Date.now() / 1000) + 900,
       };
@@ -97,6 +100,8 @@ describe('AuthController HTTP', () => {
           },
         },
         JwtAuthGuard,
+        // El mismo filtro global que registra AppModule.
+        { provide: APP_FILTER, useClass: TenantContextMissingFilter },
       ],
     }).compile();
 
@@ -217,6 +222,35 @@ describe('AuthController HTTP', () => {
       },
     });
     expect(response.headers['set-cookie']).toBeUndefined();
+  });
+
+  it.each([
+    ['login', 'login', AUTH_ERROR_CODES.ACCOUNT_LOCKED],
+    ['login', 'login', AUTH_ERROR_CODES.MFA_CODE_INVALID],
+    ['mfa/setup', 'setupMfa', AUTH_ERROR_CODES.SESSION_NOT_CURRENT],
+    ['mfa/verify', 'verifyMfaSetup', AUTH_ERROR_CODES.SESSION_NOT_CURRENT],
+    ['mfa/verify', 'verifyMfaSetup', AUTH_ERROR_CODES.MFA_SETUP_NOT_PENDING],
+    ['mfa/verify', 'verifyMfaSetup', AUTH_ERROR_CODES.MFA_CODE_INVALID],
+  ] as const)('POST /auth/%s (%s) entrega al cliente el código %s', async (path, method, code) => {
+    mockAuthService[method].mockRejectedValueOnce(unauthorizedWithCode(code, 'Mensaje.'));
+    const body = {
+      login: { email: 'user@example.com', password: 'Passw0rd!!' },
+      'mfa/setup': {},
+      'mfa/verify': { totpCode: '123456' },
+    }[path];
+
+    const response = await request(app.getHttpServer())
+      .post(`/api/v1/auth/${path}`)
+      .set('Authorization', 'Bearer test-access-token')
+      .send(body)
+      .expect(401);
+
+    expect(response.body).toEqual({
+      statusCode: 401,
+      error: 'Unauthorized',
+      code,
+      message: 'Mensaje.',
+    });
   });
 
   it('rechaza POST /api/v1/auth/login con body invalido via ValidationPipe', async () => {
@@ -355,6 +389,7 @@ describe('AuthController HTTP', () => {
         schemaName: 'tenant_test',
       }),
     });
+    expect(response.body.data).not.toHaveProperty('credentialVersion');
   });
 
   it('expone POST /api/v1/auth/mfa/setup y retorna el QR para el authenticator', async () => {
@@ -374,7 +409,9 @@ describe('AuthController HTTP', () => {
         otpauthUri: 'otpauth://totp/iWana:user@example.com',
       },
     });
-    expect(mockAuthService.setupMfa).toHaveBeenCalledWith('user-uuid-1', 'hash-email-123');
+    expect(mockAuthService.setupMfa).toHaveBeenCalledWith(
+      expect.objectContaining({ sub: 'user-uuid-1', email: 'hash-email-123' }),
+    );
   });
 
   it('valida POST /api/v1/auth/mfa/verify antes de invocar el servicio', async () => {

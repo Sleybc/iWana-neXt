@@ -138,7 +138,11 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Iniciar sesion con email y password (+ TOTP si MFA activo)' })
   @ApiResponse({ status: 200, description: 'Login exitoso — access token emitido.' })
-  @ApiResponse({ status: 401, description: 'Credenciales invalidas o cuenta bloqueada.' })
+  @ApiResponse({
+    status: 401,
+    description:
+      'Credenciales invalidas (sin `code`), `AUTH_MFA_CODE_INVALID` o `AUTH_ACCOUNT_LOCKED`.',
+  })
   @ApiResponse({ status: 429, description: 'Demasiadas solicitudes.' })
   async login(
     @Body() dto: LoginDto,
@@ -265,7 +269,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Rotar el refresh token (cookie httpOnly)' })
   @ApiResponse({ status: 200, description: 'Nuevo access token emitido.' })
-  @ApiResponse({ status: 401, description: 'Refresh token invalido o expirado.' })
+  @ApiResponse({ status: 401, description: 'Refresh token invalido, expirado o revocado.' })
   @ApiResponse({ status: 429, description: 'Demasiadas solicitudes.' })
   async refresh(
     @Request() req: ExpressRequest,
@@ -422,9 +426,12 @@ export class AuthController {
    */
   @Get('me')
   @ApiOperation({ summary: 'Datos del usuario autenticado (desde el JWT)' })
-  @ApiResponse({ status: 200, description: 'Payload del JWT.' })
-  async me(@CurrentUser() user: JwtPayload): Promise<{ data: JwtPayload }> {
-    return { data: user };
+  @ApiResponse({ status: 200, description: 'Payload del JWT, sin la huella de credencial.' })
+  async me(
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ data: Omit<JwtPayload, 'credentialVersion'> }> {
+    const { credentialVersion: _credentialVersion, ...profile } = user;
+    return { data: profile };
   }
 
   // ---------------------------------------------------------------------------
@@ -528,8 +535,15 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Genera secret TOTP y QR code para configurar MFA' })
   @ApiResponse({ status: 200, description: 'QR code y URI de autenticacion.' })
+  @ApiResponse({
+    status: 401,
+    description:
+      'Token de acceso invalido (sin `code`) o `AUTH_SESSION_NOT_CURRENT`: la credencial cambio desde que se emitio el token.',
+  })
+  @ApiResponse({ status: 403, description: 'Solo usuarios de empresa.' })
+  @ApiResponse({ status: 409, description: 'MFA ya activo.' })
   async setupMfa(@CurrentUser() user: JwtPayload): Promise<{ data: MfaSetupResponse }> {
-    const result = await this.authService.setupMfa(user.sub, user.email);
+    const result = await this.authService.setupMfa(user);
     return { data: result };
   }
 
@@ -543,12 +557,22 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Activa MFA verificando el primer codigo TOTP' })
   @ApiResponse({ status: 200, description: 'MFA activado.' })
-  @ApiResponse({ status: 401, description: 'Codigo TOTP invalido.' })
+  @ApiResponse({
+    status: 401,
+    description:
+      'Token de acceso invalido (sin `code`), `AUTH_MFA_SETUP_NOT_PENDING`, `AUTH_MFA_CODE_INVALID` o `AUTH_SESSION_NOT_CURRENT`.',
+  })
+  @ApiResponse({ status: 403, description: 'Solo usuarios de empresa.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'MFA ya activo. Solo con configuracion pendiente y codigo valido; antes de eso responde 401.',
+  })
   async verifyMfa(
     @CurrentUser() user: JwtPayload,
     @Body() dto: MfaVerifyDto,
   ): Promise<{ data: { mfaEnabled: boolean } }> {
-    const result = await this.authService.verifyMfaSetup(user.sub, dto);
+    const result = await this.authService.verifyMfaSetup(user, dto);
     return { data: result };
   }
 
@@ -622,6 +646,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Cambia la contrasena del usuario autenticado' })
   @ApiResponse({ status: 200, description: 'Contrasena actualizada.' })
   @ApiResponse({ status: 401, description: 'Contrasena actual incorrecta.' })
+  @ApiResponse({ status: 409, description: 'La contrasena cambio en paralelo.' })
   @ApiResponse({ status: 429, description: 'Demasiadas solicitudes.' })
   async changePassword(
     @CurrentUser() user: JwtPayload,

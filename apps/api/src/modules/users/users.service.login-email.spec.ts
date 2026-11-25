@@ -305,6 +305,41 @@ describe('UsersService.changeLoginEmail (Ola 2)', () => {
     );
   });
 
+  it('P-09: el rechazo se lanza tras confirmar, para no deshacer el contador', async () => {
+    const actorId = 'usr-00000000-0000-4000-a000-000000000001';
+    const manager = {
+      findOne: jest.fn().mockResolvedValue(buildUserEntity({ id: actorId })),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    let committed = false;
+    mockRunInTenantSchema.mockImplementationOnce(
+      async (_ds: unknown, _schema: string, callback: (qr: unknown) => Promise<unknown>) => {
+        const result = await callback({ manager });
+        committed = true;
+        return result;
+      },
+    );
+    (bcrypt.compare as unknown as jest.Mock).mockResolvedValue(false);
+
+    await expect(
+      service.changeLoginEmail(
+        actorId,
+        { email: 'nuevo@empresa.com', currentPassword: 'Clave1!Errada' },
+        actorId,
+      ),
+    ).rejects.toThrow(BadRequestException);
+    expect(committed).toBe(true);
+    expect(manager.update).toHaveBeenCalledWith(
+      expect.anything(),
+      actorId,
+      expect.objectContaining({ failedLoginAttempts: 1 }),
+    );
+    expect(manager.findOne).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+    );
+  });
+
   it('P-09: rechaza con 401 cuando la cuenta esta en lockout', async () => {
     const actorId = 'usr-00000000-0000-4000-a000-000000000001';
     const entity = buildUserEntity({

@@ -6,8 +6,23 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { OtpInput, Button, FormStatus } from '@iwana/ui';
 import { ApiError, authApi } from '@/lib/api-client';
+import { AUTH_ERROR_CODES, MFA_SETUP_TOKEN_MISSING } from '@/lib/auth-error-codes';
 
 type SetupStep = 'loading' | 'qr' | 'verifying' | 'success' | 'error';
+
+/** 401 que obliga a ingresar de nuevo; sin código reconocido no se afirma la causa. */
+function setupAccessLostMessage(code: string): string {
+  switch (code) {
+    // También llega si la contraseña cambió: reintentar con el mismo token no sirve.
+    case AUTH_ERROR_CODES.MFA_SETUP_NOT_PENDING:
+    case MFA_SETUP_TOKEN_MISSING:
+      return 'La configuración de la verificación en dos pasos venció. Inicia sesión de nuevo para empezar otra vez.';
+    case AUTH_ERROR_CODES.SESSION_NOT_CURRENT:
+      return 'Tu sesión ya no es vigente. Inicia sesión de nuevo.';
+    default:
+      return 'No fue posible confirmar tu acceso. Inicia sesión de nuevo.';
+  }
+}
 
 export function MfaSetupForm() {
   const router = useRouter();
@@ -33,7 +48,7 @@ export function MfaSetupForm() {
         }
       } catch (err) {
         if (!mounted) return;
-        if (err instanceof ApiError && err.status === 401) {
+        if (err instanceof ApiError && (err.status === 401 || err.status === 409)) {
           // Token limitado expirado o inválido — volver al login
           authApi.clearMfaSetupToken();
           router.replace('/auth/login');
@@ -76,8 +91,13 @@ export function MfaSetupForm() {
       setCode('');
       setStep('qr');
       if (err instanceof ApiError) {
-        if (err.status === 401) {
+        if (err.status === 401 && err.code === AUTH_ERROR_CODES.MFA_CODE_INVALID) {
           setErrorMessage('Código incorrecto. Verifica tu aplicación de autenticación.');
+        } else if (err.status === 401 || err.status === 409) {
+          // 409: la verificación ya está activa y el servidor lo explica.
+          authApi.clearMfaSetupToken();
+          setErrorMessage(err.status === 409 ? err.message : setupAccessLostMessage(err.code));
+          setTimeout(() => router.replace('/auth/login'), 2000);
         } else if (err.status === 403) {
           authApi.clearMfaSetupToken();
           setErrorMessage('Token de configuración expirado. Inicia sesión de nuevo.');

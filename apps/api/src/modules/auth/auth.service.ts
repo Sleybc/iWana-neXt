@@ -50,6 +50,7 @@ import {
   ResetPasswordDto,
 } from './dto/auth.dto';
 import { JWT_CLAIMS_BY_TOKEN_TYPE } from './auth.constants';
+import { AUTH_ERROR_CODES, unauthorizedWithCode } from './auth-errors';
 import { resolveAccessTokenTtlSeconds, resolveRefreshTokenTtlSeconds } from './token-ttl.constants';
 import { AuthResponse, MfaSetupResponse } from './interfaces/auth-response.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
@@ -109,7 +110,7 @@ type PlatformLoginFailureReason =
 type LoginTxOutcome =
   | { kind: 'success'; response: AuthResponse & { refreshToken: string } }
   | {
-      kind: 'failed-password';
+      kind: 'failed-password' | 'failed-mfa';
       userId: string;
       failedLoginAttempts: number;
       lockedUntil: Date | null;
@@ -127,6 +128,15 @@ interface FailedAttemptRow {
   failed_login_attempts: number;
   locked_until: Date | string | null;
 }
+
+/** Revoca el refresh solo si nadie lo cambió desde que se leyó. */
+const ROTATE_PLATFORM_REFRESH_SCRIPT = `
+if redis.call('GET', KEYS[1]) ~= ARGV[1] then
+  return 0
+end
+redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+return 1
+`;
 
 /**
  * Servicio de autenticacion de iWana neXt.
@@ -349,7 +359,7 @@ export class AuthService {
     });
 
     const { accessToken } = this.signPlatformAccessToken(user);
-    const refreshToken = await this.createPlatformRefreshToken(user.id, ipAddress, userAgent);
+    const refreshToken = await this.createPlatformRefreshToken(user, ipAddress, userAgent);
 
     await this.platformAuditService.log({
       action: AuditAction.LOGIN,
@@ -448,7 +458,8 @@ export class AuthService {
         if (user.lockedUntil && user.lockedUntil > new Date()) {
           const remainingMs = user.lockedUntil.getTime() - Date.now();
           const remainingMin = Math.ceil(remainingMs / 60000);
-          throw new UnauthorizedException(
+          throw unauthorizedWithCode(
+            AUTH_ERROR_CODES.ACCOUNT_LOCKED,
             `Cuenta bloqueada temporalmente. Intenta en ${remainingMin} minuto(s).`,
           );
         }
@@ -492,7 +503,14 @@ export class AuthService {
           // Descifrar el secret antes de verificar — está almacenado cifrado con AES-256-GCM
           const mfaValid = await this.verifyTotp(this.decryptSecret(user.mfaSecret!), dto.totpCode);
           if (!mfaValid) {
-            throw new UnauthorizedException('Codigo MFA invalido.');
+            // Mismo criterio que la contraseña: el intento se confirma y se lanza tras el commit.
+            const registered = await this.registerFailedAttempt(qr.manager, user.id);
+            return {
+              kind: 'failed-mfa',
+              userId: user.id,
+              failedLoginAttempts: registered.failedLoginAttempts,
+              lockedUntil: registered.lockedUntil,
+            };
           }
         }
 
@@ -506,7 +524,11 @@ export class AuthService {
           !locked ||
           locked.passwordHash !== user.passwordHash ||
           locked.status !== user.status ||
-          locked.passwordResetRequired !== user.passwordResetRequired
+          locked.passwordResetRequired !== user.passwordResetRequired ||
+          locked.mfaEnabled !== user.mfaEnabled ||
+          locked.mfaRequired !== user.mfaRequired ||
+          locked.mfaSecret !== user.mfaSecret ||
+          (locked.lockedUntil && locked.lockedUntil > new Date())
         ) {
           throw new UnauthorizedException('Credenciales invalidas.');
         }
@@ -577,7 +599,7 @@ export class AuthService {
       },
     );
 
-    if (outcome.kind === 'failed-password') {
+    if (outcome.kind !== 'success') {
       // Después del commit: la auditoría de un intento fallido debe sobrevivir
       // al fallo (spec §6 D4 — no va en `logWithin` dentro de la transacción).
       // `auditService.log` nunca lanza, así que no enmascara el 401.
@@ -603,6 +625,9 @@ export class AuthService {
         });
       }
 
+      if (outcome.kind === 'failed-mfa') {
+        throw unauthorizedWithCode(AUTH_ERROR_CODES.MFA_CODE_INVALID, 'Codigo MFA invalido.');
+      }
       throw new UnauthorizedException('Credenciales invalidas.');
     }
 
@@ -743,12 +768,22 @@ export class AuthService {
     return `platform:refresh:family:${familyId}`;
   }
 
+  /** Marca de familia revocada: alcanza al sucesor creado mientras se borraba la familia. */
+  private platformRefreshFamilyRevokedKey(familyId: string): string {
+    return `platform:refresh:family-revoked:${familyId}`;
+  }
+
+  /** Cambia con la contraseña; liga cada token a la credencial que lo originó. */
+  private credentialVersion(passwordHash: string): string {
+    return crypto.createHash('sha256').update(passwordHash).digest('hex');
+  }
+
   /**
    * Crea y persiste un refresh token de plataforma. Devuelve el valor raw:
    * solo existe en memoria y en la cookie httpOnly, nunca en logs ni Redis.
    */
   private async createPlatformRefreshToken(
-    userId: string,
+    user: Pick<PlatformUser, 'id' | 'passwordHash'>,
     ipAddress?: string,
     userAgent?: string,
     familyId?: string,
@@ -760,7 +795,13 @@ export class AuthService {
 
     await this.redis.set(
       this.platformRefreshKey(tokenHash),
-      JSON.stringify({ userId, familyId: sessionFamilyId, expiresAt, revokedAt: null }),
+      JSON.stringify({
+        userId: user.id,
+        familyId: sessionFamilyId,
+        credentialVersion: this.credentialVersion(user.passwordHash),
+        expiresAt,
+        revokedAt: null,
+      }),
       'EX',
       this.refreshTokenTtlSeconds,
     );
@@ -794,6 +835,7 @@ export class AuthService {
     const record = JSON.parse(recordRaw) as {
       userId: string;
       familyId: string;
+      credentialVersion?: string;
       expiresAt: string;
       revokedAt: string | null;
     };
@@ -814,32 +856,58 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token expirado.');
     }
 
+    if (await this.redis.exists(this.platformRefreshFamilyRevokedKey(record.familyId))) {
+      this.logger.warn('PLATFORM_REFRESH_FAMILY_REVOKED — la familia ya fue revocada.');
+      throw new UnauthorizedException('Refresh token invalido.');
+    }
+
     const user = await this.platformUserRepository.findOne({
       where: { id: record.userId },
       withDeleted: false,
     });
     if (!user || user.status !== UserStatus.ACTIVE) {
+      await this.revokePlatformRefreshFamily(record.familyId);
       this.logger.warn(
         'PLATFORM_REFRESH_USER_UNAVAILABLE — usuario de plataforma ausente o inactivo.',
       );
       throw new UnauthorizedException('Usuario no disponible.');
     }
 
-    // Rotacion: revocar el token presentado y emitir uno nuevo de la misma familia
-    await this.redis.set(
-      this.platformRefreshKey(tokenHash),
-      JSON.stringify({ ...record, revokedAt: new Date().toISOString() }),
-      'EX',
-      this.refreshTokenTtlSeconds,
-    );
+    if (
+      user.passwordResetRequired ||
+      record.credentialVersion !== this.credentialVersion(user.passwordHash)
+    ) {
+      await this.revokePlatformRefreshFamily(record.familyId);
+      this.logger.warn('PLATFORM_REFRESH_CREDENTIAL_CHANGED — la credencial ya no es vigente.');
+      throw new UnauthorizedException('Refresh token invalido.');
+    }
 
-    const { accessToken } = this.signPlatformAccessToken(user);
+    // Rotacion: revocar el token presentado y emitir uno nuevo de la misma familia
+    const rotated = await this.redis.eval(
+      ROTATE_PLATFORM_REFRESH_SCRIPT,
+      1,
+      this.platformRefreshKey(tokenHash),
+      recordRaw,
+      JSON.stringify({ ...record, revokedAt: new Date().toISOString() }),
+      String(this.refreshTokenTtlSeconds),
+    );
+    if (Number(rotated) !== 1) {
+      this.logger.warn('PLATFORM_REFRESH_RACE_LOST — el refresh cambió durante la rotación.');
+      throw new UnauthorizedException('Refresh token invalido.');
+    }
+
     const newRawRefreshToken = await this.createPlatformRefreshToken(
-      user.id,
+      user,
       ipAddress,
       userAgent,
       record.familyId,
     );
+    // Un logout o reuso durante la rotación no debe terminar entregando tokens.
+    if (await this.redis.exists(this.platformRefreshFamilyRevokedKey(record.familyId))) {
+      this.logger.warn('PLATFORM_REFRESH_FAMILY_REVOKED — revocada durante la rotación.');
+      throw new UnauthorizedException('Refresh token invalido.');
+    }
+    const { accessToken } = this.signPlatformAccessToken(user);
 
     void this.platformAuditService.log({
       action: AuditAction.REFRESH,
@@ -853,7 +921,7 @@ export class AuthService {
     return { accessToken, refreshToken: newRawRefreshToken };
   }
 
-  /** Revoca un refresh token de plataforma concreto (logout). */
+  /** Cierra la sesión del refresh presentado, con sus sucesores (logout). */
   private async revokePlatformRefreshToken(rawRefreshToken: string): Promise<void> {
     const tokenHash = this.hashToken(rawRefreshToken);
     const key = this.platformRefreshKey(tokenHash);
@@ -863,18 +931,19 @@ export class AuthService {
       return;
     }
 
-    const record = JSON.parse(recordRaw) as { revokedAt: string | null };
-    await this.redis.set(
-      key,
-      JSON.stringify({ ...record, revokedAt: new Date().toISOString() }),
-      'EX',
-      this.refreshTokenTtlSeconds,
-    );
+    const record = JSON.parse(recordRaw) as { familyId: string };
+    await this.revokePlatformRefreshFamily(record.familyId);
   }
 
-  /** Revoca una familia completa de refresh tokens de plataforma (reuse attack). */
+  /** Revoca una familia completa de refresh tokens de plataforma. */
   private async revokePlatformRefreshFamily(familyId: string): Promise<void> {
     const familyKey = this.platformRefreshFamilyKey(familyId);
+    await this.redis.set(
+      this.platformRefreshFamilyRevokedKey(familyId),
+      '1',
+      'EX',
+      this.refreshTokenTtlSeconds * 2,
+    );
     const members = await this.redis.smembers(familyKey);
 
     for (const member of members) {
@@ -904,6 +973,12 @@ export class AuthService {
     // Priorizamos claims firmados del JWT y usamos el contexto solo como fallback.
     const schemaName = jwtPayload.schemaName ?? TenantContext.get()?.schemaName ?? null;
 
+    // Sesion de plataforma (C-6). Antes que el JTI: si Redis falla aquí, el mismo access
+    // token aún sirve para reintentar el logout.
+    if (rawPlatformRefreshToken) {
+      await this.revokePlatformRefreshToken(rawPlatformRefreshToken);
+    }
+
     // Calcular TTL restante del access token para la blacklist
     const expiresAt = jwtPayload.exp ?? 0;
     const remainingTtl = Math.max(0, expiresAt - Math.floor(Date.now() / 1000));
@@ -923,11 +998,6 @@ export class AuthService {
           { revokedAt: new Date(), revokeReason: 'LOGOUT' },
         );
       });
-    }
-
-    // Sesion de plataforma (C-6): revocar el refresh token de Redis
-    if (rawPlatformRefreshToken) {
-      await this.revokePlatformRefreshToken(rawPlatformRefreshToken);
     }
 
     // Registrar logout en audit trail con datos del JWT (no depende de TenantContext)
@@ -1125,26 +1195,65 @@ export class AuthService {
     return user;
   }
 
-  async setupMfa(userId: string, email: string): Promise<MfaSetupResponse> {
+  async setupMfa(actor: JwtPayload): Promise<MfaSetupResponse> {
+    this.assertTenantMfaActor(actor);
+    const { schemaName } = TenantContext.getOrThrow();
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const user = await qr.manager.findOne(User, { where: { id: actor.sub } });
+      this.assertCanEnrollMfa(user, actor);
+    });
+    const pendingKey = this.mfaPendingKey(actor);
+
     // Idempotencia: si ya existe un setup pendiente reusar el mismo secret.
     // Previene race condition cuando el cliente llama dos veces en rapida sucesion
     // (p.ej. React Strict Mode doble-invocacion de useEffect en desarrollo).
     // Si se reutiliza el secret, el QR generado sera identico al anterior.
-    let secret = await this.redis.get(`mfa:pending:${userId}`);
+    let secret = await this.redis.get(pendingKey);
 
     if (!secret) {
       secret = this.totp.generateSecret();
     }
     // Renovar TTL siempre (nuevo o reutilizado): 30 min desde la última llamada a setup.
     // Esto da tiempo suficiente para que el usuario escanee el QR y complete la verificación.
-    await this.redis.set(`mfa:pending:${userId}`, secret, 'EX', 1800);
+    await this.redis.set(pendingKey, secret, 'EX', 1800);
 
     const issuer = this.configService.get<string>('APP_NAME', 'iWana neXt');
-    const otpauthUri = this.totp.toURI({ secret, label: email, issuer });
+    const otpauthUri = this.totp.toURI({ secret, label: actor.email, issuer });
 
     const qrCodeBase64 = await qrcode.toDataURL(otpauthUri);
 
     return { qrCodeBase64, otpauthUri };
+  }
+
+  /** El secreto pendiente queda ligado a la contraseña: cambiarla lo deja inservible. */
+  private mfaPendingKey(actor: JwtPayload): string {
+    return `mfa:pending:${actor.sub}:${actor.credentialVersion}`;
+  }
+
+  private assertTenantMfaActor(actor: JwtPayload): void {
+    if (actor.type !== 'tenant') {
+      throw new ForbiddenException('Esta operacion solo aplica a usuarios de empresa.');
+    }
+  }
+
+  /**
+   * Inscribir MFA exige la credencial con la que se emitió el token y no reemplaza un MFA
+   * activo: para eso está `disableMfa`, que pide contraseña y código.
+   */
+  private assertCanEnrollMfa(user: User | null, actor: JwtPayload): asserts user is User {
+    if (
+      !user ||
+      user.passwordResetRequired ||
+      actor.credentialVersion !== this.credentialVersion(user.passwordHash)
+    ) {
+      throw unauthorizedWithCode(
+        AUTH_ERROR_CODES.SESSION_NOT_CURRENT,
+        'Tu sesión ya no es vigente. Inicia sesión de nuevo.',
+      );
+    }
+    if (user.mfaEnabled) {
+      throw new ConflictException('MFA ya está activo en esta cuenta.');
+    }
   }
 
   /**
@@ -1153,12 +1262,18 @@ export class AuthService {
    *
    * RF-AUTH-03
    */
-  async verifyMfaSetup(userId: string, dto: MfaVerifyDto): Promise<{ mfaEnabled: boolean }> {
+  async verifyMfaSetup(actor: JwtPayload, dto: MfaVerifyDto): Promise<{ mfaEnabled: boolean }> {
+    this.assertTenantMfaActor(actor);
+    const userId = actor.sub;
+    const pendingKey = this.mfaPendingKey(actor);
     const { schemaName } = TenantContext.getOrThrow();
 
-    const pendingSecret = await this.redis.get(`mfa:pending:${userId}`);
+    const pendingSecret = await this.redis.get(pendingKey);
     if (!pendingSecret) {
-      throw new UnauthorizedException('No hay configuracion MFA pendiente. Reinicia el setup.');
+      throw unauthorizedWithCode(
+        AUTH_ERROR_CODES.MFA_SETUP_NOT_PENDING,
+        'No hay configuracion MFA pendiente. Reinicia el setup.',
+      );
     }
 
     // Verificar el codigo TOTP con la API async de otplib@13
@@ -1168,11 +1283,16 @@ export class AuthService {
     });
     const isValid = verifyResult.valid;
     if (!isValid) {
-      throw new UnauthorizedException('Codigo MFA invalido.');
+      throw unauthorizedWithCode(AUTH_ERROR_CODES.MFA_CODE_INVALID, 'Codigo MFA invalido.');
     }
 
     // Activar MFA en la DB del tenant
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const user = await qr.manager.findOne(User, {
+        where: { id: userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      this.assertCanEnrollMfa(user, actor);
       await qr.manager.update(User, userId, {
         mfaEnabled: true,
         mfaSecret: this.encryptSecret(pendingSecret), // Cifrado AES-256-GCM antes de persistir
@@ -1180,7 +1300,7 @@ export class AuthService {
     });
 
     // Limpiar el secret pendiente de Redis
-    await this.redis.del(`mfa:pending:${userId}`);
+    await this.redis.del(pendingKey);
 
     // Registrar activacion de MFA en audit trail
     void this.auditService.log({
@@ -1306,6 +1426,8 @@ export class AuthService {
       // El token viaja en claro en el enlace; en BD solo existe su hash.
       const user = await qr.manager.findOne(User, {
         where: { passwordResetToken: this.hashToken(dto.token) },
+        // Uso único: tras esperar, PostgreSQL reevalúa el token y ya no lo encuentra.
+        lock: { mode: 'pessimistic_write' },
       });
 
       if (!user || !user.passwordResetTokenExpiresAt) {
@@ -1504,10 +1626,10 @@ export class AuthService {
    * queda en false y el token de alcance limitado que trajo al usuario hasta
    * aqui deja de servir. El siguiente login entrega ya una sesion completa.
    *
-   * Sobre la invalidacion: el login de plataforma no emite refresh token, asi
-   * que el unico credencial vivo es el access token en curso. Se anota su JTI en
-   * la blacklist para que el token de alcance 'password-change' no sobreviva al
-   * cambio que lo justificaba.
+   * Sobre la invalidacion: los refresh quedan ligados al hash anterior y la
+   * renovacion los rechaza. El access token en curso vence solo, salvo el de este
+   * actor: se anota su JTI en la blacklist para que el token de alcance
+   * 'password-change' no sobreviva al cambio que lo justificaba.
    *
    * NUNCA se auditan los valores: el evento PASSWORD_CHANGED se registra sin
    * `oldValue` ni `newValue` que contengan la credencial. Las migraciones 074
@@ -1547,18 +1669,23 @@ export class AuthService {
       pendingActivation
         ? {
             id: user.id,
+            deletedAt: IsNull(),
             status: UserStatus.PENDING_VERIFICATION,
             passwordHash: user.passwordHash,
             passwordResetRequired: true,
           }
-        : user.id,
+        : { id: user.id, passwordHash: user.passwordHash, deletedAt: IsNull() },
       {
         passwordHash: newHash,
         passwordResetRequired: false,
       },
     );
-    if (pendingActivation && !changed.affected) {
-      throw new ConflictException('La contraseña temporal ya se cambió. Inicia sesión de nuevo.');
+    if (!changed.affected) {
+      throw new ConflictException(
+        pendingActivation
+          ? 'La contraseña temporal ya se cambió. Inicia sesión de nuevo.'
+          : 'Tu cuenta cambió mientras guardábamos. Inicia sesión de nuevo e inténtalo otra vez.',
+      );
     }
 
     // VENTANA CONOCIDA Y ACEPTADA — [SEC-REVIEW] S-M01-06.
@@ -1622,6 +1749,8 @@ export class AuthService {
       // El token de verificacion se almacena en texto plano (igual que passwordResetToken)
       const user = await qr.manager.findOne(User, {
         where: { emailVerificationToken: dto.token },
+        // `save` reescribe lo leído: sin bloqueo restauraría una contraseña cambiada en paralelo.
+        lock: { mode: 'pessimistic_write' },
       });
 
       if (!user) {
@@ -1663,6 +1792,7 @@ export class AuthService {
       const emailHash = hashEmail(dto.email, this.piiHashKey);
       const user = await qr.manager.findOne(User, {
         where: { emailHash, emailVerified: false },
+        lock: { mode: 'pessimistic_write' },
       });
 
       // Silencio intencional — no revelar si el email existe o ya esta verificado
@@ -1836,6 +1966,7 @@ export class AuthService {
       type: 'tenant',
       // Indica al frontend si el usuario debe cambiar su contrasena en el primer ingreso
       passwordResetRequired: user.passwordResetRequired ?? false,
+      credentialVersion: this.credentialVersion(user.passwordHash),
       // Scope limitado para flujo de MFA setup — ausente en tokens completos
       ...(scope ? { scope } : {}),
     };

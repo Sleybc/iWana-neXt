@@ -190,6 +190,7 @@ export class PlatformUsersController {
   @SkipAudit()
   @Roles(PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
   @ApiOperation({ summary: 'Actualizar el email de acceso del usuario de plataforma autenticado' })
+  @ApiResponse({ status: 409, description: 'Correo en uso o contraseña cambiada en paralelo.' })
   async updateMyLoginEmail(
     @CurrentUser() user: JwtPayload,
     @Body() dto: ChangePlatformUserLoginEmailDto,
@@ -208,6 +209,7 @@ export class PlatformUsersController {
   @Roles(PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Actualizar la contraseña del usuario de plataforma autenticado' })
+  @ApiResponse({ status: 409, description: 'La contraseña cambió en paralelo.' })
   async updateMyPassword(
     @CurrentUser() user: JwtPayload,
     @Body() dto: ChangePlatformUserPasswordDto,

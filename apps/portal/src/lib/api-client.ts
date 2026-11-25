@@ -1475,7 +1475,7 @@ export const authApi = {
       throw new ApiError(
         401,
         'MFA_SETUP_TOKEN_MISSING',
-        'No hay token de configuraci?n MFA. Inicia sesi?n de nuevo.',
+        'La configuración de dos pasos venció. Inicia sesión de nuevo.',
       );
     }
 
@@ -1502,7 +1502,7 @@ export const authApi = {
       throw new ApiError(
         res.status,
         body['code'] ?? 'UNKNOWN',
-        body['message'] ?? 'Error al iniciar configuraci?n MFA',
+        body['message'] ?? 'Error al iniciar la configuración de dos pasos',
       );
     }
 
@@ -1522,7 +1522,7 @@ export const authApi = {
       throw new ApiError(
         401,
         'MFA_SETUP_TOKEN_MISSING',
-        'No hay token de configuraci?n MFA. Inicia sesi?n de nuevo.',
+        'La configuración de dos pasos venció. Inicia sesión de nuevo.',
       );
     }
 
@@ -1550,7 +1550,7 @@ export const authApi = {
       throw new ApiError(
         res.status,
         body['code'] ?? 'UNKNOWN',
-        body['message'] ?? 'Error al verificar c?digo MFA',
+        body['message'] ?? 'Error al verificar el código',
       );
     }
 

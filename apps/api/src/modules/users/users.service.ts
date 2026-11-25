@@ -1105,7 +1105,11 @@ export class UsersService {
     }
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const user = await qr.manager.findOne(User, { where: { id } });
+      const user = await qr.manager.findOne(User, {
+        where: { id },
+        // `save` reescribe lo leído: sin bloqueo restauraría una contraseña cambiada en paralelo.
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!user) throw new NotFoundException(`Usuario ${id} no encontrado.`);
 
       // Un usuario no-ADMIN solo puede actualizar su propio perfil
@@ -1226,8 +1230,16 @@ export class UsersService {
   ): Promise<UserResponseDto> {
     const { schemaName } = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const user = await qr.manager.findOne(User, { where: { id } });
+    // El intento fallido se confirma con la transacción; el rechazo se lanza después del commit.
+    // Lanzarlo dentro desharía el contador y la cuenta no se bloquearía nunca.
+    let failed: { failedLoginAttempts: number; lockedUntil: Date | null } | null = null;
+
+    const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const user = await qr.manager.findOne(User, {
+        where: { id },
+        // `save` reescribe lo leído: sin bloqueo restauraría una contraseña cambiada en paralelo.
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!user) {
         throw new NotFoundException(`Usuario ${id} no encontrado.`);
       }
@@ -1246,21 +1258,9 @@ export class UsersService {
 
       const passwordValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
       if (!passwordValid) {
-        const lockoutUpdate = nextFailedAttemptUpdate(user);
-        await qr.manager.update(User, user.id, lockoutUpdate);
-        if (lockoutUpdate.lockedUntil) {
-          await this.auditService.log({
-            action: AuditAction.ACCOUNT_LOCKED,
-            entityType: 'User',
-            entityId: user.id,
-            userId: user.id,
-            newValue: {
-              lockedUntil: lockoutUpdate.lockedUntil,
-              failedLoginAttempts: lockoutUpdate.failedLoginAttempts,
-            },
-          });
-        }
-        throw new BadRequestException('La contraseña actual no es válida.');
+        failed = nextFailedAttemptUpdate(user);
+        await qr.manager.update(User, user.id, failed);
+        return null;
       }
 
       const normalizedEmail = dto.email.toLowerCase().trim();
@@ -1355,6 +1355,30 @@ export class UsersService {
       );
       return this.toDto(user);
     });
+
+    if (!result) {
+      await this.auditFailedPassword(id, failed);
+      throw new BadRequestException('La contraseña actual no es válida.');
+    }
+    return result;
+  }
+
+  /** Audita el bloqueo ya confirmado por contraseña errónea. */
+  private async auditFailedPassword(
+    userId: string,
+    failed: { failedLoginAttempts: number; lockedUntil: Date | null } | null,
+  ): Promise<void> {
+    if (!failed?.lockedUntil) return;
+    await this.auditService.log({
+      action: AuditAction.ACCOUNT_LOCKED,
+      entityType: 'User',
+      entityId: userId,
+      userId,
+      newValue: {
+        lockedUntil: failed.lockedUntil,
+        failedLoginAttempts: failed.failedLoginAttempts,
+      },
+    });
   }
 
   /**
@@ -1389,7 +1413,11 @@ export class UsersService {
     }
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const user = await qr.manager.findOne(User, { where: { id } });
+      const user = await qr.manager.findOne(User, {
+        where: { id },
+        // `save` reescribe lo leído: sin bloqueo restauraría una contraseña cambiada en paralelo.
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!user) {
         throw new NotFoundException(`Usuario ${id} no encontrado.`);
       }
@@ -1626,7 +1654,12 @@ export class UsersService {
     }
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const user = await qr.manager.findOne(User, { where: { id } });
+      const user = await qr.manager.findOne(User, {
+        where: { id },
+        // `save` omite columnas que ve iguales: sin bloqueo, un cambio simultáneo del titular
+        // dejaría la contraseña temporal como definitiva.
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!user) {
         throw new NotFoundException(`Usuario ${id} no encontrado.`);
       }
@@ -1750,7 +1783,11 @@ export class UsersService {
     const { schemaName } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const user = await qr.manager.findOne(User, { where: { id: actorId } });
+      const user = await qr.manager.findOne(User, {
+        where: { id: actorId },
+        // `save` reescribe lo leído: sin bloqueo restauraría una contraseña cambiada en paralelo.
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!user) {
         throw new NotFoundException(`Usuario ${actorId} no encontrado.`);
       }

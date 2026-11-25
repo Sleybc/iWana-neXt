@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { OtpInput, Button, FormStatus } from '@iwana/ui';
 import { ApiError } from '@/lib/api-client';
+import { mfaLoginUnauthorizedMessage } from '@/lib/auth-error-codes';
 import { useAuth } from './AuthProvider';
 
 const TOTP_INTERVAL = 30;
@@ -46,7 +47,9 @@ export function MfaVerifyForm() {
       setHasError(true);
       setCode('');
       if (err instanceof ApiError) {
-        if (err.status === 401) setError('Código incorrecto. Intenta de nuevo.');
+        // El intento que bloquea la cuenta aún responde código inválido; el bloqueo se
+        // informa desde el siguiente.
+        if (err.status === 401) setError(mfaLoginUnauthorizedMessage(err));
         else if (err.status === 429)
           setError('Demasiados intentos. Cuenta temporalmente bloqueada.');
         else setError('Error al verificar el código.');

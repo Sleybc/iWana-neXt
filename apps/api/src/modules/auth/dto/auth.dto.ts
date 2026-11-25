@@ -3,7 +3,6 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  Length,
   Matches,
   MaxLength,
   MinLength,
@@ -40,7 +39,7 @@ export class LoginDto {
 
   @IsString()
   @IsOptional()
-  @Length(6, 6)
+  @Matches(/^\d{6}$/, { message: 'Ingresa el código de seis dígitos.' })
   totpCode?: string;
 }
 
@@ -62,7 +61,7 @@ export class MfaSetupDto {}
  */
 export class MfaVerifyDto {
   @IsString()
-  @Length(6, 6)
+  @Matches(/^\d{6}$/, { message: 'Ingresa el código de seis dígitos.' })
   totpCode: string;
 }
 
@@ -115,7 +114,7 @@ export class MfaDisableDto {
   password: string;
 
   @IsString()
-  @Length(6, 6)
+  @Matches(/^\d{6}$/, { message: 'Ingresa el código de seis dígitos.' })
   totpCode: string;
 }
 

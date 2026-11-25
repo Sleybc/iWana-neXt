@@ -58,8 +58,8 @@ export default function ChangePasswordPage() {
           setServerError(
             'La contraseña temporal no es correcta o el tiempo para cambiarla terminó. Si la escribiste bien, inicia sesión de nuevo.',
           );
-        } else if (err.status === 400) {
-          setServerError('Elige una contraseña nueva, distinta de la temporal.');
+        } else if (err.status === 400 || err.status === 409) {
+          setServerError(err.message);
         } else {
           setServerError('Ocurrio un error al cambiar la contrasena. Intenta de nuevo.');
         }
