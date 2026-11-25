@@ -12,6 +12,9 @@ module.exports = {
   // Sin esa serialización, este '50%' se sumaba al '50%' de los demás paquetes.
   testTimeout: 15000,
   maxWorkers: '50%',
+  // ts-jest mantiene un servicio de TypeScript por worker (~2 GB) y el heap crece con
+  // cada suite: sin reciclar, un worker agota los ~4 GB de V8 (CI 45698535201, 2026-11-25).
+  workerIdleMemoryLimit: '3GiB',
   transform: {
     '^.+\\.jsx?$': 'next/dist/build/swc/jest-transformer',
     '^.+\\.tsx?$': [
