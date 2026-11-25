@@ -99,11 +99,13 @@ export async function platformAccessToken(credentials) {
 }
 
 /** Inscribe MFA con un token `platform-mfa-setup` y devuelve el secreto. */
-export async function enrollPlatformMfa(apiUrl, setupToken) {
+export async function enrollPlatformMfa(apiUrl, setupToken, onSecret = () => {}) {
   const setup = await post(`${apiUrl}/auth/platform/mfa/setup`, {}, setupToken);
   const uri = setup.body?.data?.otpauthUri;
   const secret = uri ? new URL(uri).searchParams.get('secret') : null;
   if (!secret) throw new Error(`Inscripción de MFA HTTP ${setup.status}.`);
+  // Antes de confirmar: si se pierde la respuesta, el secreto ya está guardado.
+  onSecret(secret);
   const verify = await post(
     `${apiUrl}/auth/platform/mfa/verify`,
     { totpCode: await nextTotpCode(secret) },

@@ -12,7 +12,7 @@ export const PLATFORM_UI_COPY = {
     confirm: 'Activar verificación en dos pasos',
     cancel: 'Cancelar',
     saved:
-      'Verificación en dos pasos activada. Se pedirá un código la próxima vez que inicies sesión.',
+      'Verificación en dos pasos activada. Tu sesión actual no se renovará: en unos minutos tendrás que iniciar sesión de nuevo con un código.',
     startError: 'No pudimos iniciar la configuración. Intenta de nuevo.',
     verifyError: 'No pudimos confirmar el código. Intenta de nuevo.',
   },

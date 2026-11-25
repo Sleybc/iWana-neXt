@@ -1287,19 +1287,78 @@ describe('AuthService', () => {
         passwordHash: '$2b$12$hash',
         role: 'system_admin',
         status: 'active',
-        mfaEnabled: false,
-        mfaSecret: null,
+        mfaEnabled: true,
+        mfaSecret: (service as any).encryptSecret('MFA'),
         lastLoginAt: null,
       };
       platformUserRepo.findOne.mockResolvedValue(platformUser);
       platformUserRepo.update.mockResolvedValue({ affected: 1 });
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
 
-      const dto = { email: 'admin@iwana.co', password: 'Passw0rd!' };
+      const dto = { email: 'admin@iwana.co', password: 'Passw0rd!', totpCode: '123456' };
       const result = await service.loginPlatform(dto);
 
       expect(result.accessToken).toBe('mock.jwt.token');
       expect(result.mfaRequired).toBeUndefined();
+      expect(result.refreshToken).toBeDefined();
+    });
+
+    it.each([UserStatus.ACTIVE, UserStatus.PENDING_VERIFICATION])(
+      'sin MFA y en estado %s solo entrega el alcance de inscripción',
+      async (status) => {
+        platformUserRepo.findOne.mockResolvedValue({
+          id: 'platform-user-uuid-1',
+          emailHash: 'h',
+          passwordHash: '$2b$12$hash',
+          status,
+          mfaEnabled: false,
+          mfaSecret: null,
+        });
+        (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+        const result = await service.loginPlatform({
+          email: 'admin@iwana.co',
+          password: 'Passw0rd!',
+          totpCode: '123456',
+        });
+
+        expect(result).toEqual({ accessToken: 'mock.jwt.token', mfaSetupRequired: true });
+        expect(jwtService.sign).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            scope: 'platform-mfa-setup',
+            credentialVersion: platformCredentialVersion('$2b$12$hash'),
+          }),
+          expect.anything(),
+        );
+        expect(mockRedis.sadd).not.toHaveBeenCalled();
+      },
+    );
+
+    describe('inscripción de MFA', () => {
+      const actor = () =>
+        ({
+          sub: 'p1',
+          jti: 'j1',
+          type: 'platform',
+          scope: 'platform-mfa-setup',
+          exp: Math.floor(Date.now() / 1000) + 600,
+          credentialVersion: platformCredentialVersion('$2b$12$hash'),
+        }) as JwtPayload;
+
+      it('Redis caído responde 503 en setup y en verify', async () => {
+        jest
+          .spyOn(service as any, 'lockPlatformMfaEnrollment')
+          .mockResolvedValue({ id: 'p1', email: 'x' });
+        (platformUserRepo as any).manager = {
+          transaction: (run: (m: unknown) => unknown) => run({}),
+        };
+        mockRedis.set.mockRejectedValueOnce(new Error('caído'));
+        await expect(service.setupPlatformMfa(actor())).rejects.toMatchObject({ status: 503 });
+        mockRedis.get.mockRejectedValueOnce(new Error('caído'));
+        await expect(
+          service.verifyPlatformMfa(actor(), { totpCode: '123456' }, {}),
+        ).rejects.toMatchObject({ status: 503 });
+      });
     });
 
     // ADR-116 (A-01 de la revisión de AI-SEC-ENG): la cuenta del CLI de arranque nace
@@ -1527,14 +1586,14 @@ describe('AuthService', () => {
           emailHash: 'h',
           passwordHash: '$2b$12$hash',
           status: 'active',
-          mfaEnabled: false,
-          mfaSecret: null,
+          mfaEnabled: true,
+          mfaSecret: (service as any).encryptSecret('MFA'),
         });
         platformUserRepo.update.mockResolvedValue({ affected: 1 });
         (bcrypt.compare as jest.Mock).mockResolvedValue(true);
 
         await service.loginPlatform(
-          { email: 'admin@iwana.co', password: 'Passw0rd!' },
+          { email: 'admin@iwana.co', password: 'Passw0rd!', totpCode: '123456' },
           '203.0.113.10',
           'agente-de-prueba',
         );
@@ -1547,6 +1606,7 @@ describe('AuthService', () => {
             userId: 'platform-user-uuid-1',
             ipAddress: '203.0.113.10',
             userAgent: 'agente-de-prueba',
+            newValue: { mfaAplicado: true },
           }),
         );
       });
@@ -1724,6 +1784,7 @@ describe('AuthService', () => {
         expiresAt: new Date(Date.now() + 3600_000).toISOString(),
         revokedAt: null,
         credentialVersion: platformCredentialVersion(PLATFORM_HASH),
+        mfaVersion: platformCredentialVersion('MFA'),
         ...overrides,
       };
     }
@@ -1735,7 +1796,8 @@ describe('AuthService', () => {
         id: 'platform-uuid-1',
         status: UserStatus.ACTIVE,
         role: 'system_admin',
-        mfaEnabled: false,
+        mfaEnabled: true,
+        mfaSecret: (service as any).encryptSecret('MFA'),
         passwordHash: PLATFORM_HASH,
         passwordResetRequired: false,
       });
@@ -1774,6 +1836,9 @@ describe('AuthService', () => {
       ['la contraseña cambió', {}, { passwordHash: '$2b$12$otro' }],
       ['el registro no tiene huella', { credentialVersion: undefined }, {}],
       ['hay cambio de contraseña pendiente', {}, { passwordResetRequired: true }],
+      ['la cuenta no tiene MFA', {}, { mfaEnabled: false, mfaSecret: null }],
+      ['la sesión es anterior al MFA', { mfaVersion: undefined }, {}],
+      ['el MFA se reinscribió', { mfaVersion: 'otra' }, {}],
     ])('rechaza y no emite sucesor cuando %s', async (_caso, record, user) => {
       mockRedis.get.mockResolvedValue(JSON.stringify(platformRecord(record)));
       mockRedis.smembers.mockResolvedValue(['hash-1']);
@@ -1781,7 +1846,8 @@ describe('AuthService', () => {
         id: 'platform-uuid-1',
         status: UserStatus.ACTIVE,
         role: 'system_admin',
-        mfaEnabled: false,
+        mfaEnabled: true,
+        mfaSecret: (service as any).encryptSecret('MFA'),
         passwordHash: PLATFORM_HASH,
         passwordResetRequired: false,
         ...user,
@@ -1801,20 +1867,25 @@ describe('AuthService', () => {
         id: 'platform-uuid-1',
         status: UserStatus.ACTIVE,
         role: 'system_admin',
-        mfaEnabled: false,
-        mfaSecret: null,
+        mfaEnabled: true,
+        mfaSecret: (service as any).encryptSecret('MFA'),
         passwordHash: PLATFORM_HASH,
         passwordResetRequired: false,
       });
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
 
-      await service.loginPlatform({ email: 'admin@example.test', password: 'Sintetica123!' });
+      await service.loginPlatform({
+        email: 'admin@example.test',
+        password: 'Sintetica123!',
+        totpCode: '123456',
+      });
 
       const call = mockRedis.set.mock.calls.find(([key]) =>
         String(key).startsWith('platform:refresh:token:'),
       );
       expect(JSON.parse(String(call?.[1]))).toMatchObject({
         credentialVersion: platformCredentialVersion(PLATFORM_HASH),
+        mfaVersion: platformCredentialVersion('MFA'),
       });
       expect(String(call?.[1])).not.toContain(PLATFORM_HASH);
     });
@@ -1885,6 +1956,8 @@ describe('AuthService', () => {
         id: 'platform-uuid-1',
         status: UserStatus.ACTIVE,
         role: 'system_admin',
+        mfaEnabled: true,
+        mfaSecret: (service as any).encryptSecret('MFA'),
         passwordHash: PLATFORM_HASH,
         passwordResetRequired: false,
       });
@@ -1930,7 +2003,8 @@ describe('AuthService', () => {
         id: 'platform-uuid-1',
         status: UserStatus.ACTIVE,
         role: 'system_admin',
-        mfaEnabled: false,
+        mfaEnabled: true,
+        mfaSecret: (service as any).encryptSecret('MFA'),
         passwordHash: PLATFORM_HASH,
         passwordResetRequired: false,
       });
@@ -3341,7 +3415,7 @@ describe('AuthService', () => {
         role: 'SYSTEM_ADMIN',
       } as unknown as PlatformUser;
 
-      service.signPlatformToken(platformUser);
+      (service as any).signPlatformAccessToken(platformUser);
 
       expect(jwtService.sign).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'platform' }),
@@ -3485,6 +3559,7 @@ describe('AuthService', () => {
         expiresAt: new Date(Date.now() + 3600_000).toISOString(),
         revokedAt: null,
         credentialVersion: platformCredentialVersion(PLATFORM_HASH),
+        mfaVersion: platformCredentialVersion('MFA'),
         ...overrides,
       };
     }
@@ -3547,6 +3622,8 @@ describe('AuthService', () => {
         id: 'platform-uuid-1',
         status: UserStatus.ACTIVE,
         role: 'system_admin',
+        mfaEnabled: true,
+        mfaSecret: (service as any).encryptSecret('MFA'),
         passwordHash,
         passwordResetRequired: false,
       });

@@ -10,7 +10,7 @@ import { PlatformUsersService } from './platform-users.service';
 
 jest.mock('../auth/auth.service', () => ({
   AuthService: class AuthService {
-    signPlatformToken(): string {
+    signPlatformEnrollmentToken(): string {
       return 'mock-platform-access-token';
     }
   },
@@ -53,6 +53,7 @@ describe('PlatformUsersController HTTP', () => {
     getProfile: jest.fn(),
     getSummary: jest.fn(),
     listDirectory: jest.fn(),
+    createBootstrapUser: jest.fn(),
     createDirectoryAccount: jest.fn(),
     updateDirectoryName: jest.fn(),
     updateProfile: jest.fn(),
@@ -61,7 +62,7 @@ describe('PlatformUsersController HTTP', () => {
   };
 
   const authServiceMock = {
-    signPlatformToken: jest.fn().mockReturnValue('mock-platform-access-token'),
+    signPlatformEnrollmentToken: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -94,6 +95,18 @@ describe('PlatformUsersController HTTP', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('POST /platform-users/bootstrap solo entrega un token de inscripción', async () => {
+    platformUsersServiceMock.createBootstrapUser.mockResolvedValue({ id: 'u1' });
+    authServiceMock.signPlatformEnrollmentToken.mockResolvedValue('inscripcion');
+
+    await request(app.getHttpServer())
+      .post('/api/v1/platform-users/bootstrap')
+      .set('Authorization', 'Bearer test-access-token')
+      .send({ email: 'admin@iwana.co', password: 'Admin123!@#', confirmPassword: 'Admin123!@#' })
+      .expect(201, { data: { accessToken: 'inscripcion', mfaSetupRequired: true } });
+    expect(authServiceMock.signPlatformEnrollmentToken).toHaveBeenCalledWith('u1');
   });
 
   it('GET /platform-users/me retorna 200 con perfil', async () => {

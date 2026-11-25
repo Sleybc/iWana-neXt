@@ -147,7 +147,18 @@ describeWithDb('PlatformUsersService.getSummary — PostgreSQL real', () => {
       const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
       const jwt = new JwtService({ privateKey, publicKey });
       const users = new PlatformUsersService(repo, audit, config);
-      const redis = { set: jest.fn(), sadd: jest.fn(), expire: jest.fn() };
+      const stored = new Map<string, string>();
+      const redis = {
+        set: async (key: string, value: string, ...flags: unknown[]) => {
+          if (flags.includes('NX') && stored.has(key)) return null;
+          stored.set(key, value);
+          return 'OK';
+        },
+        get: async (key: string) => stored.get(key) ?? null,
+        del: async (key: string) => stored.delete(key),
+        sadd: jest.fn(),
+        expire: jest.fn(),
+      };
       const auth = new AuthService(
         undefined as never,
         repo,
@@ -219,8 +230,28 @@ describeWithDb('PlatformUsersService.getSummary — PostgreSQL real', () => {
       const secret = new URL(otpauthUri).searchParams.get('secret')!;
       const totp = new TOTP({ crypto: new NobleCryptoPlugin(), base32: new ScureBase32Plugin() });
       const totpCode = await totp.generate({ secret });
+
+      // Otro ingreso recibe otro secreto; el suyo no confirma este y viceversa.
+      const otherLogin = await auth.loginPlatform({ email, password: newPassword });
+      const otherActor = jwt.verify<JwtPayload>(otherLogin.accessToken, { algorithms: ['RS256'] });
+      const otherUri = (await auth.setupPlatformMfa(otherActor)).otpauthUri;
+      expect(otherUri).not.toBe(otpauthUri);
+      await expect(auth.verifyPlatformMfa(otherActor, { totpCode }, {})).rejects.toMatchObject({
+        status: 401,
+      });
+      // Un token emitido con la contraseña anterior ya no inscribe.
+      await expect(
+        auth.setupPlatformMfa({ ...enrollmentActor, credentialVersion: 'anterior' }),
+      ).rejects.toMatchObject({ status: 403 });
       await auth.verifyPlatformMfa(enrollmentActor, { totpCode }, {});
       await expect(auth.setupPlatformMfa(enrollmentActor)).rejects.toMatchObject({ status: 403 });
+      expect(stored.has(`jti:blacklist:${enrollmentActor.jti}`)).toBe(true);
+      const otherCode2 = await totp.generate({
+        secret: new URL(otherUri).searchParams.get('secret')!,
+      });
+      await expect(
+        auth.verifyPlatformMfa(otherActor, { totpCode: otherCode2 }, {}),
+      ).rejects.toMatchObject({ status: 403 });
       expect(await auth.loginPlatform({ email, password: newPassword })).toEqual({
         accessToken: '',
         mfaRequired: true,
@@ -244,6 +275,51 @@ describeWithDb('PlatformUsersService.getSummary — PostgreSQL real', () => {
       expect(active.total).toBe(before.total + 1);
       expect(active.withoutMfa).toBe(before.withoutMfa);
 
+      // CA-1: una cuenta ACTIVE sin MFA se inscribe con el alcance del login y entra con código.
+      const activeEmail = `activa-sin-mfa-${RUN}@example.test`;
+      const activeAccount = await users.createDirectoryAccount(
+        { ...input, email: activeEmail },
+        randomUUID(),
+        {},
+      );
+      const activePassword = activeAccount.temporaryPassword;
+      await repo.update(activeAccount.id, {
+        status: UserStatus.ACTIVE,
+        passwordResetRequired: false,
+      });
+      const activeLogin = await auth.loginPlatform({
+        email: activeEmail,
+        password: activePassword,
+      });
+      expect(activeLogin).toMatchObject({ mfaSetupRequired: true });
+      expect(activeLogin.refreshToken).toBeUndefined();
+      const activeActor = jwt.verify<JwtPayload>(activeLogin.accessToken, {
+        algorithms: ['RS256'],
+      });
+      expect(activeActor.scope).toBe('platform-mfa-setup');
+      const activeSecret = new URL(
+        (await auth.setupPlatformMfa(activeActor)).otpauthUri,
+      ).searchParams.get('secret')!;
+      const activeCode = await totp.generate({ secret: activeSecret });
+      await auth.verifyPlatformMfa(activeActor, { totpCode: activeCode }, {});
+      expect(await repo.findOneByOrFail({ id: activeAccount.id })).toMatchObject({
+        status: UserStatus.ACTIVE,
+        mfaEnabled: true,
+      });
+      expect(await auth.loginPlatform({ email: activeEmail, password: activePassword })).toEqual({
+        accessToken: '',
+        mfaRequired: true,
+      });
+      const activeSession = await auth.loginPlatform({
+        email: activeEmail,
+        password: activePassword,
+        totpCode: activeCode,
+      });
+      expect(activeSession.refreshToken).toBeDefined();
+      expect(
+        jwt.verify<JwtPayload>(activeSession.accessToken, { algorithms: ['RS256'] }).scope,
+      ).toBeUndefined();
+
       const existingEmail = `mi-cuenta-${RUN}@example.test`;
       const existing = await users.createDirectoryAccount(
         { ...input, email: existingEmail, role: PlatformRole.SYSTEM_ADMIN },
@@ -255,9 +331,14 @@ describeWithDb('PlatformUsersService.getSummary — PostgreSQL real', () => {
         email: existingEmail,
         password: existing.temporaryPassword,
       });
-      const existingActor = jwt.verify<JwtPayload>(existingLogin.accessToken, {
+      expect(existingLogin).toMatchObject({ mfaSetupRequired: true });
+      expect(existingLogin.refreshToken).toBeUndefined();
+      const activeEnrollment = jwt.verify<JwtPayload>(existingLogin.accessToken, {
         algorithms: ['RS256'],
       });
+      // Sesión completa anterior al MFA obligatorio: conserva «Mi cuenta» hasta vencer.
+      const existingActor: JwtPayload = { ...activeEnrollment };
+      delete existingActor.scope;
       expect(existingActor.role).toBe(PlatformRole.SYSTEM_ADMIN);
       expect(existingActor.scope).toBeUndefined();
       await expect(

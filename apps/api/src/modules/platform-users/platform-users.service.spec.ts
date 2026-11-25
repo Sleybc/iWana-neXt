@@ -247,23 +247,27 @@ describe('PlatformUsersService', () => {
     });
   });
 
-  it('createBootstrapUser en producción responde 404 sin consultar ni crear nada (ADR-116)', async () => {
-    const originalNodeEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
-    try {
-      await expect(
-        service.createBootstrapUser({
-          email: 'admin@iwana.co',
-          password: 'Passw0rd!!',
-          confirmPassword: 'Passw0rd!!',
-        } as never),
-      ).rejects.toBeInstanceOf(NotFoundException);
-      expect(repo.count).not.toHaveBeenCalled();
-      expect(repo.save).not.toHaveBeenCalled();
-    } finally {
-      process.env.NODE_ENV = originalNodeEnv;
-    }
-  });
+  it.each(['production', 'staging', undefined])(
+    'createBootstrapUser con NODE_ENV=%s responde 404 sin consultar ni crear nada (ADR-116)',
+    async (nodeEnv) => {
+      const originalNodeEnv = process.env.NODE_ENV;
+      if (nodeEnv) process.env.NODE_ENV = nodeEnv;
+      else delete process.env.NODE_ENV;
+      try {
+        await expect(
+          service.createBootstrapUser({
+            email: 'admin@iwana.co',
+            password: 'Passw0rd!!',
+            confirmPassword: 'Passw0rd!!',
+          } as never),
+        ).rejects.toBeInstanceOf(NotFoundException);
+        expect(repo.count).not.toHaveBeenCalled();
+        expect(repo.save).not.toHaveBeenCalled();
+      } finally {
+        process.env.NODE_ENV = originalNodeEnv;
+      }
+    },
+  );
 
   describe('createBootstrapUser', () => {
     beforeEach(() => {

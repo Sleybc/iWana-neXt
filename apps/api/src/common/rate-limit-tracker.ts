@@ -17,6 +17,11 @@ interface RateLimitRequestLike {
   iwanaVerifiedSub?: string | undefined;
 }
 
+/** Bucket por IP aunque la petición lleve sesión: rutas donde se prueban credenciales. */
+export function getIpRateLimitTracker(request: RateLimitRequestLike): string {
+  return `anonymous:ip:${request.ip ?? 'unknown'}`;
+}
+
 /**
  * Construye el bucket sin depender de request.user: el throttler global se
  * ejecuta antes de los guards de autenticación de cada ruta.
@@ -31,7 +36,7 @@ export function getGlobalRateLimitTracker(request: RateLimitRequestLike): string
   if (request.iwanaTenantResolutionSource !== 'jwt-verified' || !tenantId) {
     // El guard global corre antes del JwtAuthGuard: sin marker de JWT verificado,
     // incluso un acceso presentado solo con X-Tenant-Slug comparte el bucket IP.
-    return `anonymous:ip:${request.ip ?? 'unknown'}`;
+    return getIpRateLimitTracker(request);
   }
 
   // P-09: bucket por `sub` del token verificado — una empresa ya no comparte

@@ -52,6 +52,11 @@ describe('JwtStrategy.validate() — coherencia entre (iss, aud) y el tipo de to
     });
   });
 
+  it('responde 503 si no puede consultar la lista negra', async () => {
+    const strategy = buildStrategy(jest.fn().mockRejectedValue(new Error('caído')));
+    await expect(strategy.validate(buildPayload())).rejects.toMatchObject({ status: 503 });
+  });
+
   it('acepta un token de plataforma coherente', async () => {
     const payload = buildPayload({
       type: 'platform',

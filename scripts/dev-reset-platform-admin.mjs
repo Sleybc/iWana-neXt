@@ -93,7 +93,18 @@ const container = process.env.IWANA_POSTGRES_CONTAINER ?? 'iwana_postgres_dev';
 // Se reactiva `password_reset_required`: tras el sync la cuenta vuelve a usar la
 // credencial del entorno, que es conocida. El primer ingreso debe exigir cambio
 // otra vez — igual que en el bootstrap inicial (MOD01 / primer ingreso).
-const sql = `UPDATE public.platform_users SET password_hash = '${passwordHash.replace(/'/g, "''")}', password_reset_required = true WHERE email_hmac = '${emailHmac}';`;
+if (
+  process.argv.includes('--reset-mfa') &&
+  ((process.env.NODE_ENV ?? 'development') !== 'development' || container !== 'iwana_postgres_dev')
+) {
+  console.error('--reset-mfa solo se permite en la base de desarrollo.');
+  process.exit(1);
+}
+// --reset-mfa: quita también el segundo factor; el siguiente ingreso lo inscribe de nuevo.
+const resetMfa = process.argv.includes('--reset-mfa')
+  ? ', mfa_enabled = false, mfa_secret = NULL'
+  : '';
+const sql = `UPDATE public.platform_users SET password_hash = '${passwordHash.replace(/'/g, "''")}', password_reset_required = true${resetMfa} WHERE email_hmac = '${emailHmac}';`;
 
 // El SQL viaja por stdin, no como argumento `-c`.
 //
@@ -117,6 +128,7 @@ console.log(
   JSON.stringify({
     ok: true,
     action: 'password_synced_change_required',
+    mfaReset: resetMfa !== '',
     emailHmacPrefix: emailHmac.slice(0, 12),
     rowsHint: (result.stdout ?? '').trim(),
   }),

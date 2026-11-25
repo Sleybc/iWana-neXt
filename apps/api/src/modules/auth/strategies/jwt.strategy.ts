@@ -1,4 +1,9 @@
-import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { Request } from 'express';
@@ -89,7 +94,13 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     }
 
     // Verificar blacklist de tokens revocados (logout, cambio de password, etc.)
-    const revoked = await this.redis.get(`jti:blacklist:${payload.jti}`);
+    let revoked: string | null;
+    try {
+      revoked = await this.redis.get(`jti:blacklist:${payload.jti}`);
+    } catch {
+      // Sin la lista negra no se puede validar el token: cerrado, pero no es un error interno.
+      throw new ServiceUnavailableException('Intenta de nuevo en unos minutos.');
+    }
     if (revoked) {
       throw new UnauthorizedException('El token ha sido revocado.');
     }

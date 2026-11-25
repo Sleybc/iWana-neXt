@@ -22,6 +22,7 @@ import {
   loadAesGcmKeyPair,
   looksLikeEncryptedAesGcm,
 } from '../../common/crypto/aes-gcm.util';
+import { isExplicitDevelopment } from '../../common/startup-node-env';
 import { hashEmail } from '../../common/crypto/hash-email.util';
 import { resolvePiiHashKey } from '../../common/crypto/pii-hash-key.util';
 import { DIRECTORY_PAGE_SIZE } from './dto/platform-user-directory.dto';
@@ -457,9 +458,9 @@ export class PlatformUsersService {
     dto: CreatePlatformUserBootstrapDto,
     requestContext: AuditRequestContext = {},
   ): Promise<PlatformUserResponseDto> {
-    // ADR-116: en producción el primer administrador nace solo por el CLI. Este alta es
-    // pública y entrega una cuenta ACTIVE sin MFA; con la tabla vacía sería de quien llegue antes.
-    if (process.env['NODE_ENV'] === 'production') {
+    // ADR-116: fuera de desarrollo el primer administrador nace solo por el CLI. Este alta es
+    // pública: con la tabla vacía sería de quien llegue antes. Sin NODE_ENV también se cierra.
+    if (!isExplicitDevelopment()) {
       throw new NotFoundException();
     }
     const count = await this.platformUserRepo.count();

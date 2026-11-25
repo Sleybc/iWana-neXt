@@ -6,6 +6,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -16,7 +17,7 @@ import * as crypto from 'crypto';
 import { TOTP, NobleCryptoPlugin, ScureBase32Plugin } from 'otplib';
 import * as qrcode from 'qrcode';
 import Redis from 'ioredis';
-import { EntityManager, IsNull, Repository } from 'typeorm';
+import { EntityManager, In, IsNull, Repository } from 'typeorm';
 import { PlatformUser, RefreshToken, User } from '@iwana/db';
 import { UserRole, UserStatus, AuditAction } from '@iwana/shared';
 import { runInTenantSchema, summarizeErrorForLog, TenantContext } from '@iwana/db';
@@ -324,7 +325,8 @@ export class AuthService {
       return { accessToken, passwordResetRequired: true };
     }
 
-    if (user.status === UserStatus.PENDING_VERIFICATION) {
+    // MFA es obligatorio en plataforma: sin él solo se entrega el alcance de inscripción.
+    if (user.status === UserStatus.PENDING_VERIFICATION || !user.mfaEnabled) {
       const { accessToken } = this.signPlatformAccessToken(user, 'platform-mfa-setup');
       await this.platformAuditService.log({
         action: AuditAction.LOGIN,
@@ -338,25 +340,23 @@ export class AuthService {
       return { accessToken, mfaSetupRequired: true };
     }
 
-    if (user.mfaEnabled) {
-      if (!dto.totpCode) {
-        // Reto MFA pendiente: ni exito ni fallo todavia, no se audita como intento.
-        return {
-          accessToken: '',
-          mfaRequired: true,
-        };
-      }
+    if (!dto.totpCode) {
+      // Reto MFA pendiente: ni exito ni fallo todavia, no se audita como intento.
+      return {
+        accessToken: '',
+        mfaRequired: true,
+      };
+    }
 
-      if (!user.mfaSecret) {
-        await this.logPlatformLoginFailed(user.id, 'MFA_SIN_SECRETO', ipAddress, userAgent);
-        throw new UnauthorizedException('La cuenta requiere completar el setup de MFA.');
-      }
+    if (!user.mfaSecret) {
+      await this.logPlatformLoginFailed(user.id, 'MFA_SIN_SECRETO', ipAddress, userAgent);
+      throw new UnauthorizedException('La cuenta requiere completar el setup de MFA.');
+    }
 
-      const mfaValid = await this.verifyTotp(this.decryptSecret(user.mfaSecret), dto.totpCode);
-      if (!mfaValid) {
-        await this.logPlatformLoginFailed(user.id, 'MFA_INVALIDO', ipAddress, userAgent);
-        throw new UnauthorizedException('Codigo MFA invalido.');
-      }
+    const mfaValid = await this.verifyTotp(this.decryptSecret(user.mfaSecret), dto.totpCode);
+    if (!mfaValid) {
+      await this.logPlatformLoginFailed(user.id, 'MFA_INVALIDO', ipAddress, userAgent);
+      throw new UnauthorizedException('Codigo MFA invalido.');
     }
 
     await this.platformUserRepository.update(user.id, {
@@ -783,12 +783,22 @@ export class AuthService {
     return crypto.createHash('sha256').update(passwordHash).digest('hex');
   }
 
+  /** Liga la sesión al segundo factor. Sobre el secreto descifrado: recifrar no la invalida. */
+  private mfaVersion(user: Pick<PlatformUser, 'mfaSecret'>): string | null {
+    try {
+      return user.mfaSecret ? this.hashToken(this.decryptSecret(user.mfaSecret)) : null;
+    } catch {
+      // Secreto indescifrable: no coincide con ninguna sesión.
+      return null;
+    }
+  }
+
   /**
    * Crea y persiste un refresh token de plataforma. Devuelve el valor raw:
    * solo existe en memoria y en la cookie httpOnly, nunca en logs ni Redis.
    */
   private async createPlatformRefreshToken(
-    user: Pick<PlatformUser, 'id' | 'passwordHash'>,
+    user: Pick<PlatformUser, 'id' | 'passwordHash' | 'mfaSecret'>,
     ipAddress?: string,
     userAgent?: string,
     familyId?: string,
@@ -804,6 +814,7 @@ export class AuthService {
         userId: user.id,
         familyId: sessionFamilyId,
         credentialVersion: this.credentialVersion(user.passwordHash),
+        mfaVersion: this.mfaVersion(user),
         expiresAt,
         revokedAt: null,
       }),
@@ -841,6 +852,7 @@ export class AuthService {
       userId: string;
       familyId: string;
       credentialVersion?: string;
+      mfaVersion?: string | null;
       expiresAt: string;
       revokedAt: string | null;
     };
@@ -880,7 +892,10 @@ export class AuthService {
 
     if (
       user.passwordResetRequired ||
-      record.credentialVersion !== this.credentialVersion(user.passwordHash)
+      record.credentialVersion !== this.credentialVersion(user.passwordHash) ||
+      !user.mfaEnabled ||
+      !record.mfaVersion ||
+      record.mfaVersion !== this.mfaVersion(user)
     ) {
       await this.revokePlatformRefreshFamily(record.familyId);
       this.logger.warn('PLATFORM_REFRESH_CREDENTIAL_CHANGED — la credencial ya no es vigente.');
@@ -1029,21 +1044,19 @@ export class AuthService {
    * RF-AUTH-03
    */
   async setupPlatformMfa(actor: JwtPayload): Promise<MfaSetupResponse> {
-    const { label, secret } = await this.platformUserRepository.manager.transaction(
-      async (manager) => {
-        const user = await this.lockPlatformMfaEnrollment(actor, manager);
-        if (user.mfaSecret) {
-          return {
-            label: this.decodeStoredValue(user.email),
-            secret: this.decryptSecret(user.mfaSecret),
-          };
-        }
-        const secret = this.totp.generateSecret();
-        await manager.update(PlatformUser, user.id, { mfaSecret: this.encryptSecret(secret) });
-        return { label: this.decodeStoredValue(user.email), secret };
-      },
+    const label = await this.platformUserRepository.manager.transaction(async (manager) =>
+      this.decodeStoredValue((await this.lockPlatformMfaEnrollment(actor, manager)).email),
     );
-    return this.renderMfaSetup(secret, label);
+    // Un secreto por ingreso: quien vio antes otro QR no conserva el segundo factor.
+    const key = this.platformMfaPendingKey(actor);
+    const ttl = Math.max(1, (actor.exp ?? 0) - Math.floor(Date.now() / 1000));
+    const stored = await this.orUnavailable(async () => {
+      const candidate = this.encryptSecret(this.totp.generateSecret());
+      await this.redis.set(key, candidate, 'EX', ttl, 'NX');
+      return this.redis.get(key);
+    });
+    if (!stored) throw new ServiceUnavailableException('Vuelve a iniciar sesión.');
+    return this.renderMfaSetup(this.decryptSecret(stored), label);
   }
 
   async verifyPlatformMfa(
@@ -1051,16 +1064,37 @@ export class AuthService {
     dto: MfaVerifyDto,
     context: AuditRequestContext,
   ): Promise<void> {
+    const key = this.platformMfaPendingKey(actor);
+    const stored = await this.orUnavailable(() => this.redis.get(key));
     await this.platformUserRepository.manager.transaction(async (manager) => {
       const user = await this.lockPlatformMfaEnrollment(actor, manager);
-      if (
-        !user.mfaSecret ||
-        !(await this.verifyTotp(this.decryptSecret(user.mfaSecret), dto.totpCode))
-      ) {
+      if (!stored || !(await this.verifyTotp(this.decryptSecret(stored), dto.totpCode))) {
         throw new UnauthorizedException('Código incorrecto. Revisa tu aplicación autenticadora.');
       }
-      await this.activatePlatformMfa(manager, user.id, user.mfaSecret, context);
+      await this.activatePlatformMfa(manager, user.id, stored, context);
     });
+    // Ya activa, el token no puede inscribir de nuevo: un fallo aquí no revierte la activación.
+    try {
+      await this.redis.del(key);
+      const ttl = (actor.exp ?? 0) - Math.floor(Date.now() / 1000);
+      if (ttl > 0) await this.redis.set(`jti:blacklist:${actor.jti}`, '1', 'EX', ttl);
+    } catch (err) {
+      this.logger.warn(`Limpieza de inscripción MFA: ${summarizeErrorForLog(err)}`);
+    }
+  }
+
+  private platformMfaPendingKey(actor: JwtPayload): string {
+    return `mfa:pending:platform:${actor.sub}:${actor.jti}`;
+  }
+
+  /** Redis caído cierra la operación con 503. */
+  private async orUnavailable<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (err) {
+      this.logger.error(`Redis no disponible: ${summarizeErrorForLog(err)}`);
+      throw new ServiceUnavailableException('Intenta de nuevo en unos minutos.');
+    }
   }
 
   async setupPlatformSelfMfa(
@@ -1190,13 +1224,15 @@ export class AuthService {
     const user = await manager.findOne(PlatformUser, {
       where: {
         id: actor.sub,
-        status: UserStatus.PENDING_VERIFICATION,
+        status: In([UserStatus.PENDING_VERIFICATION, UserStatus.ACTIVE]),
         passwordResetRequired: false,
         mfaEnabled: false,
       },
       lock: { mode: 'pessimistic_write' },
     });
-    if (!user) throw new ForbiddenException('La cuenta no tiene una activación pendiente.');
+    if (!user || actor.credentialVersion !== this.credentialVersion(user.passwordHash)) {
+      throw new ForbiddenException('La cuenta no tiene una activación pendiente.');
+    }
     return user;
   }
 
@@ -2019,6 +2055,10 @@ export class AuthService {
       type: 'platform',
       // Indica al frontend si la cuenta debe cambiar la contrasena antes de operar
       passwordResetRequired: user.passwordResetRequired ?? false,
+      // La inscripción de MFA queda ligada a la contraseña vigente.
+      ...(scope === 'platform-mfa-setup'
+        ? { credentialVersion: this.credentialVersion(user.passwordHash) }
+        : {}),
       // Scope limitado para el cambio obligatorio — ausente en tokens completos
       ...(scope ? { scope } : {}),
     };
@@ -2034,12 +2074,10 @@ export class AuthService {
     return { accessToken, jti };
   }
 
-  /**
-   * Firma un access token para un usuario de plataforma recien creado.
-   * Usado por el flujo bootstrap para evitar una llamada adicional a platformLogin.
-   */
-  signPlatformToken(user: PlatformUser): string {
-    return this.signPlatformAccessToken(user).accessToken;
+  /** Token de inscripción MFA para la cuenta recién creada por el alta pública. */
+  async signPlatformEnrollmentToken(userId: string): Promise<string> {
+    const user = await this.platformUserRepository.findOneByOrFail({ id: userId });
+    return this.signPlatformAccessToken(user, 'platform-mfa-setup').accessToken;
   }
 
   /**

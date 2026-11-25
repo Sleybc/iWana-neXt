@@ -84,20 +84,21 @@ export class PlatformUsersController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary:
-      'Crea el usuario admin inicial de plataforma y retorna el access token (flujo bootstrap)',
+      'Crea el usuario admin inicial de plataforma y retorna un token de inscripción MFA (solo desarrollo)',
   })
-  @ApiResponse({ status: 201, description: 'Usuario admin creado y token emitido.' })
+  @ApiResponse({ status: 201, description: 'Usuario admin creado y token de inscripción emitido.' })
+  @ApiResponse({ status: 404, description: 'Fuera de desarrollo y pruebas.' })
   @ApiResponse({ status: 409, description: 'Ya existen usuarios o email inválido.' })
   async createBootstrapUser(
     @Body() dto: CreatePlatformUserBootstrapDto,
     @Request() req: ExpressRequest,
-  ): Promise<{ data: { accessToken: string } }> {
+  ): Promise<{ data: { accessToken: string; mfaSetupRequired: true } }> {
     const user = await this.platformUsersService.createBootstrapUser(
       dto,
       PlatformUsersController.auditContext(req),
     );
-    const accessToken = this.authService.signPlatformToken(user as unknown as PlatformUser);
-    return { data: { accessToken } };
+    const accessToken = await this.authService.signPlatformEnrollmentToken(user.id);
+    return { data: { accessToken, mfaSetupRequired: true } };
   }
 
   /**

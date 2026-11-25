@@ -46,7 +46,7 @@ export default function PlatformMfaSetupPage() {
       setError(
         error instanceof ApiError && error.status === 401
           ? 'Revisa el código de tu aplicación autenticadora o vuelve a iniciar sesión si expiró.'
-          : 'No pudimos activar la cuenta. Intenta de nuevo o vuelve a iniciar sesión.',
+          : 'No pudimos activar la verificación. Intenta de nuevo o vuelve a iniciar sesión.',
       );
     } finally {
       setSubmitting(false);
@@ -65,8 +65,8 @@ export default function PlatformMfaSetupPage() {
         <div className="space-y-4">
           {confirmed && (
             <p role="status">
-              Cuenta activada. Inicia sesión con tu contraseña y un código de tu aplicación
-              autenticadora.
+              Verificación en dos pasos activada. Inicia sesión con tu contraseña y un código de tu
+              aplicación autenticadora.
             </p>
           )}
           {!setup && !error && !confirmed && <p role="status">Preparando el código QR…</p>}
@@ -83,7 +83,7 @@ export default function PlatformMfaSetupPage() {
                 required
               />
               <Button type="submit" disabled={submitting}>
-                {submitting ? 'Confirmando…' : 'Activar cuenta'}
+                {submitting ? 'Confirmando…' : 'Activar verificación'}
               </Button>
             </form>
           )}

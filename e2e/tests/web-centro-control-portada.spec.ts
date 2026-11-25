@@ -513,11 +513,13 @@ test.describe('Centro de control — pulso de plataforma (datos completos)', () 
     await expect(page.getByRole('img', { name: 'Código QR de configuración' })).toBeVisible();
     const code = page.getByLabel('Código de seis dígitos');
     await code.fill('654321');
-    await page.getByRole('button', { name: 'Activar cuenta' }).click();
+    await page.getByRole('button', { name: 'Activar verificación' }).click();
     await expect(page.getByRole('alert').filter({ hasText: 'Revisa el código' })).toBeVisible();
     await code.fill('123456');
-    await page.getByRole('button', { name: 'Activar cuenta' }).click();
-    await expect(page.getByRole('status').filter({ hasText: 'Cuenta activada' })).toBeVisible();
+    await page.getByRole('button', { name: 'Activar verificación' }).click();
+    await expect(
+      page.getByRole('status').filter({ hasText: 'Verificación en dos pasos activada' }),
+    ).toBeVisible();
     await page.getByRole('link', { name: 'Iniciar sesión', exact: true }).click();
     await expect(page).toHaveURL(/\/auth\/login$/);
   });

@@ -167,7 +167,7 @@ export function LoginForm() {
       });
       if (result.accessToken) {
         persistAccessToken(result.accessToken);
-        router.push('/dashboard');
+        router.push('/auth/mfa/setup');
       }
     } catch (err) {
       if (err instanceof ApiError) {

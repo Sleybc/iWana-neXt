@@ -1,7 +1,7 @@
 # Spec — Transversal · MFA obligatorio en plataforma, TOTP de un solo uso y freno del segundo factor
 
 **Versión:** 1.2 (v1.1 con GO de AI-SEC-ENG; esta registra el G0 y afina CA-2 y CA-10)
-**Estado:** Aprobada. G0 del CTO el 2026-11-25 sobre los cinco puntos de §8. ADR-115 (en revisión) pasa a Aprobado al incorporar sus dos enmiendas, antes de fusionar b.
+**Estado:** Aprobada. G0 del CTO el 2026-11-25 sobre los cinco puntos de §8. ADR-115 quedó Aprobado con sus dos enmiendas en la ola b.
 **Fecha:** 2026-11-25
 **Autor:** Claude Code · **Dictamen de origen:** AI-SEC-ENG, 2026-11-24, sobre `d19be3fb`
 **Cambia:** [límites de peticiones](2026-11-06-limites-de-peticiones-spec.md) §4 y §6.3 en `platform/login`, y el bucket de ambos login (siempre IP)
@@ -118,6 +118,8 @@ Las pruebas nuevas se ven rojas antes del cambio.
 | CA-14 | `up` y `down` de ambas migraciones                                                                                                              | Integración                 |
 | CA-15 | E2E operativo en CI (mínimo 30) y corrida aparte de los diez specs reales, con conteo y cero omisiones: en CI se omiten                         | CI y corrida manual         |
 | CA-16 | Dos ingresos de inscripción dan secretos distintos; gana una sola; el código del otro secreto no sirve; cambiar la contraseña invalida el token | PostgreSQL y Redis          |
+
+CA-3 se prueba sin petición HTTP en el 404 (servicio y arranque real de la configuración). CA-2 y CA-16 se prueban con PostgreSQL real y un doble de Redis en memoria; el E2E operativo ejerce Redis real en el camino normal.
 
 ## 8. Puntos del G0 del CTO (aprobados el 2026-11-25)
 

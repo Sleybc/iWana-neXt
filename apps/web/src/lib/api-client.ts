@@ -577,7 +577,7 @@ export const platformUsersApi = {
     }),
 
   createBootstrapUser: (data: CreateBootstrapUserPayload) =>
-    request<{ accessToken: string }>('/platform-users/bootstrap', {
+    request<{ accessToken: string; mfaSetupRequired: true }>('/platform-users/bootstrap', {
       method: 'POST',
       body: JSON.stringify(data),
       skipAuth: true,

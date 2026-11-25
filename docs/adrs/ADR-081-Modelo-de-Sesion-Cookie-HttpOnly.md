@@ -194,3 +194,7 @@ Las cookies no distinguen puertos. Con consola y portal en la misma IP, la API t
 - Al desplegar, la consola pide ingresar una vez más; en el portal, solo a quien inscriba MFA con un token anterior.
 
 Precisa «Fuera de alcance» (mecanismo de revocación), que delimitaba la migración de OLA1-b.
+
+## Enmienda 3 (2026-11-25) — segundo factor vigente
+
+El refresh de plataforma se liga también al segundo factor: guarda la huella del secreto TOTP y se rechaza, revocando la familia, si la cuenta no tiene MFA o lo reinscribió. Forma parte de la [spec de MFA en plataforma](../specs/2026-11-25-mfa-plataforma-y-totp-uso-unico-spec.md) §3.1.3, con G0 del CTO.

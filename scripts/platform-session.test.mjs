@@ -79,5 +79,17 @@ test('reutiliza la sesión y no inscribe', async () => {
 
 test('inscribe y devuelve el secreto', async () => {
   reply([200, { data: { otpauthUri: `otpauth://totp/x?secret=${SECRET}` } }], [204, null]);
-  assert.equal(await enrollPlatformMfa('http://api.test', 't'), SECRET);
+  let saved;
+  assert.equal(await enrollPlatformMfa('http://api.test', 't', (s) => (saved = s)), SECRET);
+  assert.equal(saved, SECRET);
+});
+
+test('entrega el secreto aunque la confirmación falle', async () => {
+  reply([200, { data: { otpauthUri: `otpauth://totp/x?secret=${SECRET}` } }], [500, null]);
+  let saved;
+  await assert.rejects(
+    enrollPlatformMfa('http://api.test', 't', (s) => (saved = s)),
+    /HTTP 500/u,
+  );
+  assert.equal(saved, SECRET);
 });

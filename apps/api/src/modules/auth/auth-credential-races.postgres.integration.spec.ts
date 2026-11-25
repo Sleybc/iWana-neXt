@@ -267,7 +267,10 @@ describeWithDb('Carreras de credencial (PostgreSQL real)', () => {
         passwordHash: await bcrypt.hash(OLD, 4),
         role: PlatformRole.IWANA_SUPPORT,
         status: UserStatus.ACTIVE,
-        mfaEnabled: false,
+        mfaEnabled: true,
+        mfaSecret: (auth as unknown as { encryptSecret: (value: string) => string }).encryptSecret(
+          'SECRETO',
+        ),
         passwordResetRequired: false,
       }),
     );
@@ -734,6 +737,78 @@ describeWithDb('Carreras de credencial (PostgreSQL real)', () => {
         expect((await settle(auth.refreshPlatformTokens(refresh))).status).toBe(401);
       }
       expect((await settle(auth.refreshPlatformTokens(await session(id)))).status).toBe(200);
+    });
+
+    const encryptSecret = (value: string): string =>
+      (auth as unknown as { encryptSecret: (value: string) => string }).encryptSecret(value);
+
+    it.each([
+      ['no existía y se inscribe después', { mfaEnabled: false, mfaSecret: null }, {}],
+      ['se desactiva', {}, { mfaEnabled: false, mfaSecret: null }],
+      ['se reinscribe con otro secreto', {}, { mfaSecret: 'OTRO' }],
+    ])('la sesión no se renueva y su familia cae si el MFA %s', async (_caso, before, after) => {
+      const id = await seedPlatformUser();
+      const repository = dataSource.getRepository(PlatformUser);
+      const { mfaSecret } = await readPlatform(id);
+      await repository.update(id, before);
+      const refresh = await session(id);
+      await repository.update(id, { mfaEnabled: true, mfaSecret, ...after });
+      if ('mfaSecret' in after && after.mfaSecret) {
+        await repository.update(id, { mfaSecret: encryptSecret(after.mfaSecret) });
+      }
+
+      expect((await settle(auth.refreshPlatformTokens(refresh))).status).toBe(401);
+      expect(await redis.get(`platform:refresh:token:${hashOpaqueToken(refresh)}`)).toBeNull();
+    });
+
+    describe('inscripción de MFA', () => {
+      const enrollmentActor = async (id: string): Promise<JwtPayload> => {
+        const { accessToken: _token } = (
+          auth as unknown as {
+            signPlatformAccessToken: (user: PlatformUser, scope: string) => { accessToken: string };
+          }
+        ).signPlatformAccessToken(await readPlatform(id), 'platform-mfa-setup');
+        return lastActor();
+      };
+      const seedWithoutMfa = async (): Promise<string> => {
+        const id = await seedPlatformUser();
+        await dataSource
+          .getRepository(PlatformUser)
+          .update(id, { mfaEnabled: false, mfaSecret: null });
+        return id;
+      };
+      const verify = (actor: JwtPayload): Promise<Outcome> =>
+        settle(auth.verifyPlatformMfa(actor, { totpCode: '123456' }, {}));
+
+      it('de dos confirmaciones válidas simultáneas gana una', async () => {
+        const id = await seedWithoutMfa();
+        const actors = [await enrollmentActor(id), await enrollmentActor(id)];
+        for (const actor of actors) await auth.setupPlatformMfa(actor);
+        const results = await Promise.all(actors.map(verify));
+
+        expect(results.map((r) => r.status).sort()).toEqual([200, 403]);
+        expect((await readPlatform(id)).mfaEnabled).toBe(true);
+      });
+
+      it('cambiar la contraseña de verdad invalida el token de inscripción', async () => {
+        const id = await seedWithoutMfa();
+        const actor = await enrollmentActor(id);
+        await auth.setupPlatformMfa(actor);
+        await change(id);
+
+        expect((await settle(auth.setupPlatformMfa(actor))).status).toBe(403);
+        expect((await verify(actor)).status).toBe(403);
+        expect((await readPlatform(id)).mfaEnabled).toBe(false);
+      });
+
+      it('un secreto anterior guardado sin activar no sirve', async () => {
+        const id = await seedWithoutMfa();
+        await dataSource
+          .getRepository(PlatformUser)
+          .update(id, { mfaSecret: encryptSecret('ANTERIOR') });
+
+        expect((await verify(await enrollmentActor(id))).status).toBe(401);
+      });
     });
 
     it('la sesión sobrevive a rotaciones sucesivas', async () => {

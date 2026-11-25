@@ -744,6 +744,7 @@ async function startApi() {
     cwd: process.cwd(),
     env: {
       ...process.env,
+      NODE_ENV: process.env.NODE_ENV ?? 'development',
       PLATFORM_SUPER_ADMIN_EMAIL: platformEmail,
       PLATFORM_SUPER_ADMIN_PASSWORD: platformPassword,
       // Spec de límites de peticiones §5: Playwright corre desde una sola

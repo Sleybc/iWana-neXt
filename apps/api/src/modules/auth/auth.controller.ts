@@ -48,6 +48,7 @@ import {
 } from './session-cookies.constants';
 import { resolveAccessTokenTtlSeconds, resolveRefreshTokenTtlSeconds } from './token-ttl.constants';
 import { resolveRouteRateLimit } from '../../common/rate-limit-env';
+import { getIpRateLimitTracker } from '../../common/rate-limit-tracker';
 
 /** Nombre de la cookie del refresh token del portal (audiencia tenant). */
 const REFRESH_TOKEN_COOKIE = tenantRefreshCookieName();
@@ -134,7 +135,9 @@ export class AuthController {
   // `app.module.ts` (`name: 'global'`, @nestjs/throttler@6.5.0
   // `throttler.guard.js`) — con `{ default: ... }` el límite nunca se
   // aplica y CA-8 (11ª petición → 200) lo demuestra.
-  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(30) } })
+  @Throttle({
+    global: { ttl: 60000, limit: resolveRouteRateLimit(30), getTracker: getIpRateLimitTracker },
+  })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Iniciar sesion con email y password (+ TOTP si MFA activo)' })
   @ApiResponse({ status: 200, description: 'Login exitoso — access token emitido.' })
@@ -198,7 +201,9 @@ export class AuthController {
   @Public()
   @Post('platform/login')
   @Header('Cache-Control', 'no-store')
-  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(5) } })
+  @Throttle({
+    global: { ttl: 60000, limit: resolveRouteRateLimit(5), getTracker: getIpRateLimitTracker },
+  })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Iniciar sesion de plataforma (SYSTEM_ADMIN / IWANA_SUPPORT)' })
   @ApiResponse({ status: 200, description: 'Login de plataforma exitoso.' })
@@ -450,12 +455,13 @@ export class AuthController {
   @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(10) } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Configurar la verificación en dos pasos de una cuenta de plataforma pendiente',
+    summary: 'Configurar la verificación en dos pasos de una cuenta de plataforma sin ella',
   })
   @ApiResponse({
     status: 200,
     description: 'Código QR y clave de configuración para la persona titular.',
   })
+  @ApiResponse({ status: 503, description: 'Servicio temporalmente no disponible.' })
   @ApiResponse({ status: 403, description: 'La sesión no permite configurar esta cuenta.' })
   async setupPlatformMfa(@CurrentUser() user: JwtPayload): Promise<{ data: MfaSetupResponse }> {
     return { data: await this.authService.setupPlatformMfa(user) };
@@ -468,8 +474,12 @@ export class AuthController {
   @ApiOperation({
     summary: 'Activar una cuenta de plataforma al confirmar su verificación en dos pasos',
   })
-  @ApiResponse({ status: 204, description: 'Cuenta activada. La persona debe iniciar sesión.' })
+  @ApiResponse({
+    status: 204,
+    description: 'Verificación en dos pasos activada. La persona debe iniciar sesión.',
+  })
   @ApiResponse({ status: 401, description: 'Código de verificación inválido.' })
+  @ApiResponse({ status: 503, description: 'Servicio temporalmente no disponible.' })
   @ApiResponse({ status: 403, description: 'La sesión no permite activar esta cuenta.' })
   async verifyPlatformMfa(
     @CurrentUser() user: JwtPayload,

@@ -567,6 +567,30 @@ describe('CA-2 — login (30) y platform/login (5) responden 429 en el valor apr
   }, 60000);
 });
 
+describe('Los dos login cuentan por IP aunque lleven sesión de empresa', () => {
+  it.each([
+    ['login', 30],
+    ['platform/login', 5],
+  ])(
+    '%s',
+    async (path, limit) => {
+      const app = await buildApp();
+      try {
+        const attempt = (token: string) =>
+          request(app.getHttpServer() as never)
+            .post(`/api/v1/auth/${path}`)
+            .set('Authorization', token)
+            .send({ email: 'usuario@ejemplo.test', password: 'Passw0rd!!' });
+        for (let i = 0; i < limit; i += 1) await attempt(TENANT_USER_1).expect(200);
+        await attempt('Bearer tenant-user-2').expect(429);
+      } finally {
+        await app.close();
+      }
+    },
+    60000,
+  );
+});
+
 describe('CA-3 — Una segunda IP no comparte bucket en rutas públicas', () => {
   it('agotada la IP 203.0.113.10 en public-branding, la IP 203.0.113.11 sigue en 200', async () => {
     const app = await buildApp();
