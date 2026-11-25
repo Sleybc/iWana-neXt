@@ -8,6 +8,7 @@ import { createRequire } from 'node:module';
 import type { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { consoleSurfaceMiddleware } from './common/console-surface';
 import { createGlobalValidationPipe } from './common/pipes/global-validation.pipe';
 
 /**
@@ -100,6 +101,9 @@ async function bootstrap(): Promise<void> {
   // inyectado; con `1` toma exactamente el salto que anade nginx. Si algun dia se
   // antepone otro proxy (CDN, balanceador), este numero sube — no vuelve a `true`.
   app.set('trust proxy', 1);
+
+  // Plataforma solo desde el vhost de la consola (spec 2026-11-25 §5.3).
+  app.use(consoleSurfaceMiddleware);
 
   // Habilitar lectura de cookies (refresh token llega como cookie httpOnly)
   app.use(cookieParser());

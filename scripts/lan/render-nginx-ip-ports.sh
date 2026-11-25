@@ -8,6 +8,7 @@
 set -euo pipefail
 src="$(dirname "$0")/../../nginx/nginx.prod.conf"
 out=$(perl -0pe '
+  s/server_name consola\.REPLACE_ME_PRODUCTION_DOMAIN _;/server_name _;/;
   s/listen 443 ssl;(\n    http2 on;\n    server_name )portal\.REPLACE_ME_PRODUCTION_DOMAIN;/listen 8443 ssl;$1_;/;
   s/listen 443 ssl;(\n    http2 on;\n    server_name )archivos\.REPLACE_ME_PRODUCTION_DOMAIN;/listen 9443 ssl;$1_;/;
   my $i = index($_, "listen 8443 ssl;");

@@ -54,6 +54,7 @@ import {
 } from './session-cookies.constants';
 import { resolveAccessTokenTtlSeconds, resolveRefreshTokenTtlSeconds } from './token-ttl.constants';
 import { resolveRouteRateLimit } from '../../common/rate-limit-env';
+import { isConsoleSurface } from '../../common/console-surface';
 import { getIpRateLimitTracker } from '../../common/rate-limit-tracker';
 
 /** Nombre de la cookie del refresh token del portal (audiencia tenant). */
@@ -320,7 +321,10 @@ export class AuthController {
   ): Promise<{ data: { accessToken: string } }> {
     const cookies = (req.cookies ?? {}) as Record<string, string>;
     const rawTenantRefreshToken = cookies[tenantRefreshCookieName()];
-    const rawPlatformRefreshToken = cookies[platformRefreshCookieName()];
+    // Fuera de la consola la sesión de plataforma se ignora sin consumirla.
+    const rawPlatformRefreshToken = isConsoleSurface(req)
+      ? cookies[platformRefreshCookieName()]
+      : undefined;
     const ipAddress = req.ip ?? req.socket?.remoteAddress;
     const userAgent = req.headers['user-agent'];
 

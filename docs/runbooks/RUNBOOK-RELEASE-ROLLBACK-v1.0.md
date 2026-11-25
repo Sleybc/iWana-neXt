@@ -134,9 +134,21 @@ Mientras cualquiera de estos bloqueos afecte al entorno objetivo, el paso operat
 
 8. Portal por IP, solo para pruebas en la LAN con aprobación del CTO (sin DNS). Genera la configuración con `scripts/lan/render-nginx-ip-ports.sh > <ruta>` y repite el paso cada vez que cambie `nginx.prod.conf`. En el `.env`: `PROXY_NGINX_CONFIG=<ruta>`, `S3_PUBLIC_ENDPOINT=https://<IP>:9443`, `PORTAL_URL=https://<IP>:8443` y `CORS_ORIGIN=https://<IP>,https://<IP>:8443`. Reconstruye el portal (su CSP fija el origen de archivos). En `lan.conf`: `IWANA_LAN_PORTS="80 443 8443 9443"`. Desde entonces **todo** `docker compose` de este entorno añade `-f docker-compose.lan-ports.yml`; sin él, el proxy se recrea sin 8443 ni 9443. Consola y portal comparten host: las cookies tienen nombres distintos, pero no hay aislamiento por dominio. No vale para producción. El respaldo de archivos no necesita el tercer archivo.
 
-**Paso posterior a VPS.** Usa los mismos archivos Compose con `.env.production`. Deja `PROXY_BIND_IP` vacío para conservar la publicación por defecto de Docker o fija la interfaz de entrada del VPS. Apunta los dominios aprobados al VPS. Si la base está vacía, restringe el 443 al equipo del operador hasta crear y verificar la cuenta inicial. Prepara el puerto 80 y el webroot de HTTP-01 según §8.2 y [ADR-095](../adrs/ADR-095-Topologia-Productiva-Dominio-TLS-Hosting.md). La configuración base de Nginx redirige el 80 a HTTPS.
+   **Consola (spec 2026-11-25 §5).** Copia `nginx/console-allow.conf` fuera del repositorio, añade antes de `deny all` los rangos de la VPN, o en la LAN los de los administradores, e indícalo en `PROXY_CONSOLE_ALLOW`. Sin ese archivo nadie entra a la consola. **Nunca permitas la pasarela ni rangos de Docker** (172.16.0.0/12): abriría la consola a todos. Apunta `IWANA_HEALTH_URL` al portal (en la LAN, `https://<IP>:8443/api/v1/health`). Comprueba en el log de nginx que `$remote_addr` es la IP del cliente y no la pasarela. Regenera la configuración por IP.
 
-Crea una copia local de `nginx/nginx.prod.conf` fuera del repositorio. En esa copia, sustituye los nombres marcadores por los del portal y de archivos cuando estén aprobados. Configura `PROXY_NGINX_CONFIG` con la ruta a la copia, monta el certificado que cubra los nombres publicados con `PROXY_TLS_DIR` y actualiza `CORS_ORIGIN`, `FRONTEND_URL` y `S3_PUBLIC_ENDPOINT`. Si cambias las variables de build del navegador, reconstruye las imágenes afectadas según §5.2.
+   **Orden al actualizar un entorno en marcha.** nginx antes que la API. El nginx anterior reenvía la cabecera `X-Iwana-Surface` que mande el cliente: con la API nueva detrás, el control sería falsificable y los administradores quedarían fuera. Siempre con `--no-deps`, porque `nginx-prod` depende de las aplicaciones y las recrearía antes.
+
+   1. Define `PROXY_CONSOLE_ALLOW` y `PROXY_BIND_IP`, y regenera o copia la configuración de nginx.
+   2. `up -d --no-deps --force-recreate nginx-prod` (una recarga no basta: falta el montaje nuevo) y `exec -T nginx-prod nginx -t`.
+   3. `exec -T nginx-prod nginx -T` debe mostrar `X-Iwana-Surface console` y `portal`.
+   4. `up -d --no-deps api-prod`, hasta `healthy`.
+   5. `up -d --no-deps web-prod portal-prod`.
+
+   **Reversión:** web y portal, después API, nginx al final; también con `--no-deps`. No reviertas nginx con la API nueva activa.
+
+**Paso posterior a VPS.** Usa los mismos archivos Compose con `.env.production`. Fija en `PROXY_BIND_IP` la IPv4 de entrada del VPS: es obligatoria, y no publiques IPv6. Apunta los dominios aprobados al VPS. Si la base está vacía, restringe el 443 al equipo del operador hasta crear y verificar la cuenta inicial. Prepara el puerto 80 y el webroot de HTTP-01 según §8.2 y [ADR-095](../adrs/ADR-095-Topologia-Productiva-Dominio-TLS-Hosting.md). La configuración base de Nginx redirige el 80 a HTTPS.
+
+Crea una copia local de `nginx/nginx.prod.conf` fuera del repositorio. En esa copia, sustituye los nombres marcadores por los de la consola, del portal y de archivos cuando estén aprobados. Configura `PROXY_NGINX_CONFIG` con la ruta a la copia, monta el certificado que cubra los nombres publicados con `PROXY_TLS_DIR` y actualiza `CORS_ORIGIN`, `FRONTEND_URL` y `S3_PUBLIC_ENDPOINT`. Si cambias las variables de build del navegador, reconstruye las imágenes afectadas según §5.2.
 
 ## 2. Registro de release y prerrequisitos
 
@@ -261,6 +273,8 @@ ORDER BY id DESC;
 
 ### Paso 3 — Arrancar aplicaciones
 
+Este orden vale solo para la instalación inicial. Con el entorno en marcha, sigue «Orden al actualizar un entorno en marcha» de §1.3.
+
 ```bash
 docker compose --profile production --env-file .env.production \
   -f docker-compose.yml -f docker-compose.prod.yml up -d api-prod web-prod portal-prod worker-prod
@@ -284,7 +298,7 @@ docker compose --profile production --env-file .env.production \
   -f docker-compose.yml -f docker-compose.prod.yml exec -T nginx-prod nginx -t
 ```
 
-Validar externamente el dominio aprobado:
+Validar externamente el dominio del portal; la consola responde 403 fuera de su lista y se prueba desde la VPN:
 
 ```bash
 curl --fail --silent --show-error https://<dominio-aprobado>/health
@@ -370,11 +384,11 @@ Usar siempre los tags/digests **anteriores** registrados en el acta. No usar `la
 
 1. Detener el despliegue nuevo y conservar sus logs sanitizados.
 2. Volver al digest anterior solo si el esquema actual es compatible con ese binario.
-3. Recrear API y esperar el healthcheck:
+3. Recrear API, sin tocar nginx (ver la reversión de §1.3), y esperar el healthcheck:
 
    ```bash
    docker compose --profile production --env-file .env.production \
-     -f docker-compose.yml -f docker-compose.prod.yml up -d api-prod
+     -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps api-prod
    ```
 
 4. Si la migración cambió el contrato o eliminó datos, no forzar una imagen anterior: usar restore global o tenant según §6 con autorización CTO.

@@ -5,6 +5,8 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import type { Request } from 'express';
+import { isConsoleSurface } from '../../../common/console-surface';
 import { AuthGuard } from '@nestjs/passport';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import type { JwtPayload } from '../interfaces/jwt-payload.interface';
@@ -113,6 +115,14 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   ): TUser {
     if (err || !user) {
       throw err ?? new UnauthorizedException('Token de acceso invalido o expirado.');
+    }
+
+    // Un token de plataforma solo vale desde la consola, en cualquier ruta (spec 2026-11-25 §5.3).
+    if (
+      user.type === 'platform' &&
+      !isConsoleSurface(context.switchToHttp().getRequest<Request>())
+    ) {
+      throw new UnauthorizedException('El token no es valido para esta superficie.');
     }
 
     // Verificar scope limitado: un token con alcance acotado solo alcanza sus rutas.

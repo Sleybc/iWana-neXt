@@ -92,6 +92,8 @@ const nextConfig: NextConfig = {
     ];
   },
   async rewrites() {
+    // En las imágenes nginx enruta la API; este proxy la alcanzaría con otra IP aparente.
+    if (process.env.IWANA_DISABLE_API_REWRITE === '1') return [];
     return [
       {
         source: '/api/v1/:path*',

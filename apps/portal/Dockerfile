@@ -74,6 +74,8 @@ COPY packages/ui     packages/ui
 COPY apps/portal      apps/portal
 
 RUN pnpm exec tsc --project packages/shared/tsconfig.json
+# nginx enruta /api/: el proxy de Next quedaría como segundo camino a la API (spec 2026-11-25 §5.4).
+ENV IWANA_DISABLE_API_REWRITE=1
 RUN pnpm --filter @iwana/portal build
 
 # ── runner: imagen mínima de producción ─────────────────────────────────────

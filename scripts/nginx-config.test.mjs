@@ -186,3 +186,76 @@ test('nginx re-resolves every upstream when a container is recreated', async () 
     assert.match(body, new RegExp(`zone ${name} 64k;\\s*server \\S+ resolve;`), name);
   }
 });
+
+// ── Red de la consola (spec 2026-11-25 §5) ──────────────────────────────────
+test('nginx prod marks the surface on every proxied location and restricts the console', async () => {
+  const config = await readFile(prodConfigPath, 'utf8');
+  const blocks = serverBlocks(config);
+  const consoleBlock = blocks.find((block) => block.includes('listen 443 ssl default_server;'));
+  const portalBlock = blocks.find((block) => block.includes('server_name portal.'));
+  for (const [block, surface] of [
+    [consoleBlock, 'console'],
+    [portalBlock, 'portal'],
+  ]) {
+    const proxied = [...block.matchAll(/proxy_pass http:/g)].length;
+    const marked = [...block.matchAll(/proxy_set_header X-Iwana-Surface (\w+);/g)].map(
+      ([, s]) => s,
+    );
+    assert.deepEqual(marked, Array(proxied).fill(surface));
+  }
+  // El portal niega plataforma sin distinguir mayúsculas (en ejecución: nginx-surface.integration).
+  const denied = [...portalBlock.matchAll(/location ~\* (\S+) \{\s*return 404;\s*\}/g)].map(
+    ([, pattern]) => new RegExp(pattern, 'i'),
+  );
+  const isDenied = (path) => denied.some((pattern) => pattern.test(path));
+  for (const path of [
+    '/api/v1/auth/platform/login',
+    '/API/v1/Platform-Users/bootstrap',
+    '/api/v1/platform/branding/public',
+    '/api/v1/platform-audit-logs',
+    '/api/v1/tenants',
+    '/api/v1/tenants/mean',
+  ]) {
+    assert.ok(isDenied(path), path);
+  }
+  for (const path of [
+    '/api/v1/tenants/me',
+    '/api/v1/tenants/me/settings',
+    '/api/v1/tenants/public-branding',
+    '/api/v1/auth/login',
+  ]) {
+    assert.ok(!isDenied(path), path);
+  }
+
+  assert.match(consoleBlock, /include \/etc\/nginx\/console\/allow\.conf;/);
+  assert.doesNotMatch(consoleBlock, /\n +(allow|deny|satisfy) /);
+
+  const allow = await readFile(
+    fileURLToPath(new URL('../nginx/console-allow.conf', import.meta.url)),
+    'utf8',
+  );
+  assert.deepEqual(
+    allow.split('\n').filter((line) => line && !line.startsWith('#')),
+    ['allow 127.0.0.1;', 'deny all;'],
+  );
+  const compose = await readFile(prodComposePath, 'utf8');
+  assert.match(
+    composeServiceBlock(compose, 'nginx-prod'),
+    /PROXY_CONSOLE_ALLOW:-\.\/nginx\/console-allow\.conf\}:\/etc\/nginx\/console\/allow\.conf:ro/,
+  );
+});
+
+test('production images disable the Next proxy to the API', async () => {
+  for (const app of ['web', 'portal']) {
+    const read = (file) =>
+      readFile(fileURLToPath(new URL(`../apps/${app}/${file}`, import.meta.url)), 'utf8');
+    const dockerfile = await read('Dockerfile');
+    assert.ok(
+      dockerfile.indexOf('ENV IWANA_DISABLE_API_REWRITE=1') <
+        dockerfile.indexOf(`RUN pnpm --filter @iwana/${app} build`) &&
+        dockerfile.includes('ENV IWANA_DISABLE_API_REWRITE=1'),
+      app,
+    );
+    assert.match(await read('next.config.ts'), /IWANA_DISABLE_API_REWRITE === '1'\) return \[\];/);
+  }
+});

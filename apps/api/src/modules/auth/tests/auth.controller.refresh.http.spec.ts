@@ -135,6 +135,42 @@ describe('AuthController POST /auth/refresh — ruteo por audiencia (fail-fast) 
     expect(findCookie(cookies, 'webAccessToken')).toBeUndefined();
   });
 
+  describe('en producción, fuera de la consola', () => {
+    const original = process.env['NODE_ENV'];
+    beforeEach(() => {
+      process.env['NODE_ENV'] = 'production';
+    });
+    afterEach(() => {
+      process.env['NODE_ENV'] = original;
+    });
+    const send = (surface: string | undefined, audience?: string) => {
+      const call = request(app.getHttpServer())
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', ['webRefreshToken=p']);
+      if (surface) void call.set('X-Iwana-Surface', surface);
+      if (audience) void call.set('X-Session-Audience', audience);
+      return call;
+    };
+
+    it.each([
+      ['portal', 'platform'],
+      ['portal', undefined],
+      [undefined, 'platform'],
+      [undefined, undefined],
+    ])('superficie %s y audiencia %s: no consume la sesión de plataforma', async (s, audience) => {
+      await send(s, audience).expect(401);
+      expect(mockAuthService.refreshPlatformTokens).not.toHaveBeenCalled();
+    });
+
+    it('desde la consola renueva', async () => {
+      mockAuthService.refreshPlatformTokens.mockResolvedValue({
+        accessToken: 'a',
+        refreshToken: 'r',
+      });
+      await send('console', 'platform').expect(200);
+    });
+  });
+
   it('las cookies viven lo que le queda a la sesión', async () => {
     mockAuthService.refreshPlatformTokens.mockResolvedValue({
       accessToken: 'a',
