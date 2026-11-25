@@ -416,6 +416,59 @@ describeWithDb('Carreras de credencial (PostgreSQL real)', () => {
       expect((await login(id, OLD, '123456')).status).toBe(401);
     });
 
+    const disableMfa = (id: string, password: string): Promise<Outcome> =>
+      settle(inTenant(() => auth.disableMfa(id, { password, totpCode: '123456' })));
+
+    it.each([
+      ['intentos de contraseña', 'Errada12345!', true],
+      ['TOTP', OLD, false],
+    ])(
+      'cinco %s inválidos al desactivar MFA bloquean la cuenta',
+      async (_caso, password, valid) => {
+        const id = await seedUser({ mfa_enabled: true, mfa_secret: encrypted() });
+        mockTotpVerify.mockResolvedValue({ valid });
+        for (let n = 0; n < 5; n += 1) expect((await disableMfa(id, password)).status).toBe(401);
+        mockTotpVerify.mockResolvedValue({ valid: true });
+
+        expect((await disableMfa(id, OLD)).status).toBe(401);
+        const row = await readUser(id);
+        expect(row['failed_login_attempts']).toBe(5);
+        expect(row['locked_until']).not.toBeNull();
+        expect(row['mfa_enabled']).toBe(true);
+      },
+    );
+
+    it('diez intentos simultáneos de desactivar MFA no superan el límite', async () => {
+      const id = await seedUser({ mfa_enabled: true, mfa_secret: encrypted() });
+      const results = await Promise.all(
+        Array.from({ length: 10 }, () => disableMfa(id, 'Errada12345!')),
+      );
+
+      expect(results.every((r) => r.status === 401)).toBe(true);
+      expect((await readUser(id))['failed_login_attempts']).toBe(5);
+    });
+
+    it('desactivar MFA no usa la contraseña anterior a un cambio que esperaba', async () => {
+      const id = await seedUser({ mfa_enabled: true, mfa_secret: encrypted() });
+      const result = await whileLocked(
+        id,
+        () => disableMfa(id, OLD),
+        `UPDATE ${qSchema()}.users SET password_hash = $2 WHERE id = $1`,
+        [id, await bcrypt.hash(NEW, 4)],
+      );
+
+      expect(result.status).toBe(401);
+      expect((await readUser(id))['mfa_enabled']).toBe(true);
+    });
+
+    it('contraseña y TOTP correctos desactivan MFA', async () => {
+      const id = await seedUser({ mfa_enabled: true, mfa_secret: encrypted() });
+      expect((await disableMfa(id, OLD)).status).toBe(200);
+      const row = await readUser(id);
+      expect(row['mfa_enabled']).toBe(false);
+      expect(row['mfa_secret']).toBeNull();
+    });
+
     it('un login en vuelo no entra si la cuenta se bloquea mientras valida', async () => {
       const id = await seedUser();
       const result = await whileLocked(

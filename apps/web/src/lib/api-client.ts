@@ -442,6 +442,8 @@ export const authApi = {
     request<{ mfaEnabled: boolean }>('/auth/mfa/disable', {
       method: 'POST',
       body: JSON.stringify({ password, totpCode: code }),
+      // El 401 es un intento fallido: reintentarlo lo contaría dos veces para el bloqueo.
+      skipRefreshRetry: true,
     }),
 
   logout: async () => {

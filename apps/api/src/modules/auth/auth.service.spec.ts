@@ -919,6 +919,58 @@ describe('AuthService', () => {
       const dto: MfaDisableDto = { password: 'WrongPass!', totpCode: '000000' };
       await expect(service.disableMfa('user-uuid-1', dto)).rejects.toThrow(UnauthorizedException);
     });
+
+    it.each([
+      ['contraseña', false, 'Contrasena incorrecta.'],
+      ['TOTP', true, 'Codigo MFA invalido.'],
+    ])('cuenta el fallo de %s y lanza después del commit', async (_caso, passwordOk, message) => {
+      const mfaSecret = (service as any).encryptSecret('MFASECRET123') as string;
+      const user = buildUser({ mfaEnabled: true, mfaSecret });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(passwordOk);
+      jest
+        .spyOn(service as unknown as { verifyTotp: () => Promise<boolean> }, 'verifyTotp')
+        .mockResolvedValue(false);
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        query: jest
+          .fn()
+          .mockResolvedValue([[{ failed_login_attempts: 5, locked_until: new Date() }], 1]),
+      });
+      const runInSchema = mockRunInTenantSchema.getMockImplementation()!;
+      let committed = false;
+      mockRunInTenantSchema.mockImplementation(async (...args: unknown[]) => {
+        const result = await (runInSchema as (...a: unknown[]) => Promise<unknown>)(...args);
+        committed = true;
+        return result;
+      });
+
+      await expect(
+        service.disableMfa(user.id, { password: 'Passw0rd!', totpCode: '000000' }),
+      ).rejects.toThrow(message);
+
+      expect(committed).toBe(true);
+      expect(manager.findOne).toHaveBeenCalledWith(User, {
+        where: { id: user.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      expect(manager.query).toHaveBeenCalledTimes(1);
+      expect(manager.update).not.toHaveBeenCalled();
+      const { auditService } = service as unknown as { auditService: { log: jest.Mock } };
+      for (const action of [AuditAction.LOGIN_FAILED, AuditAction.ACCOUNT_LOCKED]) {
+        expect(auditService.log).toHaveBeenCalledWith(expect.objectContaining({ action }));
+      }
+    });
+
+    it('rechaza una cuenta bloqueada sin comparar la contraseña', async () => {
+      const user = buildUser({ mfaEnabled: true, lockedUntil: new Date(Date.now() + 600_000) });
+      (bcrypt.compare as jest.Mock).mockClear();
+      setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(user) });
+
+      await expect(
+        service.disableMfa(user.id, { password: 'Passw0rd!', totpCode: '123456' }),
+      ).rejects.toMatchObject({ status: 401, response: { code: 'AUTH_ACCOUNT_LOCKED' } });
+      expect(bcrypt.compare).not.toHaveBeenCalled();
+    });
   });
 
   // ---------------------------------------------------------------------------

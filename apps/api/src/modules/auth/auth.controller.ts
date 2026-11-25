@@ -583,9 +583,17 @@ export class AuthController {
    * RF-AUTH-03
    */
   @Post('mfa/disable')
+  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(10) } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Desactiva MFA (requiere password + codigo TOTP actual)' })
   @ApiResponse({ status: 200, description: 'MFA desactivado.' })
+  @ApiResponse({
+    status: 401,
+    description:
+      'Contrasena incorrecta o token de acceso invalido (sin `code`), `AUTH_MFA_CODE_INVALID` o `AUTH_ACCOUNT_LOCKED`.',
+  })
+  @ApiResponse({ status: 409, description: 'MFA no esta activo.' })
+  @ApiResponse({ status: 429, description: 'Demasiados intentos.' })
   async disableMfa(
     @CurrentUser() user: JwtPayload,
     @Body() dto: MfaDisableDto,

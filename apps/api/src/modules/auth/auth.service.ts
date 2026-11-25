@@ -116,6 +116,11 @@ type LoginTxOutcome =
       lockedUntil: Date | null;
     };
 
+/** Fallo de `disableMfa` dentro de su transacción. */
+type DisableMfaFailedOutcome = ChangePasswordFailedOutcome & {
+  kind: 'failed-password' | 'failed-mfa';
+};
+
 /** Resultado de `changePassword` dentro de su transacción (mismo arreglo que login). */
 interface ChangePasswordFailedOutcome {
   userId: string;
@@ -1322,30 +1327,59 @@ export class AuthService {
   async disableMfa(userId: string, dto: MfaDisableDto): Promise<{ mfaEnabled: boolean }> {
     const { schemaName } = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const user = await qr.manager.findOne(User, { where: { id: userId } });
-      if (!user) throw new NotFoundException('Usuario no encontrado.');
-      if (!user.mfaEnabled) throw new ConflictException('MFA no esta activo en esta cuenta.');
+    // D1 (igual que `login`): el intento fallido se confirma y la excepción se lanza tras el commit.
+    const failed = await runInTenantSchema(
+      this.dataSource,
+      schemaName,
+      async (qr): Promise<DisableMfaFailedOutcome | null> => {
+        // Bloqueada: los intentos en paralelo se serializan y no eluden el límite.
+        const user = await qr.manager.findOne(User, {
+          where: { id: userId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!user) throw new NotFoundException('Usuario no encontrado.');
+        if (!user.mfaEnabled) throw new ConflictException('MFA no esta activo en esta cuenta.');
 
-      const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
-      if (!passwordValid) throw new UnauthorizedException('Contrasena incorrecta.');
+        if (isAccountLocked(user)) {
+          throw unauthorizedWithCode(
+            AUTH_ERROR_CODES.ACCOUNT_LOCKED,
+            `Cuenta bloqueada temporalmente. Intenta en ${remainingLockoutMinutes(user)} minuto(s).`,
+          );
+        }
 
-      // Descifrar el secret almacenado antes de verificar el codigo TOTP
-      const totpValid = await this.verifyTotp(this.decryptSecret(user.mfaSecret!), dto.totpCode);
-      if (!totpValid) throw new UnauthorizedException('Codigo MFA invalido.');
+        if (!(await bcrypt.compare(dto.password, user.passwordHash))) {
+          const registered = await this.registerFailedAttempt(qr.manager, userId);
+          return { kind: 'failed-password', userId, ...registered };
+        }
 
-      await qr.manager.update(User, userId, { mfaEnabled: false, mfaSecret: null });
+        // Descifrar el secret almacenado antes de verificar el codigo TOTP
+        if (!(await this.verifyTotp(this.decryptSecret(user.mfaSecret!), dto.totpCode))) {
+          const registered = await this.registerFailedAttempt(qr.manager, userId);
+          return { kind: 'failed-mfa', userId, ...registered };
+        }
 
-      // Registrar desactivacion de MFA en audit trail
-      void this.auditService.log({
-        action: AuditAction.MFA_DISABLED,
-        entityType: 'User',
-        entityId: userId,
-        userId,
-      });
+        await qr.manager.update(User, userId, { mfaEnabled: false, mfaSecret: null });
+        return null;
+      },
+    );
 
-      return { mfaEnabled: false };
+    if (failed) {
+      await this.auditFailedAttempt(failed);
+      if (failed.kind === 'failed-mfa') {
+        throw unauthorizedWithCode(AUTH_ERROR_CODES.MFA_CODE_INVALID, 'Codigo MFA invalido.');
+      }
+      throw new UnauthorizedException('Contrasena incorrecta.');
+    }
+
+    // Registrar desactivacion de MFA en audit trail
+    void this.auditService.log({
+      action: AuditAction.MFA_DISABLED,
+      entityType: 'User',
+      entityId: userId,
+      userId,
     });
+
+    return { mfaEnabled: false };
   }
 
   // ---------------------------------------------------------------------------
@@ -1593,26 +1627,7 @@ export class AuthService {
     );
 
     if (failed) {
-      await this.auditService.log({
-        action: AuditAction.LOGIN_FAILED,
-        entityType: 'User',
-        entityId: failed.userId,
-        userId: failed.userId,
-      });
-
-      if (failed.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
-        await this.auditService.log({
-          action: AuditAction.ACCOUNT_LOCKED,
-          entityType: 'User',
-          entityId: failed.userId,
-          userId: failed.userId,
-          newValue: {
-            lockedUntil: failed.lockedUntil,
-            failedLoginAttempts: failed.failedLoginAttempts,
-          },
-        });
-      }
-
+      await this.auditFailedAttempt(failed);
       throw new UnauthorizedException(
         'La contraseña actual no coincide con la que usas para iniciar sesión.',
       );
@@ -2115,6 +2130,20 @@ export class AuthService {
       failedLoginAttempts: row.failed_login_attempts,
       lockedUntil,
     };
+  }
+
+  /** Audita un intento fallido de un usuario autenticado; se llama después del commit. */
+  private async auditFailedAttempt(failed: ChangePasswordFailedOutcome): Promise<void> {
+    const { userId, failedLoginAttempts, lockedUntil } = failed;
+    const target = { entityType: 'User', entityId: userId, userId };
+    await this.auditService.log({ action: AuditAction.LOGIN_FAILED, ...target });
+    if (failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
+      await this.auditService.log({
+        action: AuditAction.ACCOUNT_LOCKED,
+        ...target,
+        newValue: { lockedUntil, failedLoginAttempts },
+      });
+    }
   }
 
   /**

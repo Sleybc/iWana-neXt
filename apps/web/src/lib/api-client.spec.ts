@@ -81,6 +81,18 @@ describe('api-client', () => {
     expect(audiences).toEqual({ me: 'platform', refresh: 'platform' });
   });
 
+  it('un 401 al desactivar MFA no renueva la sesión ni repite el intento', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue(
+      buildJsonResponse({ code: 'AUTH_MFA_CODE_INVALID', message: 'Codigo MFA invalido.' }, 401),
+    );
+
+    await expect(authApi.mfaDisable('Clave12345!', '000000')).rejects.toMatchObject({
+      status: 401,
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
   it('normaliza arrays de validación y expone un mensaje legible', async () => {
     (global.fetch as jest.Mock).mockResolvedValue(
       buildJsonResponse(
