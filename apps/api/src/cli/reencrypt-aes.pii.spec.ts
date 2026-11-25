@@ -76,12 +76,15 @@ class MemoryDb implements PiiReencryptDbPort {
     selectedTarget: EncryptedColumnTarget,
     id: string,
     newCiphertext: string,
-  ): Promise<void> {
+    readCiphertext: string,
+  ): Promise<boolean> {
     const key = `${selectedTarget.table}.${selectedTarget.column}`;
     const rows = this.rows.get(key) ?? [];
-    const row = rows.find((candidate) => candidate.id === id);
-    if (row) row.value = newCiphertext;
+    const row = rows.find((candidate) => candidate.id === id && candidate.value === readCiphertext);
+    if (!row) return false;
+    row.value = newCiphertext;
     this.updates.push({ table: selectedTarget.table, id, value: newCiphertext });
+    return true;
   }
 
   async probeEncryptedWrite(
@@ -344,6 +347,27 @@ describe('reencrypt-aes PII — sonda de escritura del dry-run (D-K2A-6)', () =>
     expect(report.totals).toMatchObject({ candidates: 2, reencrypted: 1, writeBlocked: 1 });
     expect(report.totals.pending).toBe(2);
     expect(report.hasBlockingIssues).toBe(true);
+  });
+
+  it('no pisa una celda que cambió tras leerla y pide repetir', async () => {
+    const db = new MemoryDb([
+      { table: 'subscribers', column: 'email_encrypted', rows: [legacyCell('row-1')] },
+    ]);
+    const update = db.updateEncryptedValue.bind(db);
+    db.updateEncryptedValue = async (...args) => {
+      db.getRows('subscribers', 'email_encrypted')[0]!.value = 'cambio-en-paralelo';
+      return update(...args);
+    };
+    // La lectura entrega copias, como una base real.
+    const fetchBatch = db.fetchEncryptedBatch.bind(db);
+    db.fetchEncryptedBatch = async (...args) =>
+      (await fetchBatch(...args)).map((row) => ({ ...row }));
+
+    const report = await runMfaToPii(db, { mode: 'apply', keys, targets: [target] });
+
+    expect(report.totals).toMatchObject({ reencrypted: 0, changedDuringRun: 1, pending: 1 });
+    expect(report.hasBlockingIssues).toBe(true);
+    expect(db.getRows('subscribers', 'email_encrypted')[0]?.value).toBe('cambio-en-paralelo');
   });
 
   it('la sonda no persiste nada y ensaya un ciphertext que abre con la clave activa', async () => {

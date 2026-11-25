@@ -20,6 +20,7 @@ export interface PiiReencryptDbPort extends ReencryptDbPort {
     target: EncryptedColumnTarget,
     id: string,
     newCiphertext: string,
+    readCiphertext: string,
   ): Promise<string | null>;
 }
 
@@ -51,6 +52,8 @@ export type MfaToPiiTargetMetrics = {
   piiPreviousRemaining: number;
   /** Celdas que el dry-run recifraría pero la base rechaza. No cuentan en `reencrypted`. */
   writeBlocked: number;
+  /** Celdas que cambiaron tras leerlas: no se pisan y hay que repetir la corrida. */
+  changedDuringRun: number;
   writeBlockedBySqlState: Record<string, number>;
 };
 
@@ -243,6 +246,7 @@ function blankMetrics(schemaName: string, entityType: string): MfaToPiiTargetMet
     mfaOnlyRemaining: 0,
     piiPreviousRemaining: 0,
     writeBlocked: 0,
+    changedDuringRun: 0,
     writeBlockedBySqlState: {},
   };
 }
@@ -266,6 +270,7 @@ function sumMetrics(targets: MfaToPiiTargetMetrics[]): MfaToPiiReport['totals'] 
     mfaOnlyRemaining: 0,
     piiPreviousRemaining: 0,
     writeBlocked: 0,
+    changedDuringRun: 0,
     pending: 0,
   };
   for (const metric of targets) {
@@ -278,6 +283,7 @@ function sumMetrics(targets: MfaToPiiTargetMetrics[]): MfaToPiiReport['totals'] 
     totals.mfaOnlyRemaining += metric.mfaOnlyRemaining;
     totals.piiPreviousRemaining += metric.piiPreviousRemaining;
     totals.writeBlocked += metric.writeBlocked;
+    totals.changedDuringRun += metric.changedDuringRun;
   }
   return totals;
 }
@@ -351,9 +357,25 @@ async function processTarget(
 
       const ciphertext = encryptAes256Gcm(plaintext, options.keys.piiActiveKey);
       if (options.mode === 'apply') {
-        await db.updateEncryptedValue(schemaName, target, row.id, ciphertext);
+        const updated = await db.updateEncryptedValue(
+          schemaName,
+          target,
+          row.id,
+          ciphertext,
+          row.value,
+        );
+        if (!updated) {
+          metrics.changedDuringRun += 1;
+          continue;
+        }
       } else {
-        const sqlState = await db.probeEncryptedWrite(schemaName, target, row.id, ciphertext);
+        const sqlState = await db.probeEncryptedWrite(
+          schemaName,
+          target,
+          row.id,
+          ciphertext,
+          row.value,
+        );
         if (sqlState !== null) {
           metrics.writeBlocked += 1;
           metrics.writeBlockedBySqlState[sqlState] =
@@ -404,12 +426,14 @@ export async function runMfaToPii(
     totals.nonCiphertext +
     totals.decryptErrors +
     totals.writeBlocked +
+    totals.changedDuringRun +
     (options.mode === 'verify-pii-only'
       ? totals.mfaOnlyRemaining + totals.piiPreviousRemaining
       : 0);
   const hasBlockingIssues =
     totals.skippedMissingTable > 0 ||
     totals.writeBlocked > 0 ||
+    totals.changedDuringRun > 0 ||
     (options.mode === 'verify-pii-only'
       ? totals.nonCiphertext > 0 ||
         totals.decryptErrors > 0 ||
@@ -438,7 +462,7 @@ export function formatMfaToPiiReport(report: MfaToPiiReport): string {
   const lines = [
     `[REENCRYPT-PII] mode=${report.mode}`,
     `[REENCRYPT-PII] schemas=${report.schemasProcessed.length} [${report.schemasProcessed.join(', ')}]`,
-    `[REENCRYPT-PII] totals candidates=${report.totals.candidates} reencrypted=${report.totals.reencrypted} skipped_pii=${report.totals.skippedAlreadyPii} non_ciphertext=${report.totals.nonCiphertext} decrypt_errors=${report.totals.decryptErrors} mfa_only_remaining=${report.totals.mfaOnlyRemaining} pii_previous_remaining=${report.totals.piiPreviousRemaining} write_blocked=${report.totals.writeBlocked} pending=${report.totals.pending} missing_table_targets=${report.totals.skippedMissingTable}`,
+    `[REENCRYPT-PII] totals candidates=${report.totals.candidates} reencrypted=${report.totals.reencrypted} skipped_pii=${report.totals.skippedAlreadyPii} non_ciphertext=${report.totals.nonCiphertext} decrypt_errors=${report.totals.decryptErrors} mfa_only_remaining=${report.totals.mfaOnlyRemaining} pii_previous_remaining=${report.totals.piiPreviousRemaining} write_blocked=${report.totals.writeBlocked} changed_during_run=${report.totals.changedDuringRun} pending=${report.totals.pending} missing_table_targets=${report.totals.skippedMissingTable}`,
   ];
 
   for (const metric of report.targets) {

@@ -68,22 +68,23 @@ export class TypeOrmReencryptDbAdapter implements PiiReencryptDbPort {
     target: EncryptedColumnTarget,
     id: string,
     newCiphertext: string,
-  ): Promise<void> {
+    readCiphertext: string,
+  ): Promise<boolean> {
     if (schemaName === 'public') {
-      await this.dataSource.query(
-        `UPDATE public."${target.table}" SET "${target.column}" = $1 WHERE "${target.idColumn}" = $2`,
-        [newCiphertext, id],
-      );
-      return;
+      const [, affected] = (await this.dataSource.query(
+        `UPDATE public."${target.table}" SET "${target.column}" = $1 WHERE "${target.idColumn}" = $2 AND "${target.column}"::text = $3`,
+        [newCiphertext, id, readCiphertext],
+      )) as [unknown[], number];
+      return affected > 0;
     }
 
     if (!isValidSchemaName(schemaName)) {
       throw new Error(`Schema name invalido: ${schemaName}`);
     }
 
-    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      await this.updateTenantCell(qr, target, id, newCiphertext);
-    });
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      this.updateTenantCell(qr, target, id, newCiphertext, readCiphertext),
+    );
   }
 
   /**
@@ -96,10 +97,11 @@ export class TypeOrmReencryptDbAdapter implements PiiReencryptDbPort {
     target: EncryptedColumnTarget,
     id: string,
     newCiphertext: string,
+    readCiphertext: string,
   ): Promise<string | null> {
     try {
       await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-        await this.updateTenantCell(qr, target, id, newCiphertext);
+        await this.updateTenantCell(qr, target, id, newCiphertext, readCiphertext);
         throw new ProbeRollbackSignal();
       });
     } catch (error) {
@@ -116,15 +118,18 @@ export class TypeOrmReencryptDbAdapter implements PiiReencryptDbPort {
     target: EncryptedColumnTarget,
     id: string,
     newCiphertext: string,
-  ): Promise<void> {
+    readCiphertext: string,
+  ): Promise<boolean> {
     if (target.table === 'subscriber_note' && target.column === 'body_encrypted') {
       // Excepción K2 de la 181 (solo inserción): vale solo para esta transacción de una fila.
       await qr.query(`SELECT set_config('iwana.pii_reencrypt', 'on', true)`);
     }
-    await qr.query(
-      `UPDATE "${target.table}" SET "${target.column}" = $1 WHERE "${target.idColumn}" = $2`,
-      [newCiphertext, id],
-    );
+    // Solo si la celda sigue como se leyó: un cambio en paralelo no se pisa con el valor viejo.
+    const [, affected] = (await qr.query(
+      `UPDATE "${target.table}" SET "${target.column}" = $1 WHERE "${target.idColumn}" = $2 AND "${target.column}"::text = $3`,
+      [newCiphertext, id, readCiphertext],
+    )) as [unknown[], number];
+    return affected > 0;
   }
 
   private async fetchPublicBatch(

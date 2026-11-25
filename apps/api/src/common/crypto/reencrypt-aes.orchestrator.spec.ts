@@ -83,14 +83,15 @@ class MemoryReencryptDb implements ReencryptDbPort {
     target: EncryptedColumnTarget,
     id: string,
     newCiphertext: string,
-  ): Promise<void> {
+    readCiphertext: string,
+  ): Promise<boolean> {
     const key = storeKey(schemaName, target.table, target.column);
     const all = this.rows.get(key) ?? [];
-    const idx = all.findIndex((r) => r.id === id);
-    if (idx >= 0) {
-      all[idx] = { id, value: newCiphertext };
-    }
+    const idx = all.findIndex((r) => r.id === id && r.value === readCiphertext);
+    if (idx < 0) return false;
+    all[idx] = { id, value: newCiphertext };
     this.updates.push({ schema: schemaName, id, value: newCiphertext });
+    return true;
   }
 }
 
@@ -145,6 +146,36 @@ describe('reencrypt-aes.orchestrator', () => {
       expect(report.totals.reencrypted).toBe(2);
       expect(report.totals.decryptErrors).toBe(0);
       expect(report.hasBlockingIssues).toBe(false);
+    });
+
+    it('apply no pisa una celda que cambió tras leerla: la cuenta y bloquea', async () => {
+      const db = new MemoryReencryptDb(
+        [],
+        [
+          {
+            schema: 'public',
+            table: 'platform_users',
+            column: 'email',
+            rows: [{ id: 'p1', value: encryptAes256Gcm('a@example.test', previousKey) }],
+          },
+        ],
+      );
+      const update = db.updateEncryptedValue.bind(db);
+      db.updateEncryptedValue = (schema, target, id, next) =>
+        update(schema, target, id, next, 'valor-ya-cambiado');
+
+      const report = await runReencryptAes(db, {
+        mode: 'apply',
+        activeKey,
+        previousKey,
+        publicTargets: [platformEmailTarget],
+        tenantTargets: [],
+      });
+
+      expect(db.updates).toHaveLength(0);
+      expect(report.totals).toMatchObject({ reencrypted: 0, changedDuringRun: 1, pending: 1 });
+      expect(report.hasBlockingIssues).toBe(true);
+      expect(formatReencryptReport(report)).toContain('changed_during_run=1');
     });
 
     it('apply recifra solo previous y es idempotente en segunda pasada', async () => {

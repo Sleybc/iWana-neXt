@@ -348,14 +348,33 @@ describeWithDb('Notas manuales del suscriptor: PostgreSQL real', () => {
       column: 'body_encrypted',
       idColumn: 'id',
     } as never;
-    expect(await adapter.probeEncryptedWrite(schemaName, target, note.id, 'cifrado-k2')).toBeNull();
-    await adapter.updateEncryptedValue(schemaName, target, note.id, 'cifrado-k2');
+    const [stored] = (await dataSource.query(
+      `SELECT body_encrypted FROM ${qualified('subscriber_note')} WHERE id = $1`,
+      [note.id],
+    )) as Array<{ body_encrypted: string }>;
+    const read = stored!.body_encrypted;
+    expect(
+      await adapter.probeEncryptedWrite(schemaName, target, note.id, 'cifrado-k2', read),
+    ).toBeNull();
+    expect(
+      await adapter.updateEncryptedValue(schemaName, target, note.id, 'cifrado-k2', read),
+    ).toBe(true);
+    // El valor leído ya no está: no se pisa.
+    expect(
+      await adapter.updateEncryptedValue(schemaName, target, note.id, 'cifrado-viejo', read),
+    ).toBe(false);
     await dataSource.query(
       `UPDATE ${qualified('subscribers')} SET anonymized_at = now(), anonymized_request_id = $2
         WHERE id = $1`,
       [subscriberId, randomUUID()],
     );
-    await adapter.updateEncryptedValue(schemaName, target, note.id, 'cifrado-k2-anon');
+    await adapter.updateEncryptedValue(
+      schemaName,
+      target,
+      note.id,
+      'cifrado-k2-anon',
+      'cifrado-k2',
+    );
     const [row] = (await dataSource.query(
       `SELECT body_encrypted FROM ${qualified('subscriber_note')} WHERE id = $1`,
       [note.id],

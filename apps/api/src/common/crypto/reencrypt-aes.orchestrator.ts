@@ -27,6 +27,8 @@ export type TargetMetrics = {
   skippedMissingTable: number;
   decryptErrors: number;
   verifyFailures: number;
+  /** Celdas que cambiaron tras leerlas: no se pisan y hay que repetir la corrida. */
+  changedDuringRun: number;
 };
 
 export type ReencryptReport = {
@@ -40,6 +42,7 @@ export type ReencryptReport = {
     skippedMissingTable: number;
     decryptErrors: number;
     verifyFailures: number;
+    changedDuringRun: number;
     /** Filas que aún requieren recifrado (previous) o fallaron verify. */
     pending: number;
   };
@@ -70,7 +73,8 @@ export interface ReencryptDbPort {
     target: EncryptedColumnTarget,
     id: string,
     newCiphertext: string,
-  ): Promise<void>;
+    readCiphertext: string,
+  ): Promise<boolean>;
 }
 
 const IDENT_SAFE = /^[a-z][a-z0-9_]*$/;
@@ -91,6 +95,7 @@ function emptyMetrics(schemaName: string, entityType: string): TargetMetrics {
     skippedMissingTable: 0,
     decryptErrors: 0,
     verifyFailures: 0,
+    changedDuringRun: 0,
   };
 }
 
@@ -102,6 +107,7 @@ function sumMetrics(targets: TargetMetrics[]): ReencryptReport['totals'] {
     skippedMissingTable: 0,
     decryptErrors: 0,
     verifyFailures: 0,
+    changedDuringRun: 0,
     pending: 0,
   };
 
@@ -112,6 +118,7 @@ function sumMetrics(targets: TargetMetrics[]): ReencryptReport['totals'] {
     totals.skippedMissingTable += t.skippedMissingTable;
     totals.decryptErrors += t.decryptErrors;
     totals.verifyFailures += t.verifyFailures;
+    totals.changedDuringRun += t.changedDuringRun;
   }
 
   return totals;
@@ -207,7 +214,18 @@ async function processTarget(
         const nextCipher = encryptAes256Gcm(plaintext, options.activeKey);
 
         if (options.mode === 'apply') {
-          await db.updateEncryptedValue(schemaName, target, row.id, nextCipher);
+          const updated = await db.updateEncryptedValue(
+            schemaName,
+            target,
+            row.id,
+            nextCipher,
+            row.value,
+          );
+          if (!updated) {
+            // Cambió tras leerla: no se pisa. Cuenta como pendiente para que se repita el CLI.
+            metrics.changedDuringRun += 1;
+            continue;
+          }
         }
 
         metrics.reencrypted += 1;
@@ -274,7 +292,7 @@ export async function runReencryptAes(
     totals.pending = totals.verifyFailures + totals.decryptErrors;
   } else if (options.mode === 'apply') {
     // Tras apply: pendientes = errores de descifrado (no se pudieron recifrar)
-    totals.pending = totals.decryptErrors;
+    totals.pending = totals.decryptErrors + totals.changedDuringRun;
   } else {
     // dry-run: pendientes recuperables = previous que se recifrarían + errores
     totals.pending = totals.reencrypted + totals.decryptErrors;
@@ -286,7 +304,7 @@ export async function runReencryptAes(
     options.mode === 'verify-active-only'
       ? totals.verifyFailures > 0 || totals.decryptErrors > 0
       : options.mode === 'apply'
-        ? totals.decryptErrors > 0
+        ? totals.decryptErrors > 0 || totals.changedDuringRun > 0
         : totals.decryptErrors > 0;
 
   return {
@@ -306,7 +324,7 @@ export function formatReencryptReport(report: ReencryptReport): string {
   const lines: string[] = [
     `[REENCRYPT] mode=${report.mode}`,
     `[REENCRYPT] schemas=${report.schemasProcessed.length} [${report.schemasProcessed.join(', ')}]`,
-    `[REENCRYPT] totals candidates=${report.totals.candidates} reencrypted=${report.totals.reencrypted} skipped_active=${report.totals.skippedAlreadyActive} decrypt_errors=${report.totals.decryptErrors} verify_failures=${report.totals.verifyFailures} pending=${report.totals.pending} missing_table_targets=${report.totals.skippedMissingTable}`,
+    `[REENCRYPT] totals candidates=${report.totals.candidates} reencrypted=${report.totals.reencrypted} skipped_active=${report.totals.skippedAlreadyActive} decrypt_errors=${report.totals.decryptErrors} verify_failures=${report.totals.verifyFailures} changed_during_run=${report.totals.changedDuringRun} pending=${report.totals.pending} missing_table_targets=${report.totals.skippedMissingTable}`,
   ];
 
   for (const t of report.targets) {

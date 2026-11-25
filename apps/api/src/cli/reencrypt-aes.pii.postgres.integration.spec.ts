@@ -135,8 +135,15 @@ class ScopedTenantDbPort implements PiiReencryptDbPort {
     target: EncryptedColumnTarget,
     id: string,
     newCiphertext: string,
-  ): Promise<void> {
-    return this.delegate.updateEncryptedValue(schemaName, target, id, newCiphertext);
+    readCiphertext: string,
+  ): Promise<boolean> {
+    return this.delegate.updateEncryptedValue(
+      schemaName,
+      target,
+      id,
+      newCiphertext,
+      readCiphertext,
+    );
   }
 
   probeEncryptedWrite(
@@ -144,8 +151,9 @@ class ScopedTenantDbPort implements PiiReencryptDbPort {
     target: EncryptedColumnTarget,
     id: string,
     newCiphertext: string,
+    readCiphertext: string,
   ): Promise<string | null> {
-    return this.delegate.probeEncryptedWrite(schemaName, target, id, newCiphertext);
+    return this.delegate.probeEncryptedWrite(schemaName, target, id, newCiphertext, readCiphertext);
   }
 }
 

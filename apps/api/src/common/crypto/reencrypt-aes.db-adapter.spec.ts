@@ -219,15 +219,21 @@ describe('TypeOrmReencryptDbAdapter', () => {
     it('actualiza public."tabla" con ciphertext e id parametrizados', async () => {
       const h = createHarness([]);
 
-      await h.adapter.updateEncryptedValue('public', PUBLIC_TARGET, 'id-9', 'nuevo-ciphertext');
+      await h.adapter.updateEncryptedValue(
+        'public',
+        PUBLIC_TARGET,
+        'id-9',
+        'nuevo-ciphertext',
+        'leido',
+      );
 
       expect(h.dataSource.createQueryRunner).not.toHaveBeenCalled();
 
       const call = h.dataSourceCalls[0]!;
       expect(flat(call.sql)).toBe(
-        'UPDATE public."platform_users" SET "mfa_secret" = $1 WHERE "id" = $2',
+        'UPDATE public."platform_users" SET "mfa_secret" = $1 WHERE "id" = $2 AND "mfa_secret"::text = $3',
       );
-      expect(call.params).toEqual(['nuevo-ciphertext', 'id-9']);
+      expect(call.params).toEqual(['nuevo-ciphertext', 'id-9', 'leido']);
     });
   });
 
@@ -235,21 +241,37 @@ describe('TypeOrmReencryptDbAdapter', () => {
     it('actualiza bajo search_path, sin calificar la tabla', async () => {
       const h = createHarness([]);
 
-      await h.adapter.updateEncryptedValue('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo');
+      await h.adapter.updateEncryptedValue('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo', 'leido');
 
       expect(h.runnerCalls[0]!.sql).toBe('SET LOCAL search_path TO "tenant_alfa"');
       expect(flat(h.runnerCalls[1]!.sql)).toBe(
-        'UPDATE "users" SET "mfa_secret" = $1 WHERE "id" = $2',
+        'UPDATE "users" SET "mfa_secret" = $1 WHERE "id" = $2 AND "mfa_secret"::text = $3',
       );
-      expect(h.runnerCalls[1]!.params).toEqual(['nuevo', 'id-9']);
+      expect(h.runnerCalls[1]!.params).toEqual(['nuevo', 'id-9', 'leido']);
       expect(h.lifecycle).toEqual(['connect', 'start', 'commit', 'release']);
+    });
+
+    it.each([
+      [1, true],
+      [0, false],
+    ])('con %s filas afectadas devuelve %s', async (affected, expected) => {
+      const h = createHarness([]);
+      (h.queryRunner.query as jest.Mock).mockResolvedValue([[], affected]);
+      (h.dataSource.query as jest.Mock).mockResolvedValue([[], affected]);
+
+      await expect(
+        h.adapter.updateEncryptedValue('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo', 'leido'),
+      ).resolves.toBe(expected);
+      await expect(
+        h.adapter.updateEncryptedValue('public', PUBLIC_TARGET, 'id-9', 'nuevo', 'leido'),
+      ).resolves.toBe(expected);
     });
 
     it('rechaza el schema invalido ANTES de abrir la transacción', async () => {
       const h = createHarness([]);
 
       await expect(
-        h.adapter.updateEncryptedValue('public_ojo', TENANT_TARGET, 'id-9', 'nuevo'),
+        h.adapter.updateEncryptedValue('public_ojo', TENANT_TARGET, 'id-9', 'nuevo', 'leido'),
       ).rejects.toThrow(/Schema name invalido: public_ojo/);
 
       expect(h.dataSource.createQueryRunner).not.toHaveBeenCalled();
@@ -264,7 +286,7 @@ describe('TypeOrmReencryptDbAdapter', () => {
       });
 
       await expect(
-        h.adapter.updateEncryptedValue('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo'),
+        h.adapter.updateEncryptedValue('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo', 'leido'),
       ).rejects.toThrow('conflicto');
 
       expect(h.lifecycle).toEqual(['connect', 'start', 'rollback', 'release']);
@@ -286,11 +308,17 @@ describe('TypeOrmReencryptDbAdapter', () => {
 
     it('emite el mismo UPDATE que apply, bajo search_path, y nunca confirma', async () => {
       const applied = createHarness([]);
-      await applied.adapter.updateEncryptedValue('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo');
+      await applied.adapter.updateEncryptedValue(
+        'tenant_alfa',
+        TENANT_TARGET,
+        'id-9',
+        'nuevo',
+        'leido',
+      );
       const probed = createHarness([]);
 
       await expect(
-        probed.adapter.probeEncryptedWrite('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo'),
+        probed.adapter.probeEncryptedWrite('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo', 'leido'),
       ).resolves.toBeNull();
 
       expect(probed.runnerCalls).toEqual(applied.runnerCalls);
@@ -303,7 +331,7 @@ describe('TypeOrmReencryptDbAdapter', () => {
       failUpdateWith(h, queryFailed('55000'));
 
       await expect(
-        h.adapter.probeEncryptedWrite('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo'),
+        h.adapter.probeEncryptedWrite('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo', 'leido'),
       ).resolves.toBe('55000');
 
       expect(h.queryRunner.commitTransaction).not.toHaveBeenCalled();
@@ -316,7 +344,7 @@ describe('TypeOrmReencryptDbAdapter', () => {
       failUpdateWith(h, failure);
 
       await expect(
-        h.adapter.probeEncryptedWrite('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo'),
+        h.adapter.probeEncryptedWrite('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo', 'leido'),
       ).rejects.toBe(failure);
 
       expect(h.lifecycle).toEqual(['connect', 'start', 'rollback', 'release']);
@@ -330,7 +358,7 @@ describe('TypeOrmReencryptDbAdapter', () => {
         failUpdateWith(h, failure);
 
         await expect(
-          h.adapter.probeEncryptedWrite('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo'),
+          h.adapter.probeEncryptedWrite('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo', 'leido'),
         ).rejects.toBe(failure);
       },
     );
@@ -341,7 +369,7 @@ describe('TypeOrmReencryptDbAdapter', () => {
         const h = createHarness([]);
 
         await expect(
-          h.adapter.probeEncryptedWrite(schemaName, TENANT_TARGET, 'id-9', 'nuevo'),
+          h.adapter.probeEncryptedWrite(schemaName, TENANT_TARGET, 'id-9', 'nuevo', 'leido'),
         ).rejects.toThrow(/Schema name invalido/);
 
         expect(h.dataSource.createQueryRunner).not.toHaveBeenCalled();

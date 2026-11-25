@@ -109,8 +109,8 @@ describeWithDb('Rotación AES con contacto NULL — PostgreSQL real', () => {
       tableExists: (schema, table) => adapter.tableExists(schema, table),
       fetchEncryptedBatch: (schema, encryptedTarget, offset, limit) =>
         adapter.fetchEncryptedBatch(schema, encryptedTarget, offset, limit),
-      updateEncryptedValue: (schema, encryptedTarget, id, ciphertext) =>
-        adapter.updateEncryptedValue(schema, encryptedTarget, id, ciphertext),
+      updateEncryptedValue: (schema, encryptedTarget, id, ciphertext, read) =>
+        adapter.updateEncryptedValue(schema, encryptedTarget, id, ciphertext, read),
     };
 
     const report = await runReencryptAes(db, {
