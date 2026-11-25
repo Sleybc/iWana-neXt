@@ -1339,6 +1339,63 @@ describeDb('Importación UISP — promoción, conciliación y reversión sobre P
     },
   );
 
+  describe('carrera encolado ↔ commit: el consumidor toma el trabajo antes del COMMIT', () => {
+    /** Espera a que el consumidor termine o quede detenido por el bloqueo del solicitante. */
+    async function settledOrBlocked(running: Promise<unknown>): Promise<void> {
+      let settled = false;
+      void running.then(
+        () => (settled = true),
+        () => (settled = true),
+      );
+      const deadline = Date.now() + 10_000;
+      while (!settled && Date.now() < deadline) {
+        const [{ waiting }] = (await ds.query(
+          `SELECT COUNT(*)::int AS waiting FROM pg_stat_activity
+            WHERE datname = current_database() AND wait_event_type = 'Lock'
+              AND query LIKE '%migration_batches%'`,
+        )) as [{ waiting: number }];
+        if (waiting > 0) return;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      if (!settled) throw new Error('El consumidor no terminó ni quedó esperando el bloqueo.');
+    }
+
+    function consumeDuringAdd(after?: () => never): { outcome: () => Promise<string> } {
+      let running: Promise<string> | undefined;
+      queue.add.mockImplementationOnce(async (_name: string, job: MigrationPromoteJob) => {
+        running = promotion.promote(job.tenantId, job.batchId, job.actorId);
+        await settledOrBlocked(running);
+        after?.();
+      });
+      return { outcome: () => running! };
+    }
+
+    it('promueve el lote en vez de omitirlo y dejarlo en CARGADO', async () => {
+      const batchId = await simulatedBatch([run * 10 + 91]);
+      const consumer = consumeDuringAdd();
+      await promotion.requestPromotion(scope(), batchId, actorId);
+      await expect(consumer.outcome()).resolves.toBe('CONCILIADO');
+      expect((await batches.getReport(scope(), batchId)).status).toBe('CONCILIADO');
+    });
+
+    it('si el encolado falla tras aceptar el trabajo: 503, lote SIMULADO y se puede reintentar', async () => {
+      const batchId = await simulatedBatch([run * 10 + 92]);
+      const consumer = consumeDuringAdd(() => {
+        throw new Error('respuesta de la cola perdida');
+      });
+      await expect(promotion.requestPromotion(scope(), batchId, actorId)).rejects.toMatchObject({
+        status: 503,
+        response: { code: 'MIGRATION_ENQUEUE_FAILED' },
+      });
+      await expect(consumer.outcome()).resolves.toBe('OMITIDO');
+      expect(await batches.getReport(scope(), batchId)).toMatchObject({
+        status: 'SIMULADO',
+        promotion: null,
+      });
+      await expect(promoteNow(batchId)).resolves.toBe('CONCILIADO');
+    });
+  });
+
   it('guardas: no se promueve sin simulación completa ni se revierte un lote solo simulado', async () => {
     const summary = await batches.createBatch(
       scope(),

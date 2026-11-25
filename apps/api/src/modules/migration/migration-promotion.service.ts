@@ -331,9 +331,11 @@ export class MigrationPromotionService {
     actorId: string,
   ): Promise<'PROMOVIDO' | 'CONCILIADO' | 'OMITIDO'> {
     const batch = await runInTenantSchema(this.dataSource, tenant.schemaName, async (qr) => {
+      // `requestPromotion` encola con la fila bloqueada y antes de su COMMIT: FOR SHARE espera a
+      // que esa transacción termine y lee el estado definitivo (CARGADO, o el previo si revirtió).
       const rows = (await qr.query(
         `SELECT status, purged_at, source_object_key, counts FROM migration_batches
-          WHERE id = $1 AND tenant_id = $2`,
+          WHERE id = $1 AND tenant_id = $2 FOR SHARE`,
         [batchId, tenant.tenantId],
       )) as Array<{
         status: string;
