@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { expect, request, test, type APIRequestContext } from '@playwright/test';
 import { loginAsPlatformAdmin } from './helpers/web-api-mocks';
+import { platformAccessToken } from '../../scripts/lib/platform-session.mjs';
 
 const platformEmail = process.env['E2E_PLATFORM_EMAIL'];
 const platformPassword = process.env['E2E_PLATFORM_PASSWORD'];
@@ -60,12 +61,13 @@ async function cleanupTestTenants(olderThanMs = 0): Promise<void> {
 
 test.describe('Web tenant create happy path real', () => {
   test.beforeAll(async () => {
+    test.setTimeout(120_000);
     api = await request.newContext({ baseURL: API_BASE_URL });
-    const login = await api.post(`${API_PREFIX}/auth/platform/login`, {
-      data: { email: platformEmail, password: platformPassword },
+    platformToken = await platformAccessToken({
+      apiUrl: `${API_BASE_URL}${API_PREFIX}`,
+      email: platformEmail!,
+      password: platformPassword!,
     });
-    expect(login.status()).toBe(200);
-    platformToken = ((await login.json()) as { data: { accessToken: string } }).data.accessToken;
     // Restos de corridas abortadas antes de su afterAll.
     await cleanupTestTenants(STALE_AFTER_MS);
   });

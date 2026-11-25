@@ -29,6 +29,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, request, test, type APIRequestContext, type Page } from '@playwright/test';
+import { platformAccessToken } from '../../scripts/lib/platform-session.mjs';
 
 const API_BASE_URL = process.env.API_BASE_URL ?? 'http://127.0.0.1:3000';
 const API_PREFIX = '/api/v1';
@@ -200,19 +201,11 @@ async function cleanupTenant(): Promise<void> {
 
 async function createDisposableTenant(): Promise<void> {
   api = await request.newContext({ baseURL: API_BASE_URL });
-  const platformSession = await expectJson<{ accessToken: string }>(
-    '/auth/platform/login',
-    'POST',
-    200,
-    {
-      data: {
-        email: process.env.E2E_PLATFORM_EMAIL ?? process.env.PLATFORM_SUPER_ADMIN_EMAIL ?? '',
-        password:
-          process.env.E2E_PLATFORM_PASSWORD ?? process.env.PLATFORM_SUPER_ADMIN_PASSWORD ?? '',
-      },
-    },
-  );
-  platformToken = platformSession.accessToken;
+  platformToken = await platformAccessToken({
+    apiUrl: `${API_BASE_URL}${API_PREFIX}`,
+    email: process.env.E2E_PLATFORM_EMAIL ?? process.env.PLATFORM_SUPER_ADMIN_EMAIL ?? '',
+    password: process.env.E2E_PLATFORM_PASSWORD ?? process.env.PLATFORM_SUPER_ADMIN_PASSWORD ?? '',
+  });
 
   const created = await expectJson<{ id: string; slug: string; schemaName: string }>(
     '/tenants',

@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { platformAccessToken } from '../../scripts/lib/platform-session.mjs';
 
 // Se reutiliza el fixture sintético del módulo (apps/api, CommonJS con `jszip` propio). El
 // cargador ESM de Playwright no lo transpila fuera de este paquete, así que se transpila aquí y se
@@ -160,24 +161,17 @@ async function cleanupQaTenants(): Promise<void> {
 
 async function createDisposableTenant(): Promise<void> {
   api = await request.newContext({ baseURL: API_BASE_URL });
-  const platformSession = await expectJson<{ accessToken: string }>(
-    '/auth/platform/login',
-    'POST',
-    200,
-    {
-      data: {
-        email: requiredEnv(
-          process.env.E2E_PLATFORM_EMAIL ?? process.env.PLATFORM_SUPER_ADMIN_EMAIL,
-          'E2E_PLATFORM_EMAIL',
-        ),
-        password: requiredEnv(
-          process.env.E2E_PLATFORM_PASSWORD ?? process.env.PLATFORM_SUPER_ADMIN_PASSWORD,
-          'E2E_PLATFORM_PASSWORD',
-        ),
-      },
-    },
-  );
-  platformToken = platformSession.accessToken;
+  platformToken = await platformAccessToken({
+    apiUrl: `${API_BASE_URL}${API_PREFIX}`,
+    email: requiredEnv(
+      process.env.E2E_PLATFORM_EMAIL ?? process.env.PLATFORM_SUPER_ADMIN_EMAIL,
+      'E2E_PLATFORM_EMAIL',
+    ),
+    password: requiredEnv(
+      process.env.E2E_PLATFORM_PASSWORD ?? process.env.PLATFORM_SUPER_ADMIN_PASSWORD,
+      'E2E_PLATFORM_PASSWORD',
+    ),
+  });
   const created = await expectJson<Tenant>('/tenants', 'POST', 201, {
     headers: apiHeaders(platformToken),
     data: {

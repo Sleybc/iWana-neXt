@@ -17,6 +17,8 @@ export default defineConfig({
     timeout: 10_000,
   },
   fullyParallel: false,
+  // Contra API real, dos workers competirían por el mismo código TOTP de plataforma.
+  ...(process.env['E2E_PLATFORM_TOTP_SECRET'] ? { workers: 1 } : {}),
   reporter: [['list']],
   use: {
     baseURL: 'http://127.0.0.1:3001',

@@ -10,6 +10,7 @@ import type {
   TenantUsage,
   TenantUsageItem,
 } from '@iwana/shared';
+import { nextTotpCode } from '../../../scripts/lib/platform-session.mjs';
 
 export interface WebTenantMock {
   id: string;
@@ -911,6 +912,17 @@ export async function loginAsPlatformAdmin(
   await page.goto('/auth/login');
   await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible();
   await submitPlatformLogin(page, credentials);
+  const secret = process.env['E2E_PLATFORM_TOTP_SECRET'];
+  if (credentials && secret) {
+    await page.waitForURL(/\/(dashboard|auth\/mfa\/verify)/);
+    if (page.url().includes('/auth/mfa/verify')) {
+      const digits = page.getByLabel(/^Dígito \d de 6$/);
+      for (const [index, digit] of [...(await nextTotpCode(secret))].entries()) {
+        await digits.nth(index).fill(digit);
+      }
+      await page.getByRole('button', { name: 'Verificar código' }).click();
+    }
+  }
   await expect(page).toHaveURL(/\/dashboard/);
 }
 

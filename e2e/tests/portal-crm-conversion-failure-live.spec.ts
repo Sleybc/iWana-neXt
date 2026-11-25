@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { expect, request, test, type APIRequestContext, type Page } from '@playwright/test';
+import { platformAccessToken } from '../../scripts/lib/platform-session.mjs';
 
 type PgResult = { rowCount: number | null; rows: Array<Record<string, unknown>> };
 type PgClient = {
@@ -104,14 +105,11 @@ async function createDisposableTenant(): Promise<void> {
   );
   api = await request.newContext({ baseURL: API_BASE_URL });
 
-  const platformSession = await expectJson<{ accessToken: string }>(
-    api,
-    '/auth/platform/login',
-    'POST',
-    200,
-    { data: { email: platformEmail, password: platformPassword } },
-  );
-  platformToken = platformSession.accessToken;
+  platformToken = await platformAccessToken({
+    apiUrl: `${API_BASE_URL}${API_PREFIX}`,
+    email: platformEmail,
+    password: platformPassword,
+  });
 
   const created = await expectJson<Tenant>(api, '/tenants', 'POST', 201, {
     headers: apiHeaders(platformToken),

@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
+import { platformAccessToken } from '../../scripts/lib/platform-session.mjs';
 
 const ROOT = process.cwd();
 const API = process.env.API_BASE_URL ?? 'http://127.0.0.1:3000/api/v1';
@@ -66,13 +67,7 @@ async function platformSession() {
   const password = process.env.E2E_PLATFORM_PASSWORD ?? process.env.PLATFORM_SUPER_ADMIN_PASSWORD;
   assert(email && password, 'Platform test credentials are unavailable.');
 
-  const { response, body } = await api('/auth/platform/login', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-  assert(response.ok && body?.data?.accessToken, `Platform login failed (${response.status}).`);
-  return body.data.accessToken;
+  return platformAccessToken({ apiUrl: API, email, password });
 }
 
 async function loadOrCreateTenant(platformToken) {

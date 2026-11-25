@@ -40,6 +40,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { platformAccessToken } from '../../../scripts/lib/platform-session.mjs';
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
@@ -201,14 +202,12 @@ function createTestCtx(): TestCtx {
 }
 
 /** Login de plataforma → obtiene token. */
-async function platformLogin(api: APIRequestContext): Promise<string> {
-  const res = await api.post(`${API_PREFIX}/auth/platform/login`, {
-    data: { email: PLATFORM_EMAIL, password: PLATFORM_PASSWORD },
+async function platformLogin(): Promise<string> {
+  return platformAccessToken({
+    apiUrl: API_PREFIX,
+    email: PLATFORM_EMAIL,
+    password: PLATFORM_PASSWORD,
   });
-  expect(res.status()).toBe(200);
-  const body = await res.json();
-  expect(body.data?.accessToken).toBeDefined();
-  return body.data.accessToken;
 }
 
 /**
@@ -586,7 +585,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
 
     // 1. Login como administrador de plataforma
     try {
-      ctx.platformToken = await platformLogin(setupApi);
+      ctx.platformToken = await platformLogin();
     } catch (err) {
       throw new Error(
         `Login de plataforma falló: ${err instanceof Error ? err.message : String(err)}`,

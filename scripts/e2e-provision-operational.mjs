@@ -14,6 +14,7 @@ import crypto from 'node:crypto';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { validateQuarantine } from './check-e2e-quarantine.mjs';
+import { enrollPlatformMfa, loginPlatform } from './lib/platform-session.mjs';
 import { seedPrivacyFase1bFixtures } from '../e2e/scripts/seed-privacy-fase-1b-fixtures.mjs';
 
 // Fuente única del piso del vertical R4.1 (tests 4a/4b/4c/4d/4e).
@@ -838,26 +839,11 @@ function idempotencyKey() {
 }
 
 async function loginPlatformWithPassword(password) {
-  const body = await api(
-    '/auth/platform/login',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: platformEmail, password }),
-    },
-    [200],
-  );
-
-  const data = body.data && typeof body.data === 'object' ? body.data : null;
-  const token = data && typeof data.accessToken === 'string' ? data.accessToken : undefined;
-
-  if (!token) {
-    throw new Error('El login de plataforma no devolvió accessToken.');
-  }
-
+  const data = await loginPlatform({ apiUrl: API_PREFIX, email: platformEmail, password });
   return {
-    token,
+    token: data.accessToken,
     passwordResetRequired: data.passwordResetRequired === true,
+    mfaSetupRequired: data.mfaSetupRequired === true,
   };
 }
 
@@ -907,6 +893,12 @@ async function platformLogin() {
         'El login de plataforma sigue exigiendo passwordResetRequired tras el cambio de contraseña.',
       );
     }
+  }
+
+  if (session.mfaSetupRequired) {
+    // El secreto es efímero y solo viaja por entorno: nunca se imprime.
+    process.env.E2E_PLATFORM_TOTP_SECRET = await enrollPlatformMfa(API_PREFIX, session.token);
+    session = await loginPlatformWithPassword(platformPassword);
   }
 
   return session.token;
@@ -1731,6 +1723,7 @@ function createPortalSuiteEnvironment(env, reporterPath, reportPath, quarantineC
     E2E_PRIVACY_ADMIN_PASSWORD: env.E2E_PRIVACY_ADMIN_PASSWORD,
     E2E_PLATFORM_EMAIL: env.E2E_PLATFORM_EMAIL,
     E2E_PLATFORM_PASSWORD: env.E2E_PLATFORM_PASSWORD,
+    E2E_PLATFORM_TOTP_SECRET: env.E2E_PLATFORM_TOTP_SECRET,
     E2E_POSTGRES_CONTAINER: postgresContainer,
     E2E_DB_BOOTSTRAP_USER: bootstrapUser,
     E2E_DB_NAME: databaseName,

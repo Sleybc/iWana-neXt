@@ -13,6 +13,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
+import { platformAccessToken } from '../../scripts/lib/platform-session.mjs';
 
 function findWorkspaceRoot() {
   let current = process.cwd();
@@ -118,13 +119,7 @@ function tenantFromResponse(body, slug) {
 
 async function platformSession(email, password) {
   assert(email && password, 'Faltan E2E_PLATFORM_* en el entorno local.');
-  const { response, body } = await api('/auth/platform/login', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-  assert(response.ok && body?.data?.accessToken, `Login de plataforma HTTP ${response.status}.`);
-  return body.data.accessToken;
+  return platformAccessToken({ apiUrl: API, email, password });
 }
 
 async function lookupTenant(headers, slug) {

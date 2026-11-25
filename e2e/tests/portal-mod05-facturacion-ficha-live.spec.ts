@@ -54,6 +54,7 @@ import {
   type Page,
 } from '@playwright/test';
 import ts from 'typescript';
+import { platformAccessToken } from '../../scripts/lib/platform-session.mjs';
 
 // Fixture sintético de UISP del módulo de migración (mismo cargador que
 // `portal-importacion-uisp-live.spec.ts`: se transpila a CommonJS con su `require` anclado).
@@ -319,19 +320,11 @@ async function cleanupTenant(): Promise<void> {
 
 async function createDisposableTenant(): Promise<void> {
   api = await request.newContext({ baseURL: API_BASE_URL });
-  const platformSession = await expectJson<{ accessToken: string }>(
-    '/auth/platform/login',
-    'POST',
-    200,
-    {
-      data: {
-        email: process.env.E2E_PLATFORM_EMAIL ?? process.env.PLATFORM_SUPER_ADMIN_EMAIL ?? '',
-        password:
-          process.env.E2E_PLATFORM_PASSWORD ?? process.env.PLATFORM_SUPER_ADMIN_PASSWORD ?? '',
-      },
-    },
-  );
-  platformToken = platformSession.accessToken;
+  platformToken = await platformAccessToken({
+    apiUrl: `${API_BASE_URL}${API_PREFIX}`,
+    email: process.env.E2E_PLATFORM_EMAIL ?? process.env.PLATFORM_SUPER_ADMIN_EMAIL ?? '',
+    password: process.env.E2E_PLATFORM_PASSWORD ?? process.env.PLATFORM_SUPER_ADMIN_PASSWORD ?? '',
+  });
 
   const created = await expectJson<{ id: string; schemaName: string }>('/tenants', 'POST', 201, {
     headers: apiHeaders(platformToken),

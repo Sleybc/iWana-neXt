@@ -27,6 +27,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { expect, request, test, type APIRequestContext, type Page } from '@playwright/test';
+import { platformAccessToken } from '../../scripts/lib/platform-session.mjs';
 
 const API_BASE_URL = process.env.API_BASE_URL ?? 'http://127.0.0.1:3000';
 const API_PREFIX = '/api/v1';
@@ -173,14 +174,11 @@ async function createDisposableTenant(): Promise<void> {
     process.env.E2E_PLATFORM_PASSWORD ?? process.env.PLATFORM_SUPER_ADMIN_PASSWORD ?? '';
   api = await request.newContext({ baseURL: API_BASE_URL });
 
-  const platformSession = await expectJson<{ accessToken: string }>(
-    api,
-    '/auth/platform/login',
-    'POST',
-    200,
-    { data: { email: platformEmail, password: platformPassword } },
-  );
-  platformToken = platformSession.accessToken;
+  platformToken = await platformAccessToken({
+    apiUrl: `${API_BASE_URL}${API_PREFIX}`,
+    email: platformEmail,
+    password: platformPassword,
+  });
 
   const created = await expectJson<{
     id: string;
