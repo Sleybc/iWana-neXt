@@ -158,3 +158,12 @@ test('IP-port proxy config serves portal and files on their own ports', () => {
   assert.match(fw('80 443 8443 9443').stdout, /ctorigdstport 9443 -j RETURN/);
   assert.equal(fw('443 -j ACCEPT').status, 2);
 });
+
+test('the health watch targets the portal, not the restricted console', () => {
+  for (const file of ['healthwatch.sh', 'systemd/lan.conf.example']) {
+    const text = readFileSync(join(lan, file), 'utf8');
+    const urls = text.match(/https:\/\/10\.0\.0\.254[^\s)}]*\/health/g);
+    assert.ok(urls?.length);
+    assert.deepEqual([...new Set(urls)], ['https://10.0.0.254:8443/api/v1/health']);
+  }
+});

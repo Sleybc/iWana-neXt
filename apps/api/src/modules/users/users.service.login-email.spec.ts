@@ -133,6 +133,7 @@ describe('UsersService.changeLoginEmail (Ola 2)', () => {
     configServiceMock = {
       get: jest.fn().mockImplementation((key: string, def?: unknown) => {
         if (key === 'FRONTEND_URL') return 'http://localhost:3001';
+        if (key === 'PORTAL_URL') return 'https://portal.example.test/';
         return def;
       }),
     };
@@ -195,7 +196,9 @@ describe('UsersService.changeLoginEmail (Ola 2)', () => {
     // Re-verificacion al email nuevo con el token generado.
     const verifyCall = sentMails.find((mail) => mail.to === 'nuevo@empresa.com');
     expect(verifyCall).toBeDefined();
-    expect(verifyCall?.html).toContain(String(entity['emailVerificationToken']));
+    expect(verifyCall?.html).toContain(
+      `https://portal.example.test/auth/verify-email?token=${String(entity['emailVerificationToken'])}`,
+    );
 
     // Auditoria: el reseteo y el aviso quedan trazados sin PII.
     expect(auditServiceMock.log).toHaveBeenCalledWith(

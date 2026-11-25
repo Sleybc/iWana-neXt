@@ -22,6 +22,7 @@ const CONSOLE = 'consola.replace_me_production_domain';
 // Con la configuración por IP de la LAN, el portal está en otro puerto: IWANA_NGINX_PORTAL_PORT=8443.
 const PORTAL_PORT = process.env.IWANA_NGINX_PORTAL_PORT ?? '443';
 const PORTAL = PORTAL_PORT === '443' ? 'portal.replace_me_production_domain' : 'portal.lan.example';
+const PORTAL_ORIGIN = `https://${PORTAL}${PORTAL_PORT === '443' ? '' : `:${PORTAL_PORT}`}`;
 const docker = (...args) =>
   execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 let dir;
@@ -84,7 +85,7 @@ before(() => {
     ]
       .map(
         ([port, name]) =>
-          `server { listen ${port}; location / { return 200 "${name} surface=$http_x_iwana_surface xff=$http_x_forwarded_for uri=$request_uri"; } }`,
+          `server { listen ${port}; location / { return 200 "${name} surface=$http_x_iwana_surface origin=$http_x_iwana_origin xff=$http_x_forwarded_for uri=$request_uri"; } }`,
       )
       .join('\n'),
   );
@@ -215,10 +216,14 @@ test('consola: una IP autorizada llega, marcada y con su IP real', options, () =
   for (const path of ['/api/v1/auth/platform/login', '/api/v1/tenants', '/api/v1/auth/refresh']) {
     const { status, body } = ask(ALLOWED, CONSOLE, path, [
       'X-Iwana-Surface: portal',
+      'X-Iwana-Origin: https://ajeno.example',
       'X-Forwarded-For: 8.8.8.8',
     ]);
     assert.equal(status, 200, path);
-    assert.match(body, new RegExp(`^api surface=console xff=${ALLOWED} `, 'u'));
+    assert.match(
+      body,
+      new RegExp(`^api surface=console origin=https://${CONSOLE} xff=${ALLOWED} `, 'u'),
+    );
   }
   assert.match(ask(ALLOWED, CONSOLE, '/dashboard').body, /^web surface=console /u);
 });
@@ -252,9 +257,25 @@ test('portal: lo suyo llega marcado como portal aunque el cliente falsifique', o
     '/api/v1/health',
     '/api/v1/assurance/tickets/3f2504e0-4f89-41d3-9a0c-0305e82c3301/comments/with-attachments',
   ]) {
-    const { status, body } = ask(OUTSIDER, PORTAL, path, ['X-Iwana-Surface: console']);
+    const { status, body } = ask(OUTSIDER, PORTAL, path, [
+      'X-Iwana-Surface: console',
+      'X-Iwana-Origin: https://ajeno.example',
+    ]);
     assert.equal(status, 200, path);
-    assert.match(body, /^api surface=portal /u, path);
+    assert.ok(body.startsWith(`api surface=portal origin=${PORTAL_ORIGIN} `), `${path} ${body}`);
   }
   assert.match(ask(OUTSIDER, PORTAL, '/dashboard').body, /^portal surface=portal /u);
+});
+
+test('consola: con la lista vacía no entra nadie y el portal sigue', options, () => {
+  writeFileSync(join(dir, 'allow.conf'), '');
+  docker('exec', `${NET}_edge`, 'nginx', '-t');
+  docker('exec', `${NET}_edge`, 'nginx', '-s', 'reload');
+  execFileSync('sleep', ['2']);
+  for (const ip of [ALLOWED, OUTSIDER]) {
+    for (const path of ['/', '/health', '/api/v1/auth/platform/login']) {
+      assert.equal(ask(ip, CONSOLE, path).status, 403, path);
+    }
+    assert.equal(ask(ip, PORTAL, '/api/v1/auth/login').status, 200);
+  }
 });

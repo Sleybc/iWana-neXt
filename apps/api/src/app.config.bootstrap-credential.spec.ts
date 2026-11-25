@@ -48,6 +48,7 @@ function buildProductionEnv(): Record<string, string> {
     TYPESENSE_API_KEY: 'test-only-typesense-key',
     CORS_ORIGIN: PRODUCTION_ORIGIN,
     FRONTEND_URL: PRODUCTION_ORIGIN,
+    PORTAL_URL: 'https://portal.example.test',
   };
 }
 

@@ -9,6 +9,7 @@ import {
   type ContractAutoCreationMissingField,
 } from '@iwana/shared';
 import { IActiveUserEmailReadPort } from '../../access-control/ports/active-user-email-read.port';
+import { resolvePortalUrl } from '../../../common/portal-url';
 import { AuditService } from '../../audit/audit.service';
 import { MailerService } from '../../mailer/mailer.service';
 import {
@@ -174,8 +175,8 @@ export class ContractAutoCreationService implements ContractAutoCreationPort {
         );
         return;
       }
-      const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:3002');
-      const url = new URL(`/dashboard/crm/subscribers/${subscriberId}`, frontendUrl).toString();
+      const portalUrl = resolvePortalUrl(this.config);
+      const url = new URL(`/dashboard/crm/subscribers/${subscriberId}`, portalUrl).toString();
       const summary = describeContractAutoCreationIssue(issue);
       await this.mailer.sendMail({
         to: email,

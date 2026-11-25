@@ -11,6 +11,7 @@ import { JwtService } from '@nestjs/jwt';
 import { NextFunction, Request, Response } from 'express';
 import { TenantContext } from '@iwana/db';
 import { TenantStatus } from '@iwana/shared';
+import { isConsoleSurface } from '../../common/console-surface';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import {
   accessCookieCandidates,
@@ -211,7 +212,11 @@ export class TenantMiddleware implements NestMiddleware {
 
     if (this.getNormalizedPath(req) === '/auth/refresh') {
       const cookies = (req.cookies ?? {}) as Record<string, string>;
-      if (declaredSessionAudience(req) === 'platform' || cookies[platformRefreshCookieName()]) {
+      // Fuera de la consola la cookie de plataforma se ignora, como en el controlador.
+      if (
+        declaredSessionAudience(req) === 'platform' ||
+        (isConsoleSurface(req) && cookies[platformRefreshCookieName()])
+      ) {
         return false;
       }
       // V-2 (WEB-DASHBOARD Ola 2): sin ninguna cookie de refresh no hay sesión que

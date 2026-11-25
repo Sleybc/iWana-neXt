@@ -62,8 +62,12 @@ function buildHarness() {
   };
   const mailer = { sendMail: jest.fn().mockResolvedValue(undefined) };
   const config = {
-    get: jest.fn((key: string) =>
-      key === 'FRONTEND_URL' ? 'https://portal.example.test' : undefined,
+    get: jest.fn(
+      (key: string) =>
+        ({
+          PORTAL_URL: 'https://portal.example.test',
+          FRONTEND_URL: 'https://consola.example.test',
+        })[key],
     ),
   };
   const metrics = { recordNoRecipients: jest.fn() };

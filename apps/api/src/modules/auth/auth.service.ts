@@ -23,6 +23,7 @@ import { PlatformRole, UserRole, UserStatus, AuditAction } from '@iwana/shared';
 import { runInTenantSchema, summarizeErrorForLog, TenantContext } from '@iwana/db';
 import { DataSource } from 'typeorm';
 import { REDIS_CLIENT } from '../redis/redis.module';
+import { resolvePortalUrl } from '../../common/portal-url';
 import { AuditService } from '../audit/audit.service';
 import {
   PLATFORM_USER_ENTITY_TYPE,
@@ -1724,10 +1725,10 @@ export class AuthService {
         userId: user.id,
       });
 
-      // Construir el enlace de reset usando la URL del frontend configurada
-      const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3001');
+      // La página de reset vive en el portal empresarial
+      const portalUrl = resolvePortalUrl(this.configService);
       const template = forgotPasswordTemplate({
-        resetLink: `${frontendUrl}/auth/reset-password?token=${token}`,
+        resetLink: `${portalUrl}/auth/reset-password?token=${token}`,
         // Calcular minutos desde la constante de TTL para evitar valores hardcodeados desincronizados
         expiresInMinutes: PASSWORD_RESET_TOKEN_TTL_MS / (60 * 1000),
       });
@@ -2118,9 +2119,9 @@ export class AuthService {
 
       // Descifrar el email para el envio — solo en memoria, nunca se persiste ni loguea
       const plainEmail = dto.email.toLowerCase().trim();
-      const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3001');
+      const portalUrl = resolvePortalUrl(this.configService);
       const template = emailVerificationTemplate({
-        verifyLink: `${frontendUrl}/auth/verify-email?token=${rawToken}`,
+        verifyLink: `${portalUrl}/auth/verify-email?token=${rawToken}`,
       });
 
       // Enviar correo de verificacion (fire-and-forget — no bloquea la respuesta al cliente)

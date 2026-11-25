@@ -1,5 +1,6 @@
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { SanitizeFailedReason } from '../../../common/sanitize-failed-reason.decorator';
+import { resolvePortalUrl } from '../../../common/portal-url';
 import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -241,8 +242,8 @@ export class PrivacyDueAlertsProcessor extends WorkerHost implements OnApplicati
           return;
         }
 
-        const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:3002');
-        const inboxUrl = new URL(PRIVACY_DUE_ALERTS_INBOX_PATH, frontendUrl).toString();
+        const portalUrl = resolvePortalUrl(this.config);
+        const inboxUrl = new URL(PRIVACY_DUE_ALERTS_INBOX_PATH, portalUrl).toString();
         const inboxUrlHtml = escapeHtml(inboxUrl);
         const text = [
           'Hay solicitudes de datos personales que requieren seguimiento.',

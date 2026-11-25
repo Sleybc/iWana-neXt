@@ -2,6 +2,7 @@ import { INestApplication, MiddlewareConsumer, Module, NestModule } from '@nestj
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
+import { TenantContext } from '@iwana/db';
 import { TenantStatus } from '@iwana/shared';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
@@ -144,5 +145,60 @@ describe('TenantMiddleware + POST /auth/refresh (HTTP)', () => {
       undefined,
     );
     expect(tenantService.findBySlug).not.toHaveBeenCalled();
+  });
+
+  describe('portal en producción con ambas cookies y sin audiencia', () => {
+    const original = process.env['NODE_ENV'];
+    beforeEach(() => {
+      process.env['NODE_ENV'] = 'production';
+      // Como el servicio real: sin contexto de empresa, revienta.
+      authService.refreshTokens.mockImplementation(() =>
+        Promise.resolve(TenantContext.getOrThrow()).then(() => ({
+          accessToken: 'access-tenant-2',
+          refreshToken: 'refresh-tenant-2',
+        })),
+      );
+    });
+    afterEach(() => {
+      process.env['NODE_ENV'] = original;
+    });
+
+    const refresh = (surface: string) =>
+      request(app.getHttpServer())
+        .post('/api/v1/auth/refresh')
+        .set('X-Iwana-Surface', surface)
+        .set('Cookie', [
+          `${tenantRefreshCookieName()}=refresh-tenant-1`,
+          `${platformRefreshCookieName()}=refresh-platform-1`,
+        ]);
+
+    it('sin slug responde 400: la cookie de plataforma no exime', async () => {
+      await refresh('portal').expect(400);
+      expect(authService.refreshTokens).not.toHaveBeenCalled();
+      expect(authService.refreshPlatformTokens).not.toHaveBeenCalled();
+    });
+
+    it('con slug renueva la empresa y no toca la sesión de plataforma', async () => {
+      tenantService.findBySlug.mockResolvedValue({
+        id: 'tenant-uuid-1',
+        slug: 'empresa-prueba',
+        schemaName: 'tenant_empresa_prueba',
+        status: TenantStatus.ACTIVE,
+      });
+      const response = await refresh('portal').set('X-Tenant-Slug', 'empresa-prueba').expect(200);
+      expect(response.body).toEqual({ data: { accessToken: 'access-tenant-2' } });
+      expect(authService.refreshTokens).toHaveBeenCalledTimes(1);
+      expect(authService.refreshPlatformTokens).not.toHaveBeenCalled();
+      expect(String(response.headers['set-cookie'])).not.toContain(platformRefreshCookieName());
+    });
+
+    it('en la consola la cookie de plataforma sigue eximiendo', async () => {
+      authService.refreshPlatformTokens.mockResolvedValue({
+        accessToken: 'access-platform-2',
+        refreshToken: 'refresh-platform-2',
+      });
+      await refresh('console').expect(200);
+      expect(authService.refreshTokens).not.toHaveBeenCalled();
+    });
   });
 });

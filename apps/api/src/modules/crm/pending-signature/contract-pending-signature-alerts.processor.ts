@@ -7,6 +7,7 @@ import { AccessPermissionKey } from '@iwana/shared';
 import { Job, Queue, UnrecoverableError } from 'bullmq';
 import { DataSource } from 'typeorm';
 import { SanitizeFailedReason } from '../../../common/sanitize-failed-reason.decorator';
+import { resolvePortalUrl } from '../../../common/portal-url';
 import { IPermissionHoldersReadPort } from '../../access-control/ports/permission-holders-read.port';
 import { MailerService } from '../../mailer/mailer.service';
 import { resolveRegisteredTenant } from '../../tenant/ports/resolve-registered-tenant';
@@ -226,8 +227,8 @@ export class ContractPendingSignatureAlertsProcessor
           );
           if (fresh.length === 0) return;
 
-          const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:3002');
-          const listUrl = new URL(CONTRACT_PENDING_SIGNATURE_LIST_PATH, frontendUrl).toString();
+          const portalUrl = resolvePortalUrl(this.config);
+          const listUrl = new URL(CONTRACT_PENDING_SIGNATURE_LIST_PATH, portalUrl).toString();
           const summary =
             fresh.length === 1
               ? `Hay 1 contrato con servicio activo hace más de ${threshold} horas sin firmar.`

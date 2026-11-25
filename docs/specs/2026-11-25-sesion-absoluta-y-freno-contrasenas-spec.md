@@ -50,6 +50,8 @@
 5. `PROXY_BIND_IP` explícita, IPv6 cerrado o atendido de extremo a extremo, y `$remote_addr` distinto de la pasarela de Docker. Con CDN o balanceador: `set_real_ip_from` y revisar `trust proxy`.
 6. `scripts/lan/render-nginx-ip-ports.sh` sigue funcionando. No sustituye §4.
 
+**Origen por vhost (revisión de 7265a9bd).** nginx escribe `X-Iwana-Origin` con el origen del vhost. En producción y staging la API responde 403, antes de CORS y de las rutas, a todo `Origin` que no sea ese o no esté en `CORS_ORIGIN`. Sin `Origin` no actúa.
+
 ## 6. Criterios de aceptación
 
 | #     | Criterio                                                                                                                                                                                                                       | Prueba                       |

@@ -51,8 +51,6 @@ function buildProductionEnv(): Record<string, string> {
     TYPESENSE_API_KEY: 'test-only-typesense-key',
     CORS_ORIGIN: `${PRODUCTION_ORIGIN},${PORTAL_ORIGIN}`,
     FRONTEND_URL: PRODUCTION_ORIGIN,
-    // PORTAL_URL es opcional, pero si llega (p. ej. heredada de .env.development en el
-    // mismo worker) se valida: el fixture declara el valor de producción.
     PORTAL_URL: PORTAL_ORIGIN,
     // C-5 (ADR-081): en perfil producción COOKIE_SECURE no puede quedar en
     // false — el esquema lo exige. El fixture declara el valor correcto para
@@ -130,6 +128,31 @@ describe('createAppConfigurationSchema — CORS_ORIGIN y FRONTEND_URL en producc
         expect(error?.message).toContain('FRONTEND_URL debe ser una URL absoluta http(s)');
       },
     );
+
+    it.each([
+      'https://app.ejemplo.example/',
+      'https://app.ejemplo.example/ruta',
+      'https://app.ejemplo.example:443',
+      'https://App.ejemplo.example',
+      'https://usuario@app.ejemplo.example',
+      'https://*.ejemplo.example',
+    ])('rechaza en CORS_ORIGIN lo que el navegador no envía como origen: %s', (origin) => {
+      const { error } = validate({
+        ...buildProductionEnv(),
+        CORS_ORIGIN: `${PORTAL_ORIGIN},${origin}`,
+      });
+
+      expect(error?.message).toContain('CORS_ORIGIN debe llevar orígenes exactos');
+    });
+
+    it('admite en CORS_ORIGIN un puerto propio y espacios entre orígenes', () => {
+      const { error } = validate({
+        ...buildProductionEnv(),
+        CORS_ORIGIN: `${PRODUCTION_ORIGIN}, https://10.0.0.1:8443`,
+      });
+
+      expect(error).toBeUndefined();
+    });
 
     it('rechaza CORS_ORIGIN que no es una lista de orígenes absolutos', () => {
       const { error } = validate({ ...buildProductionEnv(), CORS_ORIGIN: 'app.ejemplo.example' });
@@ -285,10 +308,16 @@ describe('ConfigModule.forRoot — fail-fast de arranque en perfil producción',
 });
 
 describe('createAppConfigurationSchema — PORTAL_URL (invitación al portal empresarial)', () => {
-  it('es opcional en producción: sin ella arranca (los enlaces usan FRONTEND_URL)', () => {
+  it.each([undefined, ''])('es obligatoria en producción: %p aborta el arranque', (value) => {
     const env = buildProductionEnv();
     delete env['PORTAL_URL'];
-    expect(validate(env).error).toBeUndefined();
+    const { error } = validate(value === undefined ? env : { ...env, PORTAL_URL: value });
+    expect(error?.message).toMatch(/^PORTAL_URL (?:es obligatoria|debe ser una URL absoluta)/u);
+  });
+
+  it('en desarrollo sigue siendo opcional', () => {
+    const { error } = validate({ NODE_ENV: 'development' });
+    expect(error?.details.map((detail) => detail.path.join('.'))).not.toContain('PORTAL_URL');
   });
 
   it('en producción acepta el dominio del portal y rechaza localhost', () => {

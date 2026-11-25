@@ -227,8 +227,18 @@ test('nginx prod marks the surface on every proxied location and restricts the c
     assert.ok(!isDenied(path), path);
   }
 
-  assert.match(consoleBlock, /include \/etc\/nginx\/console\/allow\.conf;/);
-  assert.doesNotMatch(consoleBlock, /\n +(allow|deny|satisfy) /);
+  // Cierra aunque la lista llegue vacía o sin `deny all`; `allow` y `satisfy` solo en la lista.
+  assert.match(consoleBlock, /include \/etc\/nginx\/console\/allow\.conf;\n +deny all;/);
+  assert.equal([...consoleBlock.matchAll(/\n +deny /g)].length, 1);
+  assert.doesNotMatch(consoleBlock, /\n +(allow|satisfy) /);
+
+  // Origen propio del vhost, que la API compara con Origin: lo escribe nginx en cada proxy.
+  for (const block of [consoleBlock, portalBlock]) {
+    assert.equal(
+      [...block.matchAll(/proxy_set_header X-Iwana-Origin \$scheme:\/\/\$http_host;/g)].length,
+      [...block.matchAll(/proxy_pass http:/g)].length,
+    );
+  }
 
   const allow = await readFile(
     fileURLToPath(new URL('../nginx/console-allow.conf', import.meta.url)),
@@ -239,9 +249,38 @@ test('nginx prod marks the surface on every proxied location and restricts the c
     ['allow 127.0.0.1;', 'deny all;'],
   );
   const compose = await readFile(prodComposePath, 'utf8');
+  // Bind largo: si la ruta no existe, Docker falla en vez de crear una carpeta.
   assert.match(
     composeServiceBlock(compose, 'nginx-prod'),
-    /PROXY_CONSOLE_ALLOW:-\.\/nginx\/console-allow\.conf\}:\/etc\/nginx\/console\/allow\.conf:ro/,
+    /- type: bind\n +source: \$\{PROXY_CONSOLE_ALLOW:-\.\/nginx\/console-allow\.conf\}\n +target: \/etc\/nginx\/console\/allow\.conf\n +read_only: true\n +bind:\n +create_host_path: false/,
+  );
+});
+
+test('the production template uses the same names as the nginx vhosts', async () => {
+  const config = await readFile(prodConfigPath, 'utf8');
+  const origins = ['consola', 'portal', 'archivos'].map((name) => {
+    const host = config.match(new RegExp(`server_name (${name}\\.[^ ;]+)`))?.[1];
+    assert.ok(host, name);
+    return `https://${host}`;
+  });
+  const template = await readFile(
+    fileURLToPath(new URL('../.env.production.example', import.meta.url)),
+    'utf8',
+  );
+  const value = (key) => template.match(new RegExp(`^${key}=(.*)$`, 'm'))?.[1];
+  const [consola, portal, archivos] = origins;
+  assert.equal(value('NEXT_PUBLIC_WEB_API_URL'), `${consola}/api/v1`);
+  assert.equal(value('NEXT_PUBLIC_PORTAL_API_URL'), `${portal}/api/v1`);
+  assert.equal(value('CORS_ORIGIN'), `${consola},${portal}`);
+  assert.equal(value('FRONTEND_URL'), consola);
+  assert.equal(value('PORTAL_URL'), portal);
+  assert.equal(value('S3_PUBLIC_ENDPOINT'), archivos);
+  // El vhost sin nombre propio no debe volver a la plantilla.
+  assert.doesNotMatch(template, /https:\/\/REPLACE_ME_PRODUCTION_DOMAIN/);
+  const compose = await readFile(prodComposePath, 'utf8');
+  assert.match(
+    composeServiceBlock(compose, 'api-prod'),
+    /PORTAL_URL: \$\{PORTAL_URL:\?PORTAL_URL is required\}/,
   );
 });
 

@@ -9,6 +9,7 @@ import type { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { consoleSurfaceMiddleware } from './common/console-surface';
+import { surfaceOriginMiddleware } from './common/surface-origin';
 import { createGlobalValidationPipe } from './common/pipes/global-validation.pipe';
 
 /**
@@ -115,6 +116,8 @@ async function bootstrap(): Promise<void> {
   const corsOrigins = (process.env['CORS_ORIGIN'] ?? 'http://localhost:3001,http://localhost:3002')
     .split(',')
     .map((origin) => origin.trim());
+  // En producción cada vhost admite solo su propio origen (spec 2026-11-25 §5.3).
+  app.use(surfaceOriginMiddleware(corsOrigins));
   app.enableCors({
     origin: corsOrigins,
     credentials: true, // Necesario para enviar/recibir cookies

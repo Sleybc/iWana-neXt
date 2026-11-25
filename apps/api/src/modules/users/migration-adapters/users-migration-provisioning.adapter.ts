@@ -15,6 +15,7 @@ import {
   isTenantAssignableRole,
 } from '@iwana/shared';
 import { hashEmail } from '../../../common/crypto/hash-email.util';
+import { resolvePortalUrl } from '../../../common/portal-url';
 import { hashOpaqueToken } from '../../../common/crypto/hash-opaque-token.util';
 import { AuditService } from '../../audit/audit.service';
 import { MailerService } from '../../mailer/mailer.service';
@@ -209,7 +210,7 @@ export class UsersMigrationProvisioningAdapter extends MigrationUserProvisioning
     )) as Array<{ id: string; email: string; status: string }>;
 
     // La página del portal pide la empresa; con el slug del contexto la persona no lo escribe.
-    const portalUrl = this.portalUrl();
+    const portalUrl = resolvePortalUrl(this.configService);
     const tenantParam = ctx.tenantSlug ? `tenant=${encodeURIComponent(ctx.tenantSlug)}&` : '';
     const outbox: Array<{ to: string; createPasswordLink: string }> = [];
     const invited: string[] = [];
@@ -281,18 +282,6 @@ export class UsersMigrationProvisioningAdapter extends MigrationUserProvisioning
           ),
         );
     }
-  }
-
-  /**
-   * Base del portal empresarial (apps/portal), donde entra el personal del tenant y vive
-   * /auth/reset-password. `PORTAL_URL`; sin ella, `FRONTEND_URL` como los demás enlaces de
-   * correo; en desarrollo, el puerto del portal.
-   */
-  private portalUrl(): string {
-    const configured =
-      this.configService.get<string>('PORTAL_URL') ??
-      this.configService.get<string>('FRONTEND_URL', 'http://localhost:3002');
-    return configured.replace(/\/+$/u, '');
   }
 
   /**

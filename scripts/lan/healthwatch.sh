@@ -6,12 +6,12 @@
 # `systemctl --failed` y `journalctl -p err -u iwana-healthwatch` lo muestran.
 # Sin SMTP (H10) no hay correo: el canal de aviso se conecta cuando exista.
 #
-# Variables: IWANA_HEALTH_URL (default https://10.0.0.254/api/v1/health),
+# Variables: IWANA_HEALTH_URL (default https://10.0.0.254:8443/api/v1/health),
 # IWANA_TLS_DIR (fullchain.pem a vigilar), IWANA_DISK_PATHS (default "/"),
 # IWANA_CA_FILE (raíz para validar el certificado; sin ella se usa -k).
 set -uo pipefail
 
-URL=${IWANA_HEALTH_URL:-https://10.0.0.254/api/v1/health}
+URL=${IWANA_HEALTH_URL:-https://10.0.0.254:8443/api/v1/health}
 DISKS=${IWANA_DISK_PATHS:-/}
 fail=0
 alert() { echo "<3>ALERTA: $*" >&2; fail=1; }

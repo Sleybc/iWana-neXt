@@ -71,7 +71,10 @@ describe('ContractPendingSignatureAlertsProcessor', () => {
       service as never,
       holders as never,
       mailer as never,
-      { get: () => 'https://portal.example.test' } as never,
+      {
+        get: (key: string) =>
+          key === 'PORTAL_URL' ? 'https://portal.example.test' : 'https://consola.example.test',
+      } as never,
       tenants as never,
     );
   });

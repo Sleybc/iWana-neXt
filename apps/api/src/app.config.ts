@@ -90,6 +90,12 @@ const productionOriginListValidator: Joi.CustomValidator<string> = (value, helpe
     if (verdict === 'development-only') {
       return helpers.error('iwana.origin.developmentOnly');
     }
+
+    // La API compara la cabecera Origin carácter a carácter (surface-origin.ts). `URL`
+    // conserva el comodín tal cual, así que se excluye aparte.
+    if (new URL(origin).origin !== origin || origin.includes('*')) {
+      return helpers.error('iwana.origin.notExact');
+    }
   }
 
   // Se devuelve el valor sin normalizar: main.ts lee process.env directamente y
@@ -343,6 +349,8 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
           'CORS_ORIGIN debe ser una lista de orígenes absolutos http(s) separados por comas.',
         'iwana.origin.notAbsolute':
           'CORS_ORIGIN debe ser una lista de orígenes absolutos http(s) separados por comas.',
+        'iwana.origin.notExact':
+          'CORS_ORIGIN debe llevar orígenes exactos: en minúsculas, sin ruta, barra final, comodines ni puerto por defecto.',
         'iwana.origin.developmentOnly':
           'CORS_ORIGIN no puede apuntar a localhost/127.0.0.1 con NODE_ENV=production.',
       }),
@@ -424,11 +432,13 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
       otherwise: Joi.string().uri().optional(),
     }),
     // Base del portal empresarial (apps/portal) para los enlaces dirigidos al personal del
-    // tenant, como la invitación a crear la contraseña (spec «usuarios UISP» §2.4). Opcional:
-    // sin ella se usa FRONTEND_URL. En producción, si se define, no puede ser localhost.
+    // tenant (contraseña, verificación, CRM, privacidad). Producción: obligatoria, porque sus
+    // páginas no existen en la consola y el enlace llevaría el token a otro vhost.
     PORTAL_URL: Joi.when('NODE_ENV', {
       is: 'production',
-      then: Joi.string().trim().custom(productionUrlValidator).optional().messages({
+      then: Joi.string().trim().custom(productionUrlValidator).required().messages({
+        'any.required':
+          'PORTAL_URL es obligatoria con NODE_ENV=production: sin ella los enlaces del personal de la empresa apuntarían a la consola.',
         'string.empty': 'PORTAL_URL debe ser una URL absoluta http(s).',
         'iwana.origin.notAbsolute': 'PORTAL_URL debe ser una URL absoluta http(s).',
         'iwana.origin.developmentOnly':

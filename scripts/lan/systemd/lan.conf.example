@@ -16,7 +16,8 @@ IWANA_LAN_IFACE=eno1
 IWANA_LAN_SERVER_IP=10.0.0.254
 IWANA_LAN_ALLOW=10.0.0.0/24
 # Pruebas por IP: IWANA_LAN_PORTS="80 443 8443 9443"
-IWANA_HEALTH_URL=https://10.0.0.254/api/v1/health
+# El portal: la consola no responde fuera de su lista. Nunca permitas en ella la pasarela de Docker.
+IWANA_HEALTH_URL=https://10.0.0.254:8443/api/v1/health
 IWANA_TLS_DIR=/etc/iwana/tls
 IWANA_CA_FILE=/etc/iwana/tls/root-ca.crt
 IWANA_DISK_PATHS="/ /var/lib/docker /var/backups"

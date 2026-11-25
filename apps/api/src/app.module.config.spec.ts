@@ -26,6 +26,7 @@ describe('AppModule configuration', () => {
       TYPESENSE_API_KEY: 'synthetic-key',
       CORS_ORIGIN: 'https://app.example.test',
       FRONTEND_URL: 'https://app.example.test',
+      PORTAL_URL: 'https://portal.example.test',
       ...overrides,
     };
   }
@@ -188,6 +189,7 @@ describe('AppModule configuration', () => {
         // app.config.production-urls.spec.ts.
         CORS_ORIGIN: 'https://app.ejemplo.example',
         FRONTEND_URL: 'https://app.ejemplo.example',
+        PORTAL_URL: 'https://portal.example.test',
       },
       { abortEarly: false },
     );

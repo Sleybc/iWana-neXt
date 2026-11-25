@@ -79,6 +79,7 @@ Mientras cualquiera de estos bloqueos afecte al entorno objetivo, el paso operat
    Engine publica los puertos saltándose `ufw`, así que el filtro va en la cadena `DOCKER-USER`. Instala las unidades con `sudo scripts/lan/install-systemd.sh <usuario>`, revisa `/etc/iwana/lan.conf` y habilita `iwana-lan-firewall.service`, que aplica `scripts/lan/docker-user-firewall.sh`. Por decisión del CTO del 2026-11-24, la regla deja 80 y 443 abiertos a la `10.0.0.0/24` y descarta cualquier otro origen. Activa `ufw` aparte, con SSH limitado a los equipos de administración.
 
    Para el primer arranque con una base vacía, aplica temporalmente `docker-user-firewall.sh apply --allow <IP-del-operador>/32`. Verifica el bloqueo desde otro equipo antes de crear el primer administrador desde la consola. Usa datos de prueba y volúmenes propios.
+
 2. Copia `.env.production.example` a `.env.pilot` (o `.env.stable` en el entorno estable), que Git ignora. Completa las credenciales, claves y referencias requeridas, y deja `S3_ACCESS_KEY_ID` distinto de `MINIO_ROOT_USER`: `minio-init` crea esa cuenta limitada al bucket ([RUNBOOK-MEDIA-MINIO](RUNBOOK-MEDIA-MINIO-v1.0.md)). Para datos de prueba puedes usar las referencias de imagen concretas de `.env.example`. Deja `SMTP_HOST` vacío mientras no haya relay. Emite `fullchain.pem` y `privkey.pem` con `scripts/lan/issue-internal-ca.sh`. La raíz lleva `nameConstraints` limitadas a la IPv4, y al nombre interno si se adopta. Su clave va cifrada y se guarda fuera del servidor. Instala solo el certificado raíz en los equipos cliente y retira de ellos cualquier raíz anterior. Conserva `COOKIE_SECURE=true`.
 3. Ajusta estas variables a la IP y a la carpeta elegidas. La URL relativa de la API se incorpora al construir la imagen web y permite servirla desde la misma IP o desde un dominio. El portal empresarial y los archivos firmados quedan fuera de la prueba por IP, aunque el stack arranca sus dependencias. Usa valores de prueba para sus orígenes de build, por ejemplo `NEXT_PUBLIC_PORTAL_API_URL=/api/v1` y `S3_PUBLIC_ENDPOINT=https://archivos.iwana.test`.
 
@@ -87,9 +88,11 @@ Mientras cualquiera de estos bloqueos afecte al entorno objetivo, el paso operat
    PROXY_HTTP_PORT=80
    PROXY_HTTPS_PORT=443
    PROXY_TLS_DIR=./secrets/lan
+   PROXY_CONSOLE_ALLOW=/ruta/fuera/del/repo/console-allow.conf # paso 8; sin él, la consola da 403
    NEXT_PUBLIC_WEB_API_URL=/api/v1
    CORS_ORIGIN=https://192.0.2.50
    FRONTEND_URL=https://192.0.2.50
+   PORTAL_URL=https://192.0.2.50:8443 # obligatoria; el portal se habilita en el paso 8
    ```
 
 4. Desde la raíz del repositorio, valida y arranca con los mismos dos archivos Compose. Usa un host dedicado al piloto o comprueba que los nombres y volúmenes del perfil `production` no pertenecen a otro despliegue en ese daemon. El orden de dependencias del perfil ejecuta el bootstrap del bucket y el migrador antes de arrancar la API.
@@ -136,19 +139,24 @@ Mientras cualquiera de estos bloqueos afecte al entorno objetivo, el paso operat
 
    **Consola (spec 2026-11-25 §5).** Copia `nginx/console-allow.conf` fuera del repositorio, añade antes de `deny all` los rangos de la VPN, o en la LAN los de los administradores, e indícalo en `PROXY_CONSOLE_ALLOW`. Sin ese archivo nadie entra a la consola. **Nunca permitas la pasarela ni rangos de Docker** (172.16.0.0/12): abriría la consola a todos. Apunta `IWANA_HEALTH_URL` al portal (en la LAN, `https://<IP>:8443/api/v1/health`). Comprueba en el log de nginx que `$remote_addr` es la IP del cliente y no la pasarela. Regenera la configuración por IP.
 
-   **Orden al actualizar un entorno en marcha.** nginx antes que la API. El nginx anterior reenvía la cabecera `X-Iwana-Surface` que mande el cliente: con la API nueva detrás, el control sería falsificable y los administradores quedarían fuera. Siempre con `--no-deps`, porque `nginx-prod` depende de las aplicaciones y las recrearía antes.
+   **Orden al actualizar un entorno en marcha.** nginx antes que la API. El nginx anterior reenvía la cabecera `X-Iwana-Surface` que mande el cliente: con la API nueva detrás, el control sería falsificable y los administradores quedarían fuera. Siempre con `--no-deps`, porque `nginx-prod` depende de las aplicaciones y las recrearía antes. Los comandos llevan el mismo prefijo `docker compose` del entorno.
+   1. **Acta y respaldo.** Registra el `IMAGE_TAG` en marcha, el SHA nuevo, la configuración no secreta y las migraciones aplicadas. Congela las escrituras (§3 paso 0) hasta cerrar la ventana: lo escrito después del backup se pierde si hay que restaurar. Toma el backup de §6 y comprueba su checksum.
+   2. **Imágenes.** Construye desde una copia limpia del SHA (`git clone` y `git checkout <SHA>`, sin cambios locales) con `IMAGE_TAG=<SHA>`: un tag por release, nunca reutilizado. Conserva las imágenes del anterior.
+   3. **Variables.** `PROXY_CONSOLE_ALLOW`, `PROXY_BIND_IP`, `PORTAL_URL`, y `CORS_ORIGIN` con los orígenes exactos de consola y portal (con puerto si no es 443): el que falte recibirá 403. Regenera o copia la configuración de nginx y conserva la anterior.
+   4. **Preflight de nginx antes de recrear**, sin tocar el proxy en marcha: `run --rm --no-deps -T nginx-prod nginx -t` y `run --rm --no-deps -T nginx-prod nginx -T`. Este último debe mostrar `X-Iwana-Surface console` y `portal`, `X-Iwana-Origin`, y la lista seguida de `deny all`. Si falla, detente: nada cambió.
+   5. **nginx.** `up -d --no-deps --force-recreate nginx-prod` (una recarga no basta: falta el montaje nuevo) y `exec -T nginx-prod nginx -t`.
+   6. **Migrador.** `run --rm --no-deps -T migrator-prod; echo "código=$?"`. Solo con código 0, y con las migraciones verificadas en `public` y en cada empresa, se sigue.
+   7. **API.** `up -d --no-deps api-prod`, hasta `healthy`.
+   8. **Worker.** `up -d --no-deps worker-prod`.
+   9. **Web y portal.** `up -d --no-deps web-prod portal-prod`.
 
-   1. Define `PROXY_CONSOLE_ALLOW` y `PROXY_BIND_IP`, y regenera o copia la configuración de nginx.
-   2. `up -d --no-deps --force-recreate nginx-prod` (una recarga no basta: falta el montaje nuevo) y `exec -T nginx-prod nginx -t`.
-   3. `exec -T nginx-prod nginx -T` debe mostrar `X-Iwana-Surface console` y `portal`.
-   4. `up -d --no-deps api-prod`, hasta `healthy`.
-   5. `up -d --no-deps web-prod portal-prod`.
+   **Reversión:** web y portal, worker, API y nginx al final; con `--no-deps` y el `IMAGE_TAG` anterior. **No reviertas nginx con la API nueva activa.** Las migraciones no se revierten.
 
-   **Reversión:** web y portal, después API, nginx al final; también con `--no-deps`. No reviertas nginx con la API nueva activa.
+   **API anterior con el esquema nuevo: sin verificar.** Las migraciones `public/038` y `tenant/218` y `219` solo añaden columnas que admiten nulo o tienen valor por defecto, pero no se ha probado la imagen anterior contra ese esquema, ni se han revisado las demás migraciones que separen ambas versiones. Además, la API anterior no aplica el código de un solo uso, el freno del segundo factor, la duración absoluta de la sesión ni la restricción de la consola. Ensáyalo antes de contar con esta reversión; si no, usa el restore de §6.
 
 **Paso posterior a VPS.** Usa los mismos archivos Compose con `.env.production`. Fija en `PROXY_BIND_IP` la IPv4 de entrada del VPS: es obligatoria, y no publiques IPv6. Apunta los dominios aprobados al VPS. Si la base está vacía, restringe el 443 al equipo del operador hasta crear y verificar la cuenta inicial. Prepara el puerto 80 y el webroot de HTTP-01 según §8.2 y [ADR-095](../adrs/ADR-095-Topologia-Productiva-Dominio-TLS-Hosting.md). La configuración base de Nginx redirige el 80 a HTTPS.
 
-Crea una copia local de `nginx/nginx.prod.conf` fuera del repositorio. En esa copia, sustituye los nombres marcadores por los de la consola, del portal y de archivos cuando estén aprobados. Configura `PROXY_NGINX_CONFIG` con la ruta a la copia, monta el certificado que cubra los nombres publicados con `PROXY_TLS_DIR` y actualiza `CORS_ORIGIN`, `FRONTEND_URL` y `S3_PUBLIC_ENDPOINT`. Si cambias las variables de build del navegador, reconstruye las imágenes afectadas según §5.2.
+Crea una copia local de `nginx/nginx.prod.conf` fuera del repositorio. En esa copia, sustituye los nombres marcadores por los de la consola, del portal y de archivos cuando estén aprobados. Configura `PROXY_NGINX_CONFIG` con la ruta a la copia, monta el certificado que cubra los nombres publicados con `PROXY_TLS_DIR` y actualiza `CORS_ORIGIN`, `FRONTEND_URL`, `PORTAL_URL` y `S3_PUBLIC_ENDPOINT`. El certificado debe cubrir `consola.`, `portal.` y `archivos.` (una `--domain` por nombre en §8.2). Si cambias las variables de build del navegador, reconstruye las imágenes afectadas según §5.2.
 
 ## 2. Registro de release y prerrequisitos
 
@@ -189,7 +197,7 @@ El segundo comando solo registra el SHA en el acta; no registrar el contenido de
 - `config --quiet` termina con código `0`.
 - Todos los secretos son inyectados por el mecanismo operativo aprobado; no están en imágenes, Compose, workflows ni logs.
 - El dominio productivo y el certificado de CA reconocida están definidos/provisionados para R3.5. El autofirmado de `scripts/generate-certs.ps1` solo es válido para desarrollo o staging cerrado.
-- `CORS_ORIGIN` y `FRONTEND_URL` están definidas en `.env.production` con el FQDN aprobado. Con `NODE_ENV=production` la API las exige y rechaza cualquier valor `localhost`/`127.0.0.1`: **`api-prod` no arranca sin ellas**, por diseño (riesgos 1 y 2 de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)). El fallo es explícito en el log de arranque, no silencioso.
+- `CORS_ORIGIN` (orígenes exactos), `FRONTEND_URL` y `PORTAL_URL` están definidas en `.env.production` con el FQDN aprobado. Con `NODE_ENV=production` la API las exige y rechaza cualquier valor `localhost`/`127.0.0.1`: **`api-prod` no arranca sin ellas**, por diseño (riesgos 1 y 2 de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)). El fallo es explícito en el log de arranque, no silencioso.
 - Las variables requeridas están completas en el mecanismo de inyección aprobado: `DB_BOOTSTRAP_*`/`DB_APP_*`/`DB_MIGRATOR_*`, `MINIO_ROOT_*`, `S3_*`, `TYPESENSE_*`, `JWT_*`, `PII_HASH_KEY`, `MFA_ENCRYPTION_KEY`, `EXECUTION_ORDER_IDEMPOTENCY_SECRET` y, si se entrega correo real, `SMTP_*`. Durante una rotación de cifrado, incluir temporalmente `MFA_ENCRYPTION_KEY_PREVIOUS`; retirarla al verificar el recifrado. Nunca registrar sus valores.
 - Existe un backup previo con checksum y restore verificado. Si no existe la evidencia, declarar **NO-GO**.
 - El rollback es compatible con el estado de datos. Una migración irreversible o no probada impide avanzar.
@@ -301,8 +309,8 @@ docker compose --profile production --env-file .env.production \
 Validar externamente el dominio del portal; la consola responde 403 fuera de su lista y se prueba desde la VPN:
 
 ```bash
-curl --fail --silent --show-error https://<dominio-aprobado>/health
-curl --fail --silent --show-error https://<dominio-aprobado>/api/v1/health
+curl --fail --silent --show-error https://portal.<dominio>/health
+curl --fail --silent --show-error https://portal.<dominio>/api/v1/health
 ```
 
 ### Paso 5 — Smoke y cierre de ventana
@@ -343,7 +351,8 @@ Usar siempre los tags/digests **anteriores** registrados en el acta. No usar `la
 
 ### 5.1 Nginx / configuración TLS
 
-1. No recargar una configuración que no pasa `nginx -t`.
+1. **No reviertas nginx a una configuración sin `X-Iwana-Surface` y `X-Iwana-Origin` con la API nueva activa:** la cabecera pasaría a ser del cliente. Revierte antes la API (§1.3).
+   Tampoco recargues una configuración que no pasa `nginx -t`.
 2. Restaurar el archivo de configuración y/o el par de certificado anterior desde el almacenamiento externo autorizado.
 3. Validar y recargar:
 
@@ -359,7 +368,7 @@ Usar siempre los tags/digests **anteriores** registrados en el acta. No usar `la
 ### 5.2 Web y portal
 
 1. Mantener API y datos si son compatibles.
-2. Cambiar `WEB_IMAGE`/`PORTAL_IMAGE` o el override operativo al digest anterior.
+2. Poner en `IMAGE_TAG` el tag del release anterior registrado en el acta. El tag es común a API, worker, web, portal y migrador: recrea solo lo afectado con `--no-deps` y anota qué quedó en cada versión.
 3. Recrear solo el componente afectado:
 
    ```bash
@@ -383,7 +392,7 @@ Usar siempre los tags/digests **anteriores** registrados en el acta. No usar `la
 ### 5.3 API
 
 1. Detener el despliegue nuevo y conservar sus logs sanitizados.
-2. Volver al digest anterior solo si el esquema actual es compatible con ese binario.
+2. Volver al `IMAGE_TAG` anterior solo si el esquema actual es compatible con ese binario.
 3. Recrear API, sin tocar nginx (ver la reversión de §1.3), y esperar el healthcheck:
 
    ```bash
@@ -402,7 +411,7 @@ Usar siempre los tags/digests **anteriores** registrados en el acta. No usar `la
      -f docker-compose.yml -f docker-compose.prod.yml stop worker-prod
    ```
 
-2. Arrancar el digest anterior y verificar que los jobs pendientes sean compatibles.
+2. Arrancar el `IMAGE_TAG` anterior y verificar que los jobs pendientes sean compatibles.
 3. Si el payload o el contrato cambió, mantener el worker detenido y escalar a SR-FULL/EM-ARCH; no consumir jobs con un binario incompatible.
 
 ### 5.5 Migrator y base de datos
@@ -442,8 +451,8 @@ Usar siempre los tags/digests **anteriores** registrados en el acta. No usar `la
 
 1. Activar mantenimiento y detener escrituras/consumidores.
 2. Conservar evidencia y registrar el motivo de abort.
-3. Detener API, web, portal, worker y Nginx; dejar las dependencias de datos aisladas.
-4. Restaurar imágenes anteriores.
+3. Detener Nginx, web, portal, worker y API; dejar las dependencias de datos aisladas.
+4. Restaurar el `IMAGE_TAG` anterior.
 5. Revertir migración solo si está revisada y es reversible; de lo contrario, restore global o tenant.
 6. Arrancar dependencias → migrator aprobado/validación → API → web/portal/worker → Nginx.
 7. Repetir healthchecks, smoke, aislamiento tenant y handshake TLS.
@@ -654,7 +663,7 @@ La implementación R3.5 debe proporcionar un webroot/volumen compartido con Ngin
 ```bash
 certbot certonly --webroot \
   --webroot-path /secure-acme-webroot \
-  --domain <dominio-aprobado> \
+  --domain consola.<dominio> --domain portal.<dominio> --domain archivos.<dominio> \
   --email <correo-operativo-aprobado> \
   --agree-tos --no-eff-email
 ```

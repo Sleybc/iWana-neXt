@@ -42,6 +42,7 @@ import {
   type UsersBulkJobStatusResponse,
 } from '@iwana/shared';
 import { EffectivePermissionsService } from '../access-control/services/effective-permissions.service';
+import { resolvePortalUrl } from '../../common/portal-url';
 import { AuditService } from '../audit/audit.service';
 import { hashEmail } from '../../common/crypto/hash-email.util';
 import {
@@ -1338,12 +1339,12 @@ export class UsersService {
         // Re-verificacion del email nuevo: mismo enlace y template del flujo
         // existente (`resendVerificationEmail`), emitido aqui porque ya se
         // posee el token dentro de la transaccion.
-        const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3001');
+        const portalUrl = resolvePortalUrl(this.configService);
         this.fireAndForget(
           this.mailerService.sendMail({
             to: normalizedEmail,
             ...emailVerificationTemplate({
-              verifyLink: `${frontendUrl}/auth/verify-email?token=${user.emailVerificationToken}`,
+              verifyLink: `${portalUrl}/auth/verify-email?token=${user.emailVerificationToken}`,
             }),
           }),
           'correo de re-verificacion de email nuevo',
