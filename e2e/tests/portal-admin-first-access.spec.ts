@@ -296,7 +296,7 @@ test.describe('Portal — primer acceso ADMIN (MOD02)', () => {
     await page.locator('input[name="currentPassword"]').fill('TempPass123!');
     await page.locator('input[name="newPassword"]').fill('NuevoPass456!');
     await page.locator('input[name="confirmPassword"]').fill('NuevoPass456!');
-    await page.locator('button[type="submit"]').click();
+    await page.getByRole('button', { name: 'Establecer Nueva Contrasena' }).click();
     await expect(page).toHaveURL(/\/auth\/login/, { timeout: 10_000 });
 
     expect(afterLogin.filter((path) => path.endsWith('/auth/change-password'))).not.toHaveLength(0);
