@@ -1425,6 +1425,121 @@ describe('AuthService', () => {
       },
     );
 
+    describe('sin oráculos por estado de la cuenta', () => {
+      const compare = bcrypt.compare as jest.Mock;
+      const account = (status: UserStatus) => ({
+        id: 'p1',
+        emailHash: 'h',
+        passwordHash: '$2b$12$hash',
+        status,
+        passwordResetRequired: false,
+        mfaEnabled: true,
+        mfaSecret: null,
+      });
+      const attempt = () =>
+        service
+          .loginPlatform({ email: 'admin@iwana.co', password: 'x' })
+          .then(() => null)
+          .catch((error: { getResponse: () => unknown }) => error.getResponse());
+
+      it.each([
+        ['inexistente', null],
+        ['activa', account(UserStatus.ACTIVE)],
+        ['inactiva', account(UserStatus.INACTIVE)],
+        ['suspendida', account(UserStatus.SUSPENDED)],
+        ['pendiente', account(UserStatus.PENDING_VERIFICATION)],
+      ])('%s: una comparación de coste 12 y el mismo 401', async (_caso, user) => {
+        platformUserRepo.findOne.mockResolvedValue(user);
+        compare.mockClear().mockResolvedValue(false);
+        expect(await attempt()).toEqual({
+          statusCode: 401,
+          error: 'Unauthorized',
+          message: 'Credenciales invalidas.',
+        });
+        expect(compare).toHaveBeenCalledTimes(1);
+        const hash = String(compare.mock.calls[0]?.[1]);
+        expect(hash).toMatch(/^\$2[aby]\$12\$/u);
+        if (!user) {
+          // El hash fijo es válido: uno truncado respondería al instante.
+          const real = jest.requireActual<typeof bcrypt>('bcryptjs');
+          expect(real.getRounds(hash)).toBe(12);
+          expect(hash).toHaveLength(60);
+        }
+      });
+
+      it('inactiva con contraseña correcta responde igual que con una errónea', async () => {
+        platformUserRepo.findOne.mockResolvedValue(account(UserStatus.INACTIVE));
+        compare.mockResolvedValue(true);
+        expect(await attempt()).toMatchObject({ statusCode: 401 });
+      });
+
+      it.each([
+        ['existente', true],
+        ['inexistente', false],
+      ])('freno y ataque sobre una cuenta %s', async (_caso, exists) => {
+        const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+        const internals = service as unknown as {
+          platformAuditService: { log: jest.Mock };
+          mailerService: { sendMail: jest.Mock };
+        };
+        platformUserRepo.findOne.mockResolvedValue(exists ? account(UserStatus.ACTIVE) : null);
+        (platformUserRepo as unknown as { find: jest.Mock }).find.mockResolvedValue([
+          { id: 'p1', email: 'titular@example.test' },
+        ]);
+        internals.mailerService.sendMail.mockClear();
+        internals.platformAuditService.log.mockClear();
+        compare.mockResolvedValue(false);
+        const reservation = {
+          failed: jest.fn().mockResolvedValue({ locked: true, alert: true }),
+          succeeded: jest.fn(),
+          release: jest.fn(),
+        };
+        await expect(
+          service.loginPlatform(
+            { email: 'admin@iwana.co', password: 'x' },
+            '203.0.113.7',
+            'ua',
+            reservation,
+          ),
+        ).rejects.toMatchObject({ status: 401 });
+        await new Promise(setImmediate);
+
+        expect(reservation.failed).toHaveBeenCalledTimes(1);
+        expect(reservation.succeeded).not.toHaveBeenCalled();
+        expect(error).toHaveBeenCalledWith(expect.stringContaining('PLATFORM_PASSWORD_ATTACK'));
+        const motives = internals.platformAuditService.log.mock.calls.map(
+          ([entry]) => entry.newValue.motivo,
+        );
+        expect(motives).toEqual(
+          exists
+            ? ['CONTRASENA_INVALIDA', 'FRENO_CONTRASENA', 'ATAQUE_CONTRASENA']
+            : ['USUARIO_NO_ENCONTRADO', 'FRENO_CONTRASENA'],
+        );
+        expect(internals.mailerService.sendMail).toHaveBeenCalledTimes(exists ? 1 : 0);
+        error.mockRestore();
+      });
+
+      it('la contraseña correcta liquida el intento aunque falte el código', async () => {
+        platformUserRepo.findOne.mockResolvedValue(account(UserStatus.ACTIVE));
+        compare.mockResolvedValue(true);
+        const reservation = { failed: jest.fn(), succeeded: jest.fn(), release: jest.fn() };
+        const result = await service.loginPlatform(
+          { email: 'admin@iwana.co', password: 'x' },
+          '203.0.113.7',
+          'ua',
+          reservation,
+        );
+        expect(result.mfaRequired).toBe(true);
+        expect(reservation.succeeded).toHaveBeenCalledTimes(1);
+      });
+
+      it('suspendida solo se revela con la contraseña correcta', async () => {
+        platformUserRepo.findOne.mockResolvedValue(account(UserStatus.SUSPENDED));
+        compare.mockResolvedValue(true);
+        expect(await attempt()).toMatchObject({ statusCode: 403 });
+      });
+    });
+
     describe('segundo factor', () => {
       const audit = (): jest.Mock =>
         (service as unknown as { platformAuditService: { log: jest.Mock } }).platformAuditService
@@ -1671,6 +1786,7 @@ describe('AuthService', () => {
     });
 
     it('lanza ForbiddenException cuando la cuenta de plataforma esta suspendida', async () => {
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       platformUserRepo.findOne.mockResolvedValue({
         id: 'pu-1',
         emailHash: 'h',
@@ -1860,6 +1976,7 @@ describe('AuthService', () => {
       });
 
       it('registra LOGIN_FAILED cuando la cuenta esta suspendida', async () => {
+        (bcrypt.compare as jest.Mock).mockResolvedValue(true);
         platformUserRepo.findOne.mockResolvedValue({
           id: 'platform-user-uuid-3',
           emailHash: 'h',

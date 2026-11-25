@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { TenantContext } from '@iwana/db';
+import { canonicalClientIp } from './canonical-ip';
 
 interface RateLimitRequestLike {
   headers?: {
@@ -19,7 +20,7 @@ interface RateLimitRequestLike {
 
 /** Bucket por IP aunque la petición lleve sesión: rutas donde se prueban credenciales. */
 export function getIpRateLimitTracker(request: RateLimitRequestLike): string {
-  return `anonymous:ip:${request.ip ?? 'unknown'}`;
+  return `anonymous:ip:${canonicalClientIp(request.ip) ?? 'unknown'}`;
 }
 
 /**

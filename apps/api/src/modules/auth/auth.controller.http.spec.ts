@@ -9,6 +9,7 @@ import { TenantContextMissingFilter } from '../../common/filters/tenant-context-
 import { AUTH_ERROR_CODES, unauthorizedWithCode } from './auth-errors';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { PlatformLoginThrottle } from './platform-login-throttle.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { IS_PUBLIC_KEY } from './decorators/public.decorator';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
@@ -85,6 +86,10 @@ describe('AuthController HTTP', () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
+        {
+          provide: PlatformLoginThrottle,
+          useValue: { reserve: async () => ({ release: async () => undefined }) },
+        },
         {
           provide: AuthService,
           useValue: mockAuthService,
@@ -628,6 +633,7 @@ describe('AuthController HTTP', () => {
         { email: 'admin@example.test', password: 'Passw0rd!!' },
         expect.any(String),
         'jest-supertest-platform',
+        expect.objectContaining({ release: expect.any(Function) }),
       );
     });
 
@@ -674,6 +680,10 @@ describe('POST /api/v1/auth/login — límite de intentos (CA-8)', () => {
       imports: [ThrottlerModule.forRoot([{ name: 'global', ttl: 60000, limit: 100 }])],
       controllers: [AuthController],
       providers: [
+        {
+          provide: PlatformLoginThrottle,
+          useValue: { reserve: async () => ({ release: async () => undefined }) },
+        },
         {
           provide: AuthService,
           useValue: { login: throttledLogin },

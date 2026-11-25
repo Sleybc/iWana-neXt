@@ -9,6 +9,7 @@ import request from 'supertest';
 import type { NextFunction, Request, Response } from 'express';
 import { AuthController } from '../modules/auth/auth.controller';
 import { AuthService } from '../modules/auth/auth.service';
+import { PlatformLoginThrottle } from '../modules/auth/platform-login-throttle.service';
 import { JwtAuthGuard } from '../modules/auth/guards/jwt-auth.guard';
 import { IS_PUBLIC_KEY } from '../modules/auth/decorators/public.decorator';
 import { JwtPayload } from '../modules/auth/interfaces/jwt-payload.interface';
@@ -313,6 +314,10 @@ async function buildApp(): Promise<INestApplication> {
       PlatformBrandingController,
     ],
     providers: [
+      {
+        provide: PlatformLoginThrottle,
+        useValue: { reserve: async () => ({ release: async () => undefined }) },
+      },
       { provide: AuthService, useValue: authService },
       { provide: TenantService, useValue: tenantService },
       { provide: TenantProvisioningService, useValue: provisioningService },

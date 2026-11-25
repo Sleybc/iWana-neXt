@@ -7,6 +7,7 @@ import { PlatformUser, RefreshToken, User } from '@iwana/db';
 import { JWT_ACCEPTED_AUDIENCES, JWT_ACCEPTED_ISSUERS } from './auth.constants';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { PlatformLoginThrottle } from './platform-login-throttle.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { AbacGuard } from './guards/abac.guard';
@@ -75,6 +76,7 @@ import { PlatformBootstrapService } from './platform-bootstrap.service';
     PlatformOnlyGuard,
     CsrfGuard,
     PlatformBootstrapService,
+    PlatformLoginThrottle,
   ],
   exports: [
     AuthService,

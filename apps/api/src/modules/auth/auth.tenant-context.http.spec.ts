@@ -13,6 +13,7 @@ import { TenantContext } from '@iwana/db';
 import request from 'supertest';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { PlatformLoginThrottle } from './platform-login-throttle.service';
 import { IS_PUBLIC_KEY } from './decorators/public.decorator';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -76,6 +77,10 @@ const tenantFixture = {
   providers: [
     TenantMiddleware,
     JwtAuthGuard,
+    {
+      provide: PlatformLoginThrottle,
+      useValue: { reserve: async () => ({ release: async () => undefined }) },
+    },
     {
       provide: AuthService,
       useValue: {

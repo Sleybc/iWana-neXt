@@ -22,6 +22,7 @@ jest.mock('../guards/jwt-auth.guard', () => ({
 import { SessionEndedException } from '../auth-errors';
 import { AuthController } from '../auth.controller';
 import { AuthService } from '../auth.service';
+import { PlatformLoginThrottle } from '../platform-login-throttle.service';
 
 /**
  * Ruteo por audiencia del POST /auth/refresh (fail-fast por audiencia).
@@ -69,6 +70,10 @@ describe('AuthController POST /auth/refresh — ruteo por audiencia (fail-fast) 
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
+        {
+          provide: PlatformLoginThrottle,
+          useValue: { reserve: async () => ({ release: async () => undefined }) },
+        },
         {
           provide: AuthService,
           useValue: mockAuthService,

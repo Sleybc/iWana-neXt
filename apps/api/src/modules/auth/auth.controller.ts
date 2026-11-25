@@ -42,6 +42,7 @@ import {
   SessionCookieTtl,
 } from './interfaces/auth-response.interface';
 import { SessionEndedException } from './auth-errors';
+import { PlatformLoginThrottle } from './platform-login-throttle.service';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import {
   isCookieSecure,
@@ -86,6 +87,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
+    private readonly platformLoginThrottle: PlatformLoginThrottle,
   ) {}
 
   /**
@@ -223,8 +225,9 @@ export class AuthController {
   @ApiResponse({
     status: 401,
     description:
-      'Credenciales invalidas (sin `code`), `AUTH_MFA_CODE_INVALID` o `AUTH_ACCOUNT_LOCKED`.',
+      'Credenciales invalidas o intentos frenados para esa cuenta e IP (sin `code`), `AUTH_MFA_CODE_INVALID` o `AUTH_ACCOUNT_LOCKED`.',
   })
+  @ApiResponse({ status: 403, description: 'Cuenta suspendida, con la contrasena correcta.' })
   @ApiResponse({ status: 503, description: 'Servicio temporalmente no disponible.' })
   @ApiResponse({ status: 429, description: 'Demasiadas solicitudes.' })
   async platformLogin(
@@ -235,7 +238,12 @@ export class AuthController {
     const ipAddress = req.ip ?? req.socket?.remoteAddress;
     const userAgent = req.headers['user-agent'];
 
-    const result = await this.authService.loginPlatform(dto, ipAddress, userAgent);
+    const attempt = await this.platformLoginThrottle.reserve(dto.email, ipAddress);
+    // Misma respuesta que una contraseña errónea: no revela el freno ni la cuenta.
+    if (!attempt) throw new UnauthorizedException('Credenciales invalidas.');
+    const result = await this.authService
+      .loginPlatform(dto, ipAddress, userAgent, attempt)
+      .finally(() => attempt.release());
 
     // C-6 (ADR-081): la consola de plataforma gana ciclo de refresco. Emite la
     // cookie de access y la de refresh solo en el login completo. El token de

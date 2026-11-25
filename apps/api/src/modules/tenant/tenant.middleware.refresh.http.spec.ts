@@ -7,6 +7,7 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { AuthController } from '../auth/auth.controller';
 import { AuthService } from '../auth/auth.service';
+import { PlatformLoginThrottle } from '../auth/platform-login-throttle.service';
 import {
   platformRefreshCookieName,
   tenantRefreshCookieName,
@@ -39,6 +40,10 @@ describe('TenantMiddleware + POST /auth/refresh (HTTP)', () => {
       controllers: [AuthController],
       providers: [
         TenantMiddleware,
+        {
+          provide: PlatformLoginThrottle,
+          useValue: { reserve: async () => ({ release: async () => undefined }) },
+        },
         { provide: AuthService, useValue: authService },
         { provide: TenantService, useValue: tenantService },
         {

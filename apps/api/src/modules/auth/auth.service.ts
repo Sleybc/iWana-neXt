@@ -37,6 +37,8 @@ import { MailerService } from '../mailer/mailer.service';
 import { emailVerificationTemplate } from '../mailer/templates/email-verification.template';
 import { forgotPasswordTemplate } from '../mailer/templates/forgot-password.template';
 import { hashOpaqueToken } from '../../common/crypto/hash-opaque-token.util';
+import { platformPasswordAttackTemplate } from '../mailer/templates/platform-password-attack.template';
+import type { PasswordAttempt, PasswordFailure } from './platform-login-throttle.service';
 import { platformMfaLockTemplate } from '../mailer/templates/platform-mfa-lock.template';
 import { passwordResetConfirmTemplate } from '../mailer/templates/password-reset-confirm.template';
 import {
@@ -88,6 +90,9 @@ const PLATFORM_MFA_LOCK_SECONDS = 30 * 60;
 
 const MFA_CODE_REJECTED = 'Código incorrecto o ya usado. Espera el siguiente código.';
 const MFA_REUSED_AUDIT = { motivo: 'MFA_CODIGO_REUTILIZADO' };
+
+/** Hash bcrypt de coste 12 sin contraseña conocida: iguala el tiempo de una cuenta inexistente. */
+const ABSENT_ACCOUNT_HASH = '$2b$12$/alaA2LKtWcGoAqpauDO2eJ25rcE8691QRksdGEQGS7BVngi0jcU6';
 
 const PLATFORM_SELF_MFA_TTL_MS = 5 * 60 * 1000;
 
@@ -282,6 +287,7 @@ export class AuthService {
     dto: LoginDto,
     ipAddress?: string,
     userAgent?: string,
+    attempt?: PasswordAttempt,
   ): Promise<AuthResponse & { refreshToken?: string; cookieTtl?: SessionCookieTtl }> {
     const emailHash = hashEmail(dto.email, this.piiHashKey);
 
@@ -290,26 +296,25 @@ export class AuthService {
       withDeleted: false,
     });
 
-    if (!user) {
-      await this.logPlatformLoginFailed(null, 'USUARIO_NO_ENCONTRADO', ipAddress, userAgent);
+    // Una comparación de coste 12 en todos los estados: ni el tiempo ni la respuesta dicen si la
+    // cuenta existe. Una inactiva responde igual aunque la contraseña sea correcta.
+    const matches = await bcrypt.compare(dto.password, user?.passwordHash ?? ABSENT_ACCOUNT_HASH);
+    if (!user || !matches || user.status === UserStatus.INACTIVE) {
+      const failure = await attempt?.failed();
+      const reason = !user
+        ? 'USUARIO_NO_ENCONTRADO'
+        : user.status === UserStatus.INACTIVE
+          ? 'CUENTA_INACTIVA'
+          : 'CONTRASENA_INVALIDA';
+      await this.logPlatformLoginFailed(user?.id ?? null, reason, ipAddress, userAgent);
+      if (failure) this.reportPasswordFailure(user?.id ?? null, failure, ipAddress, userAgent);
       throw new UnauthorizedException('Credenciales invalidas.');
     }
+    await attempt?.succeeded();
 
     if (user.status === UserStatus.SUSPENDED) {
       await this.logPlatformLoginFailed(user.id, 'CUENTA_SUSPENDIDA', ipAddress, userAgent);
       throw new ForbiddenException('La cuenta de plataforma esta suspendida.');
-    }
-
-    if (user.status === UserStatus.INACTIVE) {
-      await this.logPlatformLoginFailed(user.id, 'CUENTA_INACTIVA', ipAddress, userAgent);
-      throw new UnauthorizedException('Credenciales invalidas.');
-    }
-
-    const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
-
-    if (!passwordValid) {
-      await this.logPlatformLoginFailed(user.id, 'CONTRASENA_INVALIDA', ipAddress, userAgent);
-      throw new UnauthorizedException('Credenciales invalidas.');
     }
 
     // Contrasena primero, MFA despues (PROMPT-MOD01 §3.3).
@@ -490,19 +495,61 @@ export class AuthService {
       userAgent: userAgent ?? null,
       newValue: { lockedUntil, motivo: 'MFA_INVALIDO' },
     });
-    this.fireAndForget(this.notifyPlatformMfaLock(userId), 'aviso de espera del segundo factor');
+    this.fireAndForget(
+      this.notifyPlatformAccount(userId, platformMfaLockTemplate),
+      'aviso de espera del segundo factor',
+    );
+  }
+
+  /** Inicio del freno y aviso de ataque. No espera: no debe cambiar el tiempo de la respuesta. */
+  private reportPasswordFailure(
+    userId: string | null,
+    { locked, alert }: PasswordFailure,
+    ipAddress?: string,
+    userAgent?: string,
+  ): void {
+    const audit = (action: AuditAction, motivo: string): void => {
+      this.fireAndForget(
+        this.platformAuditService.log({
+          action,
+          entityType: PLATFORM_USER_ENTITY_TYPE,
+          entityId: userId ?? UNKNOWN_PLATFORM_USER_ENTITY_ID,
+          userId,
+          ipAddress: ipAddress ?? null,
+          userAgent: userAgent ?? null,
+          newValue: { motivo },
+        }),
+        'auditoría del freno de contraseñas',
+      );
+    };
+    if (locked) audit(AuditAction.ACCOUNT_LOCKED, 'FRENO_CONTRASENA');
+    if (!alert) return;
+    this.logger.error(
+      `PLATFORM_PASSWORD_ATTACK — cuenta ${userId ?? 'inexistente'} con fallos repetidos.`,
+    );
+    if (!userId) return;
+    audit(AuditAction.LOGIN_FAILED, 'ATAQUE_CONTRASENA');
+    this.fireAndForget(
+      this.notifyPlatformAccount(userId, platformPasswordAttackTemplate),
+      'aviso de ataque de contraseñas',
+    );
   }
 
   /** Correo al titular y a los demás administradores activos, uno por destinatario. */
-  private async notifyPlatformMfaLock(userId: string): Promise<void> {
+  private async notifyPlatformAccount(
+    userId: string,
+    template: typeof platformMfaLockTemplate,
+  ): Promise<void> {
     const recipients = await this.platformUserRepository.find({
       where: [{ id: userId }, { role: PlatformRole.SYSTEM_ADMIN, status: UserStatus.ACTIVE }],
     });
     for (const recipient of recipients) {
-      const template = platformMfaLockTemplate(recipient.id === userId ? null : userId);
       this.fireAndForget(
-        this.mailerService.sendMail({ to: this.decodeStoredValue(recipient.email), ...template }),
-        'aviso de espera del segundo factor',
+        this.mailerService.sendMail({
+          to: this.decodeStoredValue(recipient.email),
+          ...template(recipient.id === userId ? null : userId),
+        }),
+        'aviso de seguridad de plataforma',
       );
     }
   }

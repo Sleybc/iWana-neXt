@@ -50,3 +50,11 @@ it('solo los dos firmantes llaman a jwtService.sign', () => {
 it('solo matchTotpStep verifica códigos TOTP', () => {
   expect(callers('totp.verify', () => true)).toEqual(['matchTotpStep']);
 });
+
+it('todo ingreso de plataforma pasa por el freno', () => {
+  expect(callers('loginPlatform', () => true)).toEqual(['platformLogin']);
+  expect(callers('loginPlatform', (call) => call.arguments[3]?.getText() !== 'attempt')).toEqual(
+    [],
+  );
+  expect(callers('platformLoginThrottle.reserve', () => true)).toEqual(['platformLogin']);
+});

@@ -121,7 +121,7 @@ Las pruebas nuevas se ven rojas antes del cambio.
 
 CA-3 se prueba sin petición HTTP en el 404 (servicio y arranque real de la configuración). CA-2 y CA-16 se prueban con PostgreSQL real y un doble de Redis en memoria; el E2E operativo ejerce Redis real en el camino normal.
 
-**CA-15, 2026-11-25, sobre `5c5de908`:** CI 45634096471, E2E operativo 397 pasadas, 0 fallidas, 4 omitidas. Corrida aparte de los diez specs en servicios desechables: 30 pruebas, 26 pasadas, 2 fallidas y 2 sin ejecutar. **No cerrado:** `portal-importacion-uisp-live` y `portal-importacion-uisp-usuarios-live` fallan después de ingresar, al promover un lote, por una carrera ajena al MFA: `requestPromotion` encola antes de confirmar y el trabajo se omite si lee el lote todavía simulado.
+**CA-15, 2026-11-25, sobre `5c5de908`:** CI 45634096471, E2E operativo 397 pasadas, 0 fallidas, 4 omitidas. Corrida aparte de los diez specs en servicios desechables: 30 pruebas, 26 pasadas, 2 fallidas y 2 sin ejecutar. Los dos specs UISP fallaban al promover un lote, por una carrera ajena al MFA. **Cerrado el 2026-11-25 con dos corridas:** tras corregirla (`5e06c706`), sus 4 pruebas pasan, 0 fallan y 0 omitidas, en servicios desechables con Node 24; no hubo una corrida única de las 30. CI 45654827882 verde sobre `fb6d17fb`, que contiene la corrección: E2E operativo 397 pasadas, 0 fallidas, 4 omitidas. La CI 45651093995 de `5e06c706` se canceló y no cuenta.
 
 ## 8. Puntos del G0 del CTO (aprobados el 2026-11-25)
 

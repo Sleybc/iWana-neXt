@@ -41,6 +41,7 @@ const loginErrorMessages: Record<number, string> = {
   401: 'Correo o contraseña incorrectos.',
   403: 'No tienes permisos para acceder a la plataforma.',
   429: 'Demasiados intentos fallidos. Espera 1 minuto e intenta de nuevo.',
+  503: 'El servicio no está disponible por ahora. Intenta de nuevo en unos minutos.',
 };
 
 const defaultBootstrapEmail = 'admin@iwana.co';
