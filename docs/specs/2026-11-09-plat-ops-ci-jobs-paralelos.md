@@ -1,6 +1,6 @@
 # SPEC — CI en jobs paralelos: `static`, `unit` en matriz e `integration` (ADR-107, Ola 3)
 
-**Versión:** 1.0
+**Versión:** 1.1 (enmienda del 2026-11-25, §6)
 **Estado:** Aprobado. El usuario adelanta la Ola 3 el 2026-11-09 (ADR-107 §6 v1.1)
 **Fecha:** 2026-11-09
 **Emitido por:** AI-EM-ARCH · **Ejecuta:** `plat-ops`
@@ -65,3 +65,15 @@ Restricciones que `plat-ops` debe respetar:
 - Acortar el E2E R4.1 (~14,5 min), que pasa a ser la ruta crítica. Su paso de aprovisionamiento construye la imagen del worker en cada corrida. Va en una spec aparte, si la medición lo justifica.
 - La caché remota de Turbo: sigue descartada por el gate `0 cached`.
 - Runners de más de 2 cores, que son de pago.
+
+## 6. Enmienda 2026-11-25 (al implementar sobre el `ci.yml` vigente)
+
+Prevalece sobre §§1–5 donde difieran. No rebaja ningún umbral ni guarda.
+
+- **Runner:** 4 vCPU (no 2). «Más de 2 cores» deja de estar fuera de alcance.
+- **Línea base (§3.2):** corrida 45675760581 (`7265a9bd`, verde), suites/pruebas. Unit: api 646 / 8761 aprobadas y 11 omitidas; portal 464 / 5258 y 1; web 44/365; shared 63/837; ui 14/145; worker 32/362; db 92/482. `storage` no tiene tarea `test`. Freno 19/19 (11 con Redis real). 089 87/403. Integración API 130 de 135 suites, 1058 aprobadas y 34 omitidas (5 omisiones declaradas; B5 17/17; K2 5/5). Latencia 3. Worker 6 de 13 suites, 12 aprobadas y 15 omitidas.
+- **Redis:** el servicio Redis 6390 y Postgres van en `integration`, con el paso del freno y la guarda de auth-credential-races. El freno usa `CLIENT PAUSE ALL`: los pasos que usan Redis siguen en serie. La pata `api` conserva por eso sus 11 omisiones.
+- **Pata `resto`:** se define por exclusión (`!api`, `!portal`), para que un paquete nuevo no quede fuera. Mantiene `--concurrency=1`, porque agrupa cinco paquetes. Cada pata exige además su número exacto de tareas (1, 1 y 5).
+- **Builds:** cada pata y `integration` construyen las dependencias con `turbo run build --filter=…^...`. Integración incluye `@iwana/storage`, que su jest carga desde `dist`.
+- **Límites:** `integration` 25 min en vez de 20; API 12 y latencia 6 sin cambio.
+- **Meta de §3.4:** no se alcanza con esta ola. E2E R4.1 dura entre 18 y 22 min y queda como ruta crítica hasta el [reparto en shards](2026-11-25-plat-ops-ci-e2e-operativo-shards.md).

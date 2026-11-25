@@ -1,6 +1,6 @@
 # .github/workflows/ci.yml
-# CI pipeline iWana neXt — Lint + Typecheck + Build + Unit tests + integración DB + least-privilege gate (SEC-04 / GSEC-N1)
-# R-13: pnpm test:coverage (turbo) es gate rojo — ejecuta la suite unitaria Y evalúa
+# CI pipeline iWana neXt — jobs paralelos: static, unit (matriz) e integration (least-privilege gate SEC-04 / GSEC-N1)
+# R-13: el comando de pnpm test:coverage (turbo, repartido por patas) es gate rojo — ejecuta la suite unitaria Y evalúa
 # los coverageThreshold declarados por paquete (api path-specific; web y portal
 # trinquete global). Actualizado el 2026-08-04: hasta esa fecha el paso corría
 # `pnpm test` sin `--coverage` y NINGÚN umbral se evaluaba en CI.
@@ -27,8 +27,8 @@ concurrency:
 jobs:
   # ADR-107 D7: detecta los commits de solo documentación. Publica docs_only=true
   # solo si TODAS las rutas cambiadas están bajo docs/ y ninguna la lee ni la cita
-  # una prueba; entonces production-images, ci, execution-orders-e2e y e2e-portal
-  # se omiten y solo corre adr-citations. Ante cualquier duda (before nulo o todo
+  # una prueba; entonces production-images, static, unit, integration,
+  # execution-orders-e2e y e2e-portal se omiten y solo corre adr-citations. Ante cualquier duda (before nulo o todo
   # ceros, evento sin regla, fetch o diff fallido, diff vacío, error de git grep)
   # docs_only=false. Sin pnpm install: solo git y bash.
   changes:
@@ -313,15 +313,332 @@ jobs:
           fi
           echo "✅ .env.production sin marcadores pendientes"
 
-  ci:
-    name: Lint + Typecheck + Build + Unit tests
+  # Spec 2026-11-09-plat-ops-ci-jobs-paralelos (ADR-107, Ola 3): static, unit e integration
+  # reparten los pasos del antiguo job `ci` sin cambiar pruebas, umbrales ni guardas.
+  static:
+    name: Static (lint + typecheck + build)
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
-    # Medido el 2026-11-25: los runs completos recientes duran 21–30 min (45505371018 el
-    # más lento) y 45651093995 se canceló a los 35 min en un runner lento. 50 min deja
-    # ~1,5× sobre el completo más lento (30,4 min) y cubre el cancelado.
-    timeout-minutes: 50
+    # Medido en serie (45667228690): 3 min 23 s. Recalibrar tras el primer verde.
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive Node.js version
+        id: node-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^useNodeVersion:[[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' pnpm-workspace.yaml)"
+          [[ "$version" =~ ^24\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid useNodeVersion: $version" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.node-version.outputs.version }}
+
+      - name: Setup pnpm 10
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Gate «No critical vulnerabilities» (AGENTS.md → Gates Before Merge).
+      # Solo dependencias de producción. Una advisoría crítica deja el job en rojo.
+      - name: Auditar dependencias de producción (critical)
+        run: pnpm audit --prod --audit-level critical
+
+      - name: Validate development tooling
+        run: pnpm test:tooling
+
+      - name: Check agentes multi-IDE sincronizados
+        run: pnpm sync:agents:check
+
+      - name: Check skills y MCP sincronizados (ADR-092)
+        run: |
+          pnpm sync:skills:check
+          pnpm sync:mcp:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+  unit:
+    name: Unit tests (${{ matrix.name }})
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-24.04
+    # La pata más lenta (api) tardó 5 min 52 s de suite en 45667228690 y unas 1,5× en un
+    # runner lento (45651093995). Recalibrar tras el primer verde.
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # `resto` se define por exclusión: un paquete nuevo con pruebas no se queda fuera.
+        include:
+          - name: api
+            filters: --filter=@iwana/api
+            build: --filter=@iwana/api^...
+            coverage_app: api
+            tasks: 1
+          - name: portal
+            filters: --filter=@iwana/portal
+            build: --filter=@iwana/portal^...
+            coverage_app: portal
+            tasks: 1
+          - name: resto
+            filters: --filter=!@iwana/api --filter=!@iwana/portal
+            build: --filter=@iwana/web^... --filter=@iwana/worker^...
+            coverage_app: web
+            tasks: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive Node.js version
+        id: node-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^useNodeVersion:[[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' pnpm-workspace.yaml)"
+          [[ "$version" =~ ^24\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid useNodeVersion: $version" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.node-version.outputs.version }}
+
+      - name: Setup pnpm 10
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # R-6.2 / R-13: clave AES efímera antes de unit tests y migraciones tenant.
+      # Se genera en cada job que la usa (unit e integration); nunca viaja entre jobs.
+      # Joi de AppModule se omite con NODE_ENV=test; la suite mockea ConfigService,
+      # pero CLI/crypto specs y cualquier boot parcial leen process.env.
+      - name: Generar MFA_ENCRYPTION_KEY efímera para CI (no persistida en repo)
+        shell: bash
+        run: echo "MFA_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      # Sustituye aquí al paso «Build» completo, que vive en `static`: solo las dependencias
+      # de los paquetes de la pata (LOAD-BEARING para @iwana/db, ver la nota siguiente).
+      - name: Build de dependencias de la pata
+        shell: bash
+        env:
+          TURBO_FILTERS: ${{ matrix.build }}
+        run: |
+          set -euo pipefail
+          read -ra filters <<< "$TURBO_FILTERS"
+          pnpm exec turbo run build "${filters[@]}"
+
+      # R-13: turbo test dependsOn ^build — tras Build. Fallo = job rojo (sin continue-on-error).
+      # Suite unit/HTTP mocked; no requiere Postgres.
+      #
+      # COBERTURA (2026-08-04, escalación 3 del INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-
+      # UIUX-v1.0, aprobada por el CTO). Hasta hoy este paso corría `pnpm test` SIN
+      # `--coverage`: ningún `coverageThreshold` se evaluaba en CI — tampoco el
+      # path-specific que @iwana/api ya declaraba. La compuerta existía en la
+      # configuración y era inexigible en el pipeline, el patrón exacto que ADR-056
+      # persigue. Ahora el paso corre `pnpm test:coverage` (package.json raíz):
+      #   turbo run test --concurrency=1 --only -- --coverage
+      #     --coverageReporters=text-summary --coverageReporters=json-summary
+      # y jest sale ≠ 0 cuando la cobertura cae bajo el umbral del paquete:
+      #   @iwana/api     path-specific (serialized-asset-useful-life.util.ts, 80/80/80/80)
+      #   @iwana/web     trinquete global 36/29/32/37
+      #   @iwana/portal  trinquete global 55/47/49/57
+      # Los umbrales son un TRINQUETE fijado en el suelo MEDIDO, no la meta del 80%:
+      # suben cuando sube la cobertura. Si uno falla NO se baja el número — se
+      # investiga la regresión. Bajar el listón para que pase convierte el gate en
+      # decorado y reabre el hallazgo que esta fase cierra.
+      #
+      # `--only` NO es cosmético: turbo mete los args de passthrough (`-- ...`) en el
+      # hash de TODAS las tareas del run, incluidas las `^build` de las que depende
+      # `test`. Sin `--only`, este paso invalidaría los builds que el paso de build de la pata acaba
+      # de dejar en caché y los reejecutaría — justo la propiedad que la nota R-14
+      # de abajo da por buena. Con `--only` el run contiene exclusivamente tareas
+      # `test` (verificado: 7 tareas repartidas en las patas, 0 builds). Las suites de api/web/portal/worker no
+      # los necesitan porque sus jest.config resuelven `@iwana/*` a `src` vía
+      # moduleNameMapper; la de @iwana/db NO tiene moduleNameMapper y sus entities
+      # importan `@iwana/shared`, que resuelve a `dist`. Por eso el orden de pasos es
+      # LOAD-BEARING: el build de la pata precede a este paso. Moverlo o saltarlo deja
+      # a @iwana/db sin `@iwana/shared` construido. (Mismo motivo por el que
+      # `pnpm test:coverage` en un checkout recién clonado y sin construir puede fallar
+      # en @iwana/db: correr antes `pnpm build`. El camino de dev sigue siendo
+      # `pnpm test`, que sí arrastra sus `^build`.)
+      #
+      # COSTE MEDIDO el 2026-08-04 (local 16 cores; el runner de entonces tenía 2):
+      #   agregado, 6 tareas test sin caché:  128,3 s → 151,4 s  (+23,1 s, +18%)
+      #   por app a maxWorkers=1, que emulaba el reparto del runner de 2 cores de
+      #   entonces (hoy 4 vCPU en repo público: este '50%' da 2 workers):
+      #     portal  114,2 s → 133,4 s  (+19,2 s)
+      #     api      84,2 s → 106,4 s  (+22,2 s)
+      #     web      16,8 s →  16,7 s  (dentro del ruido)
+      # Se descartó un job de cobertura aparte: obligaba a ejecutar la suite DOS veces
+      # y a duplicar la exposición a los flakes de contención que R-14 costó acotar,
+      # para ahorrar ~1-2 min en un job que ya dura decenas de minutos.
+      # Reporters: text-summary (log legible) + json-summary (un archivo por app, lo
+      # consume el paso de verificación siguiente). Sin lcov/html: 677 archivos por app
+      # que nadie consume en CI.
+      #
+      # R-14 (hallazgo A-1): la serialización `--concurrency=1` se conserva intacta.
+      # Las tareas `test` se serializan a propósito — jest ya paraleliza dentro de cada
+      # paquete, y antes 6 jest concurrentes pedían más workers que cores (en el runner
+      # de 4 vCPU el reparto sigue siendo imposible: el mínimo por paquete ya es 1 worker).
+      # Serializar dentro de la pata es barato: el build de la pata ya dejó construido lo
+      # que haga falta y `--only` deja fuera del run las tareas `^build`. No subir
+      # testTimeout para tapar contención: si vuelve a fallar por reloj de pared, es
+      # planificación, no timeout.
+      - name: Unit tests + gate de cobertura
+        shell: bash
+        env:
+          TURBO_FILTERS: ${{ matrix.filters }}
+        run: |
+          set -o pipefail
+          # Mismos argumentos que `pnpm test:coverage` (package.json) más los filtros de la pata.
+          read -ra filters <<< "$TURBO_FILTERS"
+          pnpm exec turbo run test --concurrency=1 --only "${filters[@]}" -- \
+            --coverage --coverageReporters=text-summary --coverageReporters=json-summary \
+            2>&1 | tee /tmp/unit-coverage.log
+
+      # ADR-056 / hallazgo A-2: un paso verde no prueba que el gate se haya ejecutado.
+      # Aquí hay DOS formas conocidas de falso verde, y las dos se cierran explícitamente:
+      #
+      #  1. Replay de caché. Una tarea `test` restaurada de la caché de turbo imprime la
+      #     salida anterior, repone `coverage/**` y sale 0 SIN volver a evaluar ningún
+      #     umbral. Hoy no puede ocurrir (CI no persiste `.turbo` ni usa remote cache) y
+      #     por eso `0 cached` es una aserción segura. Si algún día deja de serlo será
+      #     porque alguien activó caché compartida: eso es una decisión de plataforma que
+      #     hay que tomar mirando este gate, no absorber en silencio.
+      #  2. Cobertura vacía. Si `collectCoverageFrom` deja de emparejar archivos, jest
+      #     mide 0/0, reporta «Unknown%» y CUALQUIER umbral pasa. No es hipotético: era
+      #     el estado real de web y portal hasta el 2026-08-04. Por eso se exige
+      #     denominador > 0 en las tres apps que tienen umbral: cada pata verifica la suya.
+      #
+      # Este paso NO reevalúa umbrales (eso ya lo hizo jest); verifica que la evaluación
+      # ocurrió sobre datos reales, y publica las cifras en el resumen del run para que
+      # subir el trinquete sea una lectura, no una arqueología.
+      - name: Verificar que el gate de cobertura se ejecutó de verdad
+        shell: bash
+        env:
+          COVERAGE_APP: ${{ matrix.coverage_app }}
+          EXPECTED_TASKS: ${{ matrix.tasks }}
+        run: |
+          set -euo pipefail
+          LOG=/tmp/unit-coverage.log
+
+          [[ -s "$LOG" ]] || { echo '::error title=Gate de cobertura::El paso de tests no dejó log (/tmp/unit-coverage.log ausente o vacío).'; exit 1; }
+
+          if ! grep -qE '^[[:space:]]*Cached:[[:space:]]+0 cached' "$LOG"; then
+            echo '::error title=Gate de cobertura::turbo sirvió tareas desde caché, o cambió el formato de su resumen. Una tarea test cacheada NO reevalúa coverageThreshold: el verde no probaría nada.'
+            grep -E '^[[:space:]]*(Tasks|Cached):' "$LOG" || echo '(sin resumen de turbo en el log)'
+            exit 1
+          fi
+
+          # Jobs paralelos: un filtro que no empareja nada también da «0 cached» y sale 0.
+          # Un paquete nuevo con tarea `test` entra solo en `resto` y exige subir `tasks`.
+          if ! grep -qE "^[[:space:]]*Tasks:[[:space:]]+${EXPECTED_TASKS} successful, ${EXPECTED_TASKS} total" "$LOG"; then
+            echo "::error title=Gate de cobertura::se esperaban ${EXPECTED_TASKS} tareas test en esta pata."
+            grep -E '^[[:space:]]*(Tasks|Cached):' "$LOG" || echo '(sin resumen de turbo en el log)'
+            exit 1
+          fi
+
+          node -e '
+            const fs = require("node:fs");
+            const apps = [process.env.COVERAGE_APP];
+            if (!["api", "web", "portal"].includes(apps[0])) {
+              console.error("::error title=Gate de cobertura::COVERAGE_APP ausente o desconocida.");
+              process.exit(1);
+            }
+            const metrics = ["statements", "branches", "functions", "lines"];
+            const rows = [];
+            let failed = false;
+
+            for (const app of apps) {
+              const file = `apps/${app}/coverage/coverage-summary.json`;
+              if (!fs.existsSync(file)) {
+                console.error(`::error title=Gate de cobertura::${file} no existe: ${app} no midió cobertura y su umbral no se evaluó.`);
+                failed = true;
+                continue;
+              }
+              const total = JSON.parse(fs.readFileSync(file, "utf8")).total;
+              const denom = metrics.reduce((acc, m) => acc + total[m].total, 0);
+              if (denom === 0) {
+                console.error(`::error title=Gate de cobertura::${app} midió 0/0. collectCoverageFrom no empareja ningún archivo, así que cualquier umbral pasaría.`);
+                failed = true;
+              }
+              rows.push(`| ${app} | ` + metrics.map((m) => `${total[m].pct}% (${total[m].covered}/${total[m].total})`).join(" | ") + " |");
+            }
+
+            const summaryFile = process.env.GITHUB_STEP_SUMMARY;
+            if (summaryFile) {
+              fs.appendFileSync(summaryFile, [
+                `### Cobertura unitaria (${apps[0]}) — umbrales evaluados en CI`,
+                "",
+                "| app | statements | branches | functions | lines |",
+                "| --- | --- | --- | --- | --- |",
+                ...rows,
+                "",
+                "Umbral vigente (trinquete en el suelo medido, la meta sigue siendo 80%):",
+                "web 36/29/32/37 · portal 55/47/49/57 · api path-specific 80/80/80/80.",
+                "",
+              ].join("\n"));
+            }
+
+            if (failed) process.exit(1);
+            console.log(`Cobertura medida con denominador real en ${apps[0]}; umbrales evaluados por jest.`);
+          '
+
+  integration:
+    name: Integration (PostgreSQL + Redis)
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-24.04
+    # Suma medida de sus pasos: ~9 min en 45667228690 y ~13 min en el runner lento de
+    # 45651093995. Recalibrar tras el primer verde.
+    timeout-minutes: 25
 
     # Ephemeral CI DB only — passwords are disposable lab values, not production secrets.
     # GSEC-N1: POSTGRES_USER (bootstrap) ≠ DB_APP_USER / DB_MIGRATOR_USER / DB_USER.
@@ -408,173 +725,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Gate «No critical vulnerabilities» (AGENTS.md → Gates Before Merge).
-      # Solo dependencias de producción. Una advisoría crítica deja el job en rojo.
-      - name: Auditar dependencias de producción (critical)
-        run: pnpm audit --prod --audit-level critical
-
-      - name: Validate development tooling
-        run: pnpm test:tooling
-
-      - name: Check agentes multi-IDE sincronizados
-        run: pnpm sync:agents:check
-
-      - name: Check skills y MCP sincronizados (ADR-092)
-        run: |
-          pnpm sync:skills:check
-          pnpm sync:mcp:check
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Build
-        run: pnpm build
-
-      # R-6.2 / R-13: clave AES efímera antes de unit tests y migraciones tenant.
-      # Joi de AppModule se omite con NODE_ENV=test; la suite mockea ConfigService,
-      # pero CLI/crypto specs y cualquier boot parcial leen process.env.
       - name: Generar MFA_ENCRYPTION_KEY efímera para CI (no persistida en repo)
         shell: bash
         run: echo "MFA_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
 
-      # R-13: turbo test dependsOn ^build — tras Build. Fallo = job rojo (sin continue-on-error).
-      # Suite unit/HTTP mocked; no requiere Postgres.
-      #
-      # COBERTURA (2026-08-04, escalación 3 del INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-
-      # UIUX-v1.0, aprobada por el CTO). Hasta hoy este paso corría `pnpm test` SIN
-      # `--coverage`: ningún `coverageThreshold` se evaluaba en CI — tampoco el
-      # path-specific que @iwana/api ya declaraba. La compuerta existía en la
-      # configuración y era inexigible en el pipeline, el patrón exacto que ADR-056
-      # persigue. Ahora el paso corre `pnpm test:coverage` (package.json raíz):
-      #   turbo run test --concurrency=1 --only -- --coverage
-      #     --coverageReporters=text-summary --coverageReporters=json-summary
-      # y jest sale ≠ 0 cuando la cobertura cae bajo el umbral del paquete:
-      #   @iwana/api     path-specific (serialized-asset-useful-life.util.ts, 80/80/80/80)
-      #   @iwana/web     trinquete global 36/29/32/37
-      #   @iwana/portal  trinquete global 55/47/49/57
-      # Los umbrales son un TRINQUETE fijado en el suelo MEDIDO, no la meta del 80%:
-      # suben cuando sube la cobertura. Si uno falla NO se baja el número — se
-      # investiga la regresión. Bajar el listón para que pase convierte el gate en
-      # decorado y reabre el hallazgo que esta fase cierra.
-      #
-      # `--only` NO es cosmético: turbo mete los args de passthrough (`-- ...`) en el
-      # hash de TODAS las tareas del run, incluidas las `^build` de las que depende
-      # `test`. Sin `--only`, este paso invalidaría los builds que el paso «Build» acaba
-      # de dejar en caché y los reejecutaría — justo la propiedad que la nota R-14
-      # de abajo da por buena. Con `--only` el run contiene exclusivamente tareas
-      # `test` (verificado: 6 tareas, 0 builds). Las suites de api/web/portal/worker no
-      # los necesitan porque sus jest.config resuelven `@iwana/*` a `src` vía
-      # moduleNameMapper; la de @iwana/db NO tiene moduleNameMapper y sus entities
-      # importan `@iwana/shared`, que resuelve a `dist`. Por eso el orden de pasos es
-      # LOAD-BEARING: «Build» tiene que preceder a este paso. Mover o saltar Build deja
-      # a @iwana/db sin `@iwana/shared` construido. (Mismo motivo por el que
-      # `pnpm test:coverage` en un checkout recién clonado y sin construir puede fallar
-      # en @iwana/db: correr antes `pnpm build`. El camino de dev sigue siendo
-      # `pnpm test`, que sí arrastra sus `^build`.)
-      #
-      # COSTE MEDIDO el 2026-08-04 (local 16 cores; el runner de entonces tenía 2):
-      #   agregado, 6 tareas test sin caché:  128,3 s → 151,4 s  (+23,1 s, +18%)
-      #   por app a maxWorkers=1, que emulaba el reparto del runner de 2 cores de
-      #   entonces (hoy 4 vCPU en repo público: este '50%' da 2 workers):
-      #     portal  114,2 s → 133,4 s  (+19,2 s)
-      #     api      84,2 s → 106,4 s  (+22,2 s)
-      #     web      16,8 s →  16,7 s  (dentro del ruido)
-      # Se descartó un job de cobertura aparte: obligaba a ejecutar la suite DOS veces
-      # y a duplicar la exposición a los flakes de contención que R-14 costó acotar,
-      # para ahorrar ~1-2 min en un job que ya dura decenas de minutos.
-      # Reporters: text-summary (log legible) + json-summary (un archivo por app, lo
-      # consume el paso de verificación siguiente). Sin lcov/html: 677 archivos por app
-      # que nadie consume en CI.
-      #
-      # R-14 (hallazgo A-1): la serialización `--concurrency=1` se conserva intacta.
-      # Las tareas `test` se serializan a propósito — jest ya paraleliza dentro de cada
-      # paquete, y antes 6 jest concurrentes pedían más workers que cores (en el runner
-      # de 4 vCPU el reparto sigue siendo imposible: el mínimo por paquete ya es 1 worker).
-      # Serializar no cuesta tiempo de pipeline: el paso «Build» ya dejó construido lo
-      # que haga falta y `--only` deja fuera del run las tareas `^build`. No subir
-      # testTimeout para tapar contención: si vuelve a fallar por reloj de pared, es
-      # planificación, no timeout.
-      - name: Unit tests + gate de cobertura
-        shell: bash
-        run: |
-          set -o pipefail
-          pnpm test:coverage 2>&1 | tee /tmp/unit-coverage.log
-
-      # ADR-056 / hallazgo A-2: un paso verde no prueba que el gate se haya ejecutado.
-      # Aquí hay DOS formas conocidas de falso verde, y las dos se cierran explícitamente:
-      #
-      #  1. Replay de caché. Una tarea `test` restaurada de la caché de turbo imprime la
-      #     salida anterior, repone `coverage/**` y sale 0 SIN volver a evaluar ningún
-      #     umbral. Hoy no puede ocurrir (CI no persiste `.turbo` ni usa remote cache) y
-      #     por eso `0 cached` es una aserción segura. Si algún día deja de serlo será
-      #     porque alguien activó caché compartida: eso es una decisión de plataforma que
-      #     hay que tomar mirando este gate, no absorber en silencio.
-      #  2. Cobertura vacía. Si `collectCoverageFrom` deja de emparejar archivos, jest
-      #     mide 0/0, reporta «Unknown%» y CUALQUIER umbral pasa. No es hipotético: era
-      #     el estado real de web y portal hasta el 2026-08-04. Por eso se exige
-      #     denominador > 0 en las tres apps que tienen umbral.
-      #
-      # Este paso NO reevalúa umbrales (eso ya lo hizo jest); verifica que la evaluación
-      # ocurrió sobre datos reales, y publica las cifras en el resumen del run para que
-      # subir el trinquete sea una lectura, no una arqueología.
-      - name: Verificar que el gate de cobertura se ejecutó de verdad
-        shell: bash
-        run: |
-          set -euo pipefail
-          LOG=/tmp/unit-coverage.log
-
-          [[ -s "$LOG" ]] || { echo '::error title=Gate de cobertura::El paso de tests no dejó log (/tmp/unit-coverage.log ausente o vacío).'; exit 1; }
-
-          if ! grep -qE '^[[:space:]]*Cached:[[:space:]]+0 cached' "$LOG"; then
-            echo '::error title=Gate de cobertura::turbo sirvió tareas desde caché, o cambió el formato de su resumen. Una tarea test cacheada NO reevalúa coverageThreshold: el verde no probaría nada.'
-            grep -E '^[[:space:]]*(Tasks|Cached):' "$LOG" || echo '(sin resumen de turbo en el log)'
-            exit 1
-          fi
-
-          node -e '
-            const fs = require("node:fs");
-            const apps = ["api", "web", "portal"];
-            const metrics = ["statements", "branches", "functions", "lines"];
-            const rows = [];
-            let failed = false;
-
-            for (const app of apps) {
-              const file = `apps/${app}/coverage/coverage-summary.json`;
-              if (!fs.existsSync(file)) {
-                console.error(`::error title=Gate de cobertura::${file} no existe: ${app} no midió cobertura y su umbral no se evaluó.`);
-                failed = true;
-                continue;
-              }
-              const total = JSON.parse(fs.readFileSync(file, "utf8")).total;
-              const denom = metrics.reduce((acc, m) => acc + total[m].total, 0);
-              if (denom === 0) {
-                console.error(`::error title=Gate de cobertura::${app} midió 0/0. collectCoverageFrom no empareja ningún archivo, así que cualquier umbral pasaría.`);
-                failed = true;
-              }
-              rows.push(`| ${app} | ` + metrics.map((m) => `${total[m].pct}% (${total[m].covered}/${total[m].total})`).join(" | ") + " |");
-            }
-
-            const summaryFile = process.env.GITHUB_STEP_SUMMARY;
-            if (summaryFile) {
-              fs.appendFileSync(summaryFile, [
-                "### Cobertura unitaria — umbrales evaluados en CI",
-                "",
-                "| app | statements | branches | functions | lines |",
-                "| --- | --- | --- | --- | --- |",
-                ...rows,
-                "",
-                "Umbral vigente (trinquete en el suelo medido, la meta sigue siendo 80%):",
-                "web 36/29/32/37 · portal 55/47/49/57 · api path-specific 80/80/80/80.",
-                "",
-              ].join("\n"));
-            }
-
-            if (failed) process.exit(1);
-            console.log("Cobertura medida con denominador real en api, web y portal; umbrales evaluados por jest.");
-          '
+      # Las migraciones corren contra dist y la integración API carga @iwana/storage desde
+      # dist (jest.integration.config.js no lo mapea a src).
+      - name: Build de dependencias de integración
+        run: pnpm exec turbo run build --filter=@iwana/api^...
 
       # El paso unitario omite los 11 casos con Redis real: turbo filtra el entorno y no
       # les llega REDIS_TEST_URL. Aquí la spec corre sola: usa DEL login-throttle:v1:* y
