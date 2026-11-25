@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ComponentProps } from 'react';
 import {
   AccessPermissionKey,
   GoodsReceiptStatus,
@@ -193,6 +194,80 @@ jest.mock('@/lib/api-client', () => ({
     list: jest.fn(),
   },
 }));
+
+// Componentes reales: solo se registran las props que reciben, para observar las carreras.
+const mockProps = {} as {
+  stock: ComponentProps<typeof import('./StockWorkspace').StockWorkspace>;
+  locations: ComponentProps<typeof import('./StockLocationsPanel').StockLocationsPanel>;
+  purchasing: ComponentProps<typeof import('./PurchaseWorkspace').PurchaseWorkspace>;
+  products: ComponentProps<
+    typeof import('./InventoryCatalogProductsPanel').InventoryCatalogProductsPanel
+  >;
+  categories: ComponentProps<
+    typeof import('./InventoryCatalogCategoriesPanel').InventoryCatalogCategoriesPanel
+  >;
+  suppliers: ComponentProps<typeof import('./SuppliersPanel').SuppliersPanel>;
+  itemDrawer: ComponentProps<typeof import('./InventoryCatalogDrawer').InventoryCatalogDrawer>;
+  supplierDrawer: ComponentProps<typeof import('./SupplierFormDrawer').SupplierFormDrawer>;
+  categoryDrawer: ComponentProps<
+    typeof import('./InventoryCategoryDrawer').InventoryCategoryDrawer
+  >;
+};
+
+function mockObserved(key: string, component: string, actual: Record<string, unknown>) {
+  const render = actual[component] as (props: unknown) => unknown;
+  return {
+    ...actual,
+    [component]: (props: unknown) => {
+      Object.assign(mockProps, { [key]: props });
+      return render(props);
+    },
+  };
+}
+
+jest.mock('./StockWorkspace', () =>
+  mockObserved('stock', 'StockWorkspace', jest.requireActual('./StockWorkspace')),
+);
+jest.mock('./StockLocationsPanel', () =>
+  mockObserved('locations', 'StockLocationsPanel', jest.requireActual('./StockLocationsPanel')),
+);
+jest.mock('./PurchaseWorkspace', () =>
+  mockObserved('purchasing', 'PurchaseWorkspace', jest.requireActual('./PurchaseWorkspace')),
+);
+jest.mock('./InventoryCatalogProductsPanel', () =>
+  mockObserved(
+    'products',
+    'InventoryCatalogProductsPanel',
+    jest.requireActual('./InventoryCatalogProductsPanel'),
+  ),
+);
+jest.mock('./InventoryCatalogCategoriesPanel', () =>
+  mockObserved(
+    'categories',
+    'InventoryCatalogCategoriesPanel',
+    jest.requireActual('./InventoryCatalogCategoriesPanel'),
+  ),
+);
+jest.mock('./SuppliersPanel', () =>
+  mockObserved('suppliers', 'SuppliersPanel', jest.requireActual('./SuppliersPanel')),
+);
+jest.mock('./InventoryCatalogDrawer', () =>
+  mockObserved(
+    'itemDrawer',
+    'InventoryCatalogDrawer',
+    jest.requireActual('./InventoryCatalogDrawer'),
+  ),
+);
+jest.mock('./SupplierFormDrawer', () =>
+  mockObserved('supplierDrawer', 'SupplierFormDrawer', jest.requireActual('./SupplierFormDrawer')),
+);
+jest.mock('./InventoryCategoryDrawer', () =>
+  mockObserved(
+    'categoryDrawer',
+    'InventoryCategoryDrawer',
+    jest.requireActual('./InventoryCategoryDrawer'),
+  ),
+);
 
 const inventoryApiMock = inventoryApi as jest.Mocked<typeof inventoryApi>;
 const purchasingApiMock = purchasingApi as jest.Mocked<typeof purchasingApi>;
@@ -2131,6 +2206,547 @@ describe('InventoryClient', () => {
 
       await settle(() => requests[1]!.resolve(page(['Uno', 'Creado'], 'cursor-2')));
       expect(visible('Creado')).toBe(true);
+    });
+  });
+
+  describe('respuestas fuera de orden en las demás cargas', () => {
+    type HeldCall<T> = {
+      args: unknown[];
+      resolve: (value: T) => void;
+      reject: (error: Error) => void;
+    };
+    type AsyncMethod = (...args: never[]) => Promise<unknown>;
+    let restore: Array<() => void>;
+
+    /** Retiene las llamadas para responderlas en el orden que pida la prueba. */
+    function hold<F extends AsyncMethod>(
+      method: F,
+      when: (...args: Parameters<F>) => boolean = () => true,
+    ) {
+      const mock = method as unknown as jest.Mock;
+      const original = mock.getMockImplementation();
+      const calls: Array<HeldCall<Awaited<ReturnType<F>>>> = [];
+      mock.mockImplementation((...args: Parameters<F>) =>
+        when(...args)
+          ? new Promise((resolve, reject) => calls.push({ args, resolve, reject }))
+          : original?.(...args),
+      );
+      restore.push(() => mock.mockImplementation(original));
+      return calls;
+    }
+
+    async function settle(action: () => void = () => undefined, ms = 1) {
+      act(action);
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(ms);
+      });
+    }
+
+    /** Responde todo lo retenido hasta que no salgan más llamadas. */
+    async function drain<T>(calls: Array<HeldCall<T>>, value: T) {
+      let answered = 0;
+      while (answered < calls.length) {
+        const from = answered;
+        answered = calls.length;
+        await settle(() => calls.slice(from).forEach((call) => call.resolve(value)));
+      }
+      return calls.length;
+    }
+
+    function list<T>(data: T[], nextCursor: string | null = null) {
+      return {
+        data,
+        meta: {
+          ...EMPTY_LIST_META,
+          total: data.length,
+          nextCursor,
+          hasMore: nextCursor !== null,
+        },
+      };
+    }
+
+    const items = (...names: string[]) =>
+      names.map((name) => buildCatalogItem({ id: name, sku: `SKU-${name}`, name }));
+    const ids = (rows: Array<{ id: string }>) => rows.map((row) => row.id);
+    const openTab = (name: string) =>
+      settle(() => fireEvent.click(screen.getByRole('button', { name })));
+
+    let sampleCategory: InventoryCategoryRecord;
+    let sampleLocation: Awaited<ReturnType<typeof inventoryApi.listLocations>>['data'][number];
+    let sampleBalance: Awaited<ReturnType<typeof inventoryApi.listBalances>>['data'][number];
+    let sampleSupplier: Awaited<ReturnType<typeof purchasingApi.listSuppliers>>['data'][number];
+    const categories = (...values: string[]) =>
+      values.map((id) => ({ ...sampleCategory, id, name: id, code: id }));
+    const locations = (...values: string[]) =>
+      values.map((id) => ({ ...sampleLocation, id, name: id, code: id }));
+    const balances = (...values: string[]) => values.map((id) => ({ ...sampleBalance, id }));
+
+    async function start() {
+      render(<InventoryClient />);
+      await settle();
+    }
+
+    beforeEach(async () => {
+      jest.useFakeTimers();
+      restore = [];
+      sampleCategory = (await inventoryApi.listCategories({})).data[0]!;
+      sampleLocation = (await inventoryApi.listLocations({})).data[0]!;
+      sampleBalance = (await inventoryApi.listBalances({})).data[0]!;
+      sampleSupplier = (await purchasingApi.listSuppliers({})).data[0]!;
+    });
+
+    afterEach(() => {
+      restore.forEach((undo) => undo());
+      jest.useRealTimers();
+    });
+
+    describe('loadCategories', () => {
+      async function openCategories(nextCursor: string | null = null) {
+        await start();
+        const calls = hold(inventoryApi.listCategories);
+        await openTab('Catálogo');
+        const count = await drain(calls, list(categories('base'), nextCursor));
+        return { calls, count };
+      }
+      const search = (value: string) =>
+        settle(() => mockProps.categories.onSearchChange(value), 300);
+
+      it('ignora la respuesta de una búsqueda anterior', async () => {
+        const { calls, count } = await openCategories();
+        await search('a');
+        await search('ab');
+        expect(calls).toHaveLength(count + 2);
+        await settle(() => calls[count + 1]!.resolve(list(categories('nueva'))));
+        await settle(() => calls[count]!.resolve(list(categories('vieja'))));
+        expect(ids(mockProps.categories.categories)).toEqual(['nueva']);
+      });
+
+      it('un fallo anterior no muestra error ni termina la carga vigente', async () => {
+        const { calls, count } = await openCategories();
+        await search('a');
+        await settle(() => fireEvent.click(screen.getByRole('button', { name: 'Actualizar' })));
+        await settle(() => calls[count]!.reject(new Error('fallo viejo')));
+        expect(screen.queryByText('No fue posible cargar las categorías')).not.toBeInTheDocument();
+        expect(mockProps.categories.isRefreshing).toBe(true);
+        await settle(() => calls[count + 1]!.resolve(list(categories('nueva'))));
+        expect(mockProps.categories.isRefreshing).toBe(false);
+      });
+
+      it('«Cargar más» agrega sin relanzar la primera página', async () => {
+        const { calls, count } = await openCategories('c2');
+        await settle(() => mockProps.categories.onLoadMore!());
+        await settle(() => calls[count]!.resolve(list(categories('dos'), 'c3')));
+        expect(calls[count]!.args[0]).toEqual(expect.objectContaining({ cursor: 'c2' }));
+        expect(ids(mockProps.categories.categories)).toEqual(['base', 'dos']);
+        expect(calls).toHaveLength(count + 1);
+      });
+
+      it('«Cargar más» no desplaza una actualización en vuelo', async () => {
+        const { calls, count } = await openCategories('c2');
+        await settle(() => fireEvent.click(screen.getByRole('button', { name: 'Actualizar' })));
+        await settle(() => mockProps.categories.onLoadMore!());
+        expect(calls).toHaveLength(count + 1);
+        await settle(() => calls[count]!.resolve(list(categories('base', 'creada'), 'c2')));
+        expect(ids(mockProps.categories.categories)).toEqual(['base', 'creada']);
+      });
+    });
+
+    describe('loadStockLists', () => {
+      async function openStock(nextCursor: string | null = null) {
+        inventoryApiMock.listLocations.mockResolvedValue(list(locations('bodega'), nextCursor));
+        await start();
+        const calls = hold(inventoryApi.listItems, (params) => params?.limit !== 6);
+        await openTab('Existencias');
+        const count = await drain(calls, list(items('base'), nextCursor));
+        return { calls, count };
+      }
+      const filter = (search: string) =>
+        settle(
+          () =>
+            mockProps.stock.onProductFiltersChange!({
+              search,
+              onlyBelowMinimum: false,
+              stockLocationId: '',
+            }),
+          300,
+        );
+      const searchOf = (call: { args: unknown[] }) => (call.args[0] as { search?: string }).search;
+
+      it('ignora la respuesta de un filtro anterior', async () => {
+        const { calls, count } = await openStock();
+        await filter('a');
+        await filter('ab');
+        const sent = calls.slice(count);
+        const old = sent.filter((call) => searchOf(call) === 'a');
+        const current = sent.filter((call) => searchOf(call) === 'ab');
+        expect(old.length).toBeGreaterThan(0);
+        await settle(() => current.forEach((call) => call.resolve(list(items('nuevo')))));
+        await settle(() => old.forEach((call) => call.resolve(list(items('viejo')))));
+        expect(ids(mockProps.stock.items)).toEqual(['nuevo']);
+      });
+
+      it('un fallo anterior no muestra error', async () => {
+        const { calls, count } = await openStock();
+        await filter('a');
+        await filter('ab');
+        const sent = calls.slice(count);
+        await settle(() =>
+          sent.forEach((call) =>
+            searchOf(call) === 'ab'
+              ? call.resolve(list(items('nuevo')))
+              : call.reject(new Error('x')),
+          ),
+        );
+        expect(screen.queryByText('No fue posible cargar Inventario')).not.toBeInTheDocument();
+      });
+
+      it('«Cargar más» productos agrega sin relanzar la lista', async () => {
+        const { calls, count } = await openStock('c2');
+        await settle(() => mockProps.stock.onLoadMoreItems!());
+        expect(calls[count]!.args[0]).toEqual(expect.objectContaining({ cursor: 'c2' }));
+        await settle(() => calls[count]!.resolve(list(items('dos'), 'c3')));
+        expect(ids(mockProps.stock.items)).toEqual(['base', 'dos']);
+        expect(mockProps.stock.isLoadingMoreItems).toBe(false);
+        expect(calls).toHaveLength(count + 1);
+      });
+
+      it('«Cargar más» bodegas agrega sin relanzar la lista', async () => {
+        await openStock('c2');
+        const calls = hold(inventoryApi.listLocations);
+        await settle(() => mockProps.stock.onLoadMoreLocations!());
+        expect(calls[0]!.args[0]).toEqual(expect.objectContaining({ cursor: 'c2' }));
+        await settle(() => calls[0]!.resolve(list(locations('otra'), 'c3')));
+        expect(ids(mockProps.stock.locations)).toEqual(['bodega', 'otra']);
+        expect(calls).toHaveLength(1);
+      });
+
+      it('descarta un «Cargar más» en vuelo si cambia el filtro y no desplaza la carga nueva', async () => {
+        const { calls, count } = await openStock('c2');
+        await settle(() => mockProps.stock.onLoadMoreItems!());
+        await filter('a');
+        const beforeClick = calls.length;
+        await settle(() => mockProps.stock.onLoadMoreItems!());
+        expect(calls).toHaveLength(beforeClick);
+        await settle(() =>
+          calls.slice(count + 1).forEach((call) => call.resolve(list(items('filtrado')))),
+        );
+        await settle(() => calls[count]!.resolve(list(items('dos'), 'c3')));
+        expect(ids(mockProps.stock.items)).toEqual(['filtrado']);
+        expect(mockProps.stock.isLoadingMoreItems).toBe(false);
+      });
+    });
+
+    describe('loadLocationsTab', () => {
+      it('ignora una carga anterior y no drena sus existencias', async () => {
+        await start();
+        const calls = hold(inventoryApi.listLocations);
+        await openTab('Bodegas');
+        const old = calls.length;
+        await openTab('Vista general');
+        await openTab('Bodegas');
+        expect(calls.length).toBeGreaterThan(old);
+        await settle(() => calls.slice(old).forEach((c) => c.resolve(list(locations('nueva')))));
+        inventoryApiMock.listBalances.mockClear();
+        await settle(() => calls.slice(0, old).forEach((c) => c.resolve(list(locations('vieja')))));
+        expect(ids(mockProps.locations.locations)).toEqual(['nueva']);
+        expect(inventoryApi.listBalances).not.toHaveBeenCalled();
+      });
+
+      it('«Cargar más» agrega sin relanzar y sin desplazar una carga en vuelo', async () => {
+        await start();
+        const calls = hold(inventoryApi.listLocations);
+        await openTab('Bodegas');
+        const count = await drain(calls, list(locations('base'), 'c2'));
+        await settle(() => mockProps.locations.onLoadMore!());
+        await settle(() => calls[count]!.resolve(list(locations('dos'), 'c3')));
+        expect(ids(mockProps.locations.locations)).toEqual(['base', 'dos']);
+        expect(calls).toHaveLength(count + 1);
+
+        await openTab('Vista general');
+        await openTab('Bodegas');
+        const reloading = calls.length;
+        await settle(() => mockProps.locations.onLoadMore!());
+        expect(calls).toHaveLength(reloading);
+      });
+    });
+
+    describe('cargas que comparten estado', () => {
+      it('Existencias no pisa bodegas ni saldos de Bodegas, y conserva sus productos', async () => {
+        await start();
+        const stockItems = hold(inventoryApi.listItems, (params) => params?.limit !== 6);
+        const held = hold(inventoryApi.listLocations);
+        const heldBalances = hold(inventoryApi.listBalances);
+        await openTab('Existencias');
+        const oldLocations = [...held];
+        const oldBalances = [...heldBalances];
+        await openTab('Bodegas');
+        await settle(() =>
+          held.slice(oldLocations.length).forEach((c) => c.resolve(list(locations('nueva')))),
+        );
+        await settle(() =>
+          heldBalances.slice(oldBalances.length).forEach((c) => c.resolve(list(balances('nuevo')))),
+        );
+        await settle(() => {
+          stockItems.forEach((c) => c.resolve(list(items('stock'))));
+          oldLocations.forEach((c) => c.resolve(list(locations('vieja'))));
+          oldBalances.forEach((c) => c.resolve(list(balances('viejo'))));
+        });
+        expect(ids(mockProps.locations.locations)).toEqual(['nueva']);
+        expect(ids(mockProps.locations.balances)).toEqual(['nuevo']);
+        await openTab('Compras');
+        expect(ids(mockProps.purchasing.items)).toEqual(['stock']);
+      });
+
+      it('Bodegas no pisa bodegas ni saldos de Existencias', async () => {
+        await start();
+        const held = hold(inventoryApi.listLocations);
+        await openTab('Bodegas');
+        const old = [...held];
+        await openTab('Existencias');
+        await settle(() =>
+          held.slice(old.length).forEach((c) => c.resolve(list(locations('nueva')))),
+        );
+        await settle(() => old.forEach((c) => c.resolve(list(locations('vieja')))));
+        expect(ids(mockProps.stock.locations)).toEqual(['nueva']);
+      });
+
+      it('la vista previa inicial no pisa los productos de Existencias', async () => {
+        const preview = hold(inventoryApi.listItems, (params) => params?.limit === 6);
+        await start();
+        await openTab('Existencias');
+        await settle(() => preview.forEach((c) => c.resolve(list(items('previa')))));
+        expect(ids(mockProps.stock.items)).toEqual(['item-1']);
+      });
+
+      it('una operación que termina en otra pestaña recarga la lista vigente', async () => {
+        inventoryApiMock.listItems.mockImplementation(async (params) =>
+          params?.limit === 6 ? list(items('previa'), 'c-previa') : list(items('stock'), 'c2'),
+        );
+        await start();
+        await openTab('Compras');
+        const creates = hold(purchasingApi.createRequest);
+        await settle(() => void mockProps.purchasing.onCreateRequest({} as never));
+        await openTab('Existencias');
+        expect(ids(mockProps.stock.items)).toEqual(['stock']);
+        await settle(() => creates[0]!.resolve({ id: 'sol-1' } as never));
+        await settle();
+        expect(ids(mockProps.stock.items)).toEqual(['stock']);
+      });
+
+      it('una carga de Existencias anterior no pisa la recarga posterior', async () => {
+        await start();
+        await openTab('Existencias');
+        const calls = hold(inventoryApi.listItems);
+        await settle(() =>
+          mockProps.stock.onLocationListFiltersChange!({
+            ...mockProps.stock.locationListFilters!,
+            search: 'x',
+          }),
+        );
+        const old = [...calls];
+        expect(old.length).toBeGreaterThan(0);
+        await settle(() => mockProps.stock.onAdjustmentRegistered('MOV-1'));
+        await drainAfter(calls, old.length);
+        await settle(() => old.forEach((c) => c.resolve(list(items('viejo')))));
+        expect(ids(mockProps.stock.items)).toEqual(['nuevo']);
+
+        async function drainAfter(held: typeof calls, from: number) {
+          for (let next = from; next < held.length; next += 1) {
+            await settle(() => held[next]!.resolve(list(items('nuevo'))));
+          }
+        }
+      });
+    });
+
+    describe('loadCatalogOptions', () => {
+      it('solo aplica la última búsqueda: datos, error y fin de búsqueda', async () => {
+        await start();
+        await openTab('Compras');
+        const calls = hold(inventoryApi.listCatalogOptions);
+        await settle(() => mockProps.purchasing.onCatalogSearch!('a'));
+        await settle(() => mockProps.purchasing.onCatalogSearch!('ab'));
+        await settle(() => calls[0]!.reject(new Error('fallo viejo')));
+        expect(
+          screen.queryByText('No fue posible cargar el catálogo de compras'),
+        ).not.toBeInTheDocument();
+        expect(mockProps.purchasing.isCatalogSearching).toBe(true);
+        await settle(() => calls[1]!.resolve([]));
+        expect(mockProps.purchasing.isCatalogSearching).toBe(false);
+      });
+
+      it('ignora las opciones de una búsqueda anterior', async () => {
+        await start();
+        await openTab('Compras');
+        const option = mockProps.purchasing.catalogOptions[0]!;
+        const calls = hold(inventoryApi.listCatalogOptions);
+        await settle(() => mockProps.purchasing.onCatalogSearch!('a'));
+        await settle(() => mockProps.purchasing.onCatalogSearch!('ab'));
+        await settle(() => calls[1]!.resolve([{ ...option, id: 'nueva' }]));
+        await settle(() => calls[0]!.resolve([{ ...option, id: 'vieja' }]));
+        expect(ids(mockProps.purchasing.catalogOptions)).toEqual(['nueva']);
+      });
+    });
+
+    describe('detalles', () => {
+      type Order = Awaited<ReturnType<typeof purchasingApi.getOrder>>;
+      const order = (id: string) =>
+        ({ id, status: PurchaseOrderStatus.APPROVED, lines: [] }) as unknown as Order;
+
+      it('la orden abierta antes no pisa la actual, ni con su fallo', async () => {
+        await start();
+        await openTab('Compras');
+        const calls = hold(purchasingApi.getOrder);
+        await settle(() => {
+          void mockProps.purchasing.onSelectOrder('a');
+          void mockProps.purchasing.onSelectOrder('b');
+          void mockProps.purchasing.onSelectOrder('c');
+        });
+        await settle(() => calls[2]!.resolve(order('c')));
+        await settle(() => calls[0]!.resolve(order('a')));
+        expect(mockProps.purchasing.latestOrder?.id).toBe('c');
+        await settle(() => calls[1]!.reject(new Error('fallo viejo')));
+        expect(mockProps.purchasing.latestOrder?.id).toBe('c');
+      });
+
+      it.each(['con orden', 'sin orden', 'con fallo'])(
+        'la orden de una solicitud anterior no pisa la actual (%s)',
+        async (outcome) => {
+          await start();
+          await openTab('Compras');
+          const lists = hold(purchasingApi.listOrders);
+          const orders = hold(purchasingApi.getOrder);
+          await settle(() => {
+            void mockProps.purchasing.onPrepareOrderDrawer('solicitud-a');
+            void mockProps.purchasing.onSelectOrder('b');
+          });
+          await settle(() => orders[0]!.resolve(order('b')));
+          await settle(() => {
+            const request = lists.at(-1)!;
+            if (outcome === 'con fallo') request.reject(new Error('fallo viejo'));
+            else request.resolve(list(outcome === 'con orden' ? [order('a')] : []) as never);
+          });
+          await settle(() => orders.slice(1).forEach((c) => c.resolve(order('a'))));
+          expect(mockProps.purchasing.latestOrder?.id).toBe('b');
+          expect(orders).toHaveLength(1);
+        },
+      );
+
+      it('la recepción de una orden no pisa la que se abrió después', async () => {
+        await start();
+        await openTab('Compras');
+        const receipts = hold(purchasingApi.receiveOrder);
+        const orders = hold(purchasingApi.getOrder);
+        await settle(() => {
+          void mockProps.purchasing.onReceiveOrder('a', {} as never);
+          void mockProps.purchasing.onSelectOrder('b');
+        });
+        await settle(() => receipts[0]!.resolve({ id: 'r', lines: [] } as never));
+        await settle(() => orders.find((c) => c.args[0] === 'b')!.resolve(order('b')));
+        await settle(() => orders.find((c) => c.args[0] === 'a')!.resolve(order('a')));
+        expect(mockProps.purchasing.latestOrder?.id).toBe('b');
+      });
+
+      it('el producto abierto antes no pisa el actual, ni con su fallo', async () => {
+        await start();
+        openCatalogProductsTab();
+        await settle();
+        const calls = hold(inventoryApi.getItem);
+        const [a, b, c] = items('a', 'b', 'c');
+        await settle(() => [a, b, c].forEach((item) => mockProps.products.onRowClick(item!)));
+        await settle(() => calls[2]!.resolve(c!));
+        await settle(() => calls[0]!.resolve(a!));
+        await settle(() => calls[1]!.reject(new Error('fallo viejo')));
+        expect(mockProps.itemDrawer.item?.id).toBe('c');
+        expect(screen.queryByText('No fue posible cargar el catálogo')).not.toBeInTheDocument();
+      });
+
+      it('la categoría abierta antes no pisa la actual ni el alta, ni con su fallo', async () => {
+        await start();
+        await openTab('Catálogo');
+        const calls = hold(inventoryApi.getCategory);
+        const [a, b] = categories('a', 'b');
+        await settle(() => [a, b].forEach((row) => mockProps.categories.onRowClick(row!)));
+        await settle(() => calls[1]!.resolve(b!));
+        await settle(() => calls[0]!.resolve(a!));
+        expect(mockProps.categoryDrawer.category?.id).toBe('b');
+        await settle(() => mockProps.categoryDrawer.onClose());
+
+        await settle(() => [a, b].forEach((row) => mockProps.categories.onRowClick(row!)));
+        await settle(() => mockProps.categories.onCreateCategory());
+        await settle(() => calls[2]!.resolve(a!));
+        await settle(() => calls[3]!.reject(new Error('fallo viejo')));
+        expect(mockProps.categoryDrawer.open).toBe(true);
+        expect(mockProps.categoryDrawer.category).toBeNull();
+        expect(screen.queryByText('No fue posible cargar las categorías')).not.toBeInTheDocument();
+      });
+
+      it('el proveedor abierto antes no pisa el actual ni el alta, ni con su fallo', async () => {
+        await start();
+        await openTab('Proveedores');
+        const calls = hold(purchasingApi.getSupplier);
+        const a = { ...sampleSupplier, partyRefId: 'a' };
+        const b = { ...sampleSupplier, partyRefId: 'b' };
+        await settle(() => [a, b].forEach((row) => mockProps.suppliers.onRowClick(row)));
+        await settle(() => calls[1]!.resolve(b));
+        await settle(() => calls[0]!.resolve(a));
+        expect(mockProps.supplierDrawer.supplier?.partyRefId).toBe('b');
+        await settle(() => mockProps.supplierDrawer.onClose());
+
+        await settle(() => [a, b].forEach((row) => mockProps.suppliers.onRowClick(row)));
+        await settle(() => mockProps.suppliers.onCreate());
+        await settle(() => calls[2]!.resolve(a));
+        await settle(() => calls[3]!.reject(new Error('fallo viejo')));
+        expect(mockProps.supplierDrawer.open).toBe(true);
+        expect(mockProps.supplierDrawer.supplier).toBeNull();
+        expect(mockProps.supplierDrawer.error).toBeNull();
+      });
+    });
+
+    describe('sugerencia de la categoría inline', () => {
+      async function openInline() {
+        await start();
+        openCatalogProductsTab();
+        await settle();
+        fireEvent.click(screen.getByRole('button', { name: 'Nuevo producto' }));
+        await settle();
+        fireEvent.click(screen.getByRole('button', { name: 'Crear categoría aquí' }));
+        await settle();
+        return hold(inventoryApi.suggestCategoryPrefix);
+      }
+      const suggestion = (codePrefix: string) => ({ code: codePrefix, codePrefix, sortOrder: 2 });
+      const changeName = (value: string, ms = 300) =>
+        settle(
+          () =>
+            fireEvent.change(screen.getByLabelText('Nombre de la categoría'), {
+              target: { value },
+            }),
+          ms,
+        );
+      const prefix = () => screen.getByLabelText('Prefijo de código');
+
+      it('una respuesta o un fallo anterior no pisa la sugerencia nueva', async () => {
+        const calls = await openInline();
+        await changeName('Consumibles FO');
+        await changeName('Antenas RD');
+        await changeName('Cables UTP');
+        expect(calls).toHaveLength(3);
+        await settle(() => calls[2]!.resolve(suggestion('NVO')));
+        await settle(() => calls[0]!.resolve(suggestion('VJO')));
+        expect(prefix()).toHaveValue('NVO');
+        await settle(() => calls[1]!.reject(new Error('fallo viejo')));
+        expect(prefix()).toHaveValue('NVO');
+      });
+
+      it('una respuesta anterior no pisa el prefijo escrito a mano ni reinicia la espera', async () => {
+        const calls = await openInline();
+        await changeName('Consumibles FO');
+        await settle(() => fireEvent.change(prefix(), { target: { value: 'XYZ' } }), 299);
+        await settle(() => calls[0]!.resolve(suggestion('VJO')), 0);
+        expect(prefix()).toHaveValue('XYZ');
+        expect(calls).toHaveLength(1);
+        await settle(() => undefined, 1);
+        expect(calls).toHaveLength(2);
+      });
     });
   });
 
