@@ -44,6 +44,11 @@
  * histórico congelado y su ubicación ya fue decidida. Resuelve la deuda
  * reportada en `INFORME-TRANSVERSAL-GATE-UBICACION-DOCUMENTAL-v1.0.md` §5.
  *
+ * Zona exenta: `.claude/worktrees/`. Son copias de trabajo de otras ramas
+ * (git worktrees de Claude Code), ignoradas por `.gitignore`: repiten el árbol
+ * completo bajo otra raíz y todo documento parecería mal ubicado. Cada copia
+ * se audita ejecutando el gate desde su propia raíz.
+ *
  * Guardias anti-vacío (Addendum v1.1 — AI-EM-ARCH, 2026-07-27):
  *   [G] filesScanned === 0 → BLOQUEANTE (exit 2)
  *       Si walk() no encuentra ningún archivo .md —por correr desde un
@@ -82,9 +87,10 @@ const SKIP_DIRS = new Set([
 /**
  * Zonas exentas del barrido (rutas relativas de directorio). Ver cabecera:
  * `docs/archive/` es histórico congelado por decisión documental explícita,
- * no documentación viva sujeta a la regla TIPO → carpeta.
+ * no documentación viva sujeta a la regla TIPO → carpeta;
+ * `.claude/worktrees/` son copias de otras ramas, no de este árbol.
  */
-const EXEMPT_DIRS = new Set(['docs/archive']);
+const EXEMPT_DIRS = new Set(['docs/archive', '.claude/worktrees']);
 
 /** Única carpeta de prompts del repo (AGENTS.md → Documentation Rules). */
 const PROMPTS_DIR = 'docs/prompts';
