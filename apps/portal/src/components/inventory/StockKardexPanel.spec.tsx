@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StockMovementOrigin } from '@iwana/shared';
 import { inventoryApi } from '@/lib/api-client';
@@ -100,7 +100,8 @@ describe('StockKardexPanel ADR-065', () => {
   });
 
   it('ADR-065: reemplaza página (conjuntos disjuntos, sin Cargar más)', async () => {
-    listMovementsMock.mockImplementation(async (params?: { page?: number }) => {
+    const pending: Array<{ page: number; resolve: () => void }> = [];
+    listMovementsMock.mockImplementation((params?: { page?: number }) => {
       const page = params?.page ?? 1;
       const data =
         page === 1
@@ -114,24 +115,30 @@ describe('StockKardexPanel ADR-065', () => {
                 StockMovementOrigin.SALE,
               ),
             );
-      return { data, total: 40, page, limit: 20 };
+      return new Promise((resolve) => {
+        pending.push({ page, resolve: () => resolve({ data, total: 40, page, limit: 20 }) });
+      });
     });
 
     const user = userEvent.setup();
-    const { rerender } = render(<StockKardexPanel />);
-
-    await waitFor(() => {
-      expect(screen.getByText('MOV-P1-000')).toBeInTheDocument();
+    const view = render(<StockKardexPanel />);
+    expect(pending.map(({ page }) => page)).toEqual([1]);
+    await act(async () => {
+      pending[0]!.resolve();
     });
+
+    expect(screen.getByText('MOV-P1-000')).toBeInTheDocument();
     expect(screen.getAllByText(/Mostrando 1\u201320 de 40 movimientos/i).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Siguiente' }));
-    rerender(<StockKardexPanel />);
-
-    await waitFor(() => {
-      expect(screen.getByText('MOV-P2-000')).toBeInTheDocument();
+    view.rerender(<StockKardexPanel />);
+    expect(pending.map(({ page }) => page)).toEqual([1, 2]);
+    await act(async () => {
+      pending[1]!.resolve();
     });
+
+    expect(screen.getByText('MOV-P2-000')).toBeInTheDocument();
     expect(screen.queryByText('MOV-P1-000')).not.toBeInTheDocument();
   });
 

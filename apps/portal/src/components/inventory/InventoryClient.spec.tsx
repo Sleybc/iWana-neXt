@@ -1968,6 +1968,172 @@ describe('InventoryClient', () => {
     });
   });
 
+  describe('solo la última petición del catálogo aplica su resultado', () => {
+    type CatalogPage = Awaited<ReturnType<typeof inventoryApi.listItems>>;
+    type CatalogRequest = {
+      params: Parameters<typeof inventoryApi.listItems>[0];
+      resolve: (page: CatalogPage) => void;
+      reject: (error: Error) => void;
+    };
+    let requests: CatalogRequest[];
+
+    function page(names: string[], nextCursor: string | null = null): CatalogPage {
+      return {
+        data: names.map((name) => buildCatalogItem({ id: name, sku: `SKU-${name}`, name })),
+        meta: {
+          ...EMPTY_LIST_META,
+          total: names.length,
+          nextCursor,
+          hasMore: nextCursor !== null,
+        },
+      };
+    }
+
+    async function settle(action: () => void, ms = 0) {
+      await act(async () => {
+        action();
+        await jest.advanceTimersByTimeAsync(ms);
+      });
+    }
+
+    function search(value: string) {
+      return settle(
+        () => fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value } }),
+        300,
+      );
+    }
+
+    async function openCatalog(initial: CatalogPage) {
+      render(<InventoryClient />);
+      await settle(() => undefined);
+      openCatalogProductsTab();
+      await settle(() => undefined, 1);
+      expect(requests).toHaveLength(1);
+      await settle(() => requests[0]!.resolve(initial), 1);
+    }
+
+    const visible = (name: string) => screen.queryAllByText(name).length > 0;
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      requests = [];
+      // limit 6 es la vista previa de loadBootstrap, ajena al catálogo.
+      inventoryApiMock.listItems.mockImplementation((params) =>
+        params?.limit === 6
+          ? Promise.resolve(page([]))
+          : new Promise((resolve, reject) => requests.push({ params, resolve, reject })),
+      );
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('conserva el producto creado cuando un GET anterior al alta llega el último', async () => {
+      await openCatalog(page(['Existente']));
+      await search('e');
+      expect(requests).toHaveLength(2);
+
+      await settle(() => fireEvent.click(screen.getByRole('button', { name: 'Nuevo producto' })));
+      await settle(() =>
+        fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Creado' } }),
+      );
+      await settle(() => fireEvent.click(screen.getByRole('button', { name: 'Crear producto' })));
+      expect(inventoryApiMock.createItem).toHaveBeenCalledTimes(1);
+      expect(requests).toHaveLength(3);
+
+      await settle(() => requests[2]!.resolve(page(['Existente', 'Creado'])));
+      expect(visible('Creado')).toBe(true);
+
+      await settle(() => requests[1]!.resolve(page(['Existente'])));
+      expect(visible('Creado')).toBe(true);
+    });
+
+    it('ignora la respuesta de un filtro anterior', async () => {
+      await openCatalog(page(['Existente']));
+      await search('a');
+      await search('ab');
+      expect(requests.map(({ params }) => params?.search)).toEqual([undefined, 'a', 'ab']);
+
+      await settle(() => requests[2]!.resolve(page(['Filtro nuevo'])));
+      await settle(() => requests[1]!.resolve(page(['Filtro viejo'])));
+
+      expect(visible('Filtro nuevo')).toBe(true);
+      expect(visible('Filtro viejo')).toBe(false);
+    });
+
+    it('no muestra el error ni termina la carga por una petición anterior', async () => {
+      await openCatalog(page(['Existente']));
+      await search('a');
+      await settle(() => fireEvent.click(screen.getByRole('button', { name: 'Actualizar' })));
+      expect(requests).toHaveLength(3);
+      const refreshButton = screen.getByRole('button', { name: /Actualizar/ });
+      expect(refreshButton).toBeDisabled();
+
+      await settle(() => requests[1]!.reject(new Error('fallo viejo')));
+      expect(screen.queryByText('No fue posible cargar el catálogo')).not.toBeInTheDocument();
+      expect(refreshButton).toBeDisabled();
+
+      await settle(() => requests[2]!.resolve(page(['Vigente'])));
+      expect(refreshButton).toBeEnabled();
+      expect(visible('Vigente')).toBe(true);
+    });
+
+    it('muestra el error de la última petición aunque una anterior responda bien después', async () => {
+      await openCatalog(page(['Existente']));
+      await search('a');
+      await search('ab');
+
+      await settle(() => requests[2]!.reject(new Error('fallo vigente')));
+      await settle(() => requests[1]!.resolve(page(['Filtro viejo'])));
+
+      expect(screen.getByText('No fue posible cargar el catálogo')).toBeInTheDocument();
+      expect(visible('Filtro viejo')).toBe(false);
+    });
+
+    it('«Cargar más» agrega su página sin relanzar la primera', async () => {
+      await openCatalog(page(['Uno'], 'cursor-2'));
+      await settle(() => fireEvent.click(screen.getByRole('button', { name: /Cargar más/ })), 1);
+      expect(requests.map(({ params }) => params?.cursor)).toEqual([undefined, 'cursor-2']);
+
+      await settle(() => requests[1]!.resolve(page(['Dos'], 'cursor-3')), 1);
+      expect(visible('Uno')).toBe(true);
+      expect(visible('Dos')).toBe(true);
+      expect(requests).toHaveLength(2);
+
+      await settle(() => fireEvent.click(screen.getByRole('button', { name: /Cargar más/ })), 1);
+      expect(requests[2]!.params?.cursor).toBe('cursor-3');
+    });
+
+    it('descarta un «Cargar más» en vuelo si cambia el filtro', async () => {
+      await openCatalog(page(['Uno'], 'cursor-2'));
+      await settle(() => fireEvent.click(screen.getByRole('button', { name: /Cargar más/ })));
+      await search('a');
+      expect(requests.map(({ params }) => params?.cursor)).toEqual([
+        undefined,
+        'cursor-2',
+        undefined,
+      ]);
+
+      await settle(() => requests[2]!.resolve(page(['Filtrado'])));
+      await settle(() => requests[1]!.resolve(page(['Dos'], 'cursor-3')));
+
+      expect(visible('Filtrado')).toBe(true);
+      expect(visible('Dos')).toBe(false);
+      expect(screen.queryByRole('button', { name: /Cargar más/ })).not.toBeInTheDocument();
+    });
+
+    it('«Cargar más» no desplaza una actualización en vuelo', async () => {
+      await openCatalog(page(['Uno'], 'cursor-2'));
+      await settle(() => fireEvent.click(screen.getByRole('button', { name: 'Actualizar' })));
+      await settle(() => fireEvent.click(screen.getByRole('button', { name: /Cargar más/ })), 1);
+      expect(requests).toHaveLength(2);
+
+      await settle(() => requests[1]!.resolve(page(['Uno', 'Creado'], 'cursor-2')));
+      expect(visible('Creado')).toBe(true);
+    });
+  });
+
   it('permite crear una categoría inline y la usa en el alta del producto', async () => {
     const baseCategory: InventoryCategoryRecord = {
       id: 'cat-cpe',

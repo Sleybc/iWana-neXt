@@ -160,7 +160,67 @@ async function login(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/dashboard$/);
 }
 
+/**
+ * axe mide el color del instante: espera a que no quede ninguna animación finita en curso. Las
+ * infinitas (`animate-pulse`, `animate-spin`) no terminan nunca y se excluyen.
+ */
+async function waitForAnimations(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const running = () =>
+      document
+        .getAnimations()
+        .filter(
+          (animation) =>
+            animation.playState === 'running' &&
+            Number.isFinite(Number(animation.effect?.getComputedTiming().endTime ?? 0)),
+        );
+    // Una transición se registra en el recálculo de estilo posterior al commit: dos frames antes.
+    await nextFrame();
+    await nextFrame();
+    for (let inFlight = running(); inFlight.length > 0; inFlight = running()) {
+      await Promise.all(inFlight.map((animation) => animation.finished.catch(() => undefined)));
+      await nextFrame();
+    }
+  });
+}
+
+type AxeResults = Awaited<ReturnType<AxeBuilder['analyze']>>;
+
+/** Selector sin texto ni datos: se vacía el valor de todo atributo (`aria-label`, `href`…). */
+function safeTarget(target: AxeResults['violations'][number]['nodes'][number]['target']): string {
+  return target
+    .flat()
+    .join(' ')
+    .replace(/=("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/gu, '');
+}
+
+/** Un nodo por línea: datos de contraste primero y luego el selector; nunca html ni textos. */
+function describeAxeNodes(violations: AxeResults['violations']): string {
+  return violations
+    .flatMap((violation) =>
+      violation.nodes.map((node) => {
+        const contrast = [...node.any, ...node.all, ...node.none].find(
+          (check) => check.id === 'color-contrast' || check.id === 'color-contrast-enhanced',
+        )?.data as
+          | {
+              fgColor?: string;
+              bgColor?: string;
+              contrastRatio?: number;
+              expectedContrastRatio?: string;
+            }
+          | undefined;
+        const colors = contrast
+          ? ` fg=${contrast.fgColor} bg=${contrast.bgColor} ratio=${contrast.contrastRatio} exp=${contrast.expectedContrastRatio}`
+          : '';
+        return `${violation.id}${colors} @ ${safeTarget(node.target)}`;
+      }),
+    )
+    .join('\n');
+}
+
 async function expectNoSeriousAxeViolations(page: Page, label: string): Promise<void> {
+  await waitForAnimations(page);
   const result = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
     .analyze();
@@ -173,7 +233,10 @@ async function expectNoSeriousAxeViolations(page: Page, label: string): Promise<
       result.violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length })),
     ),
   );
-  expect(blocking, `axe ${label}: ${blocking.map((v) => v.id).join(', ')}`).toEqual([]);
+  // Se compara un conteo, no las violaciones: su diff imprimiría el html de cada nodo. El detalle va
+  // en el mensaje porque el provisionador recorta a 300 caracteres, incluida la ubicación.
+  const detail = describeAxeNodes(blocking);
+  expect(blocking.length, `axe ${label}: ${detail}`).toBe(0);
 }
 
 function region(page: Page, name: string) {

@@ -768,7 +768,10 @@ async function setAuthSession(page: Page, role: TenantRole = 'ADMIN') {
 
 async function gotoDashboard(page: Page) {
   await page.goto('/dashboard');
-  await page.waitForLoadState('networkidle');
+  // El nombre de la empresa sale del mismo lote que las demás fuentes (Promise.allSettled): con el
+  // título y sin bloques ocupados, ya respondieron todas y el chunk de la gráfica está montado.
+  await expectLoadedDashboard(page);
+  await expect(page.locator('main [aria-busy="true"]')).toHaveCount(0);
 }
 
 async function expectLoadedDashboard(page: Page) {
@@ -834,21 +837,25 @@ test.describe('Dashboard empresarial — baseline CA (selectores semánticos D-6
   test('CA-02: el portal no llama a /tenants/:id de plataforma', async ({ page }) => {
     const platformEndpointCalled: string[] = [];
 
+    await setupDashboardMocks(page);
+    // Después de los mocks generales: en Playwright gana la última ruta registrada.
     await page.route('**/api/v1/tenants/*', async (route) => {
       const url = route.request().url();
-      if (/\/tenants\/[0-9a-f-]{36}/.test(url) && !url.includes('/tenants/me')) {
-        platformEndpointCalled.push(url);
+      if (!/\/tenants\/[0-9a-f-]{36}/.test(url)) {
+        await route.fallback();
+        return;
       }
+      platformEndpointCalled.push(url);
       await route.fulfill({
         status: 404,
         contentType: 'application/json',
         body: JSON.stringify({ code: 'E2E_UNMOCKED', message: url }),
       });
     });
-
-    await setupDashboardMocks(page);
     await setAuthSession(page);
     await gotoDashboard(page);
+    // Ausencia de petición: ninguna aserción de pantalla equivale a una red en reposo.
+    await page.waitForLoadState('networkidle');
 
     expect(platformEndpointCalled).toHaveLength(0);
   });
@@ -1732,7 +1739,6 @@ test.describe('Fase 2 · Fuente caída no pinta cero (CA-PA-05)', () => {
         const trend = trendBlock(page);
         // Las otras dos fuentes siguen: la Tendencia se monta con lo que hay.
         await expectChartPainted(trendChart(trend));
-        await page.waitForLoadState('networkidle');
 
         await expect(seriesControl(trend, series)).toHaveCount(0);
         await expect(trendChart(trend, series)).toHaveCount(0);
@@ -1768,7 +1774,6 @@ test.describe('Fase 2 · Fuente caída no pinta cero (CA-PA-05)', () => {
     // Ancla positiva: el resto del inicio ya compuso con sus fuentes de la Fase 1.
     await expect(page.getByRole('link', { name: /Casos abiertos/i })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Por área' })).toBeVisible();
-    await page.waitForLoadState('networkidle');
 
     await expect(page.getByRole('heading', { name: TREND_TITLE, exact: true })).toHaveCount(0);
     for (const name of TREND_SERIES) {
@@ -1784,7 +1789,6 @@ test.describe('Fase 2 · Fuente caída no pinta cero (CA-PA-05)', () => {
     await openDashboardAs(page, 'SUPPORT', { n3: 500 });
     await responses;
     await expect(page.getByRole('link', { name: /Casos abiertos/i })).toBeVisible();
-    await page.waitForLoadState('networkidle');
 
     await expect(page.getByRole('heading', { name: TREND_TITLE, exact: true })).toHaveCount(0);
     await expect(page.getByRole('img', { name: TREND_SUMMARY.Casos })).toHaveCount(0);

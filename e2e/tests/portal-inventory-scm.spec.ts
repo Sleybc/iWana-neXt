@@ -3699,9 +3699,20 @@ test.describe('Portal Inventario / SCM', () => {
     // Las categorías llegan al activar «Catálogo»: sin la categoría por defecto el drawer
     // rechaza el envío (CI 45021428513).
     await expect(drawer.getByRole('combobox', { name: 'Categoría' })).toContainText('CPE');
+    // Tres fases separadas para que el fallo diga cuál: alta, cierre del drawer y lista.
+    const created = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname.endsWith('/inventory/items'),
+    );
     await drawer.getByRole('button', { name: 'Crear producto' }).click();
+    expect((await created).status(), 'alta: POST /inventory/items').toBe(201);
+    await expect(drawer, 'cierre del drawer tras el alta').toBeHidden();
 
-    await expect(main.getByText('Patch cord 24m').first()).toBeVisible();
+    await expect(
+      main.getByText('Patch cord 24m').first(),
+      'lista: el catálogo muestra el producto creado',
+    ).toBeVisible();
 
     await openPurchaseComposer(main);
     await addCatalogProductToDraft(page, main, 'Patch cord', /Patch cord 24m/i);

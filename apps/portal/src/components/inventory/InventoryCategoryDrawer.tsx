@@ -123,6 +123,8 @@ export function InventoryCategoryDrawer({
       return;
     }
 
+    // Una sugerencia pedida con datos anteriores no pisa el formulario vigente.
+    let cancelled = false;
     const timeout = window.setTimeout(() => {
       const params = {
         name: form.name.trim(),
@@ -134,6 +136,7 @@ export function InventoryCategoryDrawer({
       void inventoryApi
         .suggestCategoryPrefix(params)
         .then((suggestion) => {
+          if (cancelled) return;
           setForm((current) => ({
             ...current,
             codePrefix: codePrefixTouched ? current.codePrefix : suggestion.codePrefix,
@@ -141,6 +144,7 @@ export function InventoryCategoryDrawer({
           }));
         })
         .catch(() => {
+          if (cancelled) return;
           setForm((current) => ({
             ...current,
             codePrefix: codePrefixTouched
@@ -150,7 +154,10 @@ export function InventoryCategoryDrawer({
         });
     }, 300);
 
-    return () => window.clearTimeout(timeout);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
   }, [
     open,
     isEditing,

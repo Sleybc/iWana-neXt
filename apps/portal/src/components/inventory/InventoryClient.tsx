@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -1105,13 +1105,23 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
     [loadCatalogOptions],
   );
 
+  // Solo la última petición del catálogo escribe datos, error y fin de carga.
+  const catalogRequestIdRef = useRef(0);
+  const catalogInFlightRef = useRef(false);
+  // El cursor llega por argumento: si fuera dependencia, cada página relanzaría el
+  // efecto de filtros y la primera página pisaría lo recién agregado.
   const loadCatalogItems = useCallback(
-    async (filters: CatalogFilters, options?: { silent?: boolean; append?: boolean }) => {
+    async (
+      filters: CatalogFilters,
+      options?: { silent?: boolean; append?: boolean; cursor?: string | null },
+    ) => {
       const silent = options?.silent === true;
       const append = options?.append === true;
+      const cursor = options?.cursor;
 
       if (append) {
-        if (!catalogMeta.nextCursor || isLoadingMoreCatalog) {
+        // Agregar depende de la lista base: no desplaza una carga en vuelo.
+        if (!cursor || catalogInFlightRef.current) {
           return;
         }
         setIsLoadingMoreCatalog(true);
@@ -1122,11 +1132,13 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
       }
 
       setCatalogError(null);
+      const requestId = ++catalogRequestIdRef.current;
+      catalogInFlightRef.current = true;
 
       try {
         const listParams: ListInventoryItemsParams = {
           limit: INVENTORY_LIST_PAGE_SIZE,
-          ...(append && catalogMeta.nextCursor ? { cursor: catalogMeta.nextCursor } : {}),
+          ...(append && cursor ? { cursor } : {}),
         };
         const trimmedSearch = filters.search?.trim();
         if (trimmedSearch) {
@@ -1152,6 +1164,7 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
         }
 
         const response = await inventoryApi.listItems(listParams);
+        if (requestId !== catalogRequestIdRef.current) return;
         const page = response.data ?? [];
         setCatalogItems((prev) => (append ? mergeById(prev, page) : page));
         setCatalogMeta(
@@ -1161,14 +1174,18 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
           page.map((item) => item.preferredSupplierRefId).filter((id): id is string => Boolean(id)),
         );
       } catch (loadError) {
+        if (requestId !== catalogRequestIdRef.current) return;
         setCatalogError(mapInventoryError(loadError));
       } finally {
-        setIsLoadingCatalog(false);
-        setIsRefreshingCatalog(false);
-        setIsLoadingMoreCatalog(false);
+        if (requestId === catalogRequestIdRef.current) {
+          catalogInFlightRef.current = false;
+          setIsLoadingCatalog(false);
+          setIsRefreshingCatalog(false);
+          setIsLoadingMoreCatalog(false);
+        }
       }
     },
-    [catalogMeta.nextCursor, isLoadingMoreCatalog, loadSupplierLabels],
+    [loadSupplierLabels],
   );
 
   const loadCategories = useCallback(
@@ -2590,7 +2607,12 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
                     totalCount={catalogMeta.total}
                     hasMore={inventoryHasMore(catalogMeta)}
                     isLoadingMore={isLoadingMoreCatalog}
-                    onLoadMore={() => void loadCatalogItems(catalogFilters, { append: true })}
+                    onLoadMore={() =>
+                      void loadCatalogItems(catalogFilters, {
+                        append: true,
+                        cursor: catalogMeta.nextCursor,
+                      })
+                    }
                     categoryOptions={activeCategoryOptions}
                     supplierLabels={supplierLabels}
                     isLoading={isLoadingCatalog}
