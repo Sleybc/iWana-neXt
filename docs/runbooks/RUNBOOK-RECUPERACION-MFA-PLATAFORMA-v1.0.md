@@ -59,7 +59,7 @@ En una transacción quita el MFA, pone a cero contador y espera, deja en NULL el
 
 ## Alerta
 
-El inicio de cada espera registra `PLATFORM_MFA_LOCKED` en el log de la API, en nivel error, y `ACCOUNT_LOCKED` en la auditoría. Hoy no hay canal de avisos: quien opera revisa ese evento.
+El inicio de cada espera registra `PLATFORM_MFA_LOCKED` en el log de la API, en nivel error, y `ACCOUNT_LOCKED` en la auditoría. También envía un correo al titular y a los demás administradores activos. Depende de SMTP: si no está configurado o falla, quien opera revisa ese evento.
 
 ```bash
 docker logs --since 24h iwana_api_prod 2>&1 | grep PLATFORM_MFA_LOCKED

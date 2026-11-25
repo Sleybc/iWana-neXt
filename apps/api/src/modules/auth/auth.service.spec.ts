@@ -30,7 +30,7 @@ import * as bcrypt from 'bcryptjs';
 import { ConfigService } from '@nestjs/config';
 import { DataSource, IsNull } from 'typeorm';
 import { PlatformUser, RefreshToken, User } from '@iwana/db';
-import { AuditAction, UserRole, UserStatus } from '@iwana/shared';
+import { AuditAction, PlatformRole, UserRole, UserStatus } from '@iwana/shared';
 import { createHash } from 'crypto';
 import { AuthService } from './auth.service';
 import { JWT_CLAIMS_BY_TOKEN_TYPE } from './auth.constants';
@@ -269,6 +269,7 @@ describe('AuthService', () => {
           useFactory: () => {
             const repository: Record<string, unknown> = {
               findOne: jest.fn(),
+              find: jest.fn().mockResolvedValue([]),
               update: jest.fn().mockResolvedValue({ affected: 1 }),
             };
             // La fila bloqueada es la misma que leyó el login; la espera y el consumo los fija cada prueba.
@@ -1446,12 +1447,15 @@ describe('AuthService', () => {
       });
 
       it('en espera no verifica el código', async () => {
+        const { sendMail } = (service as unknown as { mailerService: { sendMail: jest.Mock } })
+          .mailerService;
         mockPlatformQuery.mockImplementation(platformQuery(true));
         await expect(attempt()).rejects.toMatchObject({
           status: 401,
           response: { code: 'AUTH_ACCOUNT_LOCKED' },
         });
         expect(verify()).not.toHaveBeenCalled();
+        expect(sendMail).not.toHaveBeenCalled();
       });
 
       it('una contraseña errónea no llega al segundo factor', async () => {
@@ -1464,6 +1468,14 @@ describe('AuthService', () => {
         const lockedUntil = new Date();
         const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
         mockPlatformQuery.mockImplementation(platformQuery(false, 1, lockedUntil));
+        (platformUserRepo as unknown as { find: jest.Mock }).find.mockResolvedValue([
+          { id: 'p1', email: 'titular@example.test' },
+          { id: 'p2', email: 'otro@example.test' },
+        ]);
+        // Un correo que falla no altera la respuesta ni impide el siguiente.
+        const { sendMail } = (service as unknown as { mailerService: { sendMail: jest.Mock } })
+          .mailerService;
+        sendMail.mockRejectedValueOnce(new Error('SMTP caído'));
         verify().mockResolvedValueOnce({ valid: false });
 
         await expect(attempt()).rejects.toMatchObject({
@@ -1479,6 +1491,18 @@ describe('AuthService', () => {
           expect.objectContaining({ action: AuditAction.ACCOUNT_LOCKED, entityId: 'p1' }),
         );
         expect(error).toHaveBeenCalledWith(expect.stringContaining('PLATFORM_MFA_LOCKED'));
+        await new Promise(setImmediate);
+        const mails = sendMail.mock.calls.map(([mail]) => mail as { to: string; text: string });
+        expect(mails.map((mail) => mail.to)).toEqual(['titular@example.test', 'otro@example.test']);
+        expect(mails[0]!.text).not.toContain('p1');
+        expect(mails[1]!.text).toContain('p1');
+        expect(JSON.stringify(mails)).not.toContain('123456');
+        for (const { to: _to, ...content } of mails) {
+          expect(JSON.stringify(content)).not.toContain('@example.test');
+        }
+        expect((platformUserRepo as unknown as { find: jest.Mock }).find).toHaveBeenCalledWith({
+          where: [{ id: 'p1' }, { role: PlatformRole.SYSTEM_ADMIN, status: UserStatus.ACTIVE }],
+        });
         error.mockRestore();
       });
 

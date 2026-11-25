@@ -19,7 +19,7 @@ import * as qrcode from 'qrcode';
 import Redis from 'ioredis';
 import { EntityManager, In, IsNull, Repository } from 'typeorm';
 import { PlatformUser, RefreshToken, User } from '@iwana/db';
-import { UserRole, UserStatus, AuditAction } from '@iwana/shared';
+import { PlatformRole, UserRole, UserStatus, AuditAction } from '@iwana/shared';
 import { runInTenantSchema, summarizeErrorForLog, TenantContext } from '@iwana/db';
 import { DataSource } from 'typeorm';
 import { REDIS_CLIENT } from '../redis/redis.module';
@@ -37,6 +37,7 @@ import { MailerService } from '../mailer/mailer.service';
 import { emailVerificationTemplate } from '../mailer/templates/email-verification.template';
 import { forgotPasswordTemplate } from '../mailer/templates/forgot-password.template';
 import { hashOpaqueToken } from '../../common/crypto/hash-opaque-token.util';
+import { platformMfaLockTemplate } from '../mailer/templates/platform-mfa-lock.template';
 import { passwordResetConfirmTemplate } from '../mailer/templates/password-reset-confirm.template';
 import {
   ChangePasswordDto,
@@ -475,6 +476,21 @@ export class AuthService {
       userAgent: userAgent ?? null,
       newValue: { lockedUntil, motivo: 'MFA_INVALIDO' },
     });
+    this.fireAndForget(this.notifyPlatformMfaLock(userId), 'aviso de espera del segundo factor');
+  }
+
+  /** Correo al titular y a los demás administradores activos, uno por destinatario. */
+  private async notifyPlatformMfaLock(userId: string): Promise<void> {
+    const recipients = await this.platformUserRepository.find({
+      where: [{ id: userId }, { role: PlatformRole.SYSTEM_ADMIN, status: UserStatus.ACTIVE }],
+    });
+    for (const recipient of recipients) {
+      const template = platformMfaLockTemplate(recipient.id === userId ? null : userId);
+      this.fireAndForget(
+        this.mailerService.sendMail({ to: this.decodeStoredValue(recipient.email), ...template }),
+        'aviso de espera del segundo factor',
+      );
+    }
   }
 
   /**
