@@ -318,9 +318,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
-    # Medido en noviembre de 2026: los runs verdes duran 19–23 min; 35 min deja
-    # un margen de ~1,5× sobre el más lento.
-    timeout-minutes: 35
+    # Medido el 2026-11-25: los runs completos recientes duran 21–30 min (45505371018 el
+    # más lento) y 45651093995 se canceló a los 35 min en un runner lento. 50 min deja
+    # ~1,5× sobre el completo más lento (30,4 min) y cubre el cancelado.
+    timeout-minutes: 50
 
     # Ephemeral CI DB only — passwords are disposable lab values, not production secrets.
     # GSEC-N1: POSTGRES_USER (bootstrap) ≠ DB_APP_USER / DB_MIGRATOR_USER / DB_USER.
@@ -355,6 +356,18 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      # Desechable, sin volumen ni clave. Puerto 6390 y no 6379 a propósito: una suite
+      # que caiga al host y puerto por defecto no debe encontrarlo. Solo lo reciben los
+      # dos pasos que definen REDIS_TEST_URL.
+      redis:
+        image: redis:8.6-alpine
+        ports:
+          - 6390:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout
@@ -563,6 +576,37 @@ jobs:
             console.log("Cobertura medida con denominador real en api, web y portal; umbrales evaluados por jest.");
           '
 
+      # El paso unitario omite los 11 casos con Redis real: turbo filtra el entorno y no
+      # les llega REDIS_TEST_URL. Aquí la spec corre sola: usa DEL login-throttle:v1:* y
+      # CLIENT PAUSE ALL, que detiene la instancia entera. Ningún otro paso usa Redis a
+      # la vez. El JSON exige casos con Redis real y cero omitidos.
+      - name: Unit tests — freno de ingreso con Redis real
+        timeout-minutes: 3
+        shell: bash
+        env:
+          REDIS_TEST_URL: redis://127.0.0.1:6390/1
+        run: |
+          set -euo pipefail
+          report=/tmp/login-throttle-report.json
+          rm -f "$report"
+          pnpm --filter @iwana/api exec jest --runInBand \
+            --runTestsByPath src/modules/auth/platform-login-throttle.spec.ts \
+            --json --outputFile="$report"
+          node - "$report" <<'LOGIN_THROTTLE_GATE'
+          const { readFileSync } = require('node:fs');
+          const report = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+          const tests = report.testResults.flatMap((result) => result.assertionResults);
+          const real = tests.filter((test) =>
+            test.ancestorTitles.includes('PlatformLoginThrottle con Redis real'),
+          );
+          const notPassed = tests.filter((test) => test.status !== 'passed');
+          if (real.length === 0 || notPassed.length > 0) {
+            console.error(`❌ Freno de ingreso: ${real.length} casos con Redis real; ${notPassed.length} omitidos o sin aprobar.`);
+            process.exit(1);
+          }
+          console.log(`✅ Freno de ingreso: ${real.length} casos con Redis real, 0 omitidos`);
+          LOGIN_THROTTLE_GATE
+
       - name: Install PostgreSQL client
         run: |
           sudo apt-get update -qq
@@ -722,10 +766,11 @@ jobs:
         # y 4 min 58 s en 6427486c (CI 42712398219). El mismo código varía un 36 % según el
         # runner, y la lentitud se repartió por igual entre todas las suites y pasos.
         # Regla: timeout = ceil(1,5 × máximo observado), con un mínimo de 6 min:
-        # ceil(1,5 × 4,97) = 8. Recalibrar con el máximo de al menos 5 runs de main.
+        # 45651093995 (2026-11-25) tardó 7 min 59 s: ceil(1,5 × 7,98) = 12. Recalibrar con
+        # el máximo de al menos 5 runs de main.
         # Cada suite debe ser autónoma dentro de su base: no puede depender del orden
         # ni del estado que deje otra suite.
-        timeout-minutes: 8
+        timeout-minutes: 12
         shell: bash
         env:
           IWANA_IT_WORKERS: 4
@@ -733,6 +778,8 @@ jobs:
           # workers sobre 4 vCPU (más 4 clones de PostgreSQL) el p95 mide la contención
           # entre suites (CI 45054684943 midió 348 ms en N1; aislada la consulta tarda ~85 ms).
           IWANA_IT_LATENCY_DEFERRED: '1'
+          # Solo lo lee auth-credential-races; sin ella usaría un doble en memoria.
+          REDIS_TEST_URL: redis://127.0.0.1:6390/2
         run: |
           set -uo pipefail
           report=/tmp/api-integration-report.json
@@ -900,6 +947,19 @@ jobs:
             errors.push('K2 debe aparecer ejecutada con exactamente 5/5 tests aprobados y 0 omitidos.');
           }
 
+          // Sesión de plataforma: ambos casos deben aprobar con REDIS_TEST_URL definida.
+          const racesSpec = 'apps/api/src/modules/auth/auth-credential-races.postgres.integration.spec.ts';
+          const racesAssertions = results.get(racesSpec)?.assertionResults ?? [];
+          for (const title of [
+            'rotar no reinicia el inicio y a las 12 h la familia cae',
+            'dos renovaciones simultáneas: una gana y hereda el inicio',
+          ]) {
+            const match = racesAssertions.filter((assertion) => assertion.title === title);
+            if (!process.env.REDIS_TEST_URL || match.length !== 1 || match[0].status !== 'passed') {
+              errors.push(`Debe aprobar con Redis real: ${title}`);
+            }
+          }
+
           if (errors.length > 0) {
             console.error('Gate de omisiones de integración API: FAIL');
             for (const error of errors) console.error(`- ${error}`);
@@ -912,6 +972,20 @@ jobs:
             `Gate de omisiones de integración API: PASS (${discovered.size} specs; ${omittedCount} ${omittedLabel}; B5 17/17; K2 5/5)`,
           );
           API_INTEGRATION_GATE
+          gate_status=$?
+          if (( gate_status != 0 )); then
+            exit "$gate_status"
+          fi
+
+          # Un doble en memoria no deja rastro: la marca de familia revocada (TTL > 7 días)
+          # tiene que existir en el Redis del job.
+          markers="$(docker exec "${{ job.services.redis.id }}" \
+            redis-cli -n 2 --scan --pattern 'platform:refresh:family-revoked:*')"
+          if [[ -z "$markers" ]]; then
+            echo "❌ auth-credential-races no escribió en Redis real"
+            exit 1
+          fi
+          echo "✅ Sesión de plataforma ejercitada contra Redis real"
 
       # Presupuestos de latencia N1/N2/N3 (HLD §7) sin otras suites en paralelo.
       # Mismo umbral de 300 ms; solo cambia que nada compite por la CPU ni por la base.
