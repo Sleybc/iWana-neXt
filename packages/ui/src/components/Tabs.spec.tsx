@@ -46,15 +46,29 @@ const expectActive = (label: string) => {
   expect(tab(label).getAttribute('aria-selected')).toBe('true');
 };
 
+/** Activación manual: el foco llega a `focused` y la selección sigue en `selected`. */
+const expectFocusOnly = (focused: string, selected: string) => {
+  expect(document.activeElement).toBe(tab(focused));
+  expect(tab(selected).getAttribute('aria-selected')).toBe('true');
+  if (focused !== selected) expect(tab(focused).getAttribute('aria-selected')).toBe('false');
+};
+
 interface SampleProps {
   initial?: string;
   orientation?: 'horizontal' | 'vertical';
   disabled?: string[];
   onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void;
+  onValueChange?: (value: string) => void;
 }
 
-const Sample = ({ initial = 'a', orientation, disabled = [], onKeyDown }: SampleProps) => (
-  <Tabs defaultValue={initial}>
+const Sample = ({
+  initial = 'a',
+  orientation,
+  disabled = [],
+  onKeyDown,
+  onValueChange,
+}: SampleProps) => (
+  <Tabs defaultValue={initial} {...(onValueChange ? { onValueChange } : {})}>
     <TabsList
       {...(orientation ? { 'aria-orientation': orientation } : {})}
       {...(onKeyDown ? { onKeyDown } : {})}
@@ -81,13 +95,15 @@ describe('Tabs: teclado', () => {
     ['ArrowLeft', 'A', 'C'],
     ['Home', 'C', 'A'],
     ['End', 'A', 'C'],
-  ])('horizontal: %s desde %s activa %s', (key, from, to) => {
-    mount(<Sample initial={from.toLowerCase()} />);
+  ])('horizontal: %s desde %s lleva el foco a %s sin activarla', (key, from, to) => {
+    const onValueChange = jest.fn();
+    mount(<Sample initial={from.toLowerCase()} onValueChange={onValueChange} />);
     const event = press(from, key);
-    expectActive(to);
+    expectFocusOnly(to, from);
     expect(container.querySelector('[role="tabpanel"]')?.textContent).toBe(
-      `Panel ${to.toLowerCase()}`,
+      `Panel ${from.toLowerCase()}`,
     );
+    expect(onValueChange).not.toHaveBeenCalled();
     expect(event.defaultPrevented).toBe(true);
   });
 
@@ -98,11 +114,31 @@ describe('Tabs: teclado', () => {
     ['ArrowUp', 'A', 'C'],
     ['Home', 'C', 'A'],
     ['End', 'A', 'C'],
-  ])('vertical: %s desde %s activa %s', (key, from, to) => {
-    mount(<Sample initial={from.toLowerCase()} orientation="vertical" />);
+  ])('vertical: %s desde %s lleva el foco a %s sin activarla', (key, from, to) => {
+    const onValueChange = jest.fn();
+    mount(
+      <Sample initial={from.toLowerCase()} orientation="vertical" onValueChange={onValueChange} />,
+    );
     press(from, key);
-    expectActive(to);
+    expectFocusOnly(to, from);
+    expect(onValueChange).not.toHaveBeenCalled();
   });
+
+  it.each(['Enter', ' '])(
+    '%p no lo intercepta la lista: el botón activa con su clic nativo',
+    (key) => {
+      const onValueChange = jest.fn();
+      mount(<Sample onValueChange={onValueChange} />);
+      press('A', 'ArrowRight');
+      const event = press('B', key);
+      expect(event.defaultPrevented).toBe(false);
+      // jsdom no convierte Enter/Espacio en clic; el E2E cubre la activación nativa.
+      act(() => tab('B').click());
+      expectActive('B');
+      expect(onValueChange).toHaveBeenCalledTimes(1);
+      expect(onValueChange).toHaveBeenCalledWith('b');
+    },
+  );
 
   it.each<['horizontal' | 'vertical', string]>([
     ['horizontal', 'ArrowDown'],
@@ -124,7 +160,7 @@ describe('Tabs: teclado', () => {
   ])('%s salta la pestaña deshabilitada', (key, initial, disabled, from, to) => {
     mount(<Sample initial={initial} disabled={disabled} />);
     press(from, key);
-    expectActive(to);
+    expectFocusOnly(to, from);
   });
 
   it('respeta el preventDefault del consumidor', () => {
@@ -140,15 +176,15 @@ describe('Tabs: teclado', () => {
     mount(<Sample onKeyDown={onKeyDown} />);
     press('A', 'ArrowRight');
     expect(onKeyDown).toHaveBeenCalledTimes(1);
-    expectActive('B');
+    expectFocusOnly('B', 'A');
   });
 
-  it('el tabIndex sigue a la pestaña activa', () => {
+  it('el tabIndex sigue a la pestaña seleccionada, no a la enfocada', () => {
     mount(<Sample />);
     const order = () => ['A', 'B', 'C'].map((label) => tab(label).tabIndex);
     expect(order()).toEqual([0, -1, -1]);
     press('A', 'ArrowRight');
-    expect(order()).toEqual([-1, 0, -1]);
+    expect(order()).toEqual([0, -1, -1]);
     act(() => tab('C').click());
     expect(order()).toEqual([-1, -1, 0]);
   });
@@ -177,13 +213,13 @@ describe('Tabs: lista anidada', () => {
 
   it('la lista exterior salta las pestañas interiores', () => {
     press('A', 'ArrowRight');
-    expectActive('B');
+    expectFocusOnly('B', 'A');
     expect(tab('X').getAttribute('aria-selected')).toBe('true');
   });
 
   it('la lista interior navega sin mover la exterior', () => {
     press('X', 'ArrowDown');
-    expectActive('Y');
+    expectFocusOnly('Y', 'X');
     expect(outerChange).not.toHaveBeenCalled();
   });
 

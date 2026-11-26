@@ -26,7 +26,7 @@ export interface PulseCellData {
   updating?: boolean | undefined;
   href?: string | null | undefined;
   onClick?: (() => void) | undefined;
-  /** Nombre de la acción con el rótulo visible de la celda. */
+  /** Solo la acción: PulseStrip antepone rótulo y cifra al nombre accesible (contrato DS v1.6). */
   actionLabel?: string | undefined;
   onRetry?: (() => void) | undefined;
 }
@@ -83,6 +83,7 @@ export function PulseStrip({
   linkComponent: LinkComponent = 'a',
   className,
 }: PulseStripProps) {
+  const idPrefix = React.useId();
   if (cells.length === 0) return null;
 
   return (
@@ -115,6 +116,22 @@ export function PulseStrip({
         }
 
         const isError = cell.state === 'error';
+        const valueText =
+          cell.value === null ? labels.noData : (cell.formatValue ?? formatInteger)(cell.value);
+        // El aria-label tapa el contenido: la cifra entra en el nombre; señal y frase, en la descripción.
+        const accessibleName = [`${cell.label}: ${valueText}`, cell.actionLabel]
+          .filter(Boolean)
+          .join('. ');
+        const deltaId = `${idPrefix}-${cell.id}-delta`;
+        const hintId = `${idPrefix}-${cell.id}-hint`;
+        const describedBy =
+          [
+            cell.delta ? deltaId : null,
+            // Si la frase repite la acción, ya está en el nombre: no se lee dos veces.
+            cell.hint && cell.hint !== cell.actionLabel ? hintId : null,
+          ]
+            .filter(Boolean)
+            .join(' ') || undefined;
         const body = (
           <>
             {/* Dos líneas reservadas: un rótulo largo no desalinea las cifras. */}
@@ -122,19 +139,21 @@ export function PulseStrip({
             {isError ? (
               <span className={missingValueClassName}>{labels.unavailable}</span>
             ) : cell.value === null ? (
-              <span className={missingValueClassName}>{labels.noData}</span>
+              <span className={missingValueClassName}>{valueText}</span>
             ) : (
               <span className="text-4xl leading-none font-bold tabular-nums text-iwana-primary dark:text-white">
-                {(cell.formatValue ?? formatInteger)(cell.value)}
+                {valueText}
               </span>
             )}
             {!isError && cell.delta ? (
-              <span>
+              <span id={deltaId}>
                 <Badge variant={deltaBadgeVariant[cell.delta.tone]}>{cell.delta.label}</Badge>
               </span>
             ) : null}
             {!isError && cell.hint ? (
-              <span className="text-xs text-gray-600 dark:text-gray-400">{cell.hint}</span>
+              <span id={hintId} className="text-xs text-gray-600 dark:text-gray-400">
+                {cell.hint}
+              </span>
             ) : null}
             {cell.updating ? (
               <span className="sr-only" aria-live="polite">
@@ -167,7 +186,8 @@ export function PulseStrip({
             <LinkComponent
               key={cell.id}
               href={cell.href}
-              aria-label={cell.actionLabel ?? cell.label}
+              aria-label={accessibleName}
+              aria-describedby={describedBy}
               className={cn(cellClassName, interactiveCellClassName)}
             >
               {body}
@@ -180,7 +200,8 @@ export function PulseStrip({
             <button
               key={cell.id}
               type="button"
-              aria-label={cell.actionLabel ?? cell.label}
+              aria-label={accessibleName}
+              aria-describedby={describedBy}
               onClick={cell.onClick}
               className={cn(cellClassName, interactiveCellClassName)}
             >

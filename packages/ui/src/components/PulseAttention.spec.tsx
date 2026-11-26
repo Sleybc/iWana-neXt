@@ -129,7 +129,7 @@ describe('PulseStrip (contrato DS v1.3 §7bis.2)', () => {
     expect(container.querySelector('section')?.getAttribute('aria-busy')).toBe('true');
   });
 
-  it('href usa linkComponent con el rótulo como nombre; onClick es botón', () => {
+  it('href usa linkComponent con rótulo y cifra como nombre; onClick es botón', () => {
     const onClick = jest.fn();
     const LinkStub = (props: Record<string, unknown>) => <a data-stub="1" {...props} />;
     mount(
@@ -142,9 +142,9 @@ describe('PulseStrip (contrato DS v1.3 §7bis.2)', () => {
     );
     const link = container.querySelector('a');
     expect(link?.getAttribute('data-stub')).toBe('1');
-    expect(link?.getAttribute('aria-label')).toBe('Empresas activas');
+    expect(link?.getAttribute('aria-label')).toBe('Empresas activas: 1.234');
     expect(link?.getAttribute('href')).toBe('/a');
-    const button = container.querySelector('button[aria-label="Atención"]');
+    const button = container.querySelector('button[aria-label="Atención: 1.234"]');
     click(button ?? undefined);
     expect(onClick).toHaveBeenCalled();
   });
@@ -152,12 +152,51 @@ describe('PulseStrip (contrato DS v1.3 §7bis.2)', () => {
   it.each([
     ['enlace', { href: '/a' }],
     ['botón', { onClick: () => {} }],
-  ])('actionLabel nombra la acción del %s y conserva el rótulo visible', (_kind, action) => {
-    strip([cell({ ...action, actionLabel: 'Empresas activas: ver listado' })]);
+  ])('el nombre del %s dice rótulo, cifra y acción, en ese orden', (_kind, action) => {
+    strip([cell({ ...action, actionLabel: 'Ver listado' })]);
     const control = container.querySelector('a, button');
-    expect(control?.getAttribute('aria-label')).toBe('Empresas activas: ver listado');
+    expect(control?.getAttribute('aria-label')).toBe('Empresas activas: 1.234. Ver listado');
     expect(control?.textContent).toContain('Empresas activas');
-    expect(control?.textContent).not.toContain('ver listado');
+    expect(control?.textContent).not.toContain('Ver listado');
+  });
+
+  it('sin dato, el nombre dice «sin dato» y no un cero', () => {
+    strip([cell({ value: null, onClick: () => {}, actionLabel: 'Ir al directorio' })]);
+    expect(container.querySelector('button')?.getAttribute('aria-label')).toBe(
+      'Empresas activas: Sin dato disponible. Ir al directorio',
+    );
+  });
+
+  it('el nombre usa el formato propio de la celda', () => {
+    strip([cell({ href: '/a', value: 0.5, formatValue: (v) => `${v * 100} %` })]);
+    expect(container.querySelector('a')?.getAttribute('aria-label')).toBe('Empresas activas: 50 %');
+  });
+
+  it('señal y frase describen el control; sin ellas no hay descripción', () => {
+    strip([
+      cell({ href: '/a', delta: { label: '+3 este mes', tone: 'progress' }, hint: 'Filtrar' }),
+      cell({ id: 'c2', href: '/b' }),
+    ]);
+    const [withHints, plain] = Array.from(container.querySelectorAll('a'));
+    const description = (withHints?.getAttribute('aria-describedby') ?? '')
+      .split(' ')
+      .map((id) => document.getElementById(id)?.textContent)
+      .join(' ');
+    expect(description).toBe('+3 este mes Filtrar');
+    expect(plain?.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  it('la frase que repite la acción no se vuelve a leer como descripción', () => {
+    strip([cell({ onClick: () => {}, actionLabel: 'Ir al directorio', hint: 'Ir al directorio' })]);
+    expect(container.querySelector('button')?.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  it('sin acción es article sin nombre propio; en error nunca es enlace', () => {
+    strip([cell(), cell({ id: 'c2', state: 'error', href: '/a' })]);
+    expect(container.querySelector('a')).toBeNull();
+    for (const article of Array.from(container.querySelectorAll('article'))) {
+      expect(article.hasAttribute('aria-label')).toBe(false);
+    }
   });
 
   it.each<[PulseDeltaTone, string]>([

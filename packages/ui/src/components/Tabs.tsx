@@ -82,8 +82,8 @@ function TabsList({ className, onKeyDown, ...props }: React.HTMLAttributes<HTMLD
             : event.key === 'End'
               ? tabs.length - 1
               : (index + (event.key === previous ? -1 : 1) + tabs.length) % tabs.length;
+        // Activación manual (WAI-ARIA): las flechas solo mueven el foco; Enter o Espacio activan.
         tabs[destination]?.focus();
-        tabs[destination]?.click();
       }}
       className={cn('flex gap-1 rounded-xl bg-gray-100/80 p-1 dark:bg-dark-surface-3', className)}
       {...props}
