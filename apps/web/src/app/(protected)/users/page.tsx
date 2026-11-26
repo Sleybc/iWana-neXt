@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@iwana/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { PlatformTenantPicker } from '@/components/shared/PlatformTenantPicker';
@@ -37,6 +37,10 @@ export default function UsersPage() {
   const requestedStatus = searchParams.get('status')?.trim() ?? '';
   const requestedRole = searchParams.get('role')?.trim() ?? '';
   const requestedUserId = searchParams.get('openUser')?.trim() ?? '';
+  // `openUser` que el cierre acaba de retirar: `router.replace` es asíncrono, así
+  // que durante unos renders la URL aún lo trae con la ficha ya cerrada. Sin esta
+  // marca, una recarga de `users` en ese intervalo reabría la ficha.
+  const closingUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const loadTenants = async () => {
@@ -136,7 +140,10 @@ export default function UsersPage() {
   }, [loadUsers]);
 
   useEffect(() => {
-    if (!requestedUserId) {
+    if (closingUserIdRef.current !== null && closingUserIdRef.current !== requestedUserId) {
+      closingUserIdRef.current = null;
+    }
+    if (!requestedUserId || closingUserIdRef.current === requestedUserId) {
       return;
     }
 
@@ -145,6 +152,20 @@ export default function UsersPage() {
       setSelectedUser(matchedUser);
     }
   }, [requestedUserId, users]);
+
+  // La ficha abierta por `?openUser=` (búsqueda global) se cierra retirando el
+  // parámetro: si quedara en la URL, cada recarga de `users` la reabriría.
+  const closeUserManagement = useCallback(() => {
+    setSelectedUser(null);
+    if (!requestedUserId) {
+      return;
+    }
+    closingUserIdRef.current = requestedUserId;
+    router.replace(
+      withSearchParams(pathname, mergeUrlSearchParams(searchParams, { openUser: null })),
+      { scroll: false },
+    );
+  }, [pathname, requestedUserId, router, searchParams]);
 
   const selectedTenantName = useMemo(() => {
     return tenants.find((tenant) => tenant.slug === tenantSlug)?.name ?? 'Sin empresa';
@@ -281,7 +302,7 @@ export default function UsersPage() {
         tenantSlug={tenantSlug}
         tenantName={selectedTenantName}
         user={selectedUser}
-        onClose={() => setSelectedUser(null)}
+        onClose={closeUserManagement}
         onSaved={(updatedUser) => {
           setUsers((prev) => prev.map((item) => (item.id === updatedUser.id ? updatedUser : item)));
           setSelectedUser(updatedUser);

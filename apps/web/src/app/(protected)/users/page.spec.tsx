@@ -1,16 +1,17 @@
 import '@testing-library/jest-dom';
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import UsersPage from './page';
 
 let searchParamsMock = new URLSearchParams();
 const usersTableSpy = jest.fn();
+const routerReplaceMock = jest.fn();
 
 jest.mock('next/navigation', () => ({
   useSearchParams: () => searchParamsMock,
   usePathname: () => '/users',
   useRouter: () => ({
-    replace: jest.fn(),
+    replace: routerReplaceMock,
   }),
 }));
 
@@ -56,11 +57,31 @@ jest.mock('@/components/shared/PlatformTenantPicker', () => ({
 }));
 
 jest.mock('@/components/users/UserCreateModal', () => ({
-  UserCreateModal: () => null,
+  // Disparador mínimo de `onCreated`: fuerza la recarga del listado (`refreshKey`).
+  UserCreateModal: ({ onCreated }: { onCreated: () => void }) => (
+    <button type="button" onClick={onCreated}>
+      Simular alta
+    </button>
+  ),
 }));
 
 jest.mock('@/components/users/UserManagementModal', () => ({
-  UserManagementModal: () => null,
+  UserManagementModal: ({
+    open,
+    user,
+    onClose,
+  }: {
+    open: boolean;
+    user: { id: string } | null;
+    onClose: () => void;
+  }) =>
+    open && user ? (
+      <div role="dialog" aria-label={`Ficha ${user.id}`}>
+        <button type="button" onClick={onClose}>
+          Cerrar ficha
+        </button>
+      </div>
+    ) : null,
 }));
 
 jest.mock('@/components/users/UsersTable', () => ({
@@ -106,6 +127,7 @@ describe('UsersPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     usersTableSpy.mockClear();
+    routerReplaceMock.mockClear();
     searchParamsMock = new URLSearchParams('tenant=empresa-demo');
     tenantApi.list.mockResolvedValue([activeTenant]);
   });
@@ -164,6 +186,64 @@ describe('UsersPage', () => {
     });
     await waitFor(() => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('ficha abierta por ?openUser= (búsqueda global)', () => {
+    const listedUsers = {
+      data: [
+        { id: 'user-1', email: 'ana@empresa.com' },
+        { id: 'user-2', email: 'luis@empresa.com' },
+      ],
+      meta: { total: 2, nextCursor: null },
+    };
+
+    it('al cerrar retira openUser de la URL y una recarga del listado no la reabre', async () => {
+      searchParamsMock = new URLSearchParams('tenant=empresa-demo&openUser=user-1');
+      usersApi.list.mockResolvedValue(listedUsers);
+
+      render(<UsersPage />);
+
+      expect(await screen.findByRole('dialog', { name: 'Ficha user-1' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cerrar ficha' }));
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(routerReplaceMock).toHaveBeenLastCalledWith('/users?tenant=empresa-demo', {
+        scroll: false,
+      });
+
+      // `router.replace` aún no se aplicó: la URL sigue trayendo `openUser`.
+      // Una recarga del listado en ese intervalo no debe reabrir la ficha.
+      fireEvent.click(screen.getByRole('button', { name: 'Simular alta' }));
+      await waitFor(() => {
+        expect(usersApi.list).toHaveBeenCalledTimes(2);
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('con la URL ya sin openUser la ficha sigue cerrada y un enlace nuevo abre la pedida', async () => {
+      searchParamsMock = new URLSearchParams('tenant=empresa-demo&openUser=user-1');
+      usersApi.list.mockResolvedValue(listedUsers);
+
+      const { rerender } = render(<UsersPage />);
+      expect(await screen.findByRole('dialog', { name: 'Ficha user-1' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cerrar ficha' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+      // La URL ya sin el parámetro: la ficha sigue cerrada.
+      searchParamsMock = new URLSearchParams('tenant=empresa-demo');
+      rerender(<UsersPage />);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+      // Un enlace nuevo de la búsqueda global abre la ficha pedida.
+      searchParamsMock = new URLSearchParams('tenant=empresa-demo&openUser=user-2');
+      rerender(<UsersPage />);
+      expect(await screen.findByRole('dialog', { name: 'Ficha user-2' })).toBeInTheDocument();
     });
   });
 });
