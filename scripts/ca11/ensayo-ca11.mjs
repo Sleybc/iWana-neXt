@@ -4,9 +4,14 @@
  * producción, la API real, PostgreSQL y Redis desechables.
  *
  *   node scripts/ca11/ensayo-ca11.mjs [--modo=dominios|lan] [--sin-construir] [--informe=<ruta.md>]
+ *   node scripts/ca11/ensayo-ca11.mjs --modo=remoto --objetivo=<IPv4> --env-file=<ruta>
+ *     [--proyecto=iwana-stable] [--informe=<ruta.md>]
  *
  * - `dominios`: nginx/nginx.prod.conf con el dominio sintético `ca11.test`.
  * - `lan`: la salida de scripts/lan/render-nginx-ip-ports.sh (portal 8443, archivos 9443).
+ * - `remoto`: el entorno real por IP de la LAN (consola 443, portal 8443, archivos 9443), ya
+ *   desplegado con docker-compose.lan-ports.yml. No construye, no arranca ni para servicios del
+ *   entorno. Ver «Modo remoto» más abajo.
  * - Construye `iwana-ca11/api:ensayo` e `iwana-ca11/migrator:ensayo` desde el árbol actual salvo
  *   `--sin-construir`. nginx usa `CA11_NGINX_IMAGE` (por defecto la imagen de producción) y nunca
  *   descarga nada (`--pull never`).
@@ -35,19 +40,35 @@ const args = new Map(
   }),
 );
 const MODE = args.get('modo') ?? 'dominios';
-if (!['dominios', 'lan'].includes(MODE)) throw new Error('--modo debe ser dominios o lan.');
+if (!['dominios', 'lan', 'remoto'].includes(MODE)) {
+  throw new Error('--modo debe ser dominios, lan o remoto.');
+}
+const REMOTE = MODE === 'remoto';
+/** Disposición por IP y puertos (lan y remoto): 8443 es siempre el portal y 9443 los archivos. */
+const IP_LAYOUT = MODE !== 'dominios';
+const TARGET = REMOTE ? String(args.get('objetivo') ?? '') : null;
+if (REMOTE && !/^(\d{1,3}\.){3}\d{1,3}$/u.test(TARGET)) {
+  throw new Error('--objetivo=<IPv4 publicada por nginx> es obligatorio en modo remoto.');
+}
+if (REMOTE && typeof args.get('env-file') !== 'string') {
+  throw new Error('--env-file=<.env del entorno> es obligatorio en modo remoto.');
+}
 
 const DOMAIN = 'ca11.test';
-const EDGE_V4 = '172.31.248.10';
+const EDGE_V4 = REMOTE ? TARGET : '172.31.248.10';
 const EDGE_V6 = 'fd00:ca11::10';
-const IPS = { autorizado: '172.31.248.20', autorizado2: '172.31.248.21', externo: '172.31.248.30' };
+const IPS = REMOTE
+  ? // Remoto: el autorizado es 127.0.0.1 dentro del contenedor de nginx (ya en la lista de la
+    // consola); el externo, el propio servidor por su IP de la LAN, que no está en la lista.
+    { autorizado: '127.0.0.1', autorizado2: '127.0.0.1', externo: TARGET }
+  : { autorizado: '172.31.248.20', autorizado2: '172.31.248.21', externo: '172.31.248.30' };
 const FORGED_IP = '203.0.113.77';
-const PORTAL_PORT = MODE === 'lan' ? 8443 : 443;
-const FILES_PORT = MODE === 'lan' ? 9443 : 443;
+const PORTAL_PORT = IP_LAYOUT ? 8443 : 443;
+const FILES_PORT = IP_LAYOUT ? 9443 : 443;
 const VHOST = {
-  consola: { host: `consola.${DOMAIN}`, port: 443 },
-  portal: { host: `portal.${DOMAIN}`, port: PORTAL_PORT },
-  archivos: { host: `archivos.${DOMAIN}`, port: FILES_PORT },
+  consola: { host: REMOTE ? TARGET : `consola.${DOMAIN}`, port: 443 },
+  portal: { host: REMOTE ? TARGET : `portal.${DOMAIN}`, port: PORTAL_PORT },
+  archivos: { host: REMOTE ? TARGET : `archivos.${DOMAIN}`, port: FILES_PORT },
   desconocido: { host: 'desconocido.example', port: 443 },
   ip: { host: EDGE_V4, port: 443 },
 };
@@ -99,6 +120,163 @@ const run = (command, list, options = {}) =>
 const compose = (...list) => run('docker', ['compose', '-p', PROJECT, '-f', COMPOSE, ...list]);
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
+// ── Modo remoto ──────────────────────────────────────────────────────────────
+//
+// Objetivo: el entorno real por IP (docker-compose.lan-ports.yml), en este mismo servidor.
+// - externo: este host contra la IP publicada. nginx lo ve con su IP de la LAN, que no está en la
+//   lista de la consola (si lo estuviera, el ensayo se detiene antes de la matriz).
+// - autorizado: curl dentro del contenedor de nginx hacia 127.0.0.1, la única entrada fija de la
+//   lista. No se añade ninguna IP a la lista de producción.
+// - interno / app / ajeno: contenedores de prueba de vida corta en `<proyecto>_api-edge`,
+//   `<proyecto>_edge` y una red propia. Solo curl; sin puertos, volúmenes ni privilegios.
+// - La cuenta de plataforma es sintética (IWANA_SUPPORT, correo `.invalid`), se crea con
+//   cuenta-sintetica.cjs, completa su MFA por la consola y se borra al terminar.
+// - No construye, no hace `up`, `down` ni `restart` de nada del entorno.
+
+const REMOTE_PROJECT = String(args.get('proyecto') ?? 'iwana-stable');
+const REMOTE_NGINX = 'iwana_nginx_prod';
+const REMOTE_POSTGRES = 'iwana_postgres_prod';
+const REMOTE_HELPERS = {
+  interno: `${REMOTE_PROJECT}_api-edge`,
+  app: `${REMOTE_PROJECT}_edge`,
+  ajeno: 'iwana-ca11r_ajeno',
+};
+const REMOTE_EMAIL = `ca11-${hex(6)}@ensayo.invalid`;
+const remoteStartedAt = new Date();
+let remoteUserId = null;
+
+const remoteCompose = (...list) =>
+  run('docker', [
+    'compose',
+    '-p',
+    REMOTE_PROJECT,
+    '-f',
+    'docker-compose.yml',
+    '-f',
+    'docker-compose.prod.yml',
+    '-f',
+    'docker-compose.lan-ports.yml',
+    '--profile',
+    'production',
+    '--profile',
+    'bootstrap',
+    '--env-file',
+    String(args.get('env-file')),
+    ...list,
+  ]);
+
+/** Cuenta sintética: alta, baja o barrido con la imagen de la API en marcha. */
+function syntheticAccount(action) {
+  const list = [
+    'run',
+    '--rm',
+    '--no-deps',
+    '-T',
+    '--user',
+    `${process.getuid()}:${process.getgid()}`,
+    '-v',
+    `${join(ROOT, 'scripts/ca11/cuenta-sintetica.cjs')}:/ca11/cuenta-sintetica.cjs:ro`,
+    '-v',
+    `${join(workdir, 'bootstrap')}:/ca11/salida`,
+    '--entrypoint',
+    'node',
+    'platform-admin-bootstrap',
+    '/ca11/cuenta-sintetica.cjs',
+    action,
+  ];
+  if (action !== 'barrido') list.push(`--email=${REMOTE_EMAIL}`);
+  if (action === 'alta') list.push('--output=/ca11/salida/cuenta.txt');
+  const out = remoteCompose(...list).trim();
+  const id = new RegExp(
+    `^${action}=(${action === 'barrido' ? '\\d+' : '[0-9a-f-]{36}'})$`,
+    'mu',
+  ).exec(out)?.[1];
+  if (!id) throw new Error(`La ${action} de la cuenta sintética no devolvió su id.`);
+  return id;
+}
+
+function remoteStart() {
+  chmodSync(workdir, 0o700);
+  mkdirSync(join(workdir, 'bootstrap'), { mode: 0o700 });
+  const image = run('docker', ['inspect', '-f', '{{.Config.Image}}', REMOTE_NGINX]).trim();
+  // Petición real y no lectura de la lista: un CIDR o `allow all` también la dejarían pasar.
+  const probe = request('externo', { vhost: 'consola', path: '/' });
+  if (probe.status !== 403 || probe.source !== 'nginx') {
+    throw new Error(`${TARGET} no recibe 403 en la consola: no sirve como cliente externo.`);
+  }
+  // Huérfanas de una corrida interrumpida, antes de dar de alta otra.
+  const swept = syntheticAccount('barrido');
+  if (swept !== '0')
+    console.log(`Barrido previo: ${swept} cuenta(s) sintética(s) huérfana(s) borrada(s).`);
+  run('docker', ['network', 'create', '--label', 'iwana.ca11=remoto', REMOTE_HELPERS.ajeno]);
+  for (const [name, network] of Object.entries(REMOTE_HELPERS)) {
+    run('docker', [
+      'run',
+      '-d',
+      '--rm',
+      '--pull',
+      'never',
+      '--name',
+      `iwana_ca11r_${name}`,
+      '--label',
+      'iwana.ca11=remoto',
+      '--network',
+      network,
+      '--read-only',
+      '--cap-drop',
+      'ALL',
+      '--security-opt',
+      'no-new-privileges',
+      '--entrypoint',
+      'sleep',
+      image,
+      '1800',
+    ]);
+  }
+  remoteUserId = syntheticAccount('alta');
+}
+
+function remoteStop() {
+  let ok = true;
+  if (remoteUserId) {
+    try {
+      syntheticAccount('baja');
+      console.log('Cuenta sintética borrada.');
+    } catch (error) {
+      ok = false;
+      console.error(`BORRADO PENDIENTE de la cuenta sintética ${remoteUserId}: ${error.message}`);
+    }
+  }
+  // También si la alta escribió en la base sin devolver su id.
+  try {
+    const swept = syntheticAccount('barrido');
+    if (swept !== '0') console.log(`Barrido final: ${swept} cuenta(s) sintética(s) borrada(s).`);
+  } catch (error) {
+    ok = false;
+    console.error(`Barrido de cuentas sintéticas fallido: ${error.message}`);
+  }
+  for (const name of Object.keys(REMOTE_HELPERS)) {
+    try {
+      run('docker', ['rm', '-f', `iwana_ca11r_${name}`]);
+    } catch {
+      // no llegó a crearse
+    }
+  }
+  try {
+    run('docker', ['network', 'rm', REMOTE_HELPERS.ajeno]);
+  } catch {
+    // no llegó a crearse
+  }
+  rmSync(workdir, { recursive: true, force: true });
+  const left = ['ps -aq', 'network ls -q']
+    .map((command) =>
+      run('docker', [...command.split(' '), '--filter', 'label=iwana.ca11=remoto']).trim(),
+    )
+    .filter(Boolean);
+  if (left.length > 0 || !ok) throw new Error('Quedaron restos del modo remoto.');
+  console.log('Modo remoto desmontado: sin contenedores, redes ni cuenta de prueba.');
+}
+
 // ── Preparación ──────────────────────────────────────────────────────────────
 
 function prepare() {
@@ -135,10 +313,9 @@ function prepare() {
       .map(([port, name]) => `server { listen ${port}; location / { return 200 "stub-${name}"; } }`)
       .join('\n'),
   );
-  const source =
-    MODE === 'lan'
-      ? run('bash', [join(ROOT, 'scripts/lan/render-nginx-ip-ports.sh')])
-      : readFileSync(join(ROOT, 'nginx/nginx.prod.conf'), 'utf8');
+  const source = IP_LAYOUT
+    ? run('bash', [join(ROOT, 'scripts/lan/render-nginx-ip-ports.sh')])
+    : readFileSync(join(ROOT, 'nginx/nginx.prod.conf'), 'utf8');
   writeFileSync(
     join(workdir, 'nginx.conf'),
     source.replaceAll('REPLACE_ME_PRODUCTION_DOMAIN', DOMAIN),
@@ -216,7 +393,9 @@ function request(client, spec) {
   const list = ['-sk', '--path-as-is', '-m', '8', '-i', '-X', method];
   if (!spec.http2) list.push('--http1.1');
   if (spec.http10) list.push('-0');
-  if (target && !spec.url && target.host !== EDGE_V4) {
+  if (REMOTE && client.startsWith('autorizado') && target && !spec.url) {
+    list.push('--resolve', `${target.host}:${port}:127.0.0.1`);
+  } else if (target && !spec.url && target.host !== EDGE_V4) {
     list.push('--resolve', `${target.host}:${port}:${EDGE_V4}`);
   }
   if (spec.resolveTo) list.push('--resolve', spec.resolveTo);
@@ -227,10 +406,12 @@ function request(client, spec) {
     list.push('-H', 'content-type: application/json', '--data-binary', JSON.stringify(body));
   }
   list.push('-w', '\n__CA11__%{http_code}', url);
-  const command =
-    client === 'host'
-      ? ['curl', list]
-      : ['docker', ['exec', `iwana_ca11_${client}`, 'curl', ...list]];
+  let command;
+  if (client === 'host' || (REMOTE && client === 'externo')) command = ['curl', list];
+  else if (REMOTE && client.startsWith('autorizado')) {
+    command = ['docker', ['exec', REMOTE_NGINX, 'curl', ...list]];
+  } else if (REMOTE) command = ['docker', ['exec', `iwana_ca11r_${client}`, 'curl', ...list]];
+  else command = ['docker', ['exec', `iwana_ca11_${client}`, 'curl', ...list]];
   let output;
   let exit = 0;
   try {
@@ -254,7 +435,10 @@ function request(client, spec) {
   let source;
   if (status === 0) source = `sin conexión (curl ${exit})`;
   else if (text.startsWith('stub-')) source = `app ${text.slice(5)}`;
-  else if (json && typeof json === 'object') source = 'API';
+  // Remoto: las apps reales; el puerto dice cuál (8443 solo sirve el portal).
+  else if (REMOTE && text.includes('/_next/')) {
+    source = `app ${target?.port === PORTAL_PORT ? 'portal' : 'web'}`;
+  } else if (json && typeof json === 'object') source = 'API';
   else source = 'nginx';
   return { status, head, text, json, source };
 }
@@ -273,18 +457,23 @@ const PLATFORM_COOKIES = [];
 // ── Primer acceso del administrador (por la consola, desde la IP autorizada) ──
 
 async function openPlatformSession() {
-  const email = 'admin@ensayo.ca11.test';
-  compose(
-    '--profile',
-    'bootstrap',
-    'run',
-    '--rm',
-    '--user',
-    `${process.getuid()}:${process.getgid()}`,
-    'bootstrap',
-    `--email=${email}`,
+  const email = REMOTE ? REMOTE_EMAIL : 'admin@ensayo.ca11.test';
+  if (!REMOTE) {
+    compose(
+      '--profile',
+      'bootstrap',
+      'run',
+      '--rm',
+      '--user',
+      `${process.getuid()}:${process.getgid()}`,
+      'bootstrap',
+      `--email=${email}`,
+    );
+  }
+  const file = readFileSync(
+    join(workdir, REMOTE ? 'bootstrap/cuenta.txt' : 'bootstrap/admin.txt'),
+    'utf8',
   );
-  const file = readFileSync(join(workdir, 'bootstrap/admin.txt'), 'utf8');
   const password = /^contrasena=(.+)$/mu.exec(file)?.[1];
   if (!password) throw new Error('La CLI de alta no dejó la credencial.');
 
@@ -380,11 +569,18 @@ function cases(session) {
   const apiIp = run('docker', [
     'inspect',
     '-f',
-    `{{(index .NetworkSettings.Networks "${PROJECT}_edge").IPAddress}}`,
-    'iwana_ca11_api',
+    REMOTE
+      ? `{{(index .NetworkSettings.Networks "${REMOTE_PROJECT}_api-edge").IPAddress}}`
+      : `{{(index .NetworkSettings.Networks "${PROJECT}_edge").IPAddress}}`,
+    REMOTE ? 'iwana_api_prod' : 'iwana_ca11_api',
   ]).trim();
-  const published = run('docker', ['port', 'iwana_ca11_edge', '443/tcp']).trim().split('\n')[0];
+  const published = REMOTE
+    ? ''
+    : run('docker', ['port', 'iwana_ca11_edge', '443/tcp']).trim().split('\n')[0];
   const hostPort = published.split(':').pop();
+  // Remoto: el host no tiene la IPv6 del ensayo; se prueba lo que sí existe (loopback) y se
+  // comprueba aparte que la interfaz de la LAN no publica IPv6 (V4).
+  const v6 = REMOTE ? '::1' : EDGE_V6;
 
   return [
     [
@@ -751,9 +947,9 @@ function cases(session) {
       'V1',
       X,
       null,
-      `https://[${EDGE_V6}] con Host de la consola`,
+      `https://[${v6}] con Host de la consola`,
       {
-        url: `https://[${EDGE_V6}]:443/api/v1/auth/platform/login`,
+        url: `https://[${v6}]:443/api/v1/auth/platform/login`,
         method: 'POST',
         body: login,
         ipv6: true,
@@ -766,23 +962,28 @@ function cases(session) {
       'V2',
       X,
       null,
-      `https://[${EDGE_V6}]:${PORTAL_PORT} con Host del portal`,
+      `https://[${v6}]:${PORTAL_PORT} con Host del portal`,
       {
-        url: `https://[${EDGE_V6}]:${PORTAL_PORT}/api/v1/tenants`,
+        url: `https://[${v6}]:${PORTAL_PORT}/api/v1/tenants`,
         ipv6: true,
         headers: [`host: ${VHOST.portal.host}`],
       },
       CLOSED,
     ],
-    [
-      'IPv6',
-      'V3',
-      X,
-      null,
-      `http://[${EDGE_V6}]:80`,
-      { url: `http://[${EDGE_V6}]:80/`, ipv6: true },
-      CLOSED,
-    ],
+    ['IPv6', 'V3', X, null, `http://[${v6}]:80`, { url: `http://[${v6}]:80/`, ipv6: true }, CLOSED],
+    ...(REMOTE
+      ? [
+          [
+            'IPv6',
+            'V4',
+            'base',
+            null,
+            `IPv6 de la interfaz que lleva ${TARGET} y puertos que publica nginx`,
+            { check: publishedSurface },
+            { label: `sin IPv6; solo ${TARGET}:80/443/8443/9443`, value: 'ok' },
+          ],
+        ]
+      : []),
 
     ['Host desconocido', 'H1', X, 'desconocido', '`/`', { path: '/' }, NGINX_403],
     [
@@ -811,7 +1012,7 @@ function cases(session) {
       'SNI del portal y `Host` de la consola',
       { ...platformLogin, headers: [`host: ${VHOST.consola.host}`] },
       // Por nombres decide el Host (consola, con su lista). Por IP, 8443 es siempre el portal.
-      MODE === 'lan'
+      IP_LAYOUT
         ? { status: [404], source: 'nginx', label: '404 nginx (8443 solo sirve el portal)' }
         : NGINX_403,
     ],
@@ -862,26 +1063,42 @@ function cases(session) {
     [
       'IP directa',
       'I5',
-      X,
+      REMOTE ? 'ajeno' : X,
       null,
-      '`http://<IP de la API>:3000`',
+      REMOTE
+        ? '`http://<IP de la API>:3000` desde otra red de Docker'
+        : '`http://<IP de la API>:3000`',
       { url: `http://${apiIp}:3000/api/v1/auth/platform/login`, method: 'POST', body: login },
       CLOSED,
     ],
-    [
-      'IP directa',
-      'I6',
-      'host',
-      null,
-      `puerto publicado \`${published}\` (nginx ve la pasarela)`,
-      {
-        url: `https://${VHOST.consola.host}:${hostPort}/api/v1/auth/platform/login`,
-        resolveTo: `${VHOST.consola.host}:${hostPort}:127.0.0.1`,
-        method: 'POST',
-        body: login,
-      },
-      NGINX_403,
-    ],
+    REMOTE
+      ? [
+          'IP directa',
+          'I6',
+          X,
+          null,
+          `\`https://127.0.0.1\` en el servidor (nginx no publica en loopback)`,
+          {
+            url: 'https://127.0.0.1:443/api/v1/auth/platform/login',
+            method: 'POST',
+            body: login,
+          },
+          CLOSED,
+        ]
+      : [
+          'IP directa',
+          'I6',
+          'host',
+          null,
+          `puerto publicado \`${published}\` (nginx ve la pasarela)`,
+          {
+            url: `https://${VHOST.consola.host}:${hostPort}/api/v1/auth/platform/login`,
+            resolveTo: `${VHOST.consola.host}:${hostPort}:127.0.0.1`,
+            method: 'POST',
+            body: login,
+          },
+          NGINX_403,
+        ],
 
     [
       'Alta inicial',
@@ -1139,7 +1356,7 @@ function cases(session) {
       'portal',
       'URL absoluta de la consola en la línea de petición, por la conexión del portal',
       { ...platformLogin, requestTarget: `${CONSOLE_ORIGIN}/api/v1/auth/platform/login` },
-      MODE === 'lan'
+      IP_LAYOUT
         ? { status: [404], source: 'nginx', label: '404 nginx (8443 solo sirve el portal)' }
         : NGINX_403,
     ],
@@ -1150,7 +1367,7 @@ function cases(session) {
       'portal',
       'HTTP/2: SNI del portal y `:authority` de la consola',
       { ...platformLogin, http2: true, headers: [`host: ${VHOST.consola.host}`] },
-      MODE === 'lan'
+      IP_LAYOUT
         ? { status: [404], source: 'nginx', label: '404 nginx (8443 solo sirve el portal)' }
         : NGINX_403,
     ],
@@ -1182,14 +1399,12 @@ function cases(session) {
       'Q5',
       X,
       'portal',
-      MODE === 'lan' ? '`Origin` del portal sin su puerto' : '`Origin` del portal con `:443`',
+      IP_LAYOUT ? '`Origin` del portal sin su puerto' : '`Origin` del portal con `:443`',
       {
         method: 'POST',
         path: '/api/v1/auth/login',
         body: login,
-        headers: [
-          `origin: ${MODE === 'lan' ? `https://${VHOST.portal.host}` : `${PORTAL_ORIGIN}:443`}`,
-        ],
+        headers: [`origin: ${IP_LAYOUT ? `https://${VHOST.portal.host}` : `${PORTAL_ORIGIN}:443`}`],
       },
       api(403),
     ],
@@ -1290,7 +1505,12 @@ function cases(session) {
       null,
       'access log de nginx',
       { check: accessLog },
-      { label: 'IP real de cada cliente; la pasarela solo en I6', value: 'ok' },
+      {
+        label: REMOTE
+          ? 'IP real de cada cliente; ninguna de Docker (172.16.0.0/12)'
+          : 'IP real de cada cliente; la pasarela solo en I6',
+        value: 'ok',
+      },
     ],
   ].map(([group, id, client, vhost, what, spec, expected]) => ({
     group,
@@ -1304,6 +1524,21 @@ function cases(session) {
 }
 
 function auditedIp() {
+  if (REMOTE) {
+    const since = remoteStartedAt.toISOString();
+    const value = run('docker', [
+      'exec',
+      REMOTE_POSTGRES,
+      'sh',
+      '-c',
+      `psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "select (select ip_address from public.platform_audit_logs where action = 'LOGIN_FAILED' and user_id = '${remoteUserId}' and created_at >= '${since}' order by created_at desc limit 1) || ' ' || (select count(*) from public.platform_audit_logs where ip_address = '${FORGED_IP}' and created_at >= '${since}')"`,
+    ]).trim();
+    const [ip, forged] = value.split(' ');
+    return {
+      obtained: `${ip || 'sin fila'}; filas con ${FORGED_IP}: ${forged ?? '?'}`,
+      value: forged === '0' ? ip : 'falla',
+    };
+  }
   const value = run('docker', [
     'exec',
     'iwana_ca11_postgres',
@@ -1322,7 +1557,42 @@ function auditedIp() {
   };
 }
 
+/** Remoto: la interfaz de la IP objetivo no tiene IPv6 y nginx solo publica en esa IPv4. */
+function publishedSurface() {
+  const iface = run('ip', ['-o', '-4', 'addr', 'show'])
+    .split('\n')
+    .find((line) => line.includes(` ${TARGET}/`))
+    ?.split(/\s+/u)[1];
+  const v6 = iface ? run('ip', ['-o', '-6', 'addr', 'show', 'dev', iface]).trim() : 'sin interfaz';
+  const ports = run('docker', ['port', REMOTE_NGINX]).trim().split('\n').filter(Boolean);
+  const bound = ports.map((line) => line.split(' -> ')[1]);
+  const expected = [80, 443, 8443, 9443].map((port) => `${TARGET}:${port}`);
+  const ok =
+    Boolean(iface) &&
+    v6 === '' &&
+    bound.length === expected.length &&
+    bound.every((address) => expected.includes(address));
+  return {
+    obtained: `IPv6 en ${iface ?? '?'}: ${v6 === '' ? 'ninguna' : 'presente'}; publicados: ${bound.join(', ')}`,
+    value: ok ? 'ok' : 'falla',
+  };
+}
+
 function accessLog() {
+  if (REMOTE) {
+    const lines = run('docker', ['logs', '--since', remoteStartedAt.toISOString(), REMOTE_NGINX], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+      .split('\n')
+      .filter((line) => /^\S+ - /u.test(line));
+    const count = (ip) => lines.filter((line) => line.startsWith(`${ip} `)).length;
+    const docker = lines.filter((line) => /^172\.(1[6-9]|2\d|3[01])\./u.test(line)).length;
+    const ok = count(IPS.externo) > 0 && count(IPS.autorizado) > 0 && docker === 0;
+    return {
+      obtained: `externo ${count(IPS.externo)}, autorizado ${count(IPS.autorizado)}, Docker ${docker}`,
+      value: ok ? 'ok' : 'falla',
+    };
+  }
   const gateway = run('docker', [
     'network',
     'inspect',
@@ -1365,7 +1635,7 @@ function judge(item, response) {
   }${response.json?.data?.mfaRequired ? ' (pide el código)' : ''}`;
   // Fuera de la consola, ni cookies ni tokens de plataforma, sea cual sea el estado.
   const leaked =
-    ['externo', 'interno', 'app'].includes(item.client) &&
+    ['externo', 'interno', 'app', 'ajeno'].includes(item.client) &&
     (PLATFORM_COOKIES.some((name) =>
       new RegExp(`^set-cookie: ${name}=[^;]`, 'imu').test(response.head),
     ) ||
@@ -1399,7 +1669,8 @@ function table(results) {
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.once(signal, () => {
     try {
-      stop();
+      if (REMOTE) remoteStop();
+      else stop();
     } finally {
       process.exit(130);
     }
@@ -1408,12 +1679,20 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 
 let failed = true;
 try {
-  build();
-  prepare();
-  console.log(`Arrancando el ensayo (modo ${MODE})…`);
-  await start();
+  if (REMOTE) {
+    console.log(`Modo remoto contra ${TARGET} (proyecto ${REMOTE_PROJECT})…`);
+    remoteStart();
+  } else {
+    build();
+    prepare();
+    console.log(`Arrancando el ensayo (modo ${MODE})…`);
+    await start();
+  }
   const session = await openPlatformSession();
   console.log('Sesión de plataforma abierta desde la IP autorizada. Recorriendo la matriz…');
+  // Remoto: autorizado y autorizado2 son la misma IP; los tres ingresos de la sesión y los tres
+  // de la matriz (F4, C3, C8) superarían el límite de 5/min de `platform/login` por IP.
+  if (REMOTE) await sleep(61_000);
   const results = cases(session).map((item) => ({ ...item, ...evaluate(item) }));
   const report = table(results);
   console.log(`\n${report}\n`);
@@ -1421,7 +1700,7 @@ try {
   failed = results.some((r) => !r.pass);
 } catch (error) {
   console.error(`El ensayo no terminó: ${error.message}`);
-  for (const name of ['migrator', 'api', 'edge']) {
+  for (const name of REMOTE ? [] : ['migrator', 'api', 'edge']) {
     try {
       console.error(
         `── ${name} ──\n${run('sh', ['-c', `docker logs --tail 80 iwana_ca11_${name} 2>&1`])}`,
@@ -1431,6 +1710,13 @@ try {
     }
   }
 } finally {
-  stop();
+  if (REMOTE) {
+    try {
+      remoteStop();
+    } catch (error) {
+      console.error(error.message);
+      failed = true;
+    }
+  } else stop();
 }
 process.exitCode = failed ? 1 : 0;
