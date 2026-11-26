@@ -1,7 +1,7 @@
 # Contrato DS · Historial de cambios
 
 **Fecha de congelación:** 2026-08-11  
-**Versión de contrato:** 1.3 — v1.2 congelada / carril rápido; v1.3 aprobada por el CTO el 2026-11-25, firma pendiente AI-DS-OWNER  
+**Versión de contrato:** 1.4 — v1.2 congelada / carril rápido; v1.3 aprobada por el CTO el 2026-11-25; v1.4 (carril rápido, 2026-11-25): `Tabs` con activación manual, firmada por AI-DS-OWNER junto con la v1.3  
 **Autoridad:** AI-DS-OWNER  
 **Destinatario ejecutor:** AI-FE-PLATFORM  
 **Destinatario validador:** AI-SR-QA  
@@ -217,7 +217,7 @@ Primitive: `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` de `@iwana/ui` (`pac
 
 **Activo = posición del sistema de tabs, no lima.** Prohibido `bg-iwana-secondary*`, barra lima o `iwana-secondary-50` en el trigger activo.
 
-Teclado (primitive): flechas, Inicio y Fin mueven el foco y activan la pestaña; foco itinerante. Firma pendiente AI-DS-OWNER.
+Teclado (primitive): activación manual. Flechas, Inicio y Fin mueven el foco; Enter o Espacio activan. Foco itinerante en la pestaña seleccionada (`tabIndex` 0/-1). Firmado AI-DS-OWNER, 2026-11-25.
 
 Sin párrafo bajo las tabs (chrome = UX; piel = no añadir caja `text-slate-500` de prosa). Cambio de tab limpia preset (flujo = UX).
 

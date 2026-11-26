@@ -1,7 +1,7 @@
 # Contrato DS · Plataforma / settings (`apps/web` `/settings`)
 
 **Fecha de congelación:** 2026-08-11  
-**Versión de contrato:** 1.3 — v1.2 congelada / carril rápido; v1.3 aprobada por el CTO el 2026-11-25, firma pendiente AI-DS-OWNER  
+**Versión de contrato:** 1.4 — v1.2 congelada / carril rápido; v1.3 aprobada por el CTO el 2026-11-25; v1.4 (carril rápido, 2026-11-25): `Tabs` con activación manual, firmada por AI-DS-OWNER junto con la v1.3  
 **Autoridad:** AI-DS-OWNER  
 **Destinatario ejecutor:** AI-FE-PLATFORM  
 **Destinatario validador:** AI-SR-QA  
@@ -124,7 +124,7 @@ Primitive: `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` de `@iwana/ui`.
 | --- | --- |
 | Conjunto | **Tres** tabs: Identidad \| Seguridad \| Visibilidad para soporte. Tab General **retirado** (decisión EM-ARCH #1; deslinde a Empresas = subtítulo UX, no tab propio). |
 | Control | Valor en `?seccion=` con replace. Identidad con `forceMount` para conservar el borrador. |
-| Teclado | Activación automática (primitive): flechas, Inicio y Fin mueven el foco y activan; foco itinerante (`tabIndex` 0/-1). Firma pendiente AI-DS-OWNER. |
+| Teclado | Activación manual (primitive): flechas, Inicio y Fin mueven el foco; Enter o Espacio activan. Foco itinerante en la pestaña seleccionada (`tabIndex` 0/-1). Firmado AI-DS-OWNER, 2026-11-25. |
 | `TabsList` | Track del CVA vivo (`rounded-xl bg-gray-100/80 …`). |
 | Activo | Posición del sistema de tabs (`data-[state=active]:bg-white…`) — **sin** lima / `iwana-secondary-50`. |
 | Foco | Ring del CVA (`focus-visible:ring-2 focus-visible:ring-iwana-primary`) o equivalente ya en primitive. |

@@ -1,7 +1,7 @@
 # SPEC — Consolidación DS web + portal del dashboard (contrato DS)
 
-**Estado:** Congelada — 2026-11-21 (U-1 a U-4); §7bis (v1.3) congelada 2026-11-21; §7ter (v1.4) congelada 2026-11-22; v1.5 aprobada por el CTO el 2026-11-25, firma pendiente AI-DS-OWNER. La §6 (U-5) queda aprobada por el CTO (G0-4 ✅ 2026-11-21) y entra en 3B/3C.
-**Versión de contrato:** 1.5 — 2026-11-25 (amplía §7bis.2 y actualiza §7ter.5; aditiva sobre 1.4, salvo §7ter.5)
+**Estado:** Congelada — 2026-11-21 (U-1 a U-4); §7bis (v1.3) congelada 2026-11-21; §7ter (v1.4) congelada 2026-11-22; v1.5 aprobada por el CTO el 2026-11-25; v1.6 (carril rápido) firmada por AI-DS-OWNER el 2026-11-25, que firma también la v1.5. La §6 (U-5) queda aprobada por el CTO (G0-4 ✅ 2026-11-21) y entra en 3B/3C.
+**Versión de contrato:** 1.6 — 2026-11-25 (nombre accesible de `PulseStrip` con cifra; cambia el significado de `actionLabel`)
 **Autoridad:** AI-DS-OWNER
 **Ejecutor:** AI-FE-PLATFORM (bloque 3C) · **Validador:** AI-SR-QA · **Orquestador:** AI-EM-ARCH
 **Origen:** [informe de auditoría](../informes/INFORME-WEB-DASHBOARD-AUDITORIA-v1.0.md) §2 (U-1 a U-5) · [plan](../plans/2026-11-21-web-dashboard-auditoria-remediacion.md), fila 3A
@@ -410,7 +410,7 @@ export interface PulseCellData {
   updating?: boolean;
   href?: string | null;
   onClick?: () => void;
-  actionLabel?: string;                          // debe incluir el rótulo visible; solo con href u onClick
+  actionLabel?: string;                          // solo la acción; PulseStrip antepone rótulo y cifra
   onRetry?: () => void;
 }
 export interface PulseStripProps {
@@ -432,7 +432,7 @@ Señal: `delta.tone` → `badgeVariants`: `progress` → `lime`; `neutral`, `pri
 | default | `article`, sin hover. |
 | hover | Solo interactiva (`href` u `onClick`): `hover:bg-iwana-surface-soft dark:hover:bg-dark-surface-3`. |
 | focus | `interactiveFocusClassName` + `focus-visible:ring-inset` (el anillo no se corta por `overflow-hidden`). |
-| active | Sin estilo propio. `href` → `linkComponent`; `onClick` → `button type="button"`; nombre accesible (`aria-label`) = `actionLabel ?? label`. El nombre sustituye al contenido y la cifra no se anuncia: deuda conocida, dueño AI-DS-OWNER. |
+| active | Sin estilo propio. `href` → `linkComponent`; `onClick` → `button type="button"`; nombre accesible (`aria-label`) = `"{label}: {valorTexto}[. {actionLabel}]"`, con `valorTexto` = cifra formateada o `labels.noData`; descripción (`aria-describedby`) = señal y frase, si existen (v1.6). |
 | disabled | No existe: una celda sin acción es `article`. |
 | loading / skeleton | `SkeletonBlock` ×3 (`h-3 w-28`, `h-9 w-20`, `h-4 w-32`) en la misma caja; `aria-busy` en la `section`. |
 | empty | `value === null`: `labels.noData` en `text-sm font-semibold text-gray-700 dark:text-gray-200` (par de §2). |
@@ -601,3 +601,4 @@ Cada gráfica conserva su leyenda, `summary`, `tableCaption` propio y su conmuta
 - v1.3 (2026-11-21) — aditiva, congelada: §7bis `PulseStrip` y `AttentionQueue` promovidas a `@iwana/ui` desde el portal (veredicto D4: procede), `danger` → `error`, `progress` exclusivo del delta, cola en escala `warning`; `density="compact"` en `TenantStatusDistribution` y `SystemStatusPanel` (web). Sin tokens ni pares de contraste nuevos. Notificar a fe-platform y sr-qa vía orquestador.
 - v1.4 (2026-11-22) — aditiva, carril rápido DS: §7ter. `PulseStrip` con `aria-busy` y nombre en la celda que carga; `DashboardBars` del portal a `Tone` + `emphasis` (`danger` → `error`/`strong`); `WebChart`/`PortalChart` justificados por app; tracker local con API reservada para el área Red del portal; `DashboardMetricStrip` se mantiene (composición de §3) con 0 en neutral y error del resumen; selector de periodo = composición `Button` + `aria-pressed` del portal; tendencia en dos gráficas (`line` de activas y `grouped-bar` de altas/bajas, Bajas en `outline`), sin enmendar ADR-112; CA-PP-02 excluye la tarjeta Tendencia (la leyenda de activas conserva su último valor, sin cambio en `Chart`). Ratificada la disposición de prod-ux: gráficas lado a lado desde `xl` (`xl:grid-cols-2`, `gap-6`), apiladas debajo, `EmptyState` único `xl:col-span-2` si ambas están vacías (CA-PP2-06). Sin tokens ni pares nuevos. Notificar a fe-platform y sr-qa vía orquestador.
 - v1.5 (2026-11-25) — `PulseCellData.actionLabel` admite un nombre opcional para enlaces y botones que incluye su rótulo visible. El directorio de empresas adopta `PulseStrip` (§7ter.5) y `DashboardMetricStrip` se retira. `aria-label` sin cifra queda como deuda. El teclado de `Tabs` no se contrata aquí: §7ter.6 lo excluye; ver [Historial §5](2026-08-11-web-audit-logs-historial-ds-contrato.md) y [Plataforma §4](2026-08-11-web-settings-plataforma-ds-contrato.md). Aprobada por el CTO; firma pendiente AI-DS-OWNER.
+- v1.6 (2026-11-25) — Carril rápido, firmado por AI-DS-OWNER. `PulseStrip` compone el nombre accesible con rótulo, cifra (o «sin dato») y acción; señal y frase pasan a la descripción. `actionLabel` nombra solo la acción. Cierra la deuda de v1.5. `Tabs` pasa a activación manual: ver [Plataforma §4](2026-08-11-web-settings-plataforma-ds-contrato.md) e [Historial §5](2026-08-11-web-audit-logs-historial-ds-contrato.md).

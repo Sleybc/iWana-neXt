@@ -1,7 +1,7 @@
 # UX spec — Plataforma · settings (apps/web)
 
-**Versión:** 1.3  
-**Estado:** Congelado — v1.3 aprobada por el CTO el 2026-11-25  
+**Versión:** 1.4  
+**Estado:** Congelado — v1.3 aprobada por el CTO el 2026-11-25; v1.4 (AI-PROD-UX, 2026-11-25): activación manual de pestañas y aviso de cambios sin guardar en Identidad (plan 2026-11-25, T2–T3)  
 **Fecha:** 2026-08-11  
 **Propietario:** AI-PROD-UX  
 **Alcance:** `/settings` de `apps/web`. **No aplica a** `apps/portal` ni a `/tenants/[id]/settings`.  
@@ -74,7 +74,7 @@ El deslinde a Empresas vive en el PageHeader (segunda frase / línea secundaria 
 | Tab 3 | `Visibilidad para soporte` |
 | Tab General | **Retirado** |
 
-La pestaña vive en `?seccion=`: `identidad` · `seguridad` · `equipo`. Ausente o inválida = `Identidad`. Cambiar de pestaña usa `router.replace` (sin scroll ni entradas en el historial) y conserva los demás parámetros. Flechas, Inicio y Fin mueven y activan la pestaña.
+La pestaña vive en `?seccion=`: `identidad` · `seguridad` · `equipo`. Ausente o inválida = `Identidad`. Cambiar de pestaña usa `router.replace` (sin scroll ni entradas en el historial) y conserva los demás parámetros. Flechas, Inicio y Fin mueven el foco; Enter o Espacio activan la pestaña (activación manual, 2026-11-25). Con cambios sin guardar en Identidad, la pestaña muestra un punto ámbar y «(cambios sin guardar)» para lectores de pantalla; cambiar de pestaña no pregunta porque el borrador se conserva. Salir de la página por un enlace interno o con Atrás pide confirmación: «¿Salir sin guardar?», con «Seguir editando» (foco inicial, también Esc) y «Salir sin guardar». Límite conocido: la navegación programática (buscador global, cerrar sesión) no pasa por este diálogo; cerrar o recargar usan el aviso nativo del navegador.
 
 ### Panel Identidad
 
