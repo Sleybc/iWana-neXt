@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { expect, type Locator, type Page } from '@playwright/test';
 
 // Helpers compartidos de los E2E vivos de Cierre de venta (fase 1 y fase 2).
@@ -91,6 +94,87 @@ export async function api<T>(
     `API ${method} ${path}: HTTP ${response.status()} code=${typeof code === 'string' ? code : '-'} ${response.ok() ? '' : JSON.stringify(body).slice(0, 300)}`,
   ).toBe(true);
   return unwrap<T>(body);
+}
+
+/**
+ * Razón social/NIT en el perfil y una versión nueva y aprobada de CONTRATO_SERVICIO,
+ * publicada desde la semilla vigente del repo (el worker renderiza el texto publicado).
+ * Sin esto, en un tenant recién creado (R4.1) la generación falla con TEMPLATE_NOT_APPROVED.
+ */
+export async function publishApprovedContractTemplate(
+  page: Page,
+  adminToken: string,
+  suffix: string,
+): Promise<void> {
+  await api(page, adminToken, 'PATCH', '/tenants/me/profile', {
+    legalName: 'Operador Sintético QA S.A.S.',
+    nit: '900000001',
+  });
+  const html = readFileSync(
+    resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      '../../../apps/worker/src/templates/contracts/contrato-servicio.base.html',
+    ),
+    'utf8',
+  );
+  await api(page, adminToken, 'POST', '/privacy/legal-texts', {
+    type: 'CONTRATO_SERVICIO',
+    version: 'qa-' + suffix.slice(0, 12),
+    format: 'HTML',
+    content: html,
+    legalApprovalDeclaration: 'APROBADO_POR_ASESORIA_JURIDICA',
+  });
+}
+
+/**
+ * Datos del operador que exige la generación del contrato. En un tenant recién creado
+ * (R4.1) faltan y la generación falla con OPERATOR_DATA_MISSING.
+ */
+export async function completeOperatorContractProfile(page: Page, adminToken: string) {
+  const profile = await api<Record<string, unknown>>(
+    page,
+    adminToken,
+    'GET',
+    '/organization/contract-profile',
+  );
+  await api(page, adminToken, 'PUT', '/organization/contract-profile', {
+    qualityAndCoverageUrl: 'https://operador-qa.example.invalid/calidad',
+    customerServiceChannels: [{ kind: 'PHONE', value: '6010000000', label: 'Línea de atención' }],
+    reconnectionFee: 15000,
+    annualIncreaseCapPercent: 5,
+    equipmentIncidentReportChannel: 'Línea 6010000000 o soporte@operador-qa.example.invalid',
+    otherConditions: profile['otherConditions'] ?? null,
+  });
+}
+
+/**
+ * Suscriptor que la conversión creó para el expediente, o `null` si aún no existe.
+ * Desde 7bebb5eb la búsqueda excluye a los prospectos, así que se lee del bootstrap
+ * del expediente (mismo camino que portal-mod05-deuda-fiscal-live).
+ */
+export async function subscriberOfExpediente(
+  page: Page,
+  token: string,
+  expedienteId: string,
+): Promise<string | null> {
+  const bootstrap = await api<{ subscriberSummary: { id: string } | null }>(
+    page,
+    token,
+    'GET',
+    `/crm/expedientes/${expedienteId}/bootstrap`,
+  );
+  return bootstrap.subscriberSummary?.id ?? null;
+}
+
+/**
+ * Quien despacha y asigna la OT. Donde el NOC no supervisa la sede (R4.1, que separa
+ * coordinador y NOC como la spec MOD13) se usa el coordinador de E2E_MOD13_COORDINATOR_*;
+ * sin esas variables (tenant de desarrollo) despacha el mismo NOC.
+ */
+export async function loginDispatcher(page: Page, noc: Session): Promise<Session> {
+  const email = process.env.E2E_MOD13_COORDINATOR_EMAIL?.trim();
+  const password = process.env.E2E_MOD13_COORDINATOR_PASSWORD;
+  return email && password ? login(page, email, password) : noc;
 }
 
 export function asList<T>(value: unknown): T[] {

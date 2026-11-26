@@ -1,7 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import {
@@ -13,8 +10,11 @@ import {
   asList,
   drawSignature,
   login,
+  loginDispatcher,
   missingEnv,
+  publishApprovedContractTemplate,
   raw,
+  subscriberOfExpediente,
   tenantLocalDate,
   uploadEvidence,
   type Dict,
@@ -154,12 +154,7 @@ async function createDraftContract(
       targetStatus,
     });
   }
-  const findSubscriber = async () => {
-    const rows = asList<{ id: string }>(
-      await api<unknown>(page, admin.token, 'POST', '/crm/subscribers/search', { email }),
-    );
-    return rows[0]?.id ?? null;
-  };
+  const findSubscriber = () => subscriberOfExpediente(page, admin.token, expediente.id);
   await expect.poll(findSubscriber, { timeout: 30_000 }).not.toBeNull();
   const subscriberId = (await findSubscriber())!;
   await api(page, admin.token, 'PATCH', '/crm/subscribers/' + subscriberId, {
@@ -171,31 +166,25 @@ async function createDraftContract(
     'cycleDay'
   ];
   expect(typeof cycleDay, 'Ciclo de facturación activo en el tenant').toBe('number');
-  const contract = await api<{ id: string; status: string }>(
+  // Con los datos tributarios completos la conversión deja un borrador automático
+  // (fase 2, d50e4428); se completa su ciclo en vez de crear un segundo contrato, que
+  // dejaría a la OT sin un borrador único que mostrar en el paso «Contrato».
+  const drafts = async () =>
+    asList<{ id: string; status: string }>(
+      await api<unknown>(page, admin.token, 'GET', `/crm/subscribers/${subscriberId}/contracts`),
+    ).filter((c) => c.status === 'DRAFT');
+  await expect.poll(async () => (await drafts()).length, { timeout: 30_000 }).toBe(1);
+  const [draft] = await drafts();
+  await api(page, admin.token, 'PATCH', '/crm/contracts/' + draft!.id, {
+    billingCycleDay: cycleDay,
+  });
+  const contract = await api<{ id: string; status: string; billingCycleDay: number | null }>(
     page,
     admin.token,
-    'POST',
-    `/crm/subscribers/${subscriberId}/contracts`,
-    {
-      subscriberId,
-      planId: plan.id,
-      planSnapshotJson: {
-        id: plan.id,
-        name: plan.name,
-        vatConcept: 'INTERNET_ACCESS',
-        monthlyPrice: 80000,
-      },
-      alias: 'Servicio cierre ' + suffix,
-      serviceUsage: 'RESIDENTIAL',
-      installationStratum: 3,
-      customerSegment: 'RESIDENTIAL',
-      installationAddress: 'Carrera de prueba 999',
-      installationCity: 'Bogotá',
-      installationDepartment: 'Cundinamarca',
-      installationPostalCode: '110111',
-      billingCycleDay: cycleDay,
-    },
+    'GET',
+    '/crm/contracts/' + draft!.id,
   );
+  expect(contract.billingCycleDay).toBe(cycleDay);
   expect(contract.status).toBe('DRAFT');
   return { subscriberId, contractId: contract.id, email };
 }
@@ -219,15 +208,12 @@ test.describe('MOD05 · Cierre de venta con contrato firmado en la OT (live)', (
       REQUIRED.E2E_TENANT_ADMIN_PASSWORD!,
     );
     const noc = await login(page, REQUIRED.E2E_NOC_EMAIL!, REQUIRED.E2E_NOC_PASSWORD!);
+    const dispatcher = await loginDispatcher(page, noc);
     const tech = await login(page, REQUIRED.E2E_TECH_EMAIL!, REQUIRED.E2E_TECH_PASSWORD!);
     const suffix = (Date.now().toString(36) + randomUUID().replace(/-/gu, '')).slice(0, 16);
 
     // ── Datos de la empresa (razón social/NIT en el perfil) y plantilla aprobada (CA-6) ──
     await test.step('Perfil de la empresa y plantilla CONTRATO_SERVICIO aprobada', async () => {
-      await api(page, admin.token, 'PATCH', '/tenants/me/profile', {
-        legalName: 'Operador Sintético QA S.A.S.',
-        nit: '900000001',
-      });
       // CA-6: sin la declaración de aprobación jurídica no se publica la plantilla.
       const unapproved = await raw(page, admin.token, 'POST', '/privacy/legal-texts', {
         type: 'CONTRATO_SERVICIO',
@@ -236,24 +222,7 @@ test.describe('MOD05 · Cierre de venta con contrato firmado en la OT (live)', (
         content: '<p>Plantilla sin aprobación</p>',
       });
       expect(unapproved.status(), 'Plantilla sin declaración rechazada').toBe(400);
-      // Se publica siempre una versión nueva desde la semilla vigente del repo: el worker
-      // renderiza el texto publicado (no el archivo), así la prueba sigue a la plantilla actual.
-      {
-        const html = readFileSync(
-          resolve(
-            dirname(fileURLToPath(import.meta.url)),
-            '../../apps/worker/src/templates/contracts/contrato-servicio.base.html',
-          ),
-          'utf8',
-        );
-        await api(page, admin.token, 'POST', '/privacy/legal-texts', {
-          type: 'CONTRATO_SERVICIO',
-          version: 'qa-' + suffix.slice(0, 12),
-          format: 'HTML',
-          content: html,
-          legalApprovalDeclaration: 'APROBADO_POR_ASESORIA_JURIDICA',
-        });
-      }
+      await publishApprovedContractTemplate(page, admin.token, suffix);
     });
 
     // CA-11 (parte 1): se deja vacío un dato obligatorio del operador por API.
@@ -300,7 +269,7 @@ test.describe('MOD05 · Cierre de venta con contrato firmado en la OT (live)', (
 
     const dispatched = await api<Order>(
       page,
-      noc.token,
+      dispatcher.token,
       'POST',
       '/tasks/execution-orders/dispatch',
       {
@@ -317,13 +286,13 @@ test.describe('MOD05 · Cierre de venta con contrato firmado en la OT (live)', (
     );
     const createdOrder = await api<Order>(
       page,
-      noc.token,
+      dispatcher.token,
       'GET',
       '/tasks/execution-orders/' + dispatched.id,
     );
     await api<Order>(
       page,
-      noc.token,
+      dispatcher.token,
       'POST',
       `/tasks/execution-orders/${dispatched.id}/assign`,
       { assigneeType: 'TECHNICIAN', assigneeId: tech.userId },
@@ -623,7 +592,7 @@ test.describe('MOD05 · Cierre de venta con contrato firmado en la OT (live)', (
       });
       await expect(page.getByText('Pendiente de firma', { exact: true })).toHaveCount(0);
       await page.getByRole('tab', { name: 'Documentos', exact: true }).click();
-      const table = page.getByRole('list', { name: 'Documentos del suscriptor' });
+      const table = page.getByRole('region', { name: 'Documentos del suscriptor' });
       await expect(table.getByText(/^Contrato firmado/u).first()).toBeVisible({ timeout: 30_000 });
       const pdf = await raw(
         page,

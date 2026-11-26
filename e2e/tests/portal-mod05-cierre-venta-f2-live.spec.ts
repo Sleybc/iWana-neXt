@@ -7,10 +7,14 @@ import {
   TENANT_SLUG,
   api,
   asList,
+  completeOperatorContractProfile,
   drawSignature,
   login,
+  loginDispatcher,
   missingEnv,
+  publishApprovedContractTemplate,
   raw,
+  subscriberOfExpediente,
   uploadEvidence,
   type Dict,
   type Generation,
@@ -158,8 +162,11 @@ test.describe('MOD05 · Cierre de venta fase 2: contrato automático e instalaci
       REQUIRED.E2E_TENANT_ADMIN_PASSWORD!,
     );
     const noc = await login(page, REQUIRED.E2E_NOC_EMAIL!, REQUIRED.E2E_NOC_PASSWORD!);
+    const dispatcher = await loginDispatcher(page, noc);
     const tech = await login(page, REQUIRED.E2E_TECH_EMAIL!, REQUIRED.E2E_TECH_PASSWORD!);
     const suffix = (Date.now().toString(36) + randomUUID().replace(/-/gu, '')).slice(0, 16);
+    await publishApprovedContractTemplate(page, admin.token, suffix);
+    await completeOperatorContractProfile(page, admin.token);
 
     // ── Plan con instalación 90.000 y oferta de permanencia (descuento 30.000) ──
     const plan = await api<{ id: string; name: string }>(
@@ -195,13 +202,8 @@ test.describe('MOD05 · Cierre de venta fase 2: contrato automático e instalaci
       pcqAddressList: 'cf2_' + suffix.slice(0, 10),
     });
 
-    const { expedienteId, email } = await createOpportunity(page, admin, plan.id, suffix);
-    const findSubscriber = async () => {
-      const rows = asList<{ id: string }>(
-        await api<unknown>(page, admin.token, 'POST', '/crm/subscribers/search', { email }),
-      );
-      return rows[0]?.id ?? null;
-    };
+    const { expedienteId } = await createOpportunity(page, admin, plan.id, suffix);
+    const findSubscriber = () => subscriberOfExpediente(page, admin.token, expedienteId);
     const contractsOf = async (subscriberId: string) =>
       asList<ContractView>(
         await api<unknown>(page, admin.token, 'GET', `/crm/subscribers/${subscriberId}/contracts`),
@@ -310,7 +312,7 @@ test.describe('MOD05 · Cierre de venta fase 2: contrato automático e instalaci
     // ── OT de instalación y aprovisionamiento CERTIFIED (API real de MOD13) ──
     const dispatched = await api<Order>(
       page,
-      noc.token,
+      dispatcher.token,
       'POST',
       '/tasks/execution-orders/dispatch',
       {
@@ -327,13 +329,13 @@ test.describe('MOD05 · Cierre de venta fase 2: contrato automático e instalaci
     );
     const createdOrder = await api<Order>(
       page,
-      noc.token,
+      dispatcher.token,
       'GET',
       '/tasks/execution-orders/' + dispatched.id,
     );
     await api<Order>(
       page,
-      noc.token,
+      dispatcher.token,
       'POST',
       `/tasks/execution-orders/${dispatched.id}/assign`,
       { assigneeType: 'TECHNICIAN', assigneeId: tech.userId },

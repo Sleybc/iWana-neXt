@@ -1717,6 +1717,16 @@ function createPortalSuiteEnvironment(env, reporterPath, reportPath, quarantineC
     E2E_MOD13_COORDINATOR_EMAIL: env.E2E_COORDINATOR_RO_EMAIL,
     E2E_MOD13_COORDINATOR_PASSWORD: env.E2E_COORDINATOR_RO_PASSWORD,
     E2E_OPERATIONAL_SITE_ID: env.E2E_OPERATIONAL_SITE_ID,
+    // Cierre de venta (fases 1 y 2): sin estas variables las dos specs vivas se saltaban
+    // siempre. El despacho de su OT lo hace E2E_MOD13_COORDINATOR_*, como en MOD13.
+    E2E_TENANT_SLUG: env.E2E_TENANT_SLUG,
+    E2E_MOD13_SITE_ID: env.E2E_OPERATIONAL_SITE_ID,
+    E2E_TENANT_ADMIN_EMAIL: env.E2E_TENANT_ADMIN_EMAIL,
+    E2E_TENANT_ADMIN_PASSWORD: env.E2E_TENANT_ADMIN_PASSWORD,
+    E2E_NOC_EMAIL: env.E2E_NOC_EMAIL,
+    E2E_NOC_PASSWORD: env.E2E_NOC_PASSWORD,
+    E2E_TECH_EMAIL: env.E2E_TECH_EMAIL,
+    E2E_TECH_PASSWORD: env.E2E_TECH_PASSWORD,
     // Specs live de MOD05 (privacidad, deuda fiscal y CRM): sin estas variables
     // se omitían en CI. Todas son efímeras de esta corrida; la base es la E2E.
     E2E_PRIVACY_1B_TENANT_SLUG: env.E2E_PRIVACY_1B_TENANT_SLUG,
