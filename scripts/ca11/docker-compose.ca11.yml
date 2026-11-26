@@ -1,0 +1,227 @@
+# Ensayo desechable de CA-11 (spec 2026-11-25 §5 y §6). Lo arranca y lo borra
+# scripts/ca11/ensayo-ca11.mjs; no se usa a mano ni con los Compose del producto.
+#
+# - Sin volúmenes: Postgres y Redis viven en tmpfs y desaparecen con `down`.
+# - Sin puertos hacia la LAN: solo 127.0.0.1 con puerto aleatorio, para el caso
+#   «puerto publicado» (nginx ve la pasarela de Docker).
+# - Todo valor sensible es sintético y llega por el entorno del proceso que lo lanza.
+name: iwana-ca11
+
+x-cliente: &cliente
+  image: ${CA11_NGINX_IMAGE:?CA11_NGINX_IMAGE is required}
+  entrypoint: ['sleep', '3600']
+  init: true
+
+services:
+  postgres:
+    image: ${CA11_POSTGRES_IMAGE:?CA11_POSTGRES_IMAGE is required}
+    container_name: iwana_ca11_postgres
+    environment:
+      POSTGRES_USER: ca11_bootstrap
+      POSTGRES_PASSWORD: ${CA11_DB_PASSWORD:?}
+      POSTGRES_DB: ca11
+      DB_APP_USER: iwana_app
+      DB_APP_PASSWORD: ${CA11_DB_PASSWORD:?}
+      DB_MIGRATOR_USER: iwana_migrator
+      DB_MIGRATOR_PASSWORD: ${CA11_DB_PASSWORD:?}
+      DB_PURGER_PASSWORD: ${CA11_DB_PASSWORD:?}
+    tmpfs:
+      - /var/lib/postgresql
+    volumes:
+      - ../../docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ca11_bootstrap -d ca11']
+      interval: 2s
+      timeout: 5s
+      retries: 60
+    networks: [data]
+
+  redis:
+    image: ${CA11_REDIS_IMAGE:?CA11_REDIS_IMAGE is required}
+    container_name: iwana_ca11_redis
+    command: ['redis-server', '--requirepass', '${CA11_REDIS_PASSWORD:?}', '--save', '']
+    environment:
+      REDISCLI_AUTH: ${CA11_REDIS_PASSWORD:?}
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 5s
+      retries: 60
+    networks: [data]
+
+  migrator:
+    image: ${CA11_MIGRATOR_IMAGE:?CA11_MIGRATOR_IMAGE is required}
+    container_name: iwana_ca11_migrator
+    # Solo con `run`; luego el ensayo aplica scripts/db/apply-least-privilege.sh, como CI.
+    profiles: [migrar]
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: iwana_migrator
+      DB_PASSWORD: ${CA11_DB_PASSWORD:?}
+      DB_NAME: ca11
+      MFA_ENCRYPTION_KEY: ${CA11_MFA_KEY:?}
+      PII_HASH_KEY: ${CA11_PII_HASH_KEY:?}
+      PII_ENCRYPTION_KEY: ${CA11_PII_KEY:?}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+    networks: [data]
+
+  api:
+    image: ${CA11_API_IMAGE:?CA11_API_IMAGE is required}
+    container_name: iwana_ca11_api
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: iwana_app
+      DB_PASSWORD: ${CA11_DB_PASSWORD:?}
+      DB_NAME: ca11
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${CA11_REDIS_PASSWORD:?}
+      JWT_PRIVATE_KEY: ${CA11_JWT_PRIVATE_KEY:?}
+      JWT_PUBLIC_KEY: ${CA11_JWT_PUBLIC_KEY:?}
+      EXECUTION_ORDER_IDEMPOTENCY_SECRET: ${CA11_IDEMPOTENCY_SECRET:?}
+      INTERNAL_QUEUE_SIGNING_KEY: ${CA11_QUEUE_KEY:?}
+      MFA_ENCRYPTION_KEY: ${CA11_MFA_KEY:?}
+      PII_HASH_KEY: ${CA11_PII_HASH_KEY:?}
+      PII_ENCRYPTION_KEY: ${CA11_PII_KEY:?}
+      COOKIE_SECURE: 'true'
+      CORS_ORIGIN: ${CA11_CORS_ORIGIN:?}
+      FRONTEND_URL: ${CA11_FRONTEND_URL:?}
+      PORTAL_URL: ${CA11_PORTAL_URL:?}
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: ${CA11_S3_PUBLIC_ENDPOINT:?}
+      S3_ACCESS_KEY_ID: ca11-sin-uso
+      S3_SECRET_ACCESS_KEY: ${CA11_S3_SECRET:?}
+      STORAGE_DRIVER: minio
+      TYPESENSE_HOST: typesense
+      TYPESENSE_API_KEY: ${CA11_TYPESENSE_KEY:?}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Cualquier respuesta HTTP sirve: MinIO y Typesense no existen en el ensayo.
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/api/v1/health').then(()=>process.exit(0)).catch(()=>process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 90
+    networks:
+      edge:
+        aliases: [api-prod]
+      data: {}
+
+  # Alta inicial por la CLI de producción (ADR-116). Solo con `run`.
+  bootstrap:
+    image: ${CA11_API_IMAGE:?}
+    profiles: [bootstrap]
+    entrypoint: ['node', 'dist/cli/bootstrap-platform-admin.js', '--output=/bootstrap/admin.txt']
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: iwana_app
+      DB_PASSWORD: ${CA11_DB_PASSWORD:?}
+      DB_NAME: ca11
+      MFA_ENCRYPTION_KEY: ${CA11_MFA_KEY:?}
+      PII_HASH_KEY: ${CA11_PII_HASH_KEY:?}
+    volumes:
+      - ${CA11_WORKDIR:?}/bootstrap:/bootstrap
+    networks: [data]
+
+  # web, portal y MinIO: responden quiénes son. El ensayo no construye Next: el
+  # rewrite cerrado lo prueba scripts/nginx-config.test.mjs sobre los Dockerfile.
+  stub:
+    image: ${CA11_NGINX_IMAGE:?}
+    container_name: iwana_ca11_stub
+    volumes:
+      - ${CA11_WORKDIR:?}/stub.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      apps:
+        aliases: [web-prod, portal-prod, minio]
+
+  edge:
+    image: ${CA11_NGINX_IMAGE:?}
+    container_name: iwana_ca11_edge
+    volumes:
+      - ${CA11_WORKDIR:?}/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${CA11_WORKDIR:?}/allow.conf:/etc/nginx/console/allow.conf:ro
+      - ${CA11_WORKDIR:?}/tls:/etc/nginx/tls:ro
+    ports:
+      - '127.0.0.1::443'
+    depends_on:
+      api:
+        condition: service_healthy
+      stub:
+        condition: service_started
+    networks:
+      front:
+        ipv4_address: 172.31.248.10
+        ipv6_address: fd00:ca11::10
+      edge: {}
+      apps: {}
+
+  autorizado:
+    <<: *cliente
+    container_name: iwana_ca11_autorizado
+    networks:
+      front:
+        ipv4_address: 172.31.248.20
+
+  autorizado2:
+    <<: *cliente
+    container_name: iwana_ca11_autorizado2
+    networks:
+      front:
+        ipv4_address: 172.31.248.21
+
+  externo:
+    <<: *cliente
+    container_name: iwana_ca11_externo
+    networks:
+      front:
+        ipv4_address: 172.31.248.30
+        ipv6_address: fd00:ca11::30
+
+  # Un contenedor de la red interna: prueba la API sin nginx (cabecera ausente o falsa).
+  interno:
+    <<: *cliente
+    container_name: iwana_ca11_interno
+    networks: [edge]
+
+  # Una app comprometida (web o portal): en producción no comparte red con la API.
+  app:
+    <<: *cliente
+    container_name: iwana_ca11_app
+    networks: [apps]
+
+networks:
+  # Clientes ↔ nginx, con IPv6 para comprobar que nadie lo atiende.
+  front:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.31.248.0/24
+        - subnet: fd00:ca11::/64
+  # nginx ↔ API (`api-edge` en producción).
+  edge:
+    internal: true
+  # nginx ↔ web, portal y MinIO (`edge` y `storage-edge` en producción).
+  apps:
+    internal: true
+  data:
+    internal: true

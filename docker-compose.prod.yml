@@ -161,8 +161,10 @@ services:
       - NET_BIND_SERVICE
     # El borde no toca la red de datos: no resuelve postgres ni redis. Alcanza a MinIO solo
     # por `storage-edge`, para servir enlaces firmados de lectura (D2, adjuntos MOD09).
+    # Llega a web y portal por `edge` y a la API por `api-edge` (spec 2026-11-25 §5.3).
     networks:
       - edge
+      - api-edge
       - storage-edge
 
   api-prod:
@@ -282,10 +284,11 @@ services:
           memory: ${API_MEM_LIMIT:-1g}
           cpus: '${API_CPU_LIMIT:-2}'
           pids: 512
-    # Único servicio junto al worker que cruza la frontera: lo alcanzan nginx y
-    # los frontends por `edge`, y él alcanza el almacenamiento por `data`.
+    # Solo nginx la alcanza, por `api-edge`: web y portal no comparten red con ella, así que
+    # una app comprometida no puede enviarle `X-Iwana-Surface: console` (spec 2026-11-25 §5.3).
+    # Ninguna app usa una URL interna de la API. Ella alcanza el almacenamiento por `data`.
     networks:
-      - edge
+      - api-edge
       - data
 
   web-prod:
@@ -333,7 +336,7 @@ services:
           memory: ${WEB_MEM_LIMIT:-768m}
           cpus: '${WEB_CPU_LIMIT:-1}'
           pids: 256
-    # Solo habla con nginx y con la API: no tiene por qué resolver la red de datos.
+    # Solo habla con nginx (la API va por nginx, `api-edge`): no resuelve la red de datos.
     networks:
       - edge
 
@@ -566,6 +569,8 @@ volumes:
     name: iwana_typesense_data_prod
 
 networks:
+  # Solo nginx-prod y la API. Sin `internal`: la API necesita salida (correo, UISP).
+  api-edge: {}
   # Solo nginx-prod y MinIO (D2, adjuntos MOD09). `internal`: sin salida a otras redes.
   storage-edge:
     internal: true

@@ -256,6 +256,38 @@ test('nginx prod marks the surface on every proxied location and restricts the c
   );
 });
 
+test('nginx prod overwrites the client IP on every location that reaches the API', async () => {
+  const config = await readFile(prodConfigPath, 'utf8');
+  const locations = config.split(/\n {4}location /).slice(1);
+  const toApi = locations.filter((location) => /proxy_pass http:\/\/api[;/]/.test(location));
+  assert.equal(toApi.length, 10);
+  for (const location of toApi) {
+    assert.match(location, /proxy_set_header X-Forwarded-For \$remote_addr;/, location);
+    assert.match(location, /proxy_set_header X-Real-IP \$remote_addr;/, location);
+  }
+});
+
+test('compose prod: only nginx shares a network with the API (spec 2026-11-25 §5.3)', async () => {
+  const compose = await readFile(prodComposePath, 'utf8');
+  const networks = (name) =>
+    [
+      ...(
+        /\n {4}networks:\n((?: {6}- [\w-]+\n?)+)/.exec(composeServiceBlock(compose, name))?.[1] ??
+        ''
+      ).matchAll(/- ([\w-]+)/g),
+    ].map(([, network]) => network);
+  const api = networks('api-prod');
+  assert.deepEqual(api, ['api-edge', 'data']);
+  for (const app of ['web-prod', 'portal-prod']) {
+    assert.deepEqual(
+      networks(app).filter((network) => api.includes(network)),
+      [],
+      app,
+    );
+  }
+  assert.ok(networks('nginx-prod').includes('api-edge'));
+});
+
 test('the production template uses the same names as the nginx vhosts', async () => {
   const config = await readFile(prodConfigPath, 'utf8');
   const origins = ['consola', 'portal', 'archivos'].map((name) => {
