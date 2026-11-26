@@ -177,7 +177,7 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
     }, []);
 
     React.useEffect(() => {
-      if (!open) {
+      if (!open || !mounted) {
         return;
       }
 
@@ -192,7 +192,7 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
       }
 
       return scheduleInitialFocus(focusTarget);
-    }, [getFocusableElements, initialFocusRef, open, scheduleInitialFocus]);
+    }, [getFocusableElements, initialFocusRef, mounted, open, scheduleInitialFocus]);
 
     React.useEffect(() => {
       if (!open) return;

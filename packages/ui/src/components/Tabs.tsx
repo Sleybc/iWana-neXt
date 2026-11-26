@@ -57,10 +57,34 @@ function Tabs({ value, defaultValue, onValueChange, className, children, ...prop
   );
 }
 
-function TabsList({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+function TabsList({ className, onKeyDown, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       role="tablist"
+      onKeyDown={(event) => {
+        onKeyDown?.(event);
+        if (event.defaultPrevented || !(event.target instanceof HTMLButtonElement)) return;
+        const vertical = props['aria-orientation'] === 'vertical';
+        const previous = vertical ? 'ArrowUp' : 'ArrowLeft';
+        const next = vertical ? 'ArrowDown' : 'ArrowRight';
+        if (![previous, next, 'Home', 'End'].includes(event.key)) return;
+        const tabs = Array.from(
+          event.currentTarget.querySelectorAll<HTMLButtonElement>(
+            'button[role="tab"]:not(:disabled)',
+          ),
+        ).filter((tab) => tab.closest('[role="tablist"]') === event.currentTarget);
+        const index = tabs.indexOf(event.target);
+        if (index < 0) return;
+        event.preventDefault();
+        const destination =
+          event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? tabs.length - 1
+              : (index + (event.key === previous ? -1 : 1) + tabs.length) % tabs.length;
+        tabs[destination]?.focus();
+        tabs[destination]?.click();
+      }}
       className={cn('flex gap-1 rounded-xl bg-gray-100/80 p-1 dark:bg-dark-surface-3', className)}
       {...props}
     />
@@ -114,6 +138,7 @@ const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>(
         id={triggerId}
         role="tab"
         type="button"
+        tabIndex={selected ? 0 : -1}
         aria-selected={selected}
         aria-controls={contentId}
         data-state={selected ? 'active' : 'inactive'}

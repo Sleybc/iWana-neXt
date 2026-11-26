@@ -26,6 +26,8 @@ export interface PulseCellData {
   updating?: boolean | undefined;
   href?: string | null | undefined;
   onClick?: (() => void) | undefined;
+  /** Nombre de la acción con el rótulo visible de la celda. */
+  actionLabel?: string | undefined;
   onRetry?: (() => void) | undefined;
 }
 
@@ -165,7 +167,7 @@ export function PulseStrip({
             <LinkComponent
               key={cell.id}
               href={cell.href}
-              aria-label={cell.label}
+              aria-label={cell.actionLabel ?? cell.label}
               className={cn(cellClassName, interactiveCellClassName)}
             >
               {body}
@@ -178,7 +180,7 @@ export function PulseStrip({
             <button
               key={cell.id}
               type="button"
-              aria-label={cell.label}
+              aria-label={cell.actionLabel ?? cell.label}
               onClick={cell.onClick}
               className={cn(cellClassName, interactiveCellClassName)}
             >

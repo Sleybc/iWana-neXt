@@ -149,6 +149,17 @@ describe('PulseStrip (contrato DS v1.3 §7bis.2)', () => {
     expect(onClick).toHaveBeenCalled();
   });
 
+  it.each([
+    ['enlace', { href: '/a' }],
+    ['botón', { onClick: () => {} }],
+  ])('actionLabel nombra la acción del %s y conserva el rótulo visible', (_kind, action) => {
+    strip([cell({ ...action, actionLabel: 'Empresas activas: ver listado' })]);
+    const control = container.querySelector('a, button');
+    expect(control?.getAttribute('aria-label')).toBe('Empresas activas: ver listado');
+    expect(control?.textContent).toContain('Empresas activas');
+    expect(control?.textContent).not.toContain('ver listado');
+  });
+
   it.each<[PulseDeltaTone, string]>([
     ['progress', 'bg-iwana-secondary-100'],
     ['neutral', 'bg-gray-100'],
