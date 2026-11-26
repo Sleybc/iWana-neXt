@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import {
   AccessPermissionKey,
   AllocateCreditCommandSchema,
@@ -75,28 +75,6 @@ export type BillingSubtabId = (typeof BILLING_SUBTABS)[number]['id'];
 /** `?sub=` de la URL; vacío o desconocido abre Facturas. */
 export function billingSubtab(value: string | null | undefined): BillingSubtabId {
   return BILLING_SUBTABS.find((tab) => tab.id === value)?.id ?? 'facturas';
-}
-
-/** Flechas, Inicio y Fin mueven el foco y activan la pestaña (patrón ARIA de pestañas). */
-function moveTabFocus(
-  event: KeyboardEvent<HTMLDivElement>,
-  onSelect: (id: BillingSubtabId) => void,
-) {
-  const tabs = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')];
-  const current = tabs.findIndex((tab) => tab === document.activeElement);
-  if (current < 0) return;
-  const next = {
-    ArrowRight: (current + 1) % tabs.length,
-    ArrowLeft: (current - 1 + tabs.length) % tabs.length,
-    Home: 0,
-    End: tabs.length - 1,
-  }[event.key];
-  if (next === undefined) return;
-  event.preventDefault();
-  const tab = BILLING_SUBTABS[next];
-  if (!tab) return;
-  onSelect(tab.id);
-  tabs[next]?.focus();
 }
 
 const NOT_STARTED_BADGE = { label: 'Sin facturas emitidas', variant: 'warning' } as const;
@@ -240,11 +218,8 @@ export function SubscriberBillingTab({
         </div>
       ) : null}
       <Tabs value={sub} onValueChange={(value) => selectSub(billingSubtab(value))}>
-        <TabsList
-          aria-label="Secciones de facturación"
-          className={portalResourceTabListClassName}
-          onKeyDown={(event) => moveTabFocus(event, selectSub)}
-        >
+        <TabsList aria-label="Secciones de facturación" className={portalResourceTabListClassName}>
+          {/* Activación manual de la primitive: flechas, Inicio y Fin mueven el foco; Enter o Espacio activan. */}
           {BILLING_SUBTABS.map((tab) => (
             <TabsTrigger
               key={tab.id}

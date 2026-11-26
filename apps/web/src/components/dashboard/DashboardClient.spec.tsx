@@ -190,7 +190,7 @@ describe('DashboardClient', () => {
 
   async function renderReady() {
     render(<DashboardClient />);
-    await screen.findByRole('link', { name: 'Empresas activas' });
+    await screen.findByRole('link', { name: /^Empresas activas: / });
   }
 
   it('CA-PP-04: no pinta ceros ni filas mientras carga', async () => {
@@ -204,12 +204,12 @@ describe('DashboardClient', () => {
     expect(await screen.findByText('Cargando el centro de control')).toBeInTheDocument();
     expect(screen.queryByText('0')).not.toBeInTheDocument();
     expect(screen.queryByText('Todo al día')).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Empresas activas' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^Empresas activas: / })).not.toBeInTheDocument();
 
     summaryDeferred.resolve(makeTenantStatusSummary({ ACTIVE: 3 }));
     healthDeferred.resolve(HEALTH_OK);
 
-    expect(await screen.findByRole('link', { name: 'Empresas activas' })).toHaveTextContent('3');
+    expect(await screen.findByRole('link', { name: /^Empresas activas: / })).toHaveTextContent('3');
     expect(screen.queryByText('Cargando el centro de control')).not.toBeInTheDocument();
   });
 
@@ -225,18 +225,18 @@ describe('DashboardClient', () => {
     await renderReady();
 
     const strip = pulse();
-    const active = within(strip).getByRole('link', { name: 'Empresas activas' });
+    const active = within(strip).getByRole('link', { name: /^Empresas activas: / });
     expect(active).toHaveAttribute('href', '/tenants?status=ACTIVE');
     expect(active).toHaveTextContent('180');
-    expect(within(strip).getByRole('link', { name: 'Altas en curso' })).toHaveAttribute(
+    expect(within(strip).getByRole('link', { name: /^Altas en curso: / })).toHaveAttribute(
       'href',
       '/tenants?status=PROVISIONING',
     );
-    const attention = within(strip).getByRole('button', { name: 'Requieren atención' });
+    const attention = within(strip).getByRole('button', { name: /^Requieren atención: / });
     expect(attention).toHaveTextContent('15');
     expect(attention).toHaveTextContent('2 con error · 13 suspendidas');
     // Fase 3: la celda de salud pasa a «Disponibilidad, 30 días» (dirección §4 B1).
-    const availability = within(strip).getByRole('link', { name: 'Disponibilidad, 30 días' });
+    const availability = within(strip).getByRole('link', { name: /^Disponibilidad, 30 días: / });
     expect(availability).toHaveAttribute('href', '#salud-de-plataforma');
     expect(availability).toHaveTextContent('100 %');
     expect(availability).toHaveTextContent('Operativa');
@@ -247,7 +247,7 @@ describe('DashboardClient', () => {
     const user = userEvent.setup();
     await renderReady();
 
-    await user.click(within(pulse()).getByRole('button', { name: 'Requieren atención' }));
+    await user.click(within(pulse()).getByRole('button', { name: /^Requieren atención: / }));
 
     expect(screen.getByRole('heading', { name: 'Empresas' })).toHaveFocus();
   });
@@ -379,7 +379,7 @@ describe('DashboardClient', () => {
     expect(screen.queryByText('Todo al día')).not.toBeInTheDocument();
     expect(screen.queryByText(/Servicio caído crudo/)).not.toBeInTheDocument();
     expect(
-      within(pulse()).getByRole('link', { name: 'Disponibilidad, 30 días' }),
+      within(pulse()).getByRole('link', { name: /^Disponibilidad, 30 días: / }),
     ).toHaveTextContent('100 %');
   });
 
@@ -390,13 +390,13 @@ describe('DashboardClient', () => {
     render(<DashboardClient />);
 
     expect(await screen.findByText(HEALTH_ERROR)).toBeInTheDocument();
-    expect(await screen.findByRole('link', { name: 'Empresas activas' })).toHaveTextContent('1');
+    expect(await screen.findByRole('link', { name: /^Empresas activas: / })).toHaveTextContent('1');
     expect(screen.getAllByText(HEALTH_ERROR)).toHaveLength(1);
     expect(screen.queryByText(/Error del servidor/)).not.toBeInTheDocument();
     // La disponibilidad viene del historial, no de /health: su celda sigue intacta.
     expect(within(pulse()).queryByText('No disponible')).not.toBeInTheDocument();
     expect(
-      within(pulse()).getByRole('link', { name: 'Disponibilidad, 30 días' }),
+      within(pulse()).getByRole('link', { name: /^Disponibilidad, 30 días: / }),
     ).toBeInTheDocument();
   });
 
@@ -458,7 +458,7 @@ describe('DashboardClient', () => {
     tenantApi.list.mockRejectedValue(new Error('timeout'));
     render(<DashboardClient />);
     expect(await screen.findByText('No pudimos cargar las últimas empresas.')).toBeInTheDocument();
-    expect(await screen.findByRole('link', { name: 'Empresas activas' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /^Empresas activas: / })).toBeInTheDocument();
   });
 
   it('CA-PP2-05 / CA-PP3-05: no monta P4 ni piezas retiradas', async () => {
@@ -499,7 +499,7 @@ describe('DashboardClient', () => {
       'href',
       '/tenants/new',
     );
-    expect(within(pulse()).getByRole('link', { name: 'Empresas activas' })).toHaveTextContent(
+    expect(within(pulse()).getByRole('link', { name: /^Empresas activas: / })).toHaveTextContent(
       /^Empresas activas0/,
     );
   });
@@ -530,7 +530,7 @@ describe('DashboardClient', () => {
       expect(screen.getAllByText(n)).toHaveLength(1);
       expect(within(companies()).getByText(n)).toBeInTheDocument();
     });
-    const attention = within(pulse()).getByRole('button', { name: 'Requieren atención' });
+    const attention = within(pulse()).getByRole('button', { name: /^Requieren atención: / });
     expect(attention).toHaveTextContent('103 con error · 104 suspendidas · 106 en eliminación');
     expect(within(pulse()).queryByText(/105/)).not.toBeInTheDocument();
     const outside = [
@@ -582,7 +582,7 @@ describe('DashboardClient', () => {
     render(<DashboardClient />);
 
     expect(await screen.findByText(ACTIVITY_ERROR)).toBeInTheDocument();
-    expect(await screen.findByRole('link', { name: 'Empresas activas' })).toHaveTextContent('1');
+    expect(await screen.findByRole('link', { name: /^Empresas activas: / })).toHaveTextContent('1');
     expect(within(companies()).getByRole('link', { name: 'Activas: 1' })).toBeInTheDocument();
     const health = document.getElementById('salud-de-plataforma') as HTMLElement;
     expect(within(health).getByText('API de plataforma')).toBeInTheDocument();
@@ -620,7 +620,7 @@ describe('DashboardClient', () => {
       tenantApi.summary.mockResolvedValue(makeTenantStatusSummary({ ACTIVE: 48 }, { monthly }));
       await renderReady();
 
-      const active = within(pulse()).getByRole('link', { name: 'Empresas activas' });
+      const active = within(pulse()).getByRole('link', { name: /^Empresas activas: / });
       expect(within(active).getByText('+3 este mes')).toHaveClass('bg-iwana-secondary-100');
       expect(active).toHaveTextContent('4 altas · 1 baja este mes');
     });
@@ -649,7 +649,7 @@ describe('DashboardClient', () => {
       );
       await renderReady();
 
-      expect(within(pulse()).getByRole('link', { name: 'Altas en curso' })).toHaveTextContent(
+      expect(within(pulse()).getByRole('link', { name: /^Altas en curso: / })).toHaveTextContent(
         /La más antigua empezó hace 2 h/,
       );
     });
@@ -658,7 +658,7 @@ describe('DashboardClient', () => {
       const monthly = makeMonthlySeries({ '2026-10': { created: 2, removed: 1 } });
       tenantApi.summary.mockResolvedValue(makeTenantStatusSummary({ ACTIVE: 1 }, { monthly }));
       const { unmount } = render(<DashboardClient />);
-      await screen.findByRole('link', { name: 'Empresas activas' });
+      await screen.findByRole('link', { name: /^Empresas activas: / });
 
       expect(monthly).toHaveLength(12);
       expect(
@@ -892,7 +892,7 @@ describe('DashboardClient', () => {
     it('B1 y B3: «Equipo interno» y Usuarios internos leen el resumen del equipo', async () => {
       await renderReady();
 
-      const cell = within(pulse()).getByRole('link', { name: 'Equipo interno' });
+      const cell = within(pulse()).getByRole('link', { name: /^Equipo interno: / });
       expect(cell).toHaveAttribute('href', '/platform-users');
       expect(cell).toHaveTextContent('9');
       expect(cell).toHaveTextContent('2 sin verificación en dos pasos');
@@ -924,7 +924,9 @@ describe('DashboardClient', () => {
       await renderReady();
 
       const strip = pulse();
-      expect(within(strip).queryByRole('link', { name: 'Equipo interno' })).not.toBeInTheDocument();
+      expect(
+        within(strip).queryByRole('link', { name: /^Equipo interno: / }),
+      ).not.toBeInTheDocument();
       expect(within(strip).getByText('Equipo interno').closest('article')).toHaveTextContent(
         'No disponible',
       );
@@ -932,11 +934,13 @@ describe('DashboardClient', () => {
         await within(team()).findByText('No pudimos cargar el equipo interno.'),
       ).toBeInTheDocument();
       expect(within(team()).queryByText('0')).not.toBeInTheDocument();
-      expect(within(strip).getByRole('link', { name: 'Empresas activas' })).toHaveTextContent('7');
+      expect(within(strip).getByRole('link', { name: /^Empresas activas: / })).toHaveTextContent(
+        '7',
+      );
 
       await user.click(within(team()).getByRole('button', { name: 'Reintentar' }));
       expect(
-        await within(pulse()).findByRole('link', { name: 'Equipo interno' }),
+        await within(pulse()).findByRole('link', { name: /^Equipo interno: / }),
       ).toBeInTheDocument();
       expect(tenantApi.summary).toHaveBeenCalledTimes(1);
     });
@@ -953,7 +957,9 @@ describe('DashboardClient', () => {
       await screen.findByText(DIRECTORY_ERROR);
       await user.click(within(pulse()).getAllByRole('button', { name: 'Reintentar' })[0]!);
 
-      expect(await screen.findByRole('link', { name: 'Empresas activas' })).toHaveTextContent('4');
+      expect(await screen.findByRole('link', { name: /^Empresas activas: / })).toHaveTextContent(
+        '4',
+      );
       expect(tenantApi.summary).toHaveBeenCalledTimes(2);
       expect(healthApi.get).toHaveBeenCalledTimes(1);
       expect(platformAuditApi.list).toHaveBeenCalledTimes(1);
@@ -1029,7 +1035,7 @@ describe('DashboardClient', () => {
       );
       await renderReady();
 
-      const cell = within(pulse()).getByRole('link', { name: 'Disponibilidad, 30 días' });
+      const cell = within(pulse()).getByRole('link', { name: /^Disponibilidad, 30 días: / });
       expect(cell).toHaveTextContent('100 %');
       expect(cell).toHaveTextContent('2 días sin dato');
       const tracker = within(cell).getByRole('img');
@@ -1050,7 +1056,7 @@ describe('DashboardClient', () => {
       );
       await renderReady();
 
-      const cell = within(pulse()).getByRole('link', { name: 'Disponibilidad, 30 días' });
+      const cell = within(pulse()).getByRole('link', { name: /^Disponibilidad, 30 días: / });
       // Redis: (29·288 + 50) / (29·288 + 100) = 0,99408…, redondeado a 99,41 % (F3-D6).
       expect(cell).toHaveTextContent('99,41 %');
       expect(cell).toHaveTextContent('Con fallas');
@@ -1065,7 +1071,7 @@ describe('DashboardClient', () => {
       );
       await renderReady();
 
-      const cell = within(pulse()).getByRole('link', { name: 'Disponibilidad, 30 días' });
+      const cell = within(pulse()).getByRole('link', { name: /^Disponibilidad, 30 días: / });
       // Redis: (8640 − 5,76) / 8640 = 0,99933…
       expect(cell).toHaveTextContent('99,93 %');
       expect(cell).toHaveTextContent('Operativa');
@@ -1081,7 +1087,7 @@ describe('DashboardClient', () => {
       );
       await renderReady();
 
-      const cell = within(pulse()).getByRole('link', { name: 'Disponibilidad, 30 días' });
+      const cell = within(pulse()).getByRole('link', { name: /^Disponibilidad, 30 días: / });
       // Redis: 29·288 / 30·288 = 0,96666…
       expect(cell).toHaveTextContent('96,67 %');
       expect(cell).toHaveTextContent('Con fallas graves');
@@ -1102,7 +1108,7 @@ describe('DashboardClient', () => {
       );
       await renderReady();
 
-      const cell = within(pulse()).getByRole('link', { name: 'Disponibilidad, 30 días' });
+      const cell = within(pulse()).getByRole('link', { name: /^Disponibilidad, 30 días: / });
       expect(cell).toHaveTextContent('Sin muestras en 30 días');
       expect(cell).not.toHaveTextContent('%');
       expect(screen.getByText('Aún no hay muestras de las colas.')).toBeInTheDocument();
@@ -1123,12 +1129,14 @@ describe('DashboardClient', () => {
       ).toBeInTheDocument();
       expect(within(pulse()).getByText('No disponible')).toBeInTheDocument();
       expect(screen.queryByText(/Error crudo/)).not.toBeInTheDocument();
-      expect(within(pulse()).getByRole('link', { name: 'Empresas activas' })).toBeInTheDocument();
+      expect(
+        within(pulse()).getByRole('link', { name: /^Empresas activas: / }),
+      ).toBeInTheDocument();
 
       const queues = screen.getByRole('region', { name: 'Colas de trabajo' });
       await user.click(within(queues).getByRole('button', { name: 'Reintentar' }));
       expect(
-        await within(pulse()).findByRole('link', { name: 'Disponibilidad, 30 días' }),
+        await within(pulse()).findByRole('link', { name: /^Disponibilidad, 30 días: / }),
       ).toHaveTextContent('100 %');
       expect(platformHealthApi.history).toHaveBeenCalledTimes(2);
     });

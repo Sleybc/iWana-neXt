@@ -1,8 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, Search } from 'lucide-react';
-import { Button, Card, EmptyState, ErrorState, Input, Select, SkeletonBlock } from '@iwana/ui';
+import {
+  Button,
+  Card,
+  cn,
+  EmptyState,
+  ErrorState,
+  Input,
+  interactiveFocusClassName,
+  Select,
+  SkeletonBlock,
+} from '@iwana/ui';
 import {
   PlatformRole,
   UserStatus,
@@ -16,6 +26,7 @@ import { PlatformUserCreateDialog } from '@/components/platform-users/PlatformUs
 import { PlatformUserNameDialog } from '@/components/platform-users/PlatformUserNameDialog';
 import { platformUsersApi } from '@/lib/api-client';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
+import { useRetryFocus } from '@/lib/use-retry-focus';
 
 const COPY = PLATFORM_UI_COPY.platformUserDirectory;
 const STATUS_OPTIONS = [
@@ -41,6 +52,9 @@ export default function PlatformUsersPage() {
   const [nameSaved, setNameSaved] = useState(false);
   const [creating, setCreating] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState('');
+  const announceNext = useRef(false);
+  const retryFocus = useRetryFocus<HTMLElement, HTMLDivElement>(loading, error);
 
   useEffect(() => {
     let active = true;
@@ -61,9 +75,15 @@ export default function PlatformUsersPage() {
           }
           setDirectory(result);
           setLoading(false);
+          if (announceNext.current) {
+            announceNext.current = false;
+            setAnnouncement(COPY.found(result.total));
+          }
         },
         () => {
           if (!active) return;
+          announceNext.current = false;
+          setAnnouncement('');
           setError(true);
           setLoading(false);
         },
@@ -73,9 +93,12 @@ export default function PlatformUsersPage() {
     };
   }, [page, retry, search, status]);
 
+  /** Una búsqueda o un filtro nuevo: se anuncia su resultado al terminar, no en cada tecla. */
   function resetResults() {
     setPage(1);
     setSelectedId(null);
+    setAnnouncement('');
+    announceNext.current = true;
   }
 
   const filtered = Boolean(search || status);
@@ -147,6 +170,8 @@ export default function PlatformUsersPage() {
               className="min-h-11"
               onClick={() => {
                 setSearchInput('');
+                // Solo texto escrito sin buscar: no hay recarga ni nada que anunciar.
+                if (!filtered) return;
                 setSearch('');
                 setStatus('');
                 resetResults();
@@ -157,6 +182,9 @@ export default function PlatformUsersPage() {
           )}
         </form>
       </Card>
+      <p role="status" className="sr-only">
+        {announcement}
+      </p>
       {nameSaved && (
         <p role="status" className="text-sm">
           {COPY.edit.saved}
@@ -172,16 +200,30 @@ export default function PlatformUsersPage() {
         )}
         {!loading && error && (
           <Card variant="outline" className="p-4 sm:p-6">
-            <ErrorState
-              message={COPY.error}
-              onRetry={() => setRetry((value) => value + 1)}
-              retryLabel={PLATFORM_UI_COPY.dashboard.retry}
-            />
+            <div
+              ref={retryFocus.errorRef}
+              tabIndex={-1}
+              className={cn('rounded-xl', interactiveFocusClassName)}
+            >
+              <ErrorState
+                message={COPY.error}
+                onRetry={retryFocus.track(() => setRetry((value) => value + 1))}
+                retryLabel={PLATFORM_UI_COPY.dashboard.retry}
+              />
+            </div>
           </Card>
         )}
         {!loading && !error && directory && !selected && (
           <Card variant="outline" className="p-4 sm:p-6">
-            <EmptyState message={filtered ? COPY.emptyFiltered : COPY.empty} />
+            <div
+              ref={(node) => {
+                retryFocus.resultsRef.current = node;
+              }}
+              tabIndex={-1}
+              className={cn('rounded-xl', interactiveFocusClassName)}
+            >
+              <EmptyState message={filtered ? COPY.emptyFiltered : COPY.empty} />
+            </div>
           </Card>
         )}
         {!loading && !error && directory && selected && (
@@ -190,6 +232,7 @@ export default function PlatformUsersPage() {
             total={directory.total}
             selected={selected}
             onSelect={setSelectedId}
+            listHeadingRef={retryFocus.resultsRef}
             {...(canEdit
               ? {
                   onEdit: () => {

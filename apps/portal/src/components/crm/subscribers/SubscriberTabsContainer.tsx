@@ -12,7 +12,7 @@ export interface SubscriberTab {
   id: string;
   label: string;
   content: ReactNode;
-  /** Borrador sin guardar dentro de la pestaña: punto ámbar y texto para lectores de pantalla. */
+  /** Borrador sin guardar dentro de la pestaña: punto de aviso (token warning, como la consola) y texto para lectores de pantalla. */
   pending?: boolean;
 }
 
@@ -126,7 +126,7 @@ export function SubscriberTabsContainer({
                   <>
                     <span
                       aria-hidden="true"
-                      className="ml-1.5 inline-block h-2 w-2 rounded-full bg-amber-500"
+                      className="ml-1.5 inline-block h-2 w-2 rounded-full bg-warning-600 dark:bg-warning-400"
                     />
                     <span className="sr-only"> (cambios sin guardar)</span>
                   </>

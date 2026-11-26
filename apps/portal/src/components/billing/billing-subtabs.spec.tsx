@@ -263,24 +263,31 @@ describe('SubscriberBillingTab — subpestañas', () => {
     expect(pagos).toHaveAttribute('tabindex', '-1');
   });
 
-  it('flechas, Inicio y Fin mueven el foco y activan la pestaña', async () => {
+  it('flechas, Inicio y Fin solo mueven el foco; Enter o Espacio activan', async () => {
     const user = userEvent.setup();
     renderTab('tab=facturacion');
     const [facturas, pagos, estado] = tabs();
     facturas!.focus();
+    const replaces = mockReplace.mock.calls.length;
     await user.keyboard('{ArrowRight}');
     expect(pagos).toHaveFocus();
-    expect(pagos).toHaveAttribute('aria-selected', 'true');
+    expect(pagos).toHaveAttribute('aria-selected', 'false');
+    expect(facturas).toHaveAttribute('aria-selected', 'true');
     await user.keyboard('{End}');
     expect(estado).toHaveFocus();
-    expect(estado).toHaveAttribute('aria-selected', 'true');
-    expect(await screen.findByText('Saldo final:', { exact: false })).toBeInTheDocument();
+    expect(estado).toHaveAttribute('aria-selected', 'false');
     await user.keyboard('{ArrowRight}');
     expect(facturas).toHaveFocus();
     await user.keyboard('{ArrowLeft}');
     expect(estado).toHaveFocus();
+    expect(mockReplace.mock.calls.length).toBe(replaces);
+    await user.keyboard('{Enter}');
+    expect(estado).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByText('Saldo final:', { exact: false })).toBeInTheDocument();
     await user.keyboard('{Home}');
     expect(facturas).toHaveFocus();
+    expect(estado).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard(' ');
     expect(facturas).toHaveAttribute('aria-selected', 'true');
     expect(
       new URL(String(mockReplace.mock.calls.at(-1)?.[0]), 'http://x').searchParams.get('sub'),

@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { PlatformRole, type TenantUsageGrantableRole } from '@iwana/shared';
-import { CheckboxCard, ErrorState, SkeletonBlock } from '@iwana/ui';
+import { CheckboxCard, cn, ErrorState, interactiveFocusClassName, SkeletonBlock } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { tenantApi } from '@/lib/api-client';
 import Link from 'next/link';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
+import { useRetryFocus } from '@/lib/use-retry-focus';
 import { settingsSectionPanelClassName } from './settings-shell';
 
 const copy = PLATFORM_UI_COPY.settings.team;
@@ -42,6 +43,11 @@ export function TeamVisibilitySettings() {
     load();
   }, [load]);
 
+  const retryFocus = useRetryFocus<HTMLHeadingElement, HTMLDivElement>(
+    state === 'loading',
+    state === 'error',
+  );
+
   const onToggle = async (next: boolean) => {
     const previous = granted;
     setGranted(next);
@@ -64,7 +70,12 @@ export function TeamVisibilitySettings() {
     <section className={settingsSectionPanelClassName} aria-labelledby="equipo-visibilidad">
       <h2
         id="equipo-visibilidad"
-        className="text-base font-semibold text-iwana-primary dark:text-white"
+        ref={retryFocus.resultsRef}
+        tabIndex={-1}
+        className={cn(
+          'text-base font-semibold text-iwana-primary dark:text-white',
+          interactiveFocusClassName,
+        )}
       >
         {copy.title}
       </h2>
@@ -80,12 +91,17 @@ export function TeamVisibilitySettings() {
           <SkeletonBlock className="h-12 w-full rounded-xl" />
         </div>
       ) : state === 'error' ? (
-        <ErrorState
-          className="mt-4"
-          message={copy.errorLoad}
-          onRetry={load}
-          retryLabel={copy.retry}
-        />
+        <div
+          ref={retryFocus.errorRef}
+          tabIndex={-1}
+          className={cn('mt-4 rounded-xl', interactiveFocusClassName)}
+        >
+          <ErrorState
+            message={copy.errorLoad}
+            onRetry={retryFocus.track(load)}
+            retryLabel={copy.retry}
+          />
+        </div>
       ) : (
         <div className="mt-4 space-y-2">
           <CheckboxCard

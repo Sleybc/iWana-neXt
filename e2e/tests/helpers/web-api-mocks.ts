@@ -526,6 +526,43 @@ function buildDefaultTenantAuditDataBySlug(): Record<string, WebTenantAuditEntry
   };
 }
 
+function buildDefaultPlatformBranding() {
+  return {
+    productName: 'iWana neXt',
+    surfaceName: 'Portal administrativo',
+    metadataTitle: 'iWana neXt — Portal Administrativo',
+    metadataDescription: 'Portal administrativo para operadores ISP iWana neXt',
+    logoUrl: '/brand/iwiso6.png' as string | null,
+    logoAssetId: null as string | null,
+    faviconUrl: '/brand/favicon-gecko.svg' as string | null,
+    faviconAssetId: null as string | null,
+    loginBackgroundLightUrl: null as string | null,
+    loginBackgroundLightAssetId: null as string | null,
+    loginBackgroundDarkUrl: null as string | null,
+    loginBackgroundDarkAssetId: null as string | null,
+    updatedAt: buildIsoAt(-3, 9),
+  };
+}
+
+/** Perfil de `/platform-users/me`; correo ficticio, sin PII. */
+function buildDefaultPlatformProfile(role: string) {
+  return {
+    id: '8f145de2-1111-4abc-9e08-3b768a194001',
+    email: 'admin@iwana.local',
+    role,
+    status: 'ACTIVE',
+    mfaEnabled: true,
+    firstName: 'Admin',
+    lastName: 'Plataforma',
+    phone: null as string | null,
+    timezone: 'America/Bogota',
+    language: 'es-CO',
+    lastLoginAt: buildIsoAt(-1, 8),
+    createdAt: buildIsoAt(-30, 9),
+    updatedAt: buildIsoAt(-1, 8),
+  };
+}
+
 export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
   const tenants = options.tenants ?? buildDefaultTenants();
   const platformAuditData = options.platformAuditData ?? buildDefaultPlatformAuditData();
@@ -547,6 +584,10 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
     const canViewUsage = () =>
       platformRole === 'SYSTEM_ADMIN' || grantedUsageRoles.includes(platformRole);
     let isLoggedIn = false;
+    // Identidad de la consola y perfil propio (T7, plan 2026-11-25): mismo contrato que el API real.
+    const defaultBranding = buildDefaultPlatformBranding();
+    let branding = { ...defaultBranding };
+    let profile = buildDefaultPlatformProfile(platformRole);
 
     // Mock central para flujos web de plataforma sin backend real.
     await page.route('**/api/v1/**', async (route) => {
@@ -612,6 +653,40 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
           contentType: 'application/json',
           body: JSON.stringify({ data: { accessToken: buildMockJwt() } }),
         });
+        return;
+      }
+
+      const pathname = new URL(url).pathname;
+      const brandingWrite =
+        (pathname.endsWith('/platform/branding') && method === 'PATCH') ||
+        (pathname.endsWith('/platform/branding/reset') && method === 'POST');
+      if (brandingWrite && platformRole !== 'SYSTEM_ADMIN') {
+        // Igual que `platform-branding.controller.ts`: escribir es solo de SYSTEM_ADMIN.
+        await route.fulfill({ status: 403, json: { code: 'FORBIDDEN', message: 'Prohibido' } });
+        return;
+      }
+
+      if (pathname.endsWith('/platform/branding') && (method === 'GET' || method === 'PATCH')) {
+        if (method === 'PATCH') {
+          const body = request.postDataJSON() as Partial<typeof branding>;
+          branding = { ...branding, ...body, updatedAt: new Date().toISOString() };
+        }
+        await route.fulfill({ status: 200, json: { data: branding } });
+        return;
+      }
+
+      if (pathname.endsWith('/platform/branding/reset') && method === 'POST') {
+        branding = { ...defaultBranding, updatedAt: new Date().toISOString() };
+        await route.fulfill({ status: 200, json: { data: branding } });
+        return;
+      }
+
+      if (pathname.endsWith('/platform-users/me') && (method === 'GET' || method === 'PATCH')) {
+        if (method === 'PATCH') {
+          const body = request.postDataJSON() as Partial<typeof profile>;
+          profile = { ...profile, ...body, updatedAt: new Date().toISOString() };
+        }
+        await route.fulfill({ status: 200, json: { data: profile } });
         return;
       }
 

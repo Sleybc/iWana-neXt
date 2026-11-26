@@ -296,7 +296,7 @@ export function ProfileForm() {
             </div>
           )}
           {successMessage && (
-            <div className={FORM_ALERT_SUCCESS_CLASS}>
+            <div role="status" className={FORM_ALERT_SUCCESS_CLASS}>
               <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
               <p>{successMessage}</p>
             </div>

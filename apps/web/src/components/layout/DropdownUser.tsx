@@ -16,6 +16,7 @@ import {
   interactiveFocusClassName,
 } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { guardLeave } from '@/lib/leave-guard';
 
 export function platformRoleToLabel(role: string): string {
   const labels: Record<string, string> = {
@@ -106,7 +107,8 @@ export const DropdownUser = () => {
           disabled={isLoggingOut}
           onClick={(event) => {
             event.preventDefault();
-            void handleLogout();
+            // Con cambios sin guardar se cierra el menú para dejar paso al diálogo de confirmación.
+            if (guardLeave(() => void handleLogout())) setOpen(false);
           }}
           className={cn('gap-3 rounded-lg px-3 py-2', interactiveFocusClassName)}
         >

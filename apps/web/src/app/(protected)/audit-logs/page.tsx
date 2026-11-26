@@ -41,6 +41,7 @@ import {
   parsePlatformPageSize,
 } from '@/lib/platform-page-size';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
+import { useRetryFocus } from '@/lib/use-retry-focus';
 
 const SUMMARY_LIMIT = AUDIT_LIST_MAX_LIMIT;
 
@@ -190,6 +191,10 @@ export default function AuditLogsPage() {
   const summaryKey =
     scope === 'platform' ? 'platform' : summaryTenant ? `tenant:${summaryTenant}` : '';
   const activeSummary = summaryState?.key === summaryKey ? summaryState : null;
+  const summaryFocus = useRetryFocus<HTMLHeadingElement, HTMLDivElement>(
+    !activeSummary,
+    activeSummary?.result === null,
+  );
   const summaryEntries = activeSummary?.result?.entries ?? EMPTY_SUMMARY;
 
   const [platformPageIndex, setPlatformPageIndex] = useState(1);
@@ -462,7 +467,12 @@ export default function AuditLogsPage() {
     isLoading: !activeSummary,
     hasMore: activeSummary?.result?.hasMore ?? false,
     hasError: activeSummary?.result === null,
-    onRetry: () => setSummaryRetry((value) => value + 1),
+    // Sin resumen activo se ve el esqueleto: el reintento no se confunde con el error anterior.
+    onRetry: summaryFocus.track(() => {
+      setSummaryState(null);
+      setSummaryRetry((value) => value + 1);
+    }),
+    errorRef: summaryFocus.errorRef,
     onGoToList: focusTable,
   };
 
@@ -515,7 +525,12 @@ export default function AuditLogsPage() {
 
         <TabsContent value="platform">
           <section aria-labelledby="platform-audit-heading">
-            <h2 id="platform-audit-heading" className="sr-only">
+            <h2
+              id="platform-audit-heading"
+              ref={summaryFocus.resultsRef}
+              tabIndex={-1}
+              className="sr-only"
+            >
               {PLATFORM_UI_COPY.audit.platformSectionTitle}
             </h2>
 
@@ -563,7 +578,12 @@ export default function AuditLogsPage() {
 
         <TabsContent value="tenant">
           <section aria-labelledby="tenant-audit-heading">
-            <h2 id="tenant-audit-heading" className="sr-only">
+            <h2
+              id="tenant-audit-heading"
+              ref={summaryFocus.resultsRef}
+              tabIndex={-1}
+              className="sr-only"
+            >
               {PLATFORM_UI_COPY.audit.tenantSectionTitle}
             </h2>
             <div className="mb-4 flex flex-wrap items-center justify-end gap-3">

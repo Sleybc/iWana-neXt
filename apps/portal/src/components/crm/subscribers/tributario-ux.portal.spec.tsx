@@ -125,9 +125,11 @@ describe('Tributario — cambios sin guardar', () => {
         activeTab="datos"
       />,
     );
-    expect(
-      screen.getByRole('tab', { name: 'Tributario (cambios sin guardar)' }),
-    ).toBeInTheDocument();
+    const tab = screen.getByRole('tab', { name: 'Tributario (cambios sin guardar)' });
+    // Mismo token que ds-owner fijó para el punto de la consola (contrato DS de settings).
+    const dot = tab.querySelector('[aria-hidden="true"]');
+    expect(dot).toHaveClass('bg-warning-600', 'dark:bg-warning-400');
+    expect(dot).not.toHaveClass('bg-amber-500');
   });
 });
 

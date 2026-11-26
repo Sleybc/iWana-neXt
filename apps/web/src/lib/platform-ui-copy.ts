@@ -81,6 +81,8 @@ export const PLATFORM_UI_COPY = {
     loading: 'Cargando cuentas de plataforma…',
     empty: 'Aún no hay cuentas de plataforma.',
     emptyFiltered: 'No encontramos cuentas con esos filtros.',
+    found: (total: number) =>
+      total === 1 ? '1 cuenta encontrada.' : `${total} cuentas encontradas.`,
     searchLabel: 'Buscar por nombre',
     searchPlaceholder: 'Nombre o apellidos',
     searchAction: 'Buscar',
@@ -399,6 +401,12 @@ export const PLATFORM_UI_COPY = {
     emptyParkTitle: 'Aún no hay empresas registradas',
     emptyParkHint: 'Cuando registres la primera empresa, aparecerá aquí con su estado operativo.',
     emptyFilterTitle: 'Sin empresas con estos filtros',
+    found: (count: number, hasMore: boolean) =>
+      hasMore
+        ? `Se muestran las primeras ${count} empresas. Hay más con «Cargar más».`
+        : count === 1
+          ? '1 empresa encontrada.'
+          : `${count} empresas encontradas.`,
     emptyFilterHint:
       'Ajusta la búsqueda o el estado, o limpia el filtro para ver todo el directorio.',
     filterDirectory: 'Filtrar directorio',
@@ -582,6 +590,7 @@ export const PLATFORM_UI_COPY = {
     tabIdentity: 'Identidad',
     tabSecurity: 'Seguridad',
     tabTeam: 'Visibilidad para soporte',
+    tabPending: ' (cambios sin guardar)',
     team: {
       title: 'Qué ve Soporte iWana',
       usageLabel: 'Mostrar uso por empresa a Soporte iWana',
@@ -653,6 +662,10 @@ export const PLATFORM_UI_COPY = {
       mimeHelpFavicon: 'PNG o ICO · máx. 256 KB · cuadrado, entre 32×32 y 512×512.',
       mimeHelpLoginBg: 'PNG, JPG o WEBP · máx. 5 MB · mín. 1280×720.',
       successSave: 'Identidad guardada.',
+      leaveTitle: '¿Salir sin guardar?',
+      leaveBody: 'Hay cambios en Identidad que aún no guardaste. Si sales ahora, se perderán.',
+      leaveStay: 'Seguir editando',
+      leaveConfirm: 'Salir sin guardar',
       successReset: 'Valores por defecto restaurados.',
       successUpload: 'Imagen aplicada.',
       successRemove: 'Imagen eliminada. Se usa la imagen por defecto.',

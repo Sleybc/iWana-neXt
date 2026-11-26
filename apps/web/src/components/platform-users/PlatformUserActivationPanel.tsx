@@ -59,6 +59,7 @@ export function PlatformUserActivationPanel({
   onSelect,
   onEdit,
   pagination,
+  listHeadingRef,
 }: {
   accounts: PlatformUserDirectoryEntry[];
   total: number;
@@ -66,6 +67,8 @@ export function PlatformUserActivationPanel({
   onSelect: (id: string) => void;
   onEdit?: () => void;
   pagination?: React.ReactNode;
+  /** Destino del foco tras reintentar la carga del directorio. */
+  listHeadingRef?: React.RefObject<HTMLElement | null>;
 }) {
   const detailId = useId();
   const headingId = useId();
@@ -95,7 +98,16 @@ export function PlatformUserActivationPanel({
   return (
     <div className="grid items-start gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
       <Card variant="outline" className="min-w-0 p-3 sm:p-4">
-        <h2 className="px-2 pb-3 text-base font-semibold text-iwana-primary dark:text-white">
+        <h2
+          ref={(node) => {
+            if (listHeadingRef) listHeadingRef.current = node;
+          }}
+          tabIndex={-1}
+          className={cn(
+            'px-2 pb-3 text-base font-semibold text-iwana-primary dark:text-white',
+            interactiveFocusClassName,
+          )}
+        >
           {COPY.total(total)}
         </h2>
         <ul className="space-y-1" aria-label={COPY.listLabel}>

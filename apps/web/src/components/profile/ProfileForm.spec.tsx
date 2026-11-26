@@ -191,6 +191,22 @@ describe('ProfileForm', () => {
     ).toBeInTheDocument();
   });
 
+  it('anuncia el perfil guardado en una región de estado', async () => {
+    platformUsersApi.updateMe.mockImplementation(async (payload: object) => ({
+      ...(await platformUsersApi.me()),
+      ...payload,
+    }));
+    render(<ProfileForm />);
+
+    const firstName = await screen.findByLabelText('Nombres');
+    await waitFor(() => expect(firstName).toHaveValue('Admin'));
+    fireEvent.change(firstName, { target: { value: 'Administra' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    const message = await screen.findByText('Perfil actualizado correctamente.');
+    expect(message.closest('[role="status"]')).not.toBeNull();
+  });
+
   it('confirma el cambio de correo fuera del formulario, que se cierra', async () => {
     platformUsersApi.changeLoginEmail.mockResolvedValue({ email: 'nuevo@iwana.co' });
     render(<ProfileForm />);

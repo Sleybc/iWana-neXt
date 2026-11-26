@@ -63,6 +63,8 @@ interface TenantsTableProps {
   sortDir?: SortDir;
   onSortChange?: (field: SortField, dir: SortDir) => void;
   titleRef?: Ref<HTMLHeadingElement>;
+  /** Destino del foco si el reintento vuelve a fallar. */
+  errorRef?: Ref<HTMLDivElement>;
 }
 
 const STATUS_FILTER_OPTIONS = [
@@ -220,6 +222,7 @@ export function TenantsTable({
   sortDir: controlledSortDir,
   onSortChange,
   titleRef,
+  errorRef,
 }: TenantsTableProps) {
   const router = useRouter();
   const [internalSearch, setInternalSearch] = useState(searchQuery);
@@ -374,20 +377,26 @@ export function TenantsTable({
       </div>
 
       {error && !isLoading ? (
-        <Alert variant="error" className="mt-4">
-          <AlertDescription>{error}</AlertDescription>
-          {onRetry ? (
-            <Button
-              type="button"
-              onClick={onRetry}
-              variant="secondary"
-              size="sm"
-              className="mt-3 min-h-11"
-            >
-              {PLATFORM_UI_COPY.dashboard.retry}
-            </Button>
-          ) : null}
-        </Alert>
+        <div
+          ref={errorRef}
+          tabIndex={-1}
+          className={cn('mt-4 rounded-xl', interactiveFocusClassName)}
+        >
+          <Alert variant="error">
+            <AlertDescription>{error}</AlertDescription>
+            {onRetry ? (
+              <Button
+                type="button"
+                onClick={onRetry}
+                variant="secondary"
+                size="sm"
+                className="mt-3 min-h-11"
+              >
+                {PLATFORM_UI_COPY.dashboard.retry}
+              </Button>
+            ) : null}
+          </Alert>
+        </div>
       ) : !isLoading && rows.length === 0 ? (
         <EmptyState
           className="py-10 text-center"

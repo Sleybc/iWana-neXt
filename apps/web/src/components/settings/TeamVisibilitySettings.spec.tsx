@@ -1,6 +1,12 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TeamVisibilitySettings } from './TeamVisibilitySettings';
+
+/** El foco está dentro de `element` y no se perdió en `body`. */
+const expectFocusIn = (element: HTMLElement) => {
+  expect(document.activeElement).not.toBe(document.body);
+  expect(document.activeElement).toContainElement(element);
+};
 
 let mockRole = 'SYSTEM_ADMIN';
 jest.mock('@/components/auth/AuthProvider', () => ({
@@ -62,6 +68,23 @@ describe('TeamVisibilitySettings (ADR-114 v1.3 §9)', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Reintentar' }));
     await waitFor(() => expect(tenantApi.usageVisibility).toHaveBeenCalledTimes(2));
     expect(await screen.findByRole('switch', { name: LABEL })).toBeInTheDocument();
+  });
+
+  it('tras reintentar, el foco va al título o, si vuelve a fallar, al aviso', async () => {
+    tenantApi.usageVisibility.mockRejectedValueOnce(new Error('503'));
+    render(<TeamVisibilitySettings />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Reintentar' }));
+    await waitFor(() => expect(screen.getByRole('heading', { level: 2 })).toHaveFocus());
+
+    tenantApi.usageVisibility.mockRejectedValue(new Error('503'));
+    const view = render(<TeamVisibilitySettings />);
+    await userEvent.click(
+      await within(view.container).findByRole('button', { name: 'Reintentar' }),
+    );
+    await waitFor(() => expect(tenantApi.usageVisibility).toHaveBeenCalledTimes(4));
+    await waitFor(() =>
+      expectFocusIn(within(view.container).getByRole('button', { name: 'Reintentar' })),
+    );
   });
 
   it('Soporte ve el valor en solo lectura', async () => {

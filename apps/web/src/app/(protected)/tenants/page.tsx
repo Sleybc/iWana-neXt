@@ -22,6 +22,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { TENANT_ATTENTION_STATUSES, type TenantStatusSummary } from '@iwana/shared';
 import { ApiError, tenantApi, type TenantListItem } from '@/lib/api-client';
 import { mergeUrlSearchParams, withSearchParams } from '@/lib/merge-url-search-params';
+import { useRetryFocus } from '@/lib/use-retry-focus';
 import { PICKER_SOFT_CAP } from '@/lib/picker-soft-cap';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 
@@ -70,7 +71,6 @@ export default function TenantsPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const directoryTitleRef = useRef<HTMLHeadingElement>(null);
   const tenantsRef = useRef<TenantListItem[]>([]);
 
   const [tenants, setTenants] = useState<TenantListItem[]>([]);
@@ -81,6 +81,11 @@ export default function TenantsPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const tableFocus = useRetryFocus<HTMLHeadingElement, HTMLDivElement>(isLoading, Boolean(error));
+  const pulseFocus = useRetryFocus<HTMLDivElement, HTMLDivElement>(isParkLoading, parkError);
+  const directoryTitleRef = tableFocus.resultsRef;
+  const [announcement, setAnnouncement] = useState('');
+  const announceNext = useRef(false);
   // La URL es la única fuente de verdad de los filtros. Antes había un espejo
   // en estado sincronizado en las dos direcciones y entraba en ping-pong.
   const statusFilter = parseStatusFilter(searchParams.get('status'));
@@ -213,7 +218,14 @@ export default function TenantsPage() {
         });
         setTenants((current) => (append ? [...current, ...response] : response));
         setHasMore(response.length === TENANTS_PAGE_SIZE);
+        if (!append && announceNext.current) {
+          announceNext.current = false;
+          setAnnouncement(
+            PLATFORM_UI_COPY.tenants.found(response.length, response.length === TENANTS_PAGE_SIZE),
+          );
+        }
       } catch {
+        announceNext.current = false;
         setError(PLATFORM_UI_COPY.dashboard.directoryError);
         if (!append) {
           setTenants([]);
@@ -226,6 +238,16 @@ export default function TenantsPage() {
     },
     [urlSearch, statusFilter],
   );
+
+  // Cada búsqueda (ya con retardo) o filtro nuevo anuncia su resultado; la carga inicial no.
+  const lastFiltersRef = useRef(`${urlSearch}|${statusFilter}`);
+  useEffect(() => {
+    const filters = `${urlSearch}|${statusFilter}`;
+    if (filters === lastFiltersRef.current) return;
+    lastFiltersRef.current = filters;
+    announceNext.current = true;
+    setAnnouncement('');
+  }, [urlSearch, statusFilter]);
 
   useEffect(() => {
     void loadTenants();
@@ -341,7 +363,7 @@ export default function TenantsPage() {
 
   const focusDirectory = useCallback(() => {
     directoryTitleRef.current?.focus();
-  }, []);
+  }, [directoryTitleRef]);
 
   const pulseCells = useMemo<PulseCellData[]>(() => {
     const current = new URLSearchParams(searchParams.toString());
@@ -379,7 +401,7 @@ export default function TenantsPage() {
         value: attention,
         state: 'idle',
         onClick: attention ? focusDirectory : undefined,
-        actionLabel: `${copy.chipAttention}. ${focusLabel}`,
+        actionLabel: focusLabel,
         hint: attention ? focusLabel : undefined,
       },
     ];
@@ -469,19 +491,27 @@ export default function TenantsPage() {
       />
 
       {isLoading ? <span className="sr-only">{PLATFORM_UI_COPY.tenants.loading}</span> : null}
+      <p role="status" className="sr-only">
+        {announcement}
+      </p>
 
       <TenantDirectoryPulse
         cells={pulseCells}
         isLoading={isParkLoading}
         hasError={parkError}
-        onRetry={() => void loadParkSummary()}
+        onRetry={pulseFocus.track(() => void loadParkSummary())}
+        focusRef={(node) => {
+          pulseFocus.resultsRef.current = node;
+          pulseFocus.errorRef.current = node;
+        }}
       />
 
       <TenantsTable
         tenants={tableRows}
         isLoading={isLoading}
         error={error}
-        onRetry={() => void loadTenants()}
+        onRetry={tableFocus.track(() => void loadTenants())}
+        errorRef={tableFocus.errorRef}
         searchQuery={searchInput}
         onSearchChange={setSearchInput}
         statusFilter={statusFilter}

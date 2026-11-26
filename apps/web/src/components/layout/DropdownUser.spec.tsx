@@ -8,9 +8,10 @@
  */
 
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DropdownUser, platformRoleToLabel } from './DropdownUser';
+import { setLeaveInterceptor } from '@/lib/leave-guard';
 
 const logoutMock = jest.fn().mockResolvedValue(undefined);
 const pushMock = jest.fn();
@@ -165,5 +166,25 @@ describe('DropdownUser (CA-S1-12-R / CA-S1-13-R / CA-S1-ROV / asChild)', () => {
     expect(settings.tagName).toBe('A');
     expect(settings).toHaveAttribute('href', '/settings');
     expect(logout.tagName).toBe('BUTTON');
+  });
+
+  it('con cambios sin guardar, «Cerrar sesión» espera la confirmación de la pantalla', async () => {
+    const user = userEvent.setup();
+    let pending: (() => void) | null = null;
+    const release = setLeaveInterceptor((proceed) => {
+      pending = proceed;
+      return true;
+    });
+    try {
+      render(<DropdownUser />);
+      await openUserMenu(user);
+      await user.click(screen.getByRole('menuitem', { name: /Cerrar sesión/i }));
+      expect(logoutMock).not.toHaveBeenCalled();
+      expect(pending).not.toBeNull();
+      await act(async () => pending?.());
+      expect(logoutMock).toHaveBeenCalledTimes(1);
+    } finally {
+      release();
+    }
   });
 });

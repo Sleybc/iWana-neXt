@@ -65,6 +65,8 @@ interface AuditSummaryProps {
   hasError?: boolean;
   onRetry?: () => void;
   onGoToList?: () => void;
+  /** Destino del foco si el reintento vuelve a fallar. */
+  errorRef?: React.Ref<HTMLDivElement>;
   /** 'platform' muestra empresas con cambios; 'tenant' muestra quién cambió */
   mode: 'platform' | 'tenant';
   tenants?: TenantInfo[];
@@ -214,6 +216,7 @@ export function AuditSummary({
   hasError = false,
   onRetry,
   onGoToList,
+  errorRef,
   mode,
   tenants = [],
   tenantName,
@@ -390,11 +393,13 @@ export function AuditSummary({
           ))}
         </div>
       ) : hasError ? (
-        <ErrorState
-          message={COPY.summaryError}
-          onRetry={onRetry}
-          retryLabel={PLATFORM_UI_COPY.dashboard.retry}
-        />
+        <div ref={errorRef} tabIndex={-1} className={cn('rounded-xl', interactiveFocusClassName)}>
+          <ErrorState
+            message={COPY.summaryError}
+            onRetry={onRetry}
+            retryLabel={PLATFORM_UI_COPY.dashboard.retry}
+          />
+        </div>
       ) : (
         <>
           {hasMore ? (

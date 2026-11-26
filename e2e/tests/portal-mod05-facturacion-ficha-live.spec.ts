@@ -1439,24 +1439,34 @@ test.describe('MOD05↔MOD14 Facturación en la ficha estilo UISP — E2E vivo',
       { timeout: 45_000 },
     );
 
-    // Teclado: flechas, Inicio y Fin mueven el foco, activan la pestaña y actualizan la URL.
+    // Teclado (activación manual): flechas, Inicio y Fin solo mueven el foco; Enter/Espacio activan.
     const tab = (name: string) => page.getByRole('tab', { name, exact: true });
     await tab('Facturas').focus();
-    const steps: Array<[string, string, Subtab]> = [
-      ['ArrowRight', 'Pagos', 'pagos'],
-      ['ArrowRight', 'Estado de cuenta', 'estado'],
-      ['ArrowRight', 'Facturas', 'facturas'],
-      ['ArrowLeft', 'Estado de cuenta', 'estado'],
-      ['Home', 'Facturas', 'facturas'],
-      ['End', 'Estado de cuenta', 'estado'],
+    const urlBeforeArrows = page.url();
+    const steps: Array<[string, string]> = [
+      ['ArrowRight', 'Pagos'],
+      ['ArrowRight', 'Estado de cuenta'],
+      ['ArrowRight', 'Facturas'],
+      ['ArrowLeft', 'Estado de cuenta'],
+      ['Home', 'Facturas'],
+      ['End', 'Estado de cuenta'],
     ];
-    for (const [key, name, sub] of steps) {
+    for (const [key, name] of steps) {
       await page.keyboard.press(key);
       await expect(tab(name), `${key} → ${name}`).toBeFocused();
-      await expect(tab(name)).toHaveAttribute('aria-selected', 'true');
-      await expect(page).toHaveURL(new RegExp(`[?&]sub=${sub}(?:&|$)`, 'u'));
-      await expect(page).toHaveURL(/[?&]tab=facturacion(?:&|$)/u);
+      await expect(tab('Facturas')).toHaveAttribute('aria-selected', 'true');
+      expect(page.url(), `${key} no cambia la URL`).toBe(urlBeforeArrows);
     }
+    await page.keyboard.press('Enter');
+    await expect(tab('Estado de cuenta')).toHaveAttribute('aria-selected', 'true');
+    await expect(page).toHaveURL(/[?&]sub=estado(?:&|$)/u);
+    await page.keyboard.press('ArrowLeft');
+    await expect(tab('Pagos')).toBeFocused();
+    await expect(tab('Estado de cuenta')).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('Space');
+    await expect(tab('Pagos')).toHaveAttribute('aria-selected', 'true');
+    await expect(page).toHaveURL(/[?&]sub=pagos(?:&|$)/u);
+    await expect(page).toHaveURL(/[?&]tab=facturacion(?:&|$)/u);
     await expect(page.getByRole('tablist', { name: 'Secciones de facturación' })).toBeVisible();
 
     // axe por subpestaña en claro y oscuro, con sus datos cargados.

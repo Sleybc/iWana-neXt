@@ -1,6 +1,13 @@
 import '@testing-library/jest-dom';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type { Ref } from 'react';
 import AuditLogsPage from './page';
+
+/** El foco está dentro de `element` y no se perdió en `body`. */
+const expectFocusIn = (element: HTMLElement) => {
+  expect(document.activeElement).not.toBe(document.body);
+  expect(document.activeElement).toContainElement(element);
+};
 
 let searchParamsMock = new URLSearchParams();
 const replaceMock = jest.fn();
@@ -75,6 +82,9 @@ jest.mock('@/components/audit/AuditSummary', () => ({
     isLoading,
     activePreset,
     onPresetChange,
+    hasError,
+    onRetry,
+    errorRef,
   }: {
     mode: 'platform' | 'tenant';
     tenantName?: string;
@@ -82,9 +92,20 @@ jest.mock('@/components/audit/AuditSummary', () => ({
     isLoading: boolean;
     activePreset: string | null;
     onPresetChange: (preset: string | null) => void;
+    hasError?: boolean;
+    onRetry?: () => void;
+    errorRef?: Ref<HTMLDivElement>;
   }) => (
     <section data-testid={`${mode}-summary`}>
       <p>{mode === 'tenant' ? `Resumen de ${tenantName}` : 'Resumen de plataforma'}</p>
+      {hasError && !isLoading ? (
+        <div ref={errorRef} tabIndex={-1}>
+          <p>Resumen caído</p>
+          <button type="button" onClick={onRetry}>
+            Reintentar resumen
+          </button>
+        </div>
+      ) : null}
       <p>{isLoading ? 'Cargando resumen' : `Entradas resumen: ${entries.length}`}</p>
       <p>Preset activo: {activePreset ?? 'ninguno'}</p>
       <button
@@ -361,6 +382,33 @@ describe('AuditLogsPage', () => {
       await screen.findByText('No pudimos cargar el historial. Reintenta en unos minutos.'),
     ).toBeInTheDocument();
     expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['carga', 'al encabezado de la sección'],
+    ['vuelve a fallar', 'al aviso'],
+  ])('T5: si el reintento del resumen %s, el foco va %s', async (outcome) => {
+    tenantListMock.mockResolvedValue([]);
+    let summaryCalls = 0;
+    platformAuditListMock.mockImplementation(({ limit }: { limit: number }) => {
+      if (limit !== 100) return Promise.resolve({ data: [], nextCursor: null });
+      summaryCalls += 1;
+      return summaryCalls === 1 || outcome === 'vuelve a fallar'
+        ? Promise.reject(new Error('caída'))
+        : Promise.resolve({ data: [], nextCursor: null });
+    });
+
+    render(<AuditLogsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Reintentar resumen' }));
+
+    await waitFor(() => expect(summaryCalls).toBe(2));
+    if (outcome === 'carga') {
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { name: 'Cambios de plataforma' })).toHaveFocus(),
+      );
+    } else {
+      await waitFor(() => expectFocusIn(screen.getByText('Resumen caído')));
+    }
   });
 
   it('CA-AUD-05: exporta con Descargar y filename de producto', async () => {

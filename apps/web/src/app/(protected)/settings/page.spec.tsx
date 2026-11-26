@@ -1,8 +1,15 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SettingsPage from './page';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
+import { guardLeave } from '@/lib/leave-guard';
+
+/** El foco está dentro de `element` y no se perdió en `body`. */
+const expectFocusIn = (element: HTMLElement) => {
+  expect(document.activeElement).not.toBe(document.body);
+  expect(document.activeElement).toContainElement(element);
+};
 
 const copy = PLATFORM_UI_COPY.settings;
 const identity = copy.identity;
@@ -41,7 +48,11 @@ jest.mock('next/navigation', () => ({
     const search = React.useSyncExternalStore(
       (listener) => {
         window.addEventListener('popstate', listener);
-        return () => window.removeEventListener('popstate', listener);
+        window.addEventListener('test:urlchange', listener);
+        return () => {
+          window.removeEventListener('popstate', listener);
+          window.removeEventListener('test:urlchange', listener);
+        };
       },
       () => window.location.search,
     );
@@ -52,7 +63,8 @@ jest.mock('next/navigation', () => ({
     replace: (url: string, options?: { scroll?: boolean }) => {
       mockReplace(url, options);
       window.history.replaceState(null, '', url);
-      window.dispatchEvent(new PopStateEvent('popstate'));
+      // Un replace de Next.js no emite popstate: ese evento es solo de Atrás/Adelante.
+      window.dispatchEvent(new Event('test:urlchange'));
     },
   }),
 }));
@@ -140,19 +152,154 @@ describe('SettingsPage', () => {
     });
   });
 
-  it('conserva un borrador al cambiar de sección con flechas y actualiza la URL', async () => {
+  it('las flechas mueven el foco sin tocar la URL; Enter cambia de sección y conserva el borrador', async () => {
     const user = userEvent.setup();
     render(<SettingsPage />);
     const name = await screen.findByLabelText(identity.productLabel);
     await user.clear(name);
     await user.type(name, 'Nombre en borrador');
-    const identityTab = screen.getByRole('tab', { name: copy.tabIdentity });
-    identityTab.focus();
+    screen.getByRole('tab', { name: new RegExp(`^${copy.tabIdentity}`) }).focus();
     await user.keyboard('{ArrowRight}');
     expect(screen.getByRole('tab', { name: copy.tabSecurity })).toHaveFocus();
+    expect(mockReplace).not.toHaveBeenCalled();
+    await user.keyboard('{Enter}');
     expect(window.location.search).toBe('?seccion=seguridad');
-    await user.keyboard('{ArrowLeft}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: new RegExp(`^${copy.tabIdentity}`) }));
     expect(name).toHaveValue('Nombre en borrador');
+  });
+
+  describe('cambios sin guardar en Identidad', () => {
+    const identityTab = () => screen.getByRole('tab', { name: new RegExp(`^${copy.tabIdentity}`) });
+    let link: HTMLAnchorElement;
+
+    beforeEach(() => {
+      link = document.createElement('a');
+      link.href = '/tenants';
+      link.textContent = 'Empresas';
+      document.body.appendChild(link);
+    });
+
+    afterEach(() => link.remove());
+
+    const editName = async (user: ReturnType<typeof userEvent.setup>) => {
+      const name = await screen.findByLabelText(identity.productLabel);
+      await user.type(name, ' borrador');
+      return name;
+    };
+
+    it('marca la pestaña mientras hay cambios y la limpia al guardar', async () => {
+      const user = userEvent.setup();
+      render(<SettingsPage />);
+      await editName(user);
+      expect(identityTab()).toHaveAccessibleName(`${copy.tabIdentity}${copy.tabPending}`);
+
+      await user.click(screen.getByRole('button', { name: identity.save }));
+      await waitFor(() => expect(identityTab()).toHaveAccessibleName(copy.tabIdentity));
+    });
+
+    it('un enlace interno pide confirmación; «Seguir editando» se queda con el borrador', async () => {
+      const user = userEvent.setup();
+      render(<SettingsPage />);
+      const name = await editName(user);
+
+      expect(fireEvent.click(link)).toBe(false);
+      const dialog = await screen.findByRole('dialog', { name: identity.leaveTitle });
+      expect(dialog).toHaveTextContent(identity.leaveBody);
+      await waitFor(() =>
+        expect(within(dialog).getByRole('button', { name: identity.leaveStay })).toHaveFocus(),
+      );
+
+      await user.click(within(dialog).getByRole('button', { name: identity.leaveStay }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(mockReplace).not.toHaveBeenCalled();
+      expect(name).toHaveValue('iWana neXt borrador');
+    });
+
+    it('«Salir sin guardar» completa la navegación del enlace', async () => {
+      const user = userEvent.setup();
+      render(<SettingsPage />);
+      await editName(user);
+
+      fireEvent.click(link);
+      await user.click(await screen.findByRole('button', { name: identity.leaveConfirm }));
+      expect(mockReplace).toHaveBeenCalledWith('/tenants', undefined);
+    });
+
+    it('Atrás con cambios pide confirmación y deja la página donde está', async () => {
+      const user = userEvent.setup();
+      render(<SettingsPage />);
+      const before = window.history.length;
+      await editName(user);
+      // La centinela: una entrada más con la misma URL.
+      await waitFor(() => expect(window.history.length).toBe(before + 1));
+
+      window.history.back();
+      expect(await screen.findByRole('dialog', { name: identity.leaveTitle })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: identity.leaveStay }));
+      expect(window.location.pathname).toBe('/settings');
+      // Se repuso la centinela: un segundo Atrás vuelve a preguntar.
+      window.history.back();
+      expect(await screen.findByRole('dialog', { name: identity.leaveTitle })).toBeInTheDocument();
+      const go = jest.spyOn(window.history, 'go');
+      await user.click(screen.getByRole('button', { name: identity.leaveConfirm }));
+      expect(go).toHaveBeenCalledWith(-2);
+      go.mockRestore();
+    });
+
+    it('buscador global y cerrar sesión (guardLeave) piden confirmación con cambios', async () => {
+      const user = userEvent.setup();
+      render(<SettingsPage />);
+      await editName(user);
+      const proceed = jest.fn();
+
+      let held = false;
+      act(() => {
+        held = guardLeave(proceed);
+      });
+      expect(held).toBe(true);
+      expect(proceed).not.toHaveBeenCalled();
+      const dialog = await screen.findByRole('dialog', { name: identity.leaveTitle });
+      await user.click(within(dialog).getByRole('button', { name: identity.leaveStay }));
+      expect(proceed).not.toHaveBeenCalled();
+
+      act(() => {
+        guardLeave(proceed);
+      });
+      await user.click(await screen.findByRole('button', { name: identity.leaveConfirm }));
+      expect(proceed).toHaveBeenCalledTimes(1);
+    });
+
+    it('sin cambios, guardLeave sale al instante sin preguntar', async () => {
+      render(<SettingsPage />);
+      await screen.findByRole('button', { name: identity.save });
+      const proceed = jest.fn();
+      expect(guardLeave(proceed)).toBe(false);
+      expect(proceed).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('no intercepta una ruta que el router leería como otro sitio («//host»)', async () => {
+      const user = userEvent.setup();
+      render(<SettingsPage />);
+      await editName(user);
+      link.setAttribute('href', '/.//otro.example/ruta');
+
+      expect(fireEvent.click(link)).toBe(true);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(mockReplace).not.toHaveBeenCalled();
+    });
+
+    it('sin cambios no pregunta: el enlace sigue su curso', async () => {
+      render(<SettingsPage />);
+      await screen.findByLabelText(identity.productLabel);
+
+      const notPrevented = fireEvent.click(link);
+      expect(notPrevented).toBe(true);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
   });
 
   it('cambia de sección sin sumar entradas al historial y conserva los demás parámetros', async () => {
@@ -250,6 +397,25 @@ describe('SettingsPage', () => {
         expect(screen.getByRole('button', { name: identity.retry })).toBeInTheDocument();
       });
       expect(screen.getByText(identity.errorLoad)).toBeInTheDocument();
+    });
+  });
+
+  describe('tab Identidad — foco al reintentar', () => {
+    it('si la carga vuelve, el foco va al título de Identidad', async () => {
+      mockPlatformBrandingApi.get.mockRejectedValueOnce(new Error('Error de red'));
+      render(<SettingsPage />);
+      fireEvent.click(await screen.findByRole('button', { name: identity.retry }));
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { level: 2, name: identity.title })).toHaveFocus(),
+      );
+    });
+
+    it('si vuelve a fallar, el foco va al aviso', async () => {
+      mockPlatformBrandingApi.get.mockRejectedValue(new Error('Error de red'));
+      render(<SettingsPage />);
+      fireEvent.click(await screen.findByRole('button', { name: identity.retry }));
+      await waitFor(() => expect(mockPlatformBrandingApi.get).toHaveBeenCalledTimes(2));
+      await waitFor(() => expectFocusIn(screen.getByText(identity.errorLoad)));
     });
   });
 

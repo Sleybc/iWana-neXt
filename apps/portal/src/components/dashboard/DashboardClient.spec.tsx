@@ -428,7 +428,7 @@ describe('DashboardClient', () => {
     await user.click(refresh);
     expect(refresh).toBeDisabled();
     expect(screen.queryByRole('tab', { name: 'Recaudo' })).toBeNull();
-    expect(screen.getByRole('link', { name: 'Suscriptores activos' })).toBeVisible();
+    expect(screen.getByRole('link', { name: /^Suscriptores activos: / })).toBeVisible();
     await user.click(refresh);
     expect(billingSummary).toHaveBeenCalledTimes(3);
     finishRequest(billingSummaryFixture());
@@ -912,7 +912,7 @@ describe('DashboardClient', () => {
     expect(
       within(pulse)
         .getAllByRole('link')
-        .map((link) => link.getAttribute('aria-label')),
+        .map((link) => link.getAttribute('aria-label')?.split(':')[0]),
     ).toEqual([
       'Suscriptores activos',
       'Recaudo del mes',
@@ -926,7 +926,7 @@ describe('DashboardClient', () => {
       expect(cell.className).not.toMatch(/shadow-iwana/);
     }
     // Anatomía de celda: señal, frase y mini visual con datos de la misma fuente.
-    const cases = within(pulse).getByRole('link', { name: 'Casos abiertos' });
+    const cases = within(pulse).getByRole('link', { name: /^Casos abiertos: / });
     expect(within(cases).getByText('1 fuera de tiempo')).toBeInTheDocument();
     expect(within(cases).getByText('0 resueltos hoy')).toBeInTheDocument();
     expect(
@@ -959,22 +959,22 @@ describe('DashboardClient', () => {
   it('el pulso navega con filtros de URL (C-6)', async () => {
     render(<DashboardClient />);
 
-    expect(await screen.findByRole('link', { name: 'Suscriptores activos' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: /^Suscriptores activos: / })).toHaveAttribute(
       'href',
       '/dashboard/crm/subscribers?queue=active',
     );
-    expect(screen.getByRole('link', { name: 'Casos abiertos' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /^Casos abiertos: / })).toHaveAttribute(
       'href',
       '/dashboard/assurance?status=OPEN',
     );
-    expect(screen.getByRole('link', { name: 'Visitas de hoy' }).getAttribute('href')).toMatch(
+    expect(screen.getByRole('link', { name: /^Visitas de hoy: / }).getAttribute('href')).toMatch(
       /^\/dashboard\/scheduling\/agenda\?view=day&fromDate=\d{4}-\d{2}-\d{2}$/,
     );
-    expect(screen.getByRole('link', { name: 'Recaudo del mes' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /^Recaudo del mes: / })).toHaveAttribute(
       'href',
       '/dashboard/billing/payments',
     );
-    expect(screen.getByRole('link', { name: 'Cartera vencida' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /^Cartera vencida: / })).toHaveAttribute(
       'href',
       '/dashboard/billing/documents?paymentState=VENCIDO',
     );
@@ -1052,7 +1052,7 @@ describe('DashboardClient', () => {
     wfmGetSummary.mockRejectedValue(new Error('caída'));
     render(<DashboardClient />);
 
-    expect(await screen.findByRole('link', { name: 'Casos abiertos' })).toHaveTextContent('5');
+    expect(await screen.findByRole('link', { name: /^Casos abiertos: / })).toHaveTextContent('5');
     expect(screen.getByText('No pudimos revisar todas las áreas.')).toBeInTheDocument();
     expect(screen.queryByText('Todo al día')).not.toBeInTheDocument();
     expect(attentionRows().map((row) => row.getAttribute('aria-label'))).toEqual([
@@ -1062,7 +1062,7 @@ describe('DashboardClient', () => {
       'Atención: 2 planes sin precio vigente. Comercial',
     ]);
     // El pulso de campo no finge cero.
-    expect(screen.queryByRole('link', { name: 'Visitas de hoy' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^Visitas de hoy: / })).not.toBeInTheDocument();
   });
 
   it('fuentes nuevas: corte de hoy con página mínima y las tres colas de aprovisionamiento', async () => {
@@ -1107,7 +1107,7 @@ describe('DashboardClient', () => {
     setRole(UserRole.SUPPORT);
     render(<DashboardClient />);
 
-    await screen.findByRole('link', { name: 'Casos abiertos' });
+    await screen.findByRole('link', { name: /^Casos abiertos: / });
     expect(cutoffAgenda).toHaveBeenCalledTimes(1);
     expect(queueCounts).not.toHaveBeenCalled();
     expect(listProvisioningInbox).not.toHaveBeenCalled();
@@ -1150,7 +1150,7 @@ describe('DashboardClient', () => {
     expect(
       within(pulse)
         .getAllByRole('link')
-        .map((link) => link.getAttribute('aria-label')),
+        .map((link) => link.getAttribute('aria-label')?.split(':')[0]),
     ).toEqual([
       'Recaudo del mes',
       'Cartera vencida',
@@ -1183,7 +1183,7 @@ describe('DashboardClient', () => {
     const user = userEvent.setup();
     render(<DashboardClient />);
 
-    const offers = await screen.findByRole('button', { name: 'Ofertas en riesgo' });
+    const offers = await screen.findByRole('button', { name: /^Ofertas en riesgo: / });
     expect(offers.className).not.toMatch(/iwana-secondary/);
 
     await user.click(offers);
@@ -1257,7 +1257,7 @@ describe('DashboardClient', () => {
     });
     render(<DashboardClient />);
 
-    expect(await screen.findByRole('link', { name: 'Visitas de hoy' })).toHaveTextContent('3');
+    expect(await screen.findByRole('link', { name: /^Visitas de hoy: / })).toHaveTextContent('3');
     expect(screen.queryByRole('link', { name: /solicitud/ })).not.toBeInTheDocument();
   });
 });
@@ -1293,7 +1293,7 @@ describe('DashboardClient · Fase 2 (recaudo, cartera, neto y tendencia)', () =>
   it('Recaudo del mes: recaudado, lo facturado y la barra de avance con su porcentaje', async () => {
     render(<DashboardClient />);
 
-    const cell = await screen.findByRole('link', { name: 'Recaudo del mes' });
+    const cell = await screen.findByRole('link', { name: /^Recaudo del mes: / });
     await waitFor(() => expect(cell).toHaveTextContent(/\$148,2\sM/));
     expect(within(cell).getByText(/^Facturado \$182,6\sM$/)).toBeInTheDocument();
     // Presentación compacta (CA-PA-01): el porcentaje en la señal y solo la barra debajo.
@@ -1308,7 +1308,7 @@ describe('DashboardClient · Fase 2 (recaudo, cartera, neto y tendencia)', () =>
   it('Cartera vencida: monto, suscriptores en mora, tramo de más de 90 días y barra sin lima', async () => {
     render(<DashboardClient />);
 
-    const cell = await screen.findByRole('link', { name: 'Cartera vencida' });
+    const cell = await screen.findByRole('link', { name: /^Cartera vencida: / });
     await waitFor(() => expect(cell).toHaveTextContent(/\$36,9\sM/));
     expect(within(cell).getByText('214 suscriptores en mora')).toBeInTheDocument();
     expect(within(cell).getByText(/^\$6,4\sM con más de 90 días$/)).toBeInTheDocument();
@@ -1321,7 +1321,7 @@ describe('DashboardClient · Fase 2 (recaudo, cartera, neto y tendencia)', () =>
   it('Suscriptores activos: neto del mes con altas y retiros (N2)', async () => {
     render(<DashboardClient />);
 
-    const cell = await screen.findByRole('link', { name: 'Suscriptores activos' });
+    const cell = await screen.findByRole('link', { name: /^Suscriptores activos: / });
     expect(await within(cell).findByText('+38 este mes')).toBeInTheDocument();
     expect(within(cell).getByText('61 altas · 23 retiros')).toBeInTheDocument();
   });
@@ -1332,7 +1332,7 @@ describe('DashboardClient · Fase 2 (recaudo, cartera, neto y tendencia)', () =>
     );
     render(<DashboardClient />);
 
-    const cell = await screen.findByRole('link', { name: 'Suscriptores activos' });
+    const cell = await screen.findByRole('link', { name: /^Suscriptores activos: / });
     const badge = await within(cell).findByText('-5 este mes');
     expect(badge.className).not.toMatch(/iwana-secondary|lime/);
   });
@@ -1352,7 +1352,7 @@ describe('DashboardClient · Fase 2 (recaudo, cartera, neto y tendencia)', () =>
     );
     render(<DashboardClient />);
 
-    const cell = await screen.findByRole('link', { name: 'Recaudo del mes' });
+    const cell = await screen.findByRole('link', { name: /^Recaudo del mes: / });
     expect(await within(cell).findByText('112 % de lo facturado')).toBeInTheDocument();
     expect(within(cell).queryByRole('progressbar')).not.toBeInTheDocument();
   });
@@ -1418,7 +1418,7 @@ describe('DashboardClient · Fase 2 (recaudo, cartera, neto y tendencia)', () =>
       expect(
         within(pulse)
           .getAllByRole('link')
-          .map((link) => link.getAttribute('aria-label')),
+          .map((link) => link.getAttribute('aria-label')?.split(':')[0]),
       ).toEqual(['Suscriptores activos', 'Casos abiertos', 'Visitas de hoy']),
     );
     expect(screen.queryByRole('tab', { name: 'Recaudo' })).not.toBeInTheDocument();
@@ -1476,7 +1476,7 @@ describe('DashboardClient · Fase 2 (recaudo, cartera, neto y tendencia)', () =>
     ).toBeInTheDocument();
     expect(billingSummary).toHaveBeenCalledTimes(1);
     expect(casesSeries).not.toHaveBeenCalled();
-    expect(await screen.findByRole('link', { name: 'Recaudo del mes' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /^Recaudo del mes: / })).toBeInTheDocument();
   });
 
   it('SALES ve Recaudo y Cartera en el pulso, la pestaña Recaudo y el área de Facturación', async () => {
@@ -1484,8 +1484,10 @@ describe('DashboardClient · Fase 2 (recaudo, cartera, neto y tendencia)', () =>
     render(<DashboardClient />);
 
     const pulse = await screen.findByRole('region', { name: 'Indicadores núcleo' });
-    expect(await within(pulse).findByRole('link', { name: 'Recaudo del mes' })).toBeInTheDocument();
-    expect(within(pulse).getByRole('link', { name: 'Cartera vencida' })).toBeInTheDocument();
+    expect(
+      await within(pulse).findByRole('link', { name: /^Recaudo del mes: / }),
+    ).toBeInTheDocument();
+    expect(within(pulse).getByRole('link', { name: /^Cartera vencida: / })).toBeInTheDocument();
     expect(
       within(pulse).queryByRole('link', { name: /Planes sin precio/ }),
     ).not.toBeInTheDocument();
@@ -1509,8 +1511,8 @@ describe('DashboardClient · Fase 2 (recaudo, cartera, neto y tendencia)', () =>
 
       await screen.findByRole('region', { name: 'Indicadores núcleo' });
       expect(billingSummary).not.toHaveBeenCalled();
-      expect(screen.queryByRole('link', { name: 'Recaudo del mes' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('link', { name: 'Cartera vencida' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /^Recaudo del mes: / })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /^Cartera vencida: / })).not.toBeInTheDocument();
       expect(screen.queryByRole('tab', { name: 'Recaudo' })).not.toBeInTheDocument();
       expect(screen.queryByRole('link', { name: 'Abrir Facturación' })).not.toBeInTheDocument();
     },
@@ -1532,7 +1534,7 @@ describe('DashboardClient · Fase 2 (recaudo, cartera, neto y tendencia)', () =>
       subscribersSummary.mockRejectedValue(makeError());
       render(<DashboardClient />);
 
-      const cell = await screen.findByRole('link', { name: 'Suscriptores activos' });
+      const cell = await screen.findByRole('link', { name: /^Suscriptores activos: / });
       await waitFor(() => expect(subscribersSummary).toHaveBeenCalled());
       await waitFor(() => expect(within(cell).getByText('4 suspendidos')).toBeInTheDocument());
       expect(cell).toHaveTextContent('120');
@@ -1555,7 +1557,7 @@ describe('DashboardClient · Fase 2 (recaudo, cartera, neto y tendencia)', () =>
 
   it('P2-2: otra persona con el mismo perfil y empresa no reutiliza la caché del inicio', async () => {
     const { unmount } = render(<DashboardClient />);
-    await screen.findByRole('link', { name: 'Recaudo del mes' });
+    await screen.findByRole('link', { name: /^Recaudo del mes: / });
     expect(billingSummary).toHaveBeenCalledTimes(1);
     unmount();
 

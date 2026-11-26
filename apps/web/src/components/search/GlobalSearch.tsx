@@ -7,6 +7,7 @@ import { cn, interactiveFocusClassName } from '@iwana/ui';
 import { GlobalSearchOverlay } from './GlobalSearchOverlay';
 import { useGlobalSearch } from './useGlobalSearch';
 import type { GlobalSearchItem } from '@/lib/api-client';
+import { guardLeave } from '@/lib/leave-guard';
 
 function getShortcutLabel() {
   if (typeof window === 'undefined') {
@@ -91,8 +92,10 @@ export function GlobalSearch() {
     setQuery('');
     setIsOpen(false);
     setActiveIndex(0);
-    startTransition(() => {
-      router.push(item.route);
+    guardLeave(() => {
+      startTransition(() => {
+        router.push(item.route);
+      });
     });
   };
 

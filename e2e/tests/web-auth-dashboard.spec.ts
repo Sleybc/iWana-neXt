@@ -158,7 +158,8 @@ test.describe('Web dashboard — cifras del resumen por estado (E-1)', () => {
       'Requieren atención': '24',
     } as const;
     for (const [label, value] of Object.entries(expected)) {
-      const cell = signal.locator(`[aria-label="${label}"]`);
+      // Contrato DS v1.6: el nombre accesible es «rótulo: cifra[. acción]».
+      const cell = signal.locator(`[aria-label^="${label}: ${value}"]`);
       await expect(cell).toContainText(value);
     }
     // Fase 2 (CA-PP2-02): con `period` v1.1 la pista de activas es el movimiento del mes.

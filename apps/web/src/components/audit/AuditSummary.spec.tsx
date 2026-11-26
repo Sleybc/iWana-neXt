@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom';
+import { createRef } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { AuditSummary } from './AuditSummary';
 import type { SummaryEntry } from './AuditSummary';
@@ -114,6 +115,27 @@ describe('AuditSummary', () => {
     expect(screen.queryByText('Cambios críticos')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('con error, errorRef apunta a un contenedor enfocable que contiene el aviso', () => {
+    const errorRef = createRef<HTMLDivElement>();
+    render(
+      <AuditSummary
+        entries={[]}
+        hasError
+        onRetry={jest.fn()}
+        errorRef={errorRef}
+        isLoading={false}
+        mode="platform"
+        window="24h"
+        onWindowChange={jest.fn()}
+        activePreset={null}
+        onPresetChange={jest.fn()}
+      />,
+    );
+
+    expect(errorRef.current).toHaveAttribute('tabindex', '-1');
+    expect(errorRef.current).toContainElement(screen.getByRole('alert'));
   });
 
   it('CA-AUD-07: ventana temporal usa min-h-11', () => {

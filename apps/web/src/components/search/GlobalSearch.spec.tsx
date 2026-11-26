@@ -3,6 +3,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GlobalSearch } from './GlobalSearch';
 import { globalSearchApi } from '@/lib/api-client';
+import { setLeaveInterceptor } from '@/lib/leave-guard';
 
 const pushMock = jest.fn();
 let pathnameMock = '/dashboard';
@@ -101,6 +102,54 @@ describe('GlobalSearch', () => {
         '/users?tenant=empresa-demo&search=lina%40empresa.com&openUser=user-2',
       );
     });
+  });
+
+  it('con cambios sin guardar, navegar a un resultado espera la confirmación', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    (globalSearchApi.search as jest.Mock).mockResolvedValue({
+      query: 'lili',
+      tookMs: 10,
+      groups: [
+        {
+          type: 'users',
+          label: 'Usuarios de empresa',
+          total: 1,
+          items: [
+            {
+              id: 'user-1',
+              type: 'user',
+              title: 'Liliana Ruiz',
+              subtitle: 'Empresa Demo',
+              meta: 'Activo',
+              route: '/users?openUser=user-1',
+              highlights: [],
+            },
+          ],
+        },
+      ],
+    });
+    let pending: (() => void) | null = null;
+    const release = setLeaveInterceptor((proceed) => {
+      pending = proceed;
+      return true;
+    });
+    try {
+      render(<GlobalSearch />);
+      const input = screen.getByLabelText('Buscar en la plataforma');
+      await user.click(input);
+      await user.type(input, 'lili');
+      await act(async () => {
+        jest.advanceTimersByTime(200);
+      });
+      await screen.findAllByText('Liliana Ruiz');
+      await user.keyboard('{Enter}');
+      expect(pushMock).not.toHaveBeenCalled();
+      expect(pending).not.toBeNull();
+      act(() => pending?.());
+      await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/users?openUser=user-1'));
+    } finally {
+      release();
+    }
   });
 
   it('should abrir el buscador con Ctrl+K', async () => {

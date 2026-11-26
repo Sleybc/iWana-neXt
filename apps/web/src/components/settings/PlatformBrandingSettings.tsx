@@ -33,6 +33,8 @@ import {
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 import { settingsSectionPanelClassName, settingsWellClassName } from './settings-shell';
+import { useLeaveGuard } from './useLeaveGuard';
+import { useRetryFocus } from '@/lib/use-retry-focus';
 
 const copy = PLATFORM_UI_COPY.settings.identity;
 
@@ -397,7 +399,12 @@ function IdentityLoadingSkeleton() {
   );
 }
 
-export function PlatformBrandingSettings() {
+interface PlatformBrandingSettingsProps {
+  /** Avisa si hay cambios sin guardar (la página marca la pestaña Identidad). */
+  onDirtyChange?: (dirty: boolean) => void;
+}
+
+export function PlatformBrandingSettings({ onDirtyChange }: PlatformBrandingSettingsProps = {}) {
   const { refresh: refreshPublicBranding } = usePlatformBrandingAssets();
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [isLoadingData, setIsLoadingData] = useState(true);
@@ -428,12 +435,15 @@ export function PlatformBrandingSettings() {
     },
   });
 
+  const leaveGuard = useLeaveGuard(isDirty);
+  const retryFocus = useRetryFocus<HTMLHeadingElement, HTMLDivElement>(
+    isLoadingData,
+    loadError !== null,
+  );
+
   useEffect(() => {
-    if (!isDirty) return;
-    const protectDraft = (event: BeforeUnloadEvent) => event.preventDefault();
-    window.addEventListener('beforeunload', protectDraft);
-    return () => window.removeEventListener('beforeunload', protectDraft);
-  }, [isDirty]);
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   useEffect(() => {
     let mounted = true;
@@ -645,39 +655,54 @@ export function PlatformBrandingSettings() {
       ) : null}
 
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-iwana-primary dark:text-white">{copy.title}</h2>
+        <h2
+          ref={retryFocus.resultsRef}
+          tabIndex={-1}
+          className={cn(
+            'text-lg font-semibold text-iwana-primary dark:text-white',
+            interactiveFocusClassName,
+          )}
+        >
+          {copy.title}
+        </h2>
         <p className="max-w-2xl text-sm text-gray-500 dark:text-gray-400">{copy.help}</p>
       </div>
 
       {isLoadingData ? <IdentityLoadingSkeleton /> : null}
 
       {loadError && !isLoadingData ? (
-        <Alert variant="error" icon={<CircleAlert className="h-5 w-5" />}>
-          <div className="flex flex-1 items-start justify-between gap-3">
-            <AlertDescription className="mt-0">{loadError}</AlertDescription>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setIsLoadingData(true);
-                setLoadError(null);
-                platformBrandingApi
-                  .get()
-                  .then((branding) => {
-                    reset(toFormValues(branding));
-                    setIsLoadingData(false);
-                  })
-                  .catch((error: unknown) => {
-                    setLoadError(getErrorMessage(error, copy.errorLoad));
-                    setIsLoadingData(false);
-                  });
-              }}
-            >
-              {copy.retry}
-            </Button>
-          </div>
-        </Alert>
+        <div
+          ref={retryFocus.errorRef}
+          tabIndex={-1}
+          className={cn('rounded-xl', interactiveFocusClassName)}
+        >
+          <Alert variant="error" icon={<CircleAlert className="h-5 w-5" />}>
+            <div className="flex flex-1 items-start justify-between gap-3">
+              <AlertDescription className="mt-0">{loadError}</AlertDescription>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={retryFocus.track(() => {
+                  setIsLoadingData(true);
+                  setLoadError(null);
+                  platformBrandingApi
+                    .get()
+                    .then((branding) => {
+                      reset(toFormValues(branding));
+                      setIsLoadingData(false);
+                    })
+                    .catch((error: unknown) => {
+                      setLoadError(getErrorMessage(error, copy.errorLoad));
+                      setIsLoadingData(false);
+                    });
+                })}
+              >
+                {copy.retry}
+              </Button>
+            </div>
+          </Alert>
+        </div>
       ) : null}
 
       {!isLoadingData && !loadError ? (
@@ -844,6 +869,15 @@ export function PlatformBrandingSettings() {
           if (!isResetting) setConfirmReset(false);
         }}
         isConfirming={isResetting}
+      />
+      <ConfirmDialog
+        open={leaveGuard.open}
+        title={copy.leaveTitle}
+        description={copy.leaveBody}
+        cancelLabel={copy.leaveStay}
+        confirmLabel={copy.leaveConfirm}
+        onConfirm={leaveGuard.confirm}
+        onCancel={leaveGuard.stay}
       />
     </div>
   );

@@ -26,6 +26,7 @@ const cells: PulseCellData[] = [
     label: COPY.dashboard.chipAttention,
     value: 1,
     onClick: onAttention,
+    actionLabel: COPY.tenants.focusDirectory,
     state: 'idle',
   },
 ];
@@ -82,19 +83,24 @@ describe('TenantDirectoryPulse', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
-  it('enlaza a las empresas activas con un nombre accesible que describe el destino', () => {
+  it('enlaza a las empresas activas con un nombre que dice rótulo, cifra y destino', () => {
     renderPulse();
 
-    expect(screen.getByRole('link', { name: COPY.dashboard.viewActiveCompanies })).toHaveAttribute(
-      'href',
-      '/tenants?status=ACTIVE',
-    );
+    expect(
+      screen.getByRole('link', {
+        name: `${COPY.dashboard.chipActive}: 2. ${COPY.dashboard.viewActiveCompanies}`,
+      }),
+    ).toHaveAttribute('href', '/tenants?status=ACTIVE');
   });
 
-  it('expone la atención como una acción cuando hay empresas pendientes', () => {
+  it('expone la atención como una acción con su cifra y sin repetir el rótulo', () => {
     renderPulse();
 
-    fireEvent.click(screen.getByRole('button', { name: COPY.dashboard.chipAttention }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `${COPY.dashboard.chipAttention}: 1. ${COPY.tenants.focusDirectory}`,
+      }),
+    );
     expect(onAttention).toHaveBeenCalledTimes(1);
   });
 });

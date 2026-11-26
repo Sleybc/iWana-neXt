@@ -7,6 +7,12 @@ import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 
 import { makeTenantStatusSummary } from '@/test-utils/tenant-status-summary';
 
+/** El foco está dentro de `element` y no se perdió en `body`. */
+const expectFocusIn = (element: HTMLElement) => {
+  expect(document.activeElement).not.toBe(document.body);
+  expect(document.activeElement).toContainElement(element);
+};
+
 jest.mock('next/link', () => ({
   __esModule: true,
   default: ({
@@ -281,7 +287,7 @@ describe('TenantsPage', () => {
     render(<TenantsPage />);
 
     const chip = await screen.findByRole('link', {
-      name: PLATFORM_UI_COPY.dashboard.viewActiveCompanies,
+      name: /^Activas: \d+\. Ver empresas activas$/,
     });
     expect(chip).toHaveAttribute('href', expect.stringContaining('status=ACTIVE'));
   });
@@ -289,7 +295,9 @@ describe('TenantsPage', () => {
   it('Requieren atención lleva el foco al título del directorio', async () => {
     render(<TenantsPage />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /requieren atención.*directorio/i }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /^Requieren atención: \d+\. Ir al directorio$/ }),
+    );
     expect(screen.getByRole('heading', { name: 'Directorio', level: 2 })).toHaveFocus();
   });
 
@@ -391,7 +399,7 @@ describe('TenantsPage', () => {
     expect(screen.queryByText('Fibernet Colombia')).not.toBeInTheDocument();
 
     const activeChip = screen.getByRole('link', {
-      name: PLATFORM_UI_COPY.dashboard.viewActiveCompanies,
+      name: /^Activas: \d+\. Ver empresas activas$/,
     });
     expect(activeChip).toHaveTextContent('1');
     expect(activeChip).toHaveAttribute('href', expect.stringContaining('status=ACTIVE'));
@@ -406,9 +414,7 @@ describe('TenantsPage', () => {
     const strip = screen.getByRole('region', { name: PLATFORM_UI_COPY.tenants.pulseLabel });
     expect(strip).toContainElement(alert);
     expect(alert).toHaveTextContent(PLATFORM_UI_COPY.tenants.parkSummaryError);
-    expect(
-      within(strip).queryByRole('link', { name: PLATFORM_UI_COPY.dashboard.viewActiveCompanies }),
-    ).toBeNull();
+    expect(within(strip).queryByRole('link', { name: /Ver empresas activas$/ })).toBeNull();
     expect(within(strip).queryByText('0')).toBeNull();
 
     fireEvent.click(within(strip).getByRole('button', { name: PLATFORM_UI_COPY.dashboard.retry }));
@@ -416,7 +422,7 @@ describe('TenantsPage', () => {
       const recovered = screen.getByRole('region', { name: PLATFORM_UI_COPY.tenants.pulseLabel });
       expect(
         within(recovered).getByRole('link', {
-          name: PLATFORM_UI_COPY.dashboard.viewActiveCompanies,
+          name: /^Activas: \d+\. Ver empresas activas$/,
         }),
       ).toHaveTextContent('1');
     });
@@ -530,4 +536,77 @@ describe('TenantsPage', () => {
       expect(tenantApi.waitForProvisioning).not.toHaveBeenCalled();
     },
   );
+
+  describe('T4: anuncio de resultados de búsqueda', () => {
+    const announcer = () =>
+      screen
+        .getAllByRole('status')
+        .find((node) => node.tagName === 'P' && node.classList.contains('sr-only'))!;
+
+    it('la carga inicial no anuncia; una búsqueda nueva anuncia el número de resultados', async () => {
+      const view = render(<TenantsPage />);
+      expect(await screen.findByText('Fibernet Colombia')).toBeInTheDocument();
+      expect(announcer()).toHaveTextContent('');
+
+      tenantApi.list.mockResolvedValueOnce([mixedTenants[0]]);
+      useSearchParams.mockReturnValue(new URLSearchParams('search=Fiber'));
+      view.rerender(<TenantsPage />);
+      await waitFor(() =>
+        expect(announcer()).toHaveTextContent(PLATFORM_UI_COPY.tenants.found(1, false)),
+      );
+    });
+
+    it('anuncia el vacío cuando el filtro no encuentra empresas', async () => {
+      const view = render(<TenantsPage />);
+      expect(await screen.findByText('Fibernet Colombia')).toBeInTheDocument();
+
+      tenantApi.list.mockResolvedValueOnce([]);
+      useSearchParams.mockReturnValue(new URLSearchParams('status=SUSPENDED'));
+      view.rerender(<TenantsPage />);
+      await waitFor(() =>
+        expect(announcer()).toHaveTextContent(PLATFORM_UI_COPY.tenants.found(0, false)),
+      );
+    });
+  });
+
+  describe('T5: foco al reintentar', () => {
+    const retryIn = (region: HTMLElement) =>
+      within(region).getByRole('button', { name: PLATFORM_UI_COPY.dashboard.retry });
+
+    it('el directorio lleva el foco a su título si el reintento carga', async () => {
+      tenantApi.list.mockRejectedValueOnce(new Error('boom'));
+      render(<TenantsPage />);
+      const alert = await screen.findByText(PLATFORM_UI_COPY.dashboard.directoryError);
+
+      fireEvent.click(retryIn(alert.closest('[role="alert"]') as HTMLElement));
+      const title = screen.getByRole('heading', { name: 'Directorio', level: 2 });
+      await waitFor(() => expect(title).toHaveFocus());
+    });
+
+    it('el directorio lleva el foco al aviso si el reintento vuelve a fallar', async () => {
+      tenantApi.list.mockRejectedValue(new Error('boom'));
+      render(<TenantsPage />);
+      const alert = await screen.findByText(PLATFORM_UI_COPY.dashboard.directoryError);
+
+      fireEvent.click(retryIn(alert.closest('[role="alert"]') as HTMLElement));
+      await waitFor(() => expect(tenantApi.list).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expectFocusIn(screen.getByText(PLATFORM_UI_COPY.dashboard.directoryError)),
+      );
+    });
+
+    it('el pulso conserva el foco en su región tras reintentar', async () => {
+      tenantApi.summary.mockRejectedValueOnce(new Error('boom'));
+      render(<TenantsPage />);
+      await screen.findByText(PLATFORM_UI_COPY.tenants.parkSummaryError);
+      const strip = screen.getByRole('region', { name: PLATFORM_UI_COPY.tenants.pulseLabel });
+
+      fireEvent.click(retryIn(strip));
+      await waitFor(() =>
+        expectFocusIn(screen.getByRole('region', { name: PLATFORM_UI_COPY.tenants.pulseLabel })),
+      );
+      expect(document.activeElement).toHaveAttribute('role', 'group');
+      expect(document.activeElement).toHaveAccessibleName(PLATFORM_UI_COPY.tenants.pulseLabel);
+    });
+  });
 });
