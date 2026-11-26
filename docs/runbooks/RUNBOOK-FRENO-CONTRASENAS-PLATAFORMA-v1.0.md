@@ -25,12 +25,14 @@ El freno vence solo. Lo normal es esperar 15 minutos.
 5. Si no puede esperar, obtén la IP pública desde la que entra el titular y retira el freno de esa pareja. Antes, comprueba que la IP coincide con la `ipAddress` de la auditoría `ACCOUNT_LOCKED` con motivo `FRENO_CONTRASENA` de esa cuenta; si no coincide, no la retires. El correo se escribe en la entrada estándar y se termina con Ctrl-D; no va en los argumentos:
 
    ```bash
-   docker exec -i iwana_api_prod node dist/cli/clear-platform-login-throttle.js --ip=<ip-del-titular>
+   docker exec -i iwana_api_prod node dist/cli/clear-platform-login-throttle.js --ip=<ip-del-titular> --actor=<uuid-del-administrador>
    ```
 
-   Responde «Freno retirado.» o «La pareja no tenía freno ni intentos.». En el segundo caso el freno ya venció o el correo no es el de la cuenta.
+   El actor es otro administrador activo; solo si la cuenta es la única administradora activa puede figurar ella misma.
 
-6. Registra en el ticket quién lo pidió, quién lo ejecutó, la hora y la IP. La CLI no deja registro en la auditoría.
+   Responde «Freno retirado y auditado.» o «La pareja no tenía freno ni intentos.» (el freno ya venció o la IP no es la de la pareja; no se audita).
+
+6. Registra en el ticket quién lo pidió. La auditoría de plataforma guarda el actor, la cuenta, la IP y la hora como `UPDATE` con origen `RETIRO_FRENO_CLI`; también sirve para el límite diario del paso 4. La auditoría se escribe antes de borrar: si la CLI responde «El retiro no se completó…», comprueba en la auditoría y con un nuevo intento si el freno sigue; si se retiró sin registro, anótalo en el ticket.
 
 No toca el contador de ataque de la cuenta ni otras IP.
 

@@ -67,13 +67,13 @@ export function platformLoginPairKeys(
   email: string,
   ip: string | undefined,
   hashKey: Buffer,
-): { pair: string; lock: string; account: string } | null {
+): { pair: string; lock: string; account: string; client: string } | null {
   const client = canonicalClientIp(ip);
   if (!client) return null;
   const hash = (value: string): string => hmacPii(`${PREFIX}${value}`, hashKey);
   const account = hash(email.toLowerCase().trim());
   const pair = `${PREFIX}pair:${hash(`${account}|${client}`)}`;
-  return { pair, lock: `${pair}:lock`, account };
+  return { pair, lock: `${pair}:lock`, account, client };
 }
 
 export interface PasswordFailure {
