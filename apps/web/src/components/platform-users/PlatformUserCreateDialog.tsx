@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { PlatformRole } from '@iwana/shared';
 import {
   Button,
@@ -12,6 +12,7 @@ import {
   Input,
   Select,
 } from '@iwana/ui';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { ApiError, platformUsersApi } from '@/lib/api-client';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 import { getWebUserRoleLabel } from '@/lib/user-labels';
@@ -33,6 +34,21 @@ export function PlatformUserCreateDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [credential, setCredential] = useState<{ email: string; password: string } | null>(null);
+  const [confirmingClose, setConfirmingClose] = useState(false);
+  const createdTitleRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    if (credential) createdTitleRef.current?.focus();
+  }, [credential]);
+
+  function requestClose() {
+    if (saving) return;
+    if (credential) {
+      setConfirmingClose(true);
+    } else {
+      onClose();
+    }
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -69,12 +85,14 @@ export function PlatformUserCreateDialog({
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open && !saving) onClose();
+        if (!open) requestClose();
       }}
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{credential ? COPY.created : COPY.action}</DialogTitle>
+          <DialogTitle ref={createdTitleRef} tabIndex={-1}>
+            {credential ? COPY.created : COPY.action}
+          </DialogTitle>
           <DialogDescription>{credential ? COPY.handoff : COPY.description}</DialogDescription>
         </DialogHeader>
         {credential ? (
@@ -86,7 +104,7 @@ export function PlatformUserCreateDialog({
               value={credential.password}
               onFocus={(event) => event.currentTarget.select()}
             />
-            <Button type="button" onClick={onClose}>
+            <Button type="button" onClick={requestClose}>
               {COPY.done}
             </Button>
           </div>
@@ -125,6 +143,17 @@ export function PlatformUserCreateDialog({
           </form>
         )}
       </DialogContent>
+      {credential && (
+        <ConfirmDialog
+          open={confirmingClose}
+          title={COPY.confirmCloseTitle}
+          description={COPY.confirmCloseDescription}
+          cancelLabel={COPY.continueViewing}
+          confirmLabel={COPY.confirmClose}
+          onCancel={() => setConfirmingClose(false)}
+          onConfirm={onClose}
+        />
+      )}
     </Dialog>
   );
 }

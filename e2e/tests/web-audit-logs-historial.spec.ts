@@ -34,7 +34,7 @@ test.describe('Web Historial — audit-logs alineación', () => {
 
     await expect(page.getByRole('button', { name: 'Lectura', pressed: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Detalle', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Descargar' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Descargar CSV' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Ver detalle' })).toBeVisible();
 
     await expect(page.getByText('Técnico', { exact: true })).toHaveCount(0);
@@ -51,6 +51,7 @@ test.describe('Web Historial — audit-logs alineación', () => {
 
   test('D-5: 375 H1 + tabs + resumen + tabla', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await loginAsPlatformAdmin(page);
     await page.goto('/audit-logs');
     await expect(
@@ -67,6 +68,14 @@ test.describe('Web Historial — audit-logs alineación', () => {
       path: path.join(EVIDENCE_DIR, '375.png'),
       fullPage: true,
     });
+
+    const jump = page.getByRole('button', { name: 'Ir al listado de cambios' });
+    await expect(jump).toBeInViewport();
+    await jump.press('Enter');
+    const title = page.getByRole('heading', { name: 'Listado de cambios' });
+    await expect(title).toBeFocused();
+    await expect(title).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
   });
 
   test('D-5: 1280 chrome Lectura y señales en fila', async ({ page }) => {
@@ -79,7 +88,7 @@ test.describe('Web Historial — audit-logs alineación', () => {
     await expect(page.getByText('Administrador plataforma', { exact: true })).toBeVisible();
 
     await expect(page.getByRole('button', { name: 'Lectura', pressed: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Descargar' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Descargar CSV' })).toBeVisible();
     await expect(page.getByText('Empresas con cambios')).toBeVisible();
 
     await page.screenshot({
@@ -104,6 +113,23 @@ test.describe('Web Historial — audit-logs alineación', () => {
     expect(auditA11y.violations).toEqual([]);
   });
 
+  test('permite reintentar un resumen fallido sin ocultar el listado', async ({ page }) => {
+    let summaryUnavailable = true;
+    await page.route('**/api/v1/platform-audit-logs?limit=100', (route) => {
+      if (!summaryUnavailable) return route.fallback();
+      return route.fulfill({ status: 503, json: {} });
+    });
+    await openHistorialViaSidebar(page);
+
+    const summary = page.getByRole('region', { name: 'Resumen' });
+    await expect(summary.getByText('No pudimos cargar el resumen de cambios.')).toBeVisible();
+    await expect(summary.getByText('Cambios críticos')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Ver detalle' })).toBeVisible();
+    summaryUnavailable = false;
+    await summary.getByRole('button', { name: 'Reintentar' }).click();
+    await expect(summary.getByText('Cambios críticos')).toBeVisible();
+  });
+
   test('FR smoke: chip lote del resumen + Quitar filtro (CA-FR-12/13)', async ({ page }) => {
     await loginAsPlatformAdmin(page);
     await page.goto('/audit-logs');
@@ -117,6 +143,9 @@ test.describe('Web Historial — audit-logs alineación', () => {
 
     await expect(page.getByText(/Mostrando: Acceso y seguridad · lote del resumen/)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Quitar filtro' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Descargar CSV' })).toHaveAccessibleDescription(
+      /usa los filtros de acción y fechas.*solo se aplica al listado/,
+    );
     // Pager oculto con preset (DS v1.2)
     await expect(page.getByRole('button', { name: /Anterior/ })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /Siguiente/ })).toHaveCount(0);

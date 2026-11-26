@@ -83,16 +83,19 @@ const baseProps = {
 };
 
 describe('AuditLogsTable', () => {
-  it('CA-AUD-01: chrome Lectura sin Técnico, CSV, Metadata técnica', () => {
+  it('CA-AUD-01: chrome Lectura con alcance de descarga y sin rótulos técnicos', () => {
     render(<AuditLogsTable {...baseProps} />);
 
     expect(screen.getByRole('button', { name: 'Lectura', pressed: true })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Detalle' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Descargar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Descargar CSV' })).toBeInTheDocument();
 
     expect(screen.queryByText('Técnico')).not.toBeInTheDocument();
     expect(screen.queryByText('Básico')).not.toBeInTheDocument();
-    expect(screen.queryByText(/CSV/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('CSV', { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Descargar CSV' })).toHaveAccessibleDescription(
+      'El CSV usa los filtros de acción y fechas del historial.',
+    );
     expect(screen.queryByText('Metadata técnica')).not.toBeInTheDocument();
     expect(screen.queryByText('Actor')).not.toBeInTheDocument();
   });
@@ -114,7 +117,7 @@ describe('AuditLogsTable', () => {
     const onExportCsv = jest.fn().mockRejectedValue(new Error('fail'));
     render(<AuditLogsTable {...baseProps} onExportCsv={onExportCsv} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Descargar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Descargar CSV' }));
 
     await waitFor(() => {
       expect(

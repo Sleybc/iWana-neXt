@@ -60,7 +60,7 @@ export default function ProtectedLayout({ children }: { children: ReactNode }) {
           />
 
           {/* Canvas: radio 3xl en el canto con el sidebar (operador 2026-08-11; deroga CA-SB-02). */}
-          <main className="flex-1 overflow-y-auto bg-iwana-surface-soft dark:bg-dark-surface lg:rounded-3xl">
+          <main className="relative flex-1 overflow-y-auto bg-iwana-surface-soft dark:bg-dark-surface lg:rounded-3xl">
             <div className="mx-auto max-w-screen-2xl p-4 md:p-6 2xl:p-10">{children}</div>
           </main>
         </div>

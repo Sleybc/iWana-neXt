@@ -98,7 +98,7 @@ export function PlatformUserActivationPanel({
         <h2 className="px-2 pb-3 text-base font-semibold text-iwana-primary dark:text-white">
           {COPY.total(total)}
         </h2>
-        <ul className="space-y-1" aria-label={COPY.title}>
+        <ul className="space-y-1" aria-label={COPY.listLabel}>
           {groups.flatMap(({ label, entries }) =>
             entries.map((account, index) => {
               const active = selected.id === account.id;

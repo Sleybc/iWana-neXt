@@ -223,22 +223,22 @@ describe('TenantsPage', () => {
     expect(placeholder.toLowerCase()).not.toMatch(/identificador|tenant|slug/);
   });
 
-  it('CA-EMP-06: un solo H1, subtítulo corto, eyebrow Directorio; sin H2 del hero', async () => {
+  it('CA-EMP-06: un H1 y un H2 para el directorio, sin rótulo duplicado', async () => {
     render(<TenantsPage />);
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Empresas' })).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
-    expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(1);
     expect(
       screen.getByText('Estado, contacto y última actualización de cada empresa.'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Directorio', { selector: '.portal-eyebrow' })).toBeInTheDocument();
+    expect(screen.getAllByText('Directorio', { exact: true })).toHaveLength(1);
     expect(screen.queryByText(/Prioriza altas pendientes, revisa alertas/)).not.toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: 'Volver al centro de control' }),
     ).not.toBeInTheDocument();
     const directory = screen
-      .getByRole('heading', { name: PLATFORM_UI_COPY.tenants.tableTitle })
+      .getByRole('heading', { name: PLATFORM_UI_COPY.tenants.tableTitle, level: 2 })
       .closest('div');
     expect(directory).not.toBeNull();
     expect(
@@ -284,6 +284,23 @@ describe('TenantsPage', () => {
       name: PLATFORM_UI_COPY.dashboard.viewActiveCompanies,
     });
     expect(chip).toHaveAttribute('href', expect.stringContaining('status=ACTIVE'));
+  });
+
+  it('Requieren atención lleva el foco al título del directorio', async () => {
+    render(<TenantsPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /requieren atención.*directorio/i }));
+    expect(screen.getByRole('heading', { name: 'Directorio', level: 2 })).toHaveFocus();
+  });
+
+  it('muestra los ceros del resumen sin acciones de filtro ni de atención', async () => {
+    tenantApi.summary.mockResolvedValue(makeTenantStatusSummary({}));
+    render(<TenantsPage />);
+
+    const strip = within(screen.getByRole('region', { name: PLATFORM_UI_COPY.tenants.pulseLabel }));
+    expect(await strip.findAllByText('0', { exact: true })).toHaveLength(3);
+    expect(strip.queryByRole('link')).not.toBeInTheDocument();
+    expect(strip.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('CA-EMP-09: th con aria-sort; celdas de estado y fecha sin onClick', async () => {
@@ -385,21 +402,24 @@ describe('TenantsPage', () => {
 
     render(<TenantsPage />);
 
-    const strip = await screen.findByRole('region', { name: PLATFORM_UI_COPY.tenants.eyebrow });
-    expect(
-      await within(strip).findByText(PLATFORM_UI_COPY.tenants.parkSummaryError),
-    ).toBeInTheDocument();
+    const alert = await screen.findByRole('alert');
+    const strip = screen.getByRole('region', { name: PLATFORM_UI_COPY.tenants.pulseLabel });
+    expect(strip).toContainElement(alert);
+    expect(alert).toHaveTextContent(PLATFORM_UI_COPY.tenants.parkSummaryError);
     expect(
       within(strip).queryByRole('link', { name: PLATFORM_UI_COPY.dashboard.viewActiveCompanies }),
     ).toBeNull();
     expect(within(strip).queryByText('0')).toBeNull();
 
     fireEvent.click(within(strip).getByRole('button', { name: PLATFORM_UI_COPY.dashboard.retry }));
-    expect(
-      await within(strip).findByRole('link', {
-        name: PLATFORM_UI_COPY.dashboard.viewActiveCompanies,
-      }),
-    ).toHaveTextContent('1');
+    await waitFor(() => {
+      const recovered = screen.getByRole('region', { name: PLATFORM_UI_COPY.tenants.pulseLabel });
+      expect(
+        within(recovered).getByRole('link', {
+          name: PLATFORM_UI_COPY.dashboard.viewActiveCompanies,
+        }),
+      ).toHaveTextContent('1');
+    });
     expect(tenantApi.summary).toHaveBeenCalledTimes(2);
   });
 

@@ -10,6 +10,7 @@ import { loginToDashboard, setupWebApiMocks } from './helpers/web-api-mocks';
 
 const EVIDENCE_DIR = evidenceDir('quality/evidence-web-empresas-directorio');
 
+const PULSE_LABEL = 'Resumen de empresas por estado';
 const DIRECTORY_CHIPS = ['Activas', 'En configuración', 'Requieren atención'] as const;
 
 const DIRECTORIO_TENANTS = [
@@ -49,6 +50,18 @@ const DIRECTORIO_TENANTS = [
     createdAt: '2026-03-10T08:00:00.000Z',
     updatedAt: '2026-03-13T08:00:00.000Z',
   },
+  {
+    id: 'tenant-4',
+    name: 'Empresa Sierra',
+    slug: 'empresa-sierra',
+    schemaName: 'tenant_empresa_sierra',
+    status: 'SUSPENDED',
+    contactEmail: 'hash:contact-4',
+    maxSubscribers: 800,
+    settings: {},
+    createdAt: '2026-03-09T08:00:00.000Z',
+    updatedAt: '2026-03-13T08:00:00.000Z',
+  },
 ];
 
 async function openEmpresasDirectory(page: Page) {
@@ -82,8 +95,13 @@ test.describe('Web Empresas — directorio', () => {
     await expect(page.getByLabel('Filtrar por estado')).toHaveText(/En configuración/);
     await expect(
       page
-        .getByRole('region', { name: 'Directorio' })
+        .getByRole('region', { name: PULSE_LABEL })
         .getByText('En configuración', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole('table', { name: 'Lista de empresas' })
+        .getByRole('cell', { name: 'En configuración', exact: true }),
     ).toBeVisible();
     await expect(page.getByText('Configurando', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Configuración fallida')).toHaveCount(0);
@@ -98,7 +116,7 @@ test.describe('Web Empresas — directorio', () => {
     await expect(page.getByRole('cell', { name: /Alta Andina/ })).toHaveCount(0);
   });
 
-  test('D-5: 375 H1 + chips + tabla en una columna, sin H2', async ({ page }) => {
+  test('D-5: 375 y 320 px: pulso y directorio en una columna', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await loginToDashboard(page);
     await page.goto('/tenants');
@@ -106,13 +124,13 @@ test.describe('Web Empresas — directorio', () => {
     await expect(page.getByRole('cell', { name: /Fibernet Colombia/ })).toBeVisible();
 
     const heading = page.getByRole('heading', { name: 'Empresas', exact: true });
-    const chips = page.getByRole('region', { name: 'Directorio' });
+    const chips = page.getByRole('region', { name: PULSE_LABEL });
     const table = page.getByRole('table', { name: 'Lista de empresas' });
 
     await expect(heading).toBeVisible();
     await expect(chips).toBeVisible();
     await expect(table).toBeVisible();
-    await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0);
+    await expect(page.getByRole('heading', { level: 2, name: 'Directorio' })).toBeVisible();
 
     const headingBox = await measureBox(heading);
     const chipsBox = await measureBox(chips);
@@ -120,8 +138,7 @@ test.describe('Web Empresas — directorio', () => {
 
     expect(chipsBox.y, 'chips debajo del H1').toBeGreaterThan(headingBox.y);
     expect(tableBox.y, 'tabla debajo de chips').toBeGreaterThan(chipsBox.y + chipsBox.height - 8);
-    // Una columna: la tabla arranca bajo los chips con el inset de su tarjeta (24 px de
-    // padding + 1 px de borde, `TenantsTable.tsx`); dos columnas la correrían ≥ ½ ancho.
+    // La tabla arranca bajo el pulso, dentro del borde de su tarjeta.
     const offset = tableBox.x - chipsBox.x;
     expect(offset, 'una columna chips/tabla').toBeGreaterThanOrEqual(0);
     expect(offset, 'una columna chips/tabla').toBeLessThan(chipsBox.width / 4);
@@ -140,6 +157,35 @@ test.describe('Web Empresas — directorio', () => {
       path: path.join(EVIDENCE_DIR, '375.png'),
       fullPage: true,
     });
+
+    await page.setViewportSize({ width: 320, height: 812 });
+    for (const control of [
+      page.getByRole('searchbox', { name: 'Buscar empresa' }),
+      page.getByLabel('Filtrar por estado'),
+      page.getByRole('link', { name: 'Nueva empresa' }),
+    ]) {
+      const box = await measureBox(control);
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(320);
+    }
+    const tableRegion = page.getByRole('region', { name: 'Directorio', exact: true });
+    expect(await tableRegion.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+      true,
+    );
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+  });
+
+  test('Requieren atención revela el directorio con movimiento reducido', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 540 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await loginToDashboard(page);
+    await page.goto('/tenants');
+    const attention = page.getByRole('button', { name: /requieren atención.*directorio/i });
+    await attention.press('Enter');
+
+    const heading = page.getByRole('heading', { level: 2, name: 'Directorio' });
+    await expect(heading).toBeFocused();
+    await expect(heading).toBeInViewport();
   });
 
   test('D-5: 1280 chips en fila', async ({ page }) => {
@@ -149,7 +195,7 @@ test.describe('Web Empresas — directorio', () => {
     await expect(page.getByRole('heading', { name: 'Empresas', exact: true })).toBeVisible();
     await expect(page.getByRole('cell', { name: /Fibernet Colombia/ })).toBeVisible();
 
-    const chips = page.getByRole('region', { name: 'Directorio' });
+    const chips = page.getByRole('region', { name: PULSE_LABEL });
     await expect(chips).toBeVisible();
 
     const chipBoxes = [];
@@ -171,19 +217,30 @@ test.describe('Web Empresas — directorio', () => {
     });
   });
 
-  test('D-6: axe WCAG 2.2 AA en /tenants y aria-sort en th', async ({ page }) => {
-    await loginToDashboard(page);
-    await page.goto('/tenants');
-    await expect(page.getByRole('heading', { name: 'Empresas', exact: true })).toBeVisible();
-    await expect(page.getByRole('cell', { name: /Fibernet Colombia/ })).toBeVisible();
+  for (const theme of ['light', 'dark'] as const) {
+    test(`D-6: axe WCAG 2.2 AA y aria-sort en tema ${theme}`, async ({ page }) => {
+      await page.addInitScript((value) => {
+        window.localStorage.setItem('iwana-theme', value);
+      }, theme);
+      await page.emulateMedia({ colorScheme: theme });
+      await loginToDashboard(page);
+      await page.goto('/tenants');
+      await expect(page.getByRole('heading', { name: 'Empresas', exact: true })).toBeVisible();
+      await expect(page.getByRole('cell', { name: /Fibernet Colombia/ })).toBeVisible();
+      if (theme === 'dark') {
+        await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+      } else {
+        await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
+      }
 
-    const sortedHeaders = page.locator('th[aria-sort]');
-    await expect(sortedHeaders).not.toHaveCount(0);
-    await expect(page.locator('th[aria-sort]:not([aria-sort="none"])')).toHaveCount(1);
+      const sortedHeaders = page.locator('th[aria-sort]');
+      await expect(sortedHeaders).not.toHaveCount(0);
+      await expect(page.locator('th[aria-sort]:not([aria-sort="none"])')).toHaveCount(1);
 
-    const tenantsA11y = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
-      .analyze();
-    expect(tenantsA11y.violations).toEqual([]);
-  });
+      const tenantsA11y = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+        .analyze();
+      expect(tenantsA11y.violations).toEqual([]);
+    });
+  }
 });

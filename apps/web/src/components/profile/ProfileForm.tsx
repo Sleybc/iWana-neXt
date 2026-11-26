@@ -234,6 +234,7 @@ export function ProfileForm() {
         currentPassword: values.currentPassword,
         newPassword: values.newPassword,
       });
+      resetPasswordForm();
       setPasswordSuccessMessage('Contraseña actualizada. Debes iniciar sesión de nuevo.');
       setIsPasswordSectionExpanded(false);
       setTimeout(() => {
@@ -249,6 +250,12 @@ export function ProfileForm() {
       setIsSavingPassword(false);
     }
   };
+
+  useEffect(() => {
+    if (!isLoading && window.location.hash === '#profile-security-heading') {
+      document.getElementById('profile-security-heading')?.focus();
+    }
+  }, [isLoading]);
 
   if (isLoading) {
     return (
@@ -373,7 +380,11 @@ export function ProfileForm() {
       <section aria-labelledby="profile-security-heading" className={profilePanelClass}>
         <header className="flex items-center gap-2 border-b border-gray-200 p-4 text-iwana-primary sm:px-6 dark:border-dark-border dark:text-white">
           <Shield aria-hidden="true" className="size-5 shrink-0" />
-          <h2 id="profile-security-heading" className="text-lg font-semibold">
+          <h2
+            id="profile-security-heading"
+            tabIndex={-1}
+            className="scroll-mt-24 text-lg font-semibold focus-visible:outline-2 focus-visible:outline-offset-4"
+          >
             Seguridad de la cuenta
           </h2>
         </header>
@@ -410,6 +421,15 @@ export function ProfileForm() {
               </Button>
             </div>
 
+            <div role="status">
+              {emailSuccessMessage && (
+                <div className={`mt-4 ${FORM_ALERT_SUCCESS_CLASS}`}>
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                  <p>{emailSuccessMessage}</p>
+                </div>
+              )}
+            </div>
+
             {isEmailSectionExpanded && (
               <form
                 id="profile-email-form"
@@ -437,12 +457,6 @@ export function ProfileForm() {
                     <div role="alert" className={FORM_ALERT_ERROR_CLASS}>
                       <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
                       <p>{emailError}</p>
-                    </div>
-                  )}
-                  {emailSuccessMessage && (
-                    <div className={FORM_ALERT_SUCCESS_CLASS}>
-                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-                      <p>{emailSuccessMessage}</p>
                     </div>
                   )}
                 </div>
@@ -499,6 +513,15 @@ export function ProfileForm() {
               </Button>
             </div>
 
+            <div role="status">
+              {passwordSuccessMessage && (
+                <div className={`mt-4 ${FORM_ALERT_SUCCESS_CLASS}`}>
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                  <p>{passwordSuccessMessage}</p>
+                </div>
+              )}
+            </div>
+
             {isPasswordSectionExpanded && (
               <form
                 id="profile-password-form"
@@ -538,12 +561,6 @@ export function ProfileForm() {
                     <div role="alert" className={FORM_ALERT_ERROR_CLASS}>
                       <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
                       <p>{passwordError}</p>
-                    </div>
-                  )}
-                  {passwordSuccessMessage && (
-                    <div className={FORM_ALERT_SUCCESS_CLASS}>
-                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-                      <p>{passwordSuccessMessage}</p>
                     </div>
                   )}
                 </div>

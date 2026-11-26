@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ProfileForm } from './ProfileForm';
 
 jest.mock('@iwana/ui', () => {
@@ -189,5 +189,126 @@ describe('ProfileForm', () => {
         'La contraseña actual no coincide con la que usas para iniciar sesión.',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('confirma el cambio de correo fuera del formulario, que se cierra', async () => {
+    platformUsersApi.changeLoginEmail.mockResolvedValue({ email: 'nuevo@iwana.co' });
+    render(<ProfileForm />);
+
+    await screen.findByText('admin@iwana.co');
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar correo' }));
+    fireEvent.change(screen.getByLabelText('Nuevo correo de acceso'), {
+      target: { value: 'nuevo@iwana.co' },
+    });
+    fireEvent.change(screen.getByLabelText('Contraseña actual'), {
+      target: { value: 'Passw0rd!Segura' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Actualizar correo de acceso' }));
+
+    expect(await screen.findByText('nuevo@iwana.co')).toBeInTheDocument();
+    const message = await screen.findByText('Correo de acceso actualizado correctamente.');
+    expect(message).toBeVisible();
+    expect(message.closest('[role="status"]')).not.toBeNull();
+    expect(document.getElementById('profile-email-form')).toBeNull();
+  });
+
+  describe('cambio de contraseña', () => {
+    const SUCCESS = 'Contraseña actualizada. Debes iniciar sesión de nuevo.';
+    const section = () => screen.getByRole('region', { name: 'Seguridad de la cuenta' });
+    const passwordForm = () => document.getElementById('profile-password-form');
+    const toggle = () =>
+      within(section())
+        .getAllByRole('button', { name: /^(Cambiar contraseña|Cerrar)$/ })
+        .find((button) => button.hasAttribute('aria-expanded')) as HTMLElement;
+
+    async function openForm() {
+      render(<ProfileForm />);
+      await screen.findByText('admin@iwana.co');
+      fireEvent.click(toggle());
+    }
+
+    function fillAndSubmit(confirmPassword = 'NuevaPass!2026') {
+      fireEvent.change(screen.getByLabelText('Contraseña actual'), {
+        target: { value: 'Passw0rd!Segura' },
+      });
+      fireEvent.change(screen.getByLabelText('Nueva contraseña'), {
+        target: { value: 'NuevaPass!2026' },
+      });
+      fireEvent.change(screen.getByLabelText('Confirmar nueva contraseña'), {
+        target: { value: confirmPassword },
+      });
+      fireEvent.submit(passwordForm() as HTMLElement);
+    }
+
+    const flush = () => act(async () => jest.advanceTimersByTimeAsync(0));
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('envía el cambio una vez y cierra la sesión', async () => {
+      platformUsersApi.changePassword.mockResolvedValue(undefined);
+      await openForm();
+      jest.useFakeTimers();
+      fillAndSubmit();
+      await flush();
+
+      expect(platformUsersApi.changePassword).toHaveBeenCalledTimes(1);
+      expect(platformUsersApi.changePassword).toHaveBeenCalledWith({
+        currentPassword: 'Passw0rd!Segura',
+        newPassword: 'NuevaPass!2026',
+      });
+      expect(logoutMock).not.toHaveBeenCalled();
+
+      await act(async () => jest.advanceTimersByTimeAsync(2000));
+      expect(logoutMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('confirma el resultado mientras la sesión sigue abierta', async () => {
+      platformUsersApi.changePassword.mockResolvedValue(undefined);
+      await openForm();
+      jest.useFakeTimers();
+      fillAndSubmit();
+      await flush();
+
+      expect(screen.getByText(SUCCESS)).toBeVisible();
+    });
+
+    it('no envía si la confirmación no coincide', async () => {
+      await openForm();
+      fillAndSubmit('OtraPass!2026');
+
+      expect(await screen.findByText('Las contraseñas no coinciden')).toBeInTheDocument();
+      expect(platformUsersApi.changePassword).not.toHaveBeenCalled();
+      expect(logoutMock).not.toHaveBeenCalled();
+    });
+
+    it('no conserva las contraseñas tras el cambio', async () => {
+      platformUsersApi.changePassword.mockResolvedValue(undefined);
+      await openForm();
+      jest.useFakeTimers();
+      fillAndSubmit();
+      await flush();
+
+      if (!passwordForm()) fireEvent.click(toggle());
+      for (const label of ['Contraseña actual', 'Nueva contraseña', 'Confirmar nueva contraseña']) {
+        expect(screen.getByLabelText(label)).toHaveValue('');
+      }
+    });
+
+    it('si falla sin causa conocida avisa, conserva el formulario y no cierra la sesión', async () => {
+      platformUsersApi.changePassword.mockRejectedValue(new Error('network'));
+      await openForm();
+      jest.useFakeTimers();
+      fillAndSubmit();
+      await flush();
+
+      expect(screen.getByRole('alert')).toHaveTextContent('No fue posible cambiar la contraseña.');
+      expect(passwordForm()).toBeInTheDocument();
+      expect(screen.queryByText(SUCCESS)).not.toBeInTheDocument();
+
+      await act(async () => jest.advanceTimersByTimeAsync(2000));
+      expect(logoutMock).not.toHaveBeenCalled();
+    });
   });
 });

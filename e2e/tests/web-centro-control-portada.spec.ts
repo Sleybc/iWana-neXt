@@ -436,15 +436,40 @@ test.describe('Centro de control — pulso de plataforma (datos completos)', () 
     await loginToPulse(page);
     await expect(blocks(page).users.getByText('1 usuario', { exact: true })).toBeVisible();
     await blocks(page).users.getByRole('link', { name: 'Ver usuarios' }).click();
-    await page.getByRole('button', { name: 'Crear cuenta' }).click();
+    await expect(page.getByRole('heading', { name: 'Usuarios internos', level: 1 })).toBeVisible();
+    const createButton = page.getByRole('button', { name: 'Crear cuenta' });
+    await createButton.press('Enter');
     const dialog = page.getByRole('dialog', { name: 'Crear cuenta' });
-    await dialog.getByLabel('Correo de acceso').fill('cuenta@example.test');
+    const email = dialog.getByLabel('Correo de acceso');
+    await expect(email).toBeFocused();
+    await email.fill('cuenta@example.test');
     await dialog.getByLabel('Nombre', { exact: true }).fill('Cuenta');
     await dialog.getByLabel('Apellidos').fill('Nueva');
     await dialog.getByRole('button', { name: 'Crear cuenta' }).click();
     const created = page.getByRole('dialog', { name: 'Cuenta creada' });
-    await expect(created.getByLabel('Contraseña temporal')).toHaveValue('clave-temporal-sintetica');
-    await created.getByRole('button', { name: 'Entendido' }).click();
+    const createdHeading = created.getByRole('heading', { name: 'Cuenta creada' });
+    const temporaryPassword = created.getByLabel('Contraseña temporal');
+    const confirmClose = page.getByRole('dialog', { name: '¿Cerrar la contraseña temporal?' });
+    const keepViewing = confirmClose.getByRole('button', { name: 'Volver a la contraseña' });
+    await expect(createdHeading).toBeFocused();
+    await expect(temporaryPassword).toHaveValue('clave-temporal-sintetica');
+
+    await page.keyboard.press('Escape');
+    await expect(keepViewing).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(confirmClose).toBeHidden();
+    await expect(createdHeading).toBeFocused();
+    await expect(temporaryPassword).toHaveValue('clave-temporal-sintetica');
+
+    await page.locator('[data-portal-veil]').click({ position: { x: 8, y: 8 } });
+    await expect(confirmClose).toBeVisible();
+    await keepViewing.click();
+    await expect(temporaryPassword).toHaveValue('clave-temporal-sintetica');
+
+    await created.getByRole('button', { name: 'Cerrar', exact: true }).click();
+    await confirmClose.getByRole('button', { name: 'Cerrar definitivamente' }).click();
+    await expect(created).toBeHidden();
+    await expect(createButton).toBeFocused();
     await expect(page.getByRole('heading', { name: '2 cuentas de plataforma' })).toBeVisible();
     const accountsList = page.getByRole('list', { name: 'Cuentas de plataforma' });
     await expect(accountsList.getByRole('button').first()).toHaveAccessibleName(/Cuenta Nueva/);
@@ -588,6 +613,13 @@ test.describe('Centro de control — pulso de plataforma (datos completos)', () 
     const mobileSecurity = (await security.boundingBox())!;
     expect(mobileSecurity.x).toBe(mobileProfile.x);
     expect(mobileSecurity.y).toBeGreaterThan(mobileProfile.y + mobileProfile.height);
+    const securityJump = page.getByRole('link', { name: 'Ir a seguridad de la cuenta' });
+    await expect(securityJump).toBeInViewport();
+    await securityJump.click();
+    const securityHeading = security.getByRole('heading', { name: 'Seguridad de la cuenta' });
+    await expect(securityHeading).toBeFocused();
+    await expect(securityHeading).toBeInViewport();
+
     await security.getByRole('button', { name: 'Cambiar correo' }).click();
     await expect(security.getByLabel('Nuevo correo de acceso')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
@@ -610,7 +642,7 @@ test.describe('Centro de control — pulso de plataforma (datos completos)', () 
     await expect(
       page.getByRole('status').filter({ hasText: 'Verificación en dos pasos activada' }),
     ).toBeVisible();
-    await expect(page).toHaveURL(/\/profile$/);
+    await expect(page).toHaveURL(/\/profile#profile-security-heading$/);
     await page.reload();
     await expect(page.getByText('Activa', { exact: true })).toBeVisible();
     await expect(

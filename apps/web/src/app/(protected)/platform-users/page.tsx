@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
-import { Button, Card, EmptyState, ErrorState, SkeletonBlock } from '@iwana/ui';
+import { Plus, Search } from 'lucide-react';
+import { Button, Card, EmptyState, ErrorState, Input, Select, SkeletonBlock } from '@iwana/ui';
 import {
   PlatformRole,
+  UserStatus,
   type PlatformUserDirectory,
   type PlatformUserDirectoryEntry,
 } from '@iwana/shared';
@@ -17,11 +18,21 @@ import { platformUsersApi } from '@/lib/api-client';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 
 const COPY = PLATFORM_UI_COPY.platformUserDirectory;
+const STATUS_OPTIONS = [
+  { value: '' as const, label: COPY.allStatuses },
+  { value: UserStatus.PENDING_VERIFICATION, label: COPY.pendingGroup },
+  { value: UserStatus.ACTIVE, label: COPY.activeGroup },
+  { value: UserStatus.SUSPENDED, label: COPY.suspendedGroup },
+  { value: UserStatus.INACTIVE, label: COPY.inactiveGroup },
+];
 
 export default function PlatformUsersPage() {
   const { user, refreshProfile } = useAuth();
   const canEdit = user?.type === 'platform' && user.role === PlatformRole.SYSTEM_ADMIN;
   const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<UserStatus | ''>('');
   const [retry, setRetry] = useState(0);
   const [directory, setDirectory] = useState<PlatformUserDirectory | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,28 +46,39 @@ export default function PlatformUsersPage() {
     let active = true;
     setLoading(true);
     setError(false);
-    void platformUsersApi.directory(page).then(
-      (result) => {
-        if (!active) return;
-        const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize));
-        if (page > lastPage) {
-          setPage(lastPage);
-          return;
-        }
-        setDirectory(result);
-        setLoading(false);
-      },
-      () => {
-        if (!active) return;
-        setError(true);
-        setLoading(false);
-      },
-    );
+    void platformUsersApi
+      .directory(page, {
+        ...(search && { search }),
+        ...(status && { status }),
+      })
+      .then(
+        (result) => {
+          if (!active) return;
+          const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize));
+          if (page > lastPage) {
+            setPage(lastPage);
+            return;
+          }
+          setDirectory(result);
+          setLoading(false);
+        },
+        () => {
+          if (!active) return;
+          setError(true);
+          setLoading(false);
+        },
+      );
     return () => {
       active = false;
     };
-  }, [page, retry]);
+  }, [page, retry, search, status]);
 
+  function resetResults() {
+    setPage(1);
+    setSelectedId(null);
+  }
+
+  const filtered = Boolean(search || status);
   const totalPages = directory ? Math.ceil(directory.total / directory.pageSize) : 0;
   const selected =
     directory?.items.find((account) => account.id === selectedId) ?? directory?.items[0];
@@ -64,7 +86,7 @@ export default function PlatformUsersPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title={COPY.title}
+        title={PLATFORM_UI_COPY.navigation.users}
         subtitle={COPY.description}
         actions={
           canEdit ? (
@@ -75,6 +97,66 @@ export default function PlatformUsersPage() {
           ) : undefined
         }
       />
+      <Card variant="outline" className="p-4">
+        <form
+          role="search"
+          aria-label={COPY.listLabel}
+          className="flex flex-wrap items-end gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const value = searchInput.trim().replace(/\s+/g, ' ');
+            if (value !== search) {
+              setSearch(value);
+              resetResults();
+            }
+          }}
+        >
+          <Input
+            type="search"
+            label={COPY.searchLabel}
+            placeholder={COPY.searchPlaceholder}
+            startIcon={<Search className="size-4" aria-hidden="true" />}
+            value={searchInput}
+            maxLength={201}
+            onChange={(event) => setSearchInput(event.target.value)}
+            containerClassName="w-full min-w-0 sm:max-w-sm sm:flex-1 sm:basis-48"
+            className="min-h-11"
+          />
+          <div className="w-full sm:w-56">
+            <Select
+              label={COPY.statusFilter}
+              options={STATUS_OPTIONS}
+              value={status}
+              onChange={(event) => {
+                const option = STATUS_OPTIONS.find(({ value }) => value === event.target.value);
+                if (option) {
+                  setStatus(option.value);
+                  resetResults();
+                }
+              }}
+              className="min-h-11"
+            />
+          </div>
+          <Button type="submit" variant="secondary" className="min-h-11">
+            {COPY.searchAction}
+          </Button>
+          {(filtered || searchInput) && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="min-h-11"
+              onClick={() => {
+                setSearchInput('');
+                setSearch('');
+                setStatus('');
+                resetResults();
+              }}
+            >
+              {COPY.clearFilters}
+            </Button>
+          )}
+        </form>
+      </Card>
       {nameSaved && (
         <p role="status" className="text-sm">
           {COPY.edit.saved}
@@ -99,7 +181,7 @@ export default function PlatformUsersPage() {
         )}
         {!loading && !error && directory && !selected && (
           <Card variant="outline" className="p-4 sm:p-6">
-            <EmptyState message={COPY.empty} />
+            <EmptyState message={filtered ? COPY.emptyFiltered : COPY.empty} />
           </Card>
         )}
         {!loading && !error && directory && selected && (
@@ -149,6 +231,9 @@ export default function PlatformUsersPage() {
         <PlatformUserCreateDialog
           onClose={() => setCreating(false)}
           onCreated={(id) => {
+            setSearchInput('');
+            setSearch('');
+            setStatus('');
             setSelectedId(id);
             setPage(1);
             setRetry((value) => value + 1);

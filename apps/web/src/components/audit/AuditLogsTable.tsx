@@ -293,6 +293,7 @@ export function AuditLogsTable({
           onClick={() => void handleExportCsv()}
           disabled={!onExportCsv || isExporting}
           aria-label={PLATFORM_UI_COPY.audit.download}
+          aria-describedby={`${titleId}-download-scope`}
           className={cn(
             'ml-auto min-h-11 rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-300 dark:hover:bg-dark-surface-4',
             interactiveFocusClassName,
@@ -300,6 +301,13 @@ export function AuditLogsTable({
         >
           {isExporting ? PLATFORM_UI_COPY.audit.downloading : PLATFORM_UI_COPY.audit.download}
         </button>
+        <p
+          id={`${titleId}-download-scope`}
+          className="w-full text-xs text-gray-600 dark:text-gray-300"
+        >
+          {PLATFORM_UI_COPY.audit.downloadScope}
+          {summaryPresetActive ? ` ${PLATFORM_UI_COPY.audit.downloadScopeSummary}` : null}
+        </p>
       </div>
 
       {exportError ? (

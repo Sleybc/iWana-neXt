@@ -46,6 +46,76 @@ describe('AuditSummary', () => {
     expect(screen.queryByText('Eventos críticos')).not.toBeInTheDocument();
   });
 
+  it('compara empresas únicas con las del periodo anterior', () => {
+    const previousDate = new Date(Date.now() - 30 * 60 * 60_000).toISOString();
+    const currentCompanies = ['company-1', 'company-2'].map((entityId) =>
+      entry({ id: entityId, action: 'UPDATE', entityType: 'Tenant', entityId }),
+    );
+    render(
+      <AuditSummary
+        entries={[
+          ...currentCompanies,
+          entry({
+            id: 'previous',
+            action: 'UPDATE',
+            entityType: 'Tenant',
+            entityId: 'company-1',
+            createdAt: previousDate,
+          }),
+        ]}
+        isLoading={false}
+        mode="platform"
+        window="24h"
+        onWindowChange={jest.fn()}
+        activePreset={null}
+        onPresetChange={jest.fn()}
+      />,
+    );
+    expect(screen.getByText('1 más que en las 24 h anteriores')).toHaveClass('text-gray-600');
+  });
+
+  it('declara la muestra incompleta y omite las comparaciones sin cobertura', () => {
+    render(
+      <AuditSummary
+        entries={[entry({ id: '1', action: 'LOGIN' })]}
+        hasMore
+        isLoading={false}
+        mode="platform"
+        window="7d"
+        onWindowChange={jest.fn()}
+        activePreset={null}
+        onPresetChange={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/La muestra no cubre todo el periodo anterior/)).toBeInTheDocument();
+    expect(screen.queryByText(/que en los 7 días anteriores/)).not.toBeInTheDocument();
+    expect(screen.getAllByText('Sin actividad en la muestra').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Sin actividad en esta ventana')).not.toBeInTheDocument();
+  });
+
+  it('permite reintentar el resumen sin mostrar cifras cuando falla', () => {
+    const onRetry = jest.fn();
+    render(
+      <AuditSummary
+        entries={[]}
+        hasError
+        onRetry={onRetry}
+        isLoading={false}
+        mode="platform"
+        window="24h"
+        onWindowChange={jest.fn()}
+        activePreset={null}
+        onPresetChange={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('No pudimos cargar el resumen de cambios.');
+    expect(screen.queryByText('Cambios críticos')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
   it('CA-AUD-07: ventana temporal usa min-h-11', () => {
     render(
       <AuditSummary

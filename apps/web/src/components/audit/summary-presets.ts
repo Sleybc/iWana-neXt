@@ -39,7 +39,7 @@ export function filterEntriesInSummaryWindow<T extends { createdAt: string }>(
 export function splitSummaryWindow<T extends { createdAt: string }>(
   entries: T[],
   window: SummaryWindow,
-): { current: T[]; previous: T[] } {
+): { current: T[]; previous: T[]; previousStart: Date } {
   const start = summaryWindowStart(window);
   const prevStart = new Date(start.getTime() - (window === '7d' ? 7 : 1) * 24 * 3600_000);
 
@@ -47,7 +47,7 @@ export function splitSummaryWindow<T extends { createdAt: string }>(
   const previous = entries.filter(
     (e) => new Date(e.createdAt) >= prevStart && new Date(e.createdAt) < start,
   );
-  return { current, previous };
+  return { current, previous, previousStart: prevStart };
 }
 
 /**

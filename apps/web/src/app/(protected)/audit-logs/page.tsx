@@ -83,6 +83,12 @@ type BaseAuditEntry = Pick<
   | 'createdAt'
 >;
 
+const EMPTY_SUMMARY: BaseAuditEntry[] = [];
+type AuditSummaryResult = {
+  entries: BaseAuditEntry[];
+  hasMore: boolean;
+};
+
 function parseViewMode(value: string | null): ViewMode {
   return value === 'technical' ? 'technical' : 'basic';
 }
@@ -175,10 +181,16 @@ export default function AuditLogsPage() {
   const [summaryWindow, setSummaryWindow] = useState<'24h' | '7d'>('24h');
   const [summaryPreset, setSummaryPreset] = useState<SummaryPreset | null>(null);
 
-  const [platformSummaryEntries, setPlatformSummaryEntries] = useState<BaseAuditEntry[]>([]);
-  const [tenantSummaryEntries, setTenantSummaryEntries] = useState<BaseAuditEntry[]>([]);
-  const [platformSummaryLoading, setPlatformSummaryLoading] = useState(false);
-  const [tenantSummaryLoading, setTenantSummaryLoading] = useState(false);
+  const [summaryState, setSummaryState] = useState<{
+    key: string;
+    result: AuditSummaryResult | null;
+  } | null>(null);
+  const [summaryRetry, setSummaryRetry] = useState(0);
+  const summaryTenant = scope === 'tenant' ? tenantSlug : '';
+  const summaryKey =
+    scope === 'platform' ? 'platform' : summaryTenant ? `tenant:${summaryTenant}` : '';
+  const activeSummary = summaryState?.key === summaryKey ? summaryState : null;
+  const summaryEntries = activeSummary?.result?.entries ?? EMPTY_SUMMARY;
 
   const [platformPageIndex, setPlatformPageIndex] = useState(1);
   const [tenantPageIndex, setTenantPageIndex] = useState(1);
@@ -187,17 +199,7 @@ export default function AuditLogsPage() {
   const tenantTable = useAuditTable();
 
   const focusTable = useCallback(() => {
-    const heading = tableTitleRef.current;
-    if (!heading) {
-      return;
-    }
-    const reduceMotion =
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    heading.focus({ preventScroll: reduceMotion });
-    if (!reduceMotion && typeof heading.scrollIntoView === 'function') {
-      heading.scrollIntoView({ block: 'nearest' });
-    }
+    tableTitleRef.current?.focus();
   }, []);
 
   const clearSummaryPreset = useCallback(() => {
@@ -306,22 +308,6 @@ export default function AuditLogsPage() {
   }, [scope, platformTable.cursor, buildServerListParams]);
 
   useEffect(() => {
-    if (scope !== 'platform') return;
-    const loadPlatformSummary = async () => {
-      setPlatformSummaryLoading(true);
-      try {
-        const r = await platformAuditApi.list({ limit: SUMMARY_LIMIT });
-        setPlatformSummaryEntries(r.data as BaseAuditEntry[]);
-      } catch {
-        setPlatformSummaryEntries([]);
-      } finally {
-        setPlatformSummaryLoading(false);
-      }
-    };
-    void loadPlatformSummary();
-  }, [scope]);
-
-  useEffect(() => {
     if (scope !== 'tenant' || !tenantSlug) return;
     const fetchTenant = () => {
       return auditApi.list(buildServerListParams(tenantTable.cursor), tenantSlug).then((r) => ({
@@ -333,21 +319,29 @@ export default function AuditLogsPage() {
   }, [scope, tenantSlug, tenantTable.cursor, buildServerListParams]);
 
   useEffect(() => {
-    if (scope !== 'tenant' || !tenantSlug) return;
-    const loadTenantSummary = async () => {
-      setTenantSummaryLoading(true);
-      setTenantSummaryEntries([]);
-      try {
-        const r = await auditApi.list({ limit: SUMMARY_LIMIT }, tenantSlug);
-        setTenantSummaryEntries(r.data as BaseAuditEntry[]);
-      } catch {
-        setTenantSummaryEntries([]);
-      } finally {
-        setTenantSummaryLoading(false);
-      }
+    if (!summaryKey) return;
+    let active = true;
+    setSummaryState(null);
+    const params = { limit: SUMMARY_LIMIT };
+    const request = summaryTenant
+      ? auditApi.list(params, summaryTenant)
+      : platformAuditApi.list(params);
+    void request.then(
+      ({ data, nextCursor }) => {
+        if (active)
+          setSummaryState({
+            key: summaryKey,
+            result: { entries: data, hasMore: Boolean(nextCursor) },
+          });
+      },
+      () => {
+        if (active) setSummaryState({ key: summaryKey, result: null });
+      },
+    );
+    return () => {
+      active = false;
     };
-    void loadTenantSummary();
-  }, [scope, tenantSlug]);
+  }, [summaryKey, summaryRetry, summaryTenant]);
 
   const resetTablePagination = () => {
     platformTable.reset();
@@ -391,7 +385,6 @@ export default function AuditLogsPage() {
     tenantTable.reset();
     tenantTable.setEntries([]);
     tenantTable.setNextCursor(undefined);
-    setTenantSummaryEntries([]);
     setTenantPageIndex(1);
   };
 
@@ -443,26 +436,35 @@ export default function AuditLogsPage() {
 
   const platformDisplayedEntries = useMemo(() => {
     if (!summaryPreset) return platformTable.entries;
-    return filterEntriesInSummaryWindow(platformSummaryEntries, summaryWindow).filter((e) =>
+    return filterEntriesInSummaryWindow(summaryEntries, summaryWindow).filter((e) =>
       matchesSummaryPreset(e, summaryPreset),
     );
-  }, [platformTable.entries, platformSummaryEntries, summaryPreset, summaryWindow]);
+  }, [platformTable.entries, summaryEntries, summaryPreset, summaryWindow]);
 
   const tenantDisplayedEntries = useMemo(() => {
     if (!summaryPreset) return tenantTable.entries;
-    return filterEntriesInSummaryWindow(tenantSummaryEntries, summaryWindow).filter((e) =>
+    return filterEntriesInSummaryWindow(summaryEntries, summaryWindow).filter((e) =>
       matchesSummaryPreset(e, summaryPreset),
     );
-  }, [tenantTable.entries, tenantSummaryEntries, summaryPreset, summaryWindow]);
+  }, [tenantTable.entries, summaryEntries, summaryPreset, summaryWindow]);
 
   // Empty C: lote del resumen evaluado + predicado sin filas (no table.entries).
   const platformEmptySummaryPreset = Boolean(
-    summaryPreset && !platformSummaryLoading && platformDisplayedEntries.length === 0,
+    summaryPreset && activeSummary?.result && platformDisplayedEntries.length === 0,
   );
 
   const tenantEmptySummaryPreset = Boolean(
-    summaryPreset && !tenantSummaryLoading && tenantDisplayedEntries.length === 0,
+    summaryPreset && activeSummary?.result && tenantDisplayedEntries.length === 0,
   );
+
+  const summaryProps = {
+    entries: summaryEntries,
+    isLoading: !activeSummary,
+    hasMore: activeSummary?.result?.hasMore ?? false,
+    hasError: activeSummary?.result === null,
+    onRetry: () => setSummaryRetry((value) => value + 1),
+    onGoToList: focusTable,
+  };
 
   const sharedFilterProps = {
     actionFilter,
@@ -493,7 +495,7 @@ export default function AuditLogsPage() {
     ) : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader title={PLATFORM_UI_COPY.audit.title} subtitle={PLATFORM_UI_COPY.audit.subtitle} />
 
       <Tabs value={scope} onValueChange={handleScopeChange}>
@@ -518,8 +520,7 @@ export default function AuditLogsPage() {
             </h2>
 
             <AuditSummary
-              entries={platformSummaryEntries}
-              isLoading={platformSummaryLoading}
+              {...summaryProps}
               mode="platform"
               tenants={tenantInfoList}
               window={summaryWindow}
@@ -576,8 +577,7 @@ export default function AuditLogsPage() {
 
             {tenantSlug ? (
               <AuditSummary
-                entries={tenantSummaryEntries}
-                isLoading={tenantSummaryLoading}
+                {...summaryProps}
                 mode="tenant"
                 tenantName={selectedTenantName}
                 window={summaryWindow}

@@ -2,12 +2,15 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, AlertDescription, cn, interactiveFocusClassName } from '@iwana/ui';
-import { X } from 'lucide-react';
 import {
-  DashboardMetricStrip,
-  type DashboardMetricModel,
-} from '@/components/dashboard/DashboardMetricStrip';
+  Alert,
+  AlertDescription,
+  cn,
+  interactiveFocusClassName,
+  type PulseCellData,
+} from '@iwana/ui';
+import { X } from 'lucide-react';
+import { TenantDirectoryPulse } from '@/components/tenants/TenantDirectoryPulse';
 import {
   TenantsTable,
   type SortDir,
@@ -67,7 +70,7 @@ export default function TenantsPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const directoryTitleRef = useRef<HTMLParagraphElement>(null);
+  const directoryTitleRef = useRef<HTMLHeadingElement>(null);
   const tenantsRef = useRef<TenantListItem[]>([]);
 
   const [tenants, setTenants] = useState<TenantListItem[]>([]);
@@ -337,61 +340,50 @@ export default function TenantsPage() {
   );
 
   const focusDirectory = useCallback(() => {
-    const heading = directoryTitleRef.current;
-    if (!heading) {
-      return;
-    }
-
-    const reduceMotion =
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    heading.focus({ preventScroll: reduceMotion });
-    if (!reduceMotion && typeof heading.scrollIntoView === 'function') {
-      heading.scrollIntoView({ block: 'nearest' });
-    }
+    directoryTitleRef.current?.focus();
   }, []);
 
-  const kpiCounts = useMemo(() => {
-    const byStatus = parkSummary?.byStatus;
-    return {
-      active: byStatus?.ACTIVE ?? 0,
-      provisioning: byStatus?.PROVISIONING ?? 0,
-      attention: byStatus
-        ? TENANT_ATTENTION_STATUSES.reduce((sum, status) => sum + (byStatus[status] ?? 0), 0)
-        : 0,
-    };
-  }, [parkSummary]);
-
-  const signalChips = useMemo<DashboardMetricModel[]>(() => {
+  const pulseCells = useMemo<PulseCellData[]>(() => {
     const current = new URLSearchParams(searchParams.toString());
+    const byStatus = parkSummary?.byStatus;
+    const active = byStatus ? (byStatus.ACTIVE ?? 0) : null;
+    const provisioning = byStatus ? (byStatus.PROVISIONING ?? 0) : null;
+    const attention = byStatus
+      ? TENANT_ATTENTION_STATUSES.reduce((sum, status) => sum + (byStatus[status] ?? 0), 0)
+      : null;
+    const copy = PLATFORM_UI_COPY.dashboard;
+    const { filterDirectory, focusDirectory: focusLabel } = PLATFORM_UI_COPY.tenants;
 
     return [
       {
         id: 'active',
-        label: PLATFORM_UI_COPY.dashboard.chipActive,
-        count: kpiCounts.active,
-        tone: 'primary',
-        href: tenantsStatusHref('ACTIVE', current),
-        ariaLabel: PLATFORM_UI_COPY.dashboard.viewActiveCompanies,
+        label: copy.chipActive,
+        value: active,
+        state: 'idle',
+        href: active ? tenantsStatusHref('ACTIVE', current) : undefined,
+        actionLabel: copy.viewActiveCompanies,
+        hint: active ? filterDirectory : undefined,
       },
       {
         id: 'provisioning',
-        label: PLATFORM_UI_COPY.dashboard.chipProvisioning,
-        count: kpiCounts.provisioning,
-        tone: 'warning',
-        href: tenantsStatusHref('PROVISIONING', current),
-        ariaLabel: PLATFORM_UI_COPY.dashboard.viewProvisioningCompanies,
+        label: copy.chipProvisioning,
+        value: provisioning,
+        state: 'idle',
+        href: provisioning ? tenantsStatusHref('PROVISIONING', current) : undefined,
+        actionLabel: copy.viewProvisioningCompanies,
+        hint: provisioning ? filterDirectory : undefined,
       },
       {
         id: 'attention',
-        label: PLATFORM_UI_COPY.dashboard.chipAttention,
-        count: kpiCounts.attention,
-        tone: 'error',
-        ariaLabel: PLATFORM_UI_COPY.tenants.focusDirectory,
-        onActivate: focusDirectory,
+        label: copy.chipAttention,
+        value: attention,
+        state: 'idle',
+        onClick: attention ? focusDirectory : undefined,
+        actionLabel: `${copy.chipAttention}. ${focusLabel}`,
+        hint: attention ? focusLabel : undefined,
       },
     ];
-  }, [focusDirectory, kpiCounts.active, kpiCounts.attention, kpiCounts.provisioning, searchParams]);
+  }, [focusDirectory, parkSummary, searchParams]);
 
   const tableRows = useMemo(
     () =>
@@ -413,7 +405,7 @@ export default function TenantsPage() {
       : '';
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {notification ? (
         <Alert
           variant={notification.type === 'error' ? 'error' : 'success'}
@@ -478,14 +470,11 @@ export default function TenantsPage() {
 
       {isLoading ? <span className="sr-only">{PLATFORM_UI_COPY.tenants.loading}</span> : null}
 
-      <DashboardMetricStrip
-        metrics={signalChips}
+      <TenantDirectoryPulse
+        cells={pulseCells}
         isLoading={isParkLoading}
-        error={parkError ? PLATFORM_UI_COPY.tenants.parkSummaryError : null}
+        hasError={parkError}
         onRetry={() => void loadParkSummary()}
-        eyebrow={PLATFORM_UI_COPY.tenants.eyebrow}
-        ariaLabel={PLATFORM_UI_COPY.tenants.eyebrow}
-        skeletonCount={3}
       />
 
       <TenantsTable

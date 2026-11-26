@@ -30,6 +30,7 @@ import {
   type PlatformBrandingUsage,
   type UpdatePlatformBrandingPayload,
 } from '@/lib/api-client';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 import { settingsSectionPanelClassName, settingsWellClassName } from './settings-shell';
 
@@ -115,6 +116,12 @@ function toFormValues(branding: PlatformBranding): PlatformBrandingFormValues {
     loginBackgroundLightUrl: branding.loginBackgroundLightUrl ?? '',
     loginBackgroundDarkUrl: branding.loginBackgroundDarkUrl ?? '',
   };
+}
+
+function toUrlField(usage: PlatformBrandingUsage, themeVariant?: PlatformBrandingThemeVariant) {
+  if (usage === 'logo') return 'logoUrl';
+  if (usage === 'favicon') return 'faviconUrl';
+  return themeVariant === 'light' ? 'loginBackgroundLightUrl' : 'loginBackgroundDarkUrl';
 }
 
 function normalizeUrl(value: string): string | null {
@@ -395,6 +402,7 @@ export function PlatformBrandingSettings() {
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [uploadingSlot, setUploadingSlot] = useState<string | null>(null);
   const [removingSlot, setRemovingSlot] = useState<string | null>(null);
@@ -403,8 +411,9 @@ export function PlatformBrandingSettings() {
     register,
     handleSubmit,
     reset,
+    resetField,
     watch,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, dirtyFields, isDirty },
   } = useForm<PlatformBrandingFormValues>({
     resolver: zodResolver(platformBrandingSchema),
     defaultValues: {
@@ -418,6 +427,13 @@ export function PlatformBrandingSettings() {
       loginBackgroundDarkUrl: '',
     },
   });
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const protectDraft = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', protectDraft);
+    return () => window.removeEventListener('beforeunload', protectDraft);
+  }, [isDirty]);
 
   useEffect(() => {
     let mounted = true;
@@ -511,15 +527,29 @@ export function PlatformBrandingSettings() {
       const updated = await platformBrandingApi.reset();
       reset(toFormValues(updated));
       await refreshPublicBranding();
+      setConfirmReset(false);
       setFeedback({ type: 'success', message: copy.successReset });
     } catch (error) {
       setFeedback({
         type: 'error',
         message: getErrorMessage(error, copy.errorReset),
       });
+      setConfirmReset(false);
     } finally {
       setIsResetting(false);
     }
+  };
+
+  // La imagen recién cambiada manda sobre su dirección editada; los demás borradores se conservan.
+  const applyAssetChange = (
+    updated: PlatformBranding,
+    usage: PlatformBrandingUsage,
+    themeVariant?: PlatformBrandingThemeVariant,
+  ) => {
+    const values = toFormValues(updated);
+    const field = toUrlField(usage, themeVariant);
+    reset(values, { keepDirtyValues: Object.keys(dirtyFields).length > 0 });
+    resetField(field, { defaultValue: values[field] });
   };
 
   const onUploadAsset = async (
@@ -544,7 +574,7 @@ export function PlatformBrandingSettings() {
         themeVariant ? { usage, themeVariant, file } : { usage, file },
       );
       const updated = await platformBrandingApi.get();
-      reset(toFormValues(updated));
+      applyAssetChange(updated, usage, themeVariant);
       await refreshPublicBranding();
       setFeedback({ type: 'success', message: copy.successUpload });
     } catch (error) {
@@ -583,7 +613,7 @@ export function PlatformBrandingSettings() {
 
     try {
       const updated = await platformBrandingApi.update(payload);
-      reset(toFormValues(updated));
+      applyAssetChange(updated, usage, themeVariant);
       await refreshPublicBranding();
       setFeedback({
         type: 'success',
@@ -656,6 +686,81 @@ export function PlatformBrandingSettings() {
           className="space-y-6"
           aria-busy={formDisabled || undefined}
         >
+          <section className={`space-y-4 ${settingsSectionPanelClassName}`}>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                {copy.namesSection}
+              </h3>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{copy.namesHelp}</p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Input
+                label={copy.productLabel}
+                error={errors.productName?.message}
+                {...register('productName')}
+              />
+              <Input
+                label={copy.surfaceLabel}
+                error={errors.surfaceName?.message}
+                {...register('surfaceName')}
+              />
+              <Input
+                label={copy.titleLabel}
+                error={errors.metadataTitle?.message}
+                {...register('metadataTitle')}
+              />
+              <Input
+                label={copy.descriptionLabel}
+                error={errors.metadataDescription?.message}
+                {...register('metadataDescription')}
+              />
+            </div>
+
+            <dl className="grid grid-cols-1 gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 text-sm dark:border-dark-border dark:bg-dark-surface-3 md:grid-cols-2">
+              <div>
+                <dt className="portal-eyebrow-muted">{copy.previewProduct}</dt>
+                <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
+                  {preview.productName}
+                </dd>
+              </div>
+              <div>
+                <dt className="portal-eyebrow-muted">{copy.previewSurface}</dt>
+                <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
+                  {preview.surfaceName}
+                </dd>
+              </div>
+              <div>
+                <dt className="portal-eyebrow-muted">{copy.previewTitle}</dt>
+                <dd className="mt-1 font-medium text-gray-900 dark:text-white">
+                  {preview.metadataTitle}
+                </dd>
+              </div>
+              <div>
+                <dt className="portal-eyebrow-muted">{copy.previewDescription}</dt>
+                <dd className="mt-1 text-gray-600 dark:text-gray-300">
+                  {preview.metadataDescription}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setConfirmReset(true)}
+                loading={isResetting}
+                disabled={formDisabled}
+              >
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                {copy.resetDefaults}
+              </Button>
+              <Button type="submit" loading={isSubmitting} disabled={formDisabled}>
+                <Save className="h-4 w-4" aria-hidden="true" />
+                {copy.save}
+              </Button>
+            </div>
+          </section>
           <section className={`space-y-3 ${settingsSectionPanelClassName}`}>
             <div>
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
@@ -727,84 +832,19 @@ export function PlatformBrandingSettings() {
               />
             </div>
           </section>
-
-          <section className={`space-y-4 ${settingsSectionPanelClassName}`}>
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                {copy.namesSection}
-              </h3>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{copy.namesHelp}</p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Input
-                label={copy.productLabel}
-                error={errors.productName?.message}
-                {...register('productName')}
-              />
-              <Input
-                label={copy.surfaceLabel}
-                error={errors.surfaceName?.message}
-                {...register('surfaceName')}
-              />
-              <Input
-                label={copy.titleLabel}
-                error={errors.metadataTitle?.message}
-                {...register('metadataTitle')}
-              />
-              <Input
-                label={copy.descriptionLabel}
-                error={errors.metadataDescription?.message}
-                {...register('metadataDescription')}
-              />
-            </div>
-
-            <dl className="grid grid-cols-1 gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 text-sm dark:border-dark-border dark:bg-dark-surface-3 md:grid-cols-2">
-              <div>
-                <dt className="portal-eyebrow-muted">{copy.previewProduct}</dt>
-                <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
-                  {preview.productName}
-                </dd>
-              </div>
-              <div>
-                <dt className="portal-eyebrow-muted">{copy.previewSurface}</dt>
-                <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
-                  {preview.surfaceName}
-                </dd>
-              </div>
-              <div>
-                <dt className="portal-eyebrow-muted">{copy.previewTitle}</dt>
-                <dd className="mt-1 font-medium text-gray-900 dark:text-white">
-                  {preview.metadataTitle}
-                </dd>
-              </div>
-              <div>
-                <dt className="portal-eyebrow-muted">{copy.previewDescription}</dt>
-                <dd className="mt-1 text-gray-600 dark:text-gray-300">
-                  {preview.metadataDescription}
-                </dd>
-              </div>
-            </dl>
-
-            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onResetDefaults}
-                loading={isResetting}
-                disabled={formDisabled}
-              >
-                <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                {copy.resetDefaults}
-              </Button>
-              <Button type="submit" loading={isSubmitting} disabled={formDisabled}>
-                <Save className="h-4 w-4" aria-hidden="true" />
-                {copy.save}
-              </Button>
-            </div>
-          </section>
         </form>
       ) : null}
+      <ConfirmDialog
+        open={confirmReset}
+        title={copy.resetConfirmTitle}
+        description={copy.resetConfirmBody}
+        confirmLabel={copy.resetDefaults}
+        onConfirm={() => void onResetDefaults()}
+        onCancel={() => {
+          if (!isResetting) setConfirmReset(false);
+        }}
+        isConfirming={isResetting}
+      />
     </div>
   );
 }

@@ -166,7 +166,7 @@ test.describe('Configuración → Equipo (ADR-114 §9)', () => {
     test('concede y retira con confirmación; envía solo roles autorizables', async ({ page }) => {
       await loginToPulse(page);
       await page.goto('/settings');
-      await page.getByRole('tab', { name: 'Equipo' }).click();
+      await page.getByRole('tab', { name: 'Visibilidad para soporte' }).click();
       const toggle = page.getByRole('switch', { name: LABEL });
       await expect(toggle).not.toBeChecked();
 
@@ -200,7 +200,7 @@ test.describe('Configuración → Equipo (ADR-114 §9)', () => {
     test('ve el valor en solo lectura', async ({ page }) => {
       await loginToPulse(page);
       await page.goto('/settings');
-      await page.getByRole('tab', { name: 'Equipo' }).click();
+      await page.getByRole('tab', { name: 'Visibilidad para soporte' }).click();
       await expect(page.getByRole('switch', { name: LABEL })).toBeDisabled();
       await expect(
         page.getByText('Solo el administrador de plataforma puede cambiar esta opción.'),

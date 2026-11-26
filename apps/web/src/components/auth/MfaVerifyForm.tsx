@@ -5,7 +5,7 @@ import { CircleAlert, ShieldCheck } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { OtpInput, Button } from '@iwana/ui';
-import { ApiError } from '@/lib/api-client';
+import { ApiError, getPendingPlatformMfaLogin } from '@/lib/api-client';
 import {
   FORM_ALERT_ERROR_CLASS,
   FORM_HELP_CLASS,
@@ -19,6 +19,8 @@ import { useAuth } from './AuthProvider';
  */
 
 const TOTP_INTERVAL = 30;
+const CONTEXT_MISSING_MESSAGE =
+  'La página se recargó y debes volver a ingresar tu contraseña. Vuelve al login para continuar.';
 
 export function MfaVerifyForm() {
   const router = useRouter();
@@ -27,7 +29,17 @@ export function MfaVerifyForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasError, setHasError] = useState(false);
+  const [contextMissing, setContextMissing] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(TOTP_INTERVAL);
+
+  // El primer paso vive solo en memoria: una recarga completa (p. ej. tras un
+  // despliegue) lo pierde y ningún código podría enviarse.
+  useEffect(() => {
+    if (!getPendingPlatformMfaLogin()) {
+      setContextMissing(true);
+      setError(CONTEXT_MISSING_MESSAGE);
+    }
+  }, []);
 
   useEffect(() => {
     const update = () => {
@@ -58,7 +70,10 @@ export function MfaVerifyForm() {
       setCode('');
       if (err instanceof ApiError) {
         // En espera, el mensaje del servidor dice cuánto falta.
-        if (err.code === 'AUTH_ACCOUNT_LOCKED') setError(err.message);
+        if (err.code === 'MFA_CONTEXT_MISSING') {
+          setContextMissing(true);
+          setError(CONTEXT_MISSING_MESSAGE);
+        } else if (err.code === 'AUTH_ACCOUNT_LOCKED') setError(err.message);
         else if (err.status === 401 && err.code.endsWith('MFA_CODE_INVALID'))
           setError('Código incorrecto o ya usado. Espera el siguiente código.');
         else if (err.status === 401)
@@ -94,7 +109,7 @@ export function MfaVerifyForm() {
         value={code}
         onChange={handleCodeChange}
         error={hasError}
-        disabled={loading}
+        disabled={loading || contextMissing}
         className="justify-center"
       />
 
@@ -134,7 +149,7 @@ export function MfaVerifyForm() {
         type="submit"
         size="lg"
         loading={loading}
-        disabled={code.length !== 6}
+        disabled={code.length !== 6 || contextMissing}
         className="w-full"
       >
         {loading ? 'Verificando...' : 'Verificar código'}

@@ -164,12 +164,13 @@ function setupAdminBootstrapMocks() {
         return;
       }
 
-      if (url.endsWith('/auth/mfa/setup') && method === 'POST') {
+      if (url.endsWith('/auth/platform/mfa/self/setup') && method === 'POST') {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
             data: {
+              challenge: 'desafio-sintetico',
               qrCodeBase64:
                 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl7Vj8AAAAASUVORK5CYII=',
               otpauthUri: 'otpauth://totp/iwana?secret=ABC123&issuer=iwana',
@@ -179,22 +180,12 @@ function setupAdminBootstrapMocks() {
         return;
       }
 
-      if (url.endsWith('/auth/mfa/verify') && method === 'POST') {
+      if (url.endsWith('/auth/platform/mfa/self/verify') && method === 'POST') {
         platformMfaEnabled = true;
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({ data: { mfaEnabled: true } }),
-        });
-        return;
-      }
-
-      if (url.endsWith('/auth/mfa/disable') && method === 'POST') {
-        platformMfaEnabled = false;
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ data: { mfaEnabled: false } }),
         });
         return;
       }
@@ -437,13 +428,15 @@ test.describe('Bootstrap operativo admin', () => {
     await expect(page).toHaveURL(/\/settings/);
     await expect(page.getByRole('heading', { name: 'Plataforma' })).toBeVisible();
     await page.getByRole('tab', { name: 'Seguridad' }).click();
-    await page.getByRole('button', { name: 'Activar verificación en dos pasos' }).click();
-    await expect(page.getByText(/Escanea el código QR con tu app de autenticación/i)).toBeVisible();
-    for (let digit = 1; digit <= 6; digit += 1) {
-      await page.getByRole('textbox', { name: `Dígito ${digit} de 6` }).fill(String(digit));
-    }
-    await page.getByRole('button', { name: 'Confirmar código' }).click();
-    await expect(page.getByText('Verificación en dos pasos activada.')).toBeVisible();
+    await page.getByRole('link', { name: 'Abrir seguridad en Mi cuenta' }).click();
+    await expect(page.getByRole('heading', { name: 'Seguridad de la cuenta' })).toBeFocused();
+    await page.getByRole('button', { name: 'Configurar verificación en dos pasos' }).click();
+    const setupDialog = page.getByRole('dialog', { name: 'Configurar verificación en dos pasos' });
+    await setupDialog.getByLabel('Contraseña actual').fill('Clave-sintetica-123');
+    await setupDialog.getByRole('button', { name: 'Continuar' }).click();
+    await setupDialog.getByLabel('Código de seis dígitos').fill('123456');
+    await setupDialog.getByRole('button', { name: 'Activar verificación en dos pasos' }).click();
+    await expect(page.getByText(/^Verificación en dos pasos activada\./)).toBeVisible();
 
     await page.getByRole('link', { name: 'Empresas' }).click();
     await page.getByRole('link', { name: 'Nueva empresa' }).click();

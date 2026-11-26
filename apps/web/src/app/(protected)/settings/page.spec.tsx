@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SettingsPage from './page';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
@@ -24,6 +24,8 @@ const mockBranding = {
 };
 
 const mockRefreshBranding = jest.fn();
+const mockPush = jest.fn();
+const mockReplace = jest.fn();
 type MockPlatformBrandingApi = {
   get: jest.Mock;
   update: jest.Mock;
@@ -33,6 +35,28 @@ type MockPlatformBrandingApi = {
 
 var mockPlatformBrandingApi: MockPlatformBrandingApi;
 
+jest.mock('next/navigation', () => ({
+  usePathname: () => '/settings',
+  useSearchParams: () => {
+    const search = React.useSyncExternalStore(
+      (listener) => {
+        window.addEventListener('popstate', listener);
+        return () => window.removeEventListener('popstate', listener);
+      },
+      () => window.location.search,
+    );
+    return new URLSearchParams(search);
+  },
+  useRouter: () => ({
+    push: mockPush,
+    replace: (url: string, options?: { scroll?: boolean }) => {
+      mockReplace(url, options);
+      window.history.replaceState(null, '', url);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    },
+  }),
+}));
+
 jest.mock('@/components/layout/PageHeader', () => ({
   PageHeader: ({ title, subtitle }: { title: string; subtitle?: string }) => (
     <div>
@@ -40,10 +64,6 @@ jest.mock('@/components/layout/PageHeader', () => ({
       {subtitle ? <p>{subtitle}</p> : null}
     </div>
   ),
-}));
-
-jest.mock('@/components/settings/SecuritySettings', () => ({
-  SecuritySettings: () => <div data-testid="security-settings">Seguridad mock</div>,
 }));
 
 jest.mock('@/components/branding/PlatformBrandingProvider', () => ({
@@ -82,6 +102,7 @@ jest.mock('@/lib/api-client', () => {
 
 describe('SettingsPage', () => {
   beforeEach(() => {
+    window.history.replaceState(null, '', '/settings');
     jest.clearAllMocks();
     mockPlatformBrandingApi.get.mockResolvedValue(mockBranding);
     mockPlatformBrandingApi.update.mockImplementation(async (payload) => ({
@@ -119,12 +140,63 @@ describe('SettingsPage', () => {
     });
   });
 
+  it('conserva un borrador al cambiar de sección con flechas y actualiza la URL', async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    const name = await screen.findByLabelText(identity.productLabel);
+    await user.clear(name);
+    await user.type(name, 'Nombre en borrador');
+    const identityTab = screen.getByRole('tab', { name: copy.tabIdentity });
+    identityTab.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('tab', { name: copy.tabSecurity })).toHaveFocus();
+    expect(window.location.search).toBe('?seccion=seguridad');
+    await user.keyboard('{ArrowLeft}');
+    expect(name).toHaveValue('Nombre en borrador');
+  });
+
+  it('cambia de sección sin sumar entradas al historial y conserva los demás parámetros', async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(null, '', '/settings?origen=inicio');
+    const entries = window.history.length;
+    render(<SettingsPage />);
+
+    await user.click(screen.getByRole('tab', { name: copy.tabSecurity }));
+
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockReplace).toHaveBeenCalledTimes(1);
+    expect(mockReplace).toHaveBeenCalledWith('/settings?origen=inicio&seccion=seguridad', {
+      scroll: false,
+    });
+    expect(window.history.length).toBe(entries);
+    expect(
+      within(screen.getByRole('tabpanel', { name: copy.tabSecurity })).getByRole('link', {
+        name: 'Abrir seguridad en Mi cuenta',
+      }),
+    ).toBeVisible();
+
+    await user.click(screen.getByRole('tab', { name: copy.tabIdentity }));
+
+    expect(
+      await within(screen.getByRole('tabpanel', { name: copy.tabIdentity })).findByLabelText(
+        identity.productLabel,
+      ),
+    ).toBeVisible();
+    expect(window.history.length).toBe(entries);
+  });
+
   describe('tab Seguridad', () => {
-    it('muestra el componente SecuritySettings al activar el tab', async () => {
+    it('enlaza a la seguridad personal desde Plataforma', async () => {
       const user = userEvent.setup();
       render(<SettingsPage />);
       await user.click(screen.getByRole('tab', { name: copy.tabSecurity }));
-      expect(screen.getByTestId('security-settings')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Abrir seguridad en Mi cuenta' })).toHaveAttribute(
+        'href',
+        '/profile#profile-security-heading',
+      );
+      expect(
+        screen.queryByRole('button', { name: 'Actualizar contraseña' }),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -220,7 +292,15 @@ describe('SettingsPage', () => {
       render(<SettingsPage />);
       await screen.findByDisplayValue('iWana neXt');
 
-      await user.click(screen.getByRole('button', { name: identity.resetDefaults }));
+      const resetButton = screen.getByRole('button', { name: identity.resetDefaults });
+      await user.click(resetButton);
+      let confirm = screen.getByRole('dialog', { name: identity.resetConfirmTitle });
+      expect(mockPlatformBrandingApi.reset).not.toHaveBeenCalled();
+      await user.click(within(confirm).getByRole('button', { name: 'Cancelar' }));
+      expect(mockPlatformBrandingApi.reset).not.toHaveBeenCalled();
+      await user.click(resetButton);
+      confirm = screen.getByRole('dialog', { name: identity.resetConfirmTitle });
+      await user.click(within(confirm).getByRole('button', { name: identity.resetDefaults }));
 
       await waitFor(() => {
         expect(mockPlatformBrandingApi.reset).toHaveBeenCalledTimes(1);
@@ -252,7 +332,9 @@ describe('SettingsPage', () => {
         logoAssetId: null,
       });
       render(<SettingsPage />);
-      await screen.findByDisplayValue('iWana neXt');
+      const name = await screen.findByLabelText(identity.productLabel);
+      await user.clear(name);
+      await user.type(name, 'Nombre en borrador');
 
       const removeButtons = screen.getAllByRole('button', { name: identity.removeCta });
       await user.click(removeButtons[0] as HTMLElement);
@@ -261,6 +343,7 @@ describe('SettingsPage', () => {
       await user.click(screen.getByRole('button', { name: identity.removeConfirm }));
 
       expect(await screen.findByText(identity.successRemove)).toBeInTheDocument();
+      expect(name).toHaveValue('Nombre en borrador');
       await waitFor(() => {
         expect(mockPlatformBrandingApi.update).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -286,6 +369,164 @@ describe('SettingsPage', () => {
       await waitFor(() => {
         expect(mockPlatformBrandingApi.update).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('tab Identidad — dirección editada y sin guardar de la misma imagen', () => {
+    const slots = [
+      { slot: 'logo', field: 'logoUrl', label: identity.logoUrlLabel },
+      { slot: 'favicon', field: 'faviconUrl', label: identity.faviconUrlLabel },
+      {
+        slot: 'fondo claro',
+        field: 'loginBackgroundLightUrl',
+        label: identity.loginBgLightUrlLabel,
+      },
+      {
+        slot: 'fondo oscuro',
+        field: 'loginBackgroundDarkUrl',
+        label: identity.loginBgDarkUrlLabel,
+      },
+    ] as const;
+    const otherField = (field: string) =>
+      field === 'logoUrl'
+        ? { field: 'faviconUrl', label: identity.faviconUrlLabel }
+        : { field: 'logoUrl', label: identity.logoUrlLabel };
+
+    const originalImage = global.Image;
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+
+    beforeEach(() => {
+      URL.createObjectURL = () => 'blob:prueba';
+      URL.revokeObjectURL = () => undefined;
+      global.Image = class {
+        naturalWidth = 1280;
+        naturalHeight = 720;
+        onload: (() => void) | null = null;
+        set src(_value: string) {
+          queueMicrotask(() => this.onload?.());
+        }
+      } as unknown as typeof Image;
+    });
+
+    afterEach(() => {
+      global.Image = originalImage;
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    });
+
+    const edit = (label: string, value: string) =>
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+
+    const cardOf = (label: string) =>
+      screen.getByLabelText(label).closest('details')?.parentElement as HTMLElement;
+
+    const upload = (slot: (typeof slots)[number]) => {
+      const file =
+        slot.field === 'faviconUrl'
+          ? new File(['x'], 'nueva.ico', { type: 'image/x-icon' })
+          : new File(['x'], 'nueva.png', { type: 'image/png' });
+      fireEvent.change(cardOf(slot.label).querySelector('input[type="file"]') as HTMLElement, {
+        target: { files: [file] },
+      });
+    };
+
+    const isDraftProtected = () =>
+      !window.dispatchEvent(new Event('beforeunload', { cancelable: true }));
+
+    async function saveAndGetPayload(): Promise<Record<string, unknown>> {
+      mockPlatformBrandingApi.update.mockClear();
+      fireEvent.click(screen.getByRole('button', { name: identity.save }));
+      await waitFor(() => expect(mockPlatformBrandingApi.update).toHaveBeenCalledTimes(1));
+      expect(await screen.findByText(identity.successSave)).toBeInTheDocument();
+      return mockPlatformBrandingApi.update.mock.calls[0][0];
+    }
+
+    it.each(slots)('al subir $slot, Guardar envía la imagen nueva', async (slot) => {
+      const other = otherField(slot.field);
+      render(<SettingsPage />);
+      await screen.findByDisplayValue('iWana neXt');
+      edit(slot.label, 'https://cdn.example.test/vieja.png');
+      edit(other.label, 'https://cdn.example.test/otro-borrador.png');
+      edit(identity.productLabel, 'Nombre en borrador');
+      mockPlatformBrandingApi.uploadAsset.mockResolvedValue(undefined);
+      mockPlatformBrandingApi.get.mockResolvedValue({
+        ...mockBranding,
+        [slot.field]: '/uploads/nueva.png',
+      });
+
+      upload(slot);
+
+      expect(await screen.findByText(identity.successUpload)).toBeInTheDocument();
+      expect(screen.getByLabelText(slot.label)).toHaveValue('/uploads/nueva.png');
+      expect(screen.getByLabelText(other.label)).toHaveValue(
+        'https://cdn.example.test/otro-borrador.png',
+      );
+      expect(isDraftProtected()).toBe(true);
+      expect(await saveAndGetPayload()).toMatchObject({
+        [slot.field]: '/uploads/nueva.png',
+        [other.field]: 'https://cdn.example.test/otro-borrador.png',
+        productName: 'Nombre en borrador',
+      });
+    });
+
+    it.each(slots)('al eliminar $slot, Guardar no repone la dirección vieja', async (slot) => {
+      const user = userEvent.setup();
+      const other = otherField(slot.field);
+      render(<SettingsPage />);
+      await screen.findByDisplayValue('iWana neXt');
+      edit(slot.label, 'https://cdn.example.test/vieja.png');
+      edit(other.label, 'https://cdn.example.test/otro-borrador.png');
+      edit(identity.productLabel, 'Nombre en borrador');
+
+      await user.click(
+        within(cardOf(slot.label)).getByRole('button', { name: identity.removeCta }),
+      );
+      await user.click(await screen.findByRole('button', { name: identity.removeConfirm }));
+
+      expect(await screen.findByText(identity.successRemove)).toBeInTheDocument();
+      expect(screen.getByLabelText(slot.label)).toHaveValue('');
+      expect(isDraftProtected()).toBe(true);
+      expect(await saveAndGetPayload()).toMatchObject({
+        [slot.field]: null,
+        [other.field]: 'https://cdn.example.test/otro-borrador.png',
+        productName: 'Nombre en borrador',
+      });
+    });
+
+    it('sin otros borradores, subir la imagen deja el formulario sin cambios pendientes', async () => {
+      render(<SettingsPage />);
+      await screen.findByDisplayValue('iWana neXt');
+      edit(identity.logoUrlLabel, 'https://cdn.example.test/vieja.png');
+      mockPlatformBrandingApi.uploadAsset.mockResolvedValue(undefined);
+      mockPlatformBrandingApi.get.mockResolvedValue({
+        ...mockBranding,
+        logoUrl: '/uploads/nueva.png',
+      });
+
+      upload(slots[0]);
+
+      expect(await screen.findByText(identity.successUpload)).toBeInTheDocument();
+      expect(isDraftProtected()).toBe(false);
+    });
+
+    it('conserva un borrador escrito mientras la imagen se está subiendo', async () => {
+      render(<SettingsPage />);
+      await screen.findByDisplayValue('iWana neXt');
+      let finishUpload: () => void = () => undefined;
+      mockPlatformBrandingApi.uploadAsset.mockReturnValue(
+        new Promise<void>((resolve) => {
+          finishUpload = resolve;
+        }),
+      );
+
+      upload(slots[0]);
+      await waitFor(() => expect(mockPlatformBrandingApi.uploadAsset).toHaveBeenCalled());
+      edit(identity.productLabel, 'Nombre durante la subida');
+      finishUpload();
+
+      expect(await screen.findByText(identity.successUpload)).toBeInTheDocument();
+      expect(screen.getByLabelText(identity.productLabel)).toHaveValue('Nombre durante la subida');
     });
   });
 });

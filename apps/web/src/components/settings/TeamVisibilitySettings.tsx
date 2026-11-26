@@ -5,6 +5,7 @@ import { PlatformRole, type TenantUsageGrantableRole } from '@iwana/shared';
 import { CheckboxCard, ErrorState, SkeletonBlock } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { tenantApi } from '@/lib/api-client';
+import Link from 'next/link';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 import { settingsSectionPanelClassName } from './settings-shell';
 
@@ -67,6 +68,12 @@ export function TeamVisibilitySettings() {
       >
         {copy.title}
       </h2>
+      <Link
+        href="/platform-users"
+        className="mt-2 inline-flex min-h-11 items-center text-sm font-medium underline"
+      >
+        {PLATFORM_UI_COPY.navigation.users}
+      </Link>
       {state === 'loading' ? (
         <div role="status" aria-busy="true" aria-label={copy.loading} className="mt-4 space-y-2">
           <SkeletonBlock className="h-4 w-2/3 rounded" />

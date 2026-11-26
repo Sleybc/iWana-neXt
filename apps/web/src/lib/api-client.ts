@@ -11,6 +11,7 @@ import type {
   TenantUsage,
   TenantUsageVisibility,
   UpdateTenantUsageVisibility,
+  UserStatus,
 } from '@iwana/shared';
 
 /**
@@ -387,12 +388,6 @@ export const authApi = {
     return response;
   },
 
-  mfaVerifySetup: (code: string) =>
-    request<{ mfaEnabled: boolean }>('/auth/mfa/verify', {
-      method: 'POST',
-      body: JSON.stringify({ totpCode: code }),
-    }),
-
   setupPlatformMfa: () =>
     request<{ qrCodeBase64: string; otpauthUri: string }>('/auth/platform/mfa/setup', {
       method: 'POST',
@@ -430,19 +425,6 @@ export const authApi = {
       // primer ingreso de plataforma no existe, porque ese login no emite
       // refresh token— y expulsaria al usuario al login en vez de mostrarle el
       // error del formulario.
-      skipRefreshRetry: true,
-    }),
-
-  mfaSetup: () =>
-    request<{ qrCodeBase64: string; otpauthUri: string }>('/auth/mfa/setup', {
-      method: 'POST',
-    }),
-
-  mfaDisable: (password: string, code: string) =>
-    request<{ mfaEnabled: boolean }>('/auth/mfa/disable', {
-      method: 'POST',
-      body: JSON.stringify({ password, totpCode: code }),
-      // El 401 es un intento fallido: reintentarlo lo contaría dos veces para el bloqueo.
       skipRefreshRetry: true,
     }),
 
@@ -531,7 +513,13 @@ export interface CreateBootstrapUserPayload {
 }
 
 export const platformUsersApi = {
-  directory: (page: number) => request<PlatformUserDirectory>(`/platform-users?page=${page}`),
+  directory: (page: number, filters?: { search?: string; status?: UserStatus }) =>
+    filters?.search || filters?.status
+      ? request<PlatformUserDirectory>('/platform-users/search', {
+          method: 'POST',
+          body: JSON.stringify({ page, ...filters }),
+        })
+      : request<PlatformUserDirectory>(`/platform-users?page=${page}`),
   createDirectoryAccount: (account: {
     email: string;
     firstName: string;
