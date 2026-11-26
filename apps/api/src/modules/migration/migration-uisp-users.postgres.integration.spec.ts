@@ -364,6 +364,58 @@ describeDb('Usuarios de UISP — conexión y lectura sobre PostgreSQL real', () 
     expect(masked.data.find((item) => item.uispUserId === 11)!.email).toBe('c***@example.test');
   });
 
+  it('trae como «sin datos» al personal eliminado que sigue en tickets, pagos y tareas', async () => {
+    const TICKETS = '/crm/api/v1.0/ticketing/tickets';
+    const PAYMENTS = '/crm/api/v1.0/payments';
+    const JOBS = '/crm/api/v1.0/scheduling/jobs';
+    await sql(
+      `UPDATE migration_uisp_users SET last_fetched_at = now() - interval '20 days'
+        WHERE uisp_user_id = 40`,
+    );
+    uisp.routes.set(UISP_ADMINS_PATH, { status: 200, body: admins() });
+    uisp.routes.set(TICKETS, {
+      status: 200,
+      body: [{ id: 1, assignedUserId: 11, activity: [{ userId: 70 }, { userId: 40 }] }],
+    });
+    uisp.routes.set(PAYMENTS, { status: 200, body: [{ id: 2, userId: 71 }] });
+    uisp.routes.set(JOBS, { status: 200, body: [{ id: 3, assignedUserId: 72 }] });
+    const before = uisp.requests.length;
+
+    try {
+      const summary = await uispUsers.fetch(scope, actorId);
+
+      expect(summary).toMatchObject({
+        sinDatos: 3,
+        procesos: {
+          leidos: { TICKETS: 1, PAGOS: 1, TAREAS: 1 },
+          eliminadosEnProcesos: 4,
+          sinLeer: [],
+          truncados: [],
+        },
+      });
+      expect(uisp.requests.slice(before)).toEqual(
+        expect.arrayContaining([
+          { method: 'GET', path: TICKETS, query: 'limit=100&offset=0', appKey: FAKE_UISP_APP_KEY },
+        ]),
+      );
+      const rows = await sql<{ uisp_user_id: number; source: string; fresh: boolean }>(
+        `SELECT uisp_user_id, source, last_fetched_at > now() - interval '1 minute' AS fresh
+           FROM migration_uisp_users WHERE uisp_user_id IN (40, 70, 71, 72)
+          ORDER BY uisp_user_id`,
+      );
+      // 40 (pendiente, ya existía) se renueva y deja de acercarse a la purga de 30 días.
+      expect(rows).toEqual([
+        { uisp_user_id: 40, source: 'SIN_DATOS', fresh: true },
+        { uisp_user_id: 70, source: 'SIN_DATOS', fresh: true },
+        { uisp_user_id: 71, source: 'SIN_DATOS', fresh: true },
+        { uisp_user_id: 72, source: 'SIN_DATOS', fresh: true },
+      ]);
+    } finally {
+      for (const path of [TICKETS, PAYMENTS, JOBS]) uisp.routes.delete(path);
+      await sql(`DELETE FROM migration_uisp_users WHERE uisp_user_id IN (70, 71, 72)`);
+    }
+  });
+
   it('una clave revocada durante la lectura es permanente y no toca las filas', async () => {
     uisp.routes.set(UISP_ADMINS_PATH, { status: 403 });
 

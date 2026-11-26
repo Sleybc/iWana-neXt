@@ -29,7 +29,8 @@ describe('MigrationUispUsersService', () => {
     load: jest.fn(),
     recordCheck: jest.fn().mockResolvedValue(null),
   };
-  const client = { listAdmins: jest.fn() };
+  const client = { listAdmins: jest.fn(), listPage: jest.fn() };
+  let processLists: Record<string, unknown[]>;
   const users = { findUserIdsByEmailHash: jest.fn() };
   const logs: string[] = [];
   let staged: Array<{ batch_id: string; entity: string; payload_encrypted: string }>;
@@ -37,6 +38,7 @@ describe('MigrationUispUsersService', () => {
   let upserts: unknown[][];
   let sinDatos: unknown[][];
   let connectionRows: unknown[];
+  let existingSinDatos: number[];
 
   const query = jest.fn(async (sql: string, params: unknown[] = []) => {
     if (sql.includes('search_path')) return [];
@@ -44,7 +46,9 @@ describe('MigrationUispUsersService', () => {
     if (sql.includes('FROM migration_staging_records')) return staged;
     if (sql.includes("'SIN_DATOS'")) {
       sinDatos.push(params);
-      return (params[1] as number[]).map((id) => ({ uisp_user_id: id }));
+      return (params[1] as number[])
+        .filter((id) => !existingSinDatos.includes(id))
+        .map((id) => ({ uisp_user_id: id, inserted: true }));
     }
     if (sql.includes('INSERT INTO migration_uisp_users')) {
       upserts.push(params);
@@ -91,6 +95,12 @@ describe('MigrationUispUsersService', () => {
     upserts = [];
     sinDatos = [];
     connectionRows = [{ id: connectionId }];
+    existingSinDatos = [];
+    processLists = {};
+    client.listPage.mockImplementation(
+      async (_connection: unknown, path: string, limit: number, offset: number) =>
+        (processLists[path] ?? []).slice(offset, offset + limit),
+    );
     connections.load.mockResolvedValue({
       id: connectionId,
       connection: {
@@ -194,6 +204,56 @@ describe('MigrationUispUsersService', () => {
       expect(sinDatos).toEqual([[tenantId, [40, 41]]]);
       expect(summary.sinDatos).toBe(2);
       expect(logs.join('\n')).toMatch(/1 intermedia\(s\) ilegible/u);
+    });
+
+    it('agrega como «sin datos» al personal eliminado que sigue en tickets, pagos y tareas', async () => {
+      staged = [stage('b-1', 'PAGO', { userId: 40 })];
+      existingSinDatos = [40];
+      processLists = {
+        '/crm/api/v1.0/ticketing/tickets': [
+          { id: 1, assignedUserId: 11, activity: [{ userId: 60 }] },
+        ],
+        '/crm/api/v1.0/payments': [
+          { id: 2, userId: 40 },
+          { id: 3, userId: 61 },
+        ],
+        '/crm/api/v1.0/scheduling/jobs': [{ id: 4, assignedUserId: 62 }],
+      };
+      client.listAdmins.mockResolvedValue([{ id: 11, isActive: true }]);
+
+      const summary = await service.fetch(scope, actorId);
+
+      expect(client.listPage).toHaveBeenCalledWith(
+        expect.objectContaining({ appKey: APP_KEY }),
+        '/crm/api/v1.0/payments',
+        500,
+        0,
+      );
+      // 40 ya existía (se renueva, no cuenta como nuevo); 60, 61 y 62 vienen de los procesos.
+      expect(sinDatos).toEqual([[tenantId, [40, 60, 61, 62]]]);
+      expect(summary.sinDatos).toBe(3);
+      expect(summary.procesos).toEqual({
+        leidos: { TICKETS: 1, PAGOS: 2, TAREAS: 1 },
+        eliminadosEnProcesos: 4,
+        sinLeer: [],
+        truncados: [],
+      });
+      expect(audit.logWithin).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newValue: expect.objectContaining({ lectura: 'USERS_ADMINS_Y_PROCESOS', sinDatos: 3 }),
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('si un proceso falla por red, el job se reintenta sin escribir', async () => {
+      client.listAdmins.mockResolvedValue([{ id: 11, isActive: true }]);
+      const transient = new UispApiError('UNREACHABLE', 'TIEMPO_AGOTADO', true);
+      client.listPage.mockRejectedValue(transient);
+
+      await expect(service.fetch(scope, actorId)).rejects.toBe(transient);
+      expect(upserts).toEqual([]);
+      expect(connections.recordCheck).toHaveBeenCalledWith(scope, 'UNREACHABLE', actorId);
     });
 
     it('una fila resuelta no se toca: la base no devuelve fila y se cuenta como intacta', async () => {

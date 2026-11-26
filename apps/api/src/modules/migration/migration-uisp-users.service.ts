@@ -33,6 +33,11 @@ import {
 import { MigrationUserDirectoryPort } from './ports/migration-user-directory.port';
 import { UispAdminsResponseError, parseUispAdmins } from './uisp-api/uisp-admins';
 import { UispApiClient, UispApiError } from './uisp-api/uisp-api.client';
+import {
+  collectUispProcessUserRefs,
+  type UispProcess,
+  type UispProcessRefs,
+} from './uisp-api/uisp-process-user-refs';
 import { STAGED_ENTITIES_WITH_UISP_USERS, stagedUispUserRefs } from './uisp/uisp-staged-user-refs';
 
 interface UispUserRow {
@@ -59,6 +64,17 @@ export interface UispUsersFetchSummary {
   coincidencias: number;
   sinDatos: number;
   omitidos: number;
+  /**
+   * Recorrido de tickets, pagos y tareas de UISP (ADR-110 v1.3 D15): elementos leídos por
+   * proceso, números del personal que aparecen ahí y no en `users/admins`, y procesos que no se
+   * pudieron leer o que se cortaron por el tope de páginas.
+   */
+  procesos: {
+    leidos: Record<UispProcess, number>;
+    eliminadosEnProcesos: number;
+    sinLeer: UispProcess[];
+    truncados: UispProcess[];
+  };
 }
 
 function iso(value: Date | string): string {
@@ -152,8 +168,13 @@ export class MigrationUispUsersService {
     if (!loaded) throw new MigrationPermanentError('MIGRATION_SOURCE_NOT_CONFIGURED');
 
     let parsed: ReturnType<typeof parseUispAdmins>;
+    let processes: UispProcessRefs;
     try {
       parsed = parseUispAdmins(await this.client.listAdmins(loaded.connection));
+      // Personal eliminado que sigue en tickets, pagos y tareas: solo sus números.
+      processes = await collectUispProcessUserRefs((path, limit, offset) =>
+        this.client.listPage(loaded.connection, path, limit, offset),
+      );
     } catch (error) {
       if (error instanceof UispApiError) {
         await this.connections.recordCheck(scope, checkResultOf(error), actorId);
@@ -191,6 +212,12 @@ export class MigrationUispUsersService {
         coincidencias: 0,
         sinDatos: 0,
         omitidos: parsed.skipped,
+        procesos: {
+          leidos: processes.leidos,
+          eliminadosEnProcesos: 0,
+          sinLeer: processes.sinLeer,
+          truncados: processes.truncados,
+        },
       };
       for (const admin of parsed.admins) {
         const hash = hashOf.get(admin.uispUserId) ?? null;
@@ -229,20 +256,29 @@ export class MigrationUispUsersService {
       }
 
       const apiIds = new Set(parsed.admins.map((admin) => admin.uispUserId));
-      const missing = [...(await this.stagedReferences(qr.manager, scope.tenantId)).keys()]
-        .filter((id) => !apiIds.has(id))
-        .sort((a, b) => a - b);
+      const inProcesses = [...processes.refs.keys()].filter((id) => !apiIds.has(id));
+      result.procesos.eliminadosEnProcesos = inProcesses.length;
+      const referenced = new Set([
+        ...(await this.stagedReferences(qr.manager, scope.tenantId)).keys(),
+        ...inProcesses,
+      ]);
+      const missing = [...referenced].filter((id) => !apiIds.has(id)).sort((a, b) => a - b);
       if (missing.length > 0) {
-        const inserted = (await qr.query(
+        // Una fila «sin datos» pendiente que vuelve a aparecer renueva `last_fetched_at`: la
+        // purga de 30 días solo se lleva las que ya no aparecen en ninguna lectura.
+        const rows = (await qr.query(
           `INSERT INTO migration_uisp_users
              (tenant_id, uisp_user_id, source, status, last_fetched_at)
            SELECT $1, ids.id, 'SIN_DATOS', 'PENDIENTE', now()
              FROM unnest($2::int[]) AS ids(id)
-           ON CONFLICT (tenant_id, uisp_user_id) DO NOTHING
-           RETURNING uisp_user_id`,
+           ON CONFLICT (tenant_id, uisp_user_id) DO UPDATE
+             SET last_fetched_at = now(), updated_at = now()
+             WHERE migration_uisp_users.status = 'PENDIENTE'
+               AND migration_uisp_users.source = 'SIN_DATOS'
+           RETURNING uisp_user_id, (xmax = 0) AS inserted`,
           [scope.tenantId, missing],
-        )) as Array<{ uisp_user_id: number }>;
-        result.sinDatos = inserted.length;
+        )) as Array<{ uisp_user_id: number; inserted: boolean }>;
+        result.sinDatos = rows.filter((row) => row.inserted).length;
       }
 
       await this.auditService.logWithin(
@@ -253,7 +289,7 @@ export class MigrationUispUsersService {
           userId: actorId,
           tenantId: scope.tenantId,
           schemaName: scope.schemaName,
-          newValue: { lectura: 'USERS_ADMINS', ...result },
+          newValue: { lectura: 'USERS_ADMINS_Y_PROCESOS', ...result },
         },
         qr.manager,
       );
@@ -264,7 +300,12 @@ export class MigrationUispUsersService {
     this.logger.log(
       `[migration] Usuarios de UISP leídos (tenant=${scope.tenantId}, api=${summary.api}, ` +
         `nuevos=${summary.nuevos}, actualizados=${summary.actualizados}, ` +
-        `intactos=${summary.intactos}, sinDatos=${summary.sinDatos}, omitidos=${summary.omitidos}).`,
+        `intactos=${summary.intactos}, sinDatos=${summary.sinDatos}, omitidos=${summary.omitidos}, ` +
+        `tickets=${summary.procesos.leidos.TICKETS}, pagos=${summary.procesos.leidos.PAGOS}, ` +
+        `tareas=${summary.procesos.leidos.TAREAS}, ` +
+        `eliminadosEnProcesos=${summary.procesos.eliminadosEnProcesos}, ` +
+        `sinLeer=${summary.procesos.sinLeer.join('|') || '-'}, ` +
+        `truncados=${summary.procesos.truncados.join('|') || '-'}).`,
     );
     return summary;
   }

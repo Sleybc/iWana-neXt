@@ -248,8 +248,26 @@ export class UispApiClient {
     return this.getJson(connection, UISP_ADMINS_PATH);
   }
 
-  async getJson(connection: UispApiConnection, path: string): Promise<unknown> {
+  /**
+   * Una página de una lista del CRM (`limit` + `offset`): tickets, pagos o tareas, para
+   * reunir los números del personal que aparece en ellos (ADR-110 v1.3 D15).
+   */
+  async listPage(
+    connection: UispApiConnection,
+    path: string,
+    limit: number,
+    offset: number,
+  ): Promise<unknown> {
+    return this.getJson(connection, path, { limit: String(limit), offset: String(offset) });
+  }
+
+  async getJson(
+    connection: UispApiConnection,
+    path: string,
+    query: Record<string, string> = {},
+  ): Promise<unknown> {
     const url = uispUrl(connection.baseUrl, path);
+    for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
     let attempt = 0;
     for (;;) {
       try {
@@ -260,7 +278,7 @@ export class UispApiClient {
         if (!failure.retryable || attempt >= this.options.retries) {
           // Solo host, ruta y resumen saneado: nunca la clave ni el cuerpo.
           this.logger.warn(
-            `[migration] UISP ${url.host}${url.pathname} falló: ${summarizeErrorForLog(failure)} (intentos=${attempt + 1}).`,
+            `[migration] UISP ${url.host}${url.pathname}${url.search} falló: ${summarizeErrorForLog(failure)} (intentos=${attempt + 1}).`,
           );
           throw failure;
         }

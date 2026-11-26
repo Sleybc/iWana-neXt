@@ -16,6 +16,8 @@ export interface FakeUispRoute {
 export interface FakeUispRequest {
   method: string;
   path: string;
+  /** Consulta sin `?` (p. ej. `limit=100&offset=0`); ausente si la petición no lleva. */
+  query?: string;
   appKey: string | undefined;
 }
 
@@ -37,11 +39,12 @@ export async function startFakeUisp(): Promise<FakeUispServer> {
   const server: Server = createServer(
     { key: certificate.keyPem, cert: certificate.certPem },
     (req, res) => {
-      const path = (req.url ?? '').split('?')[0] ?? '';
+      const [path = '', search] = (req.url ?? '').split('?');
       const header = req.headers['x-auth-app-key'];
       requests.push({
         method: req.method ?? '',
         path,
+        ...(search ? { query: search } : {}),
         appKey: Array.isArray(header) ? header[0] : header,
       });
       const configured = routes.get(path);

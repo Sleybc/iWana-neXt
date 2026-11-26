@@ -31,7 +31,7 @@ iWana rechaza direcciones de redes internas (loopback, rangos privados, link-loc
 1. **Usuarios de UISP → Traer usuarios de UISP.** Espera «Lista actualizada».
 2. En **Pendientes**, selecciona filas, elige el **rol** y usa **Crear**, **Enlazar** (solo si coincide el correo con un usuario de iWana) o **Descartar**.
    - Los activos en UISP se crean sin acceso; los inactivos quedan inactivos, sin acceso y fuera de Programación.
-   - Las filas «Usuario de UISP n.º N (sin datos)» son personal que aparece en tus lotes pero que la API ya no devuelve: créalas con el nombre que conozcas o descártalas.
+   - Las filas «Usuario de UISP n.º N (sin datos)» son personal eliminado de UISP que todavía aparece en tus lotes o en los tickets, pagos o tareas de UISP: iWana los encuentra al traer usuarios, pero UISP ya no entrega su nombre ni su correo. Créalas con el nombre que conozcas o descártalas. Para identificar a alguien, busca en UISP un ticket o una tarea asignada a ese número.
 3. **Enviar invitación** a quien vaya a usar iWana: recibe «Te invitaron a iWana» con un enlace de 7 días para crear su contraseña.
 4. En cada lote ya promovido, **Actualizar autores** para que tickets, comentarios y pagos queden a nombre de su usuario.
 

@@ -1,6 +1,6 @@
 # Spec — Transversal · Importación UISP: usuarios del personal
 
-**Versión:** 1.2 (2026-11-15: §2.4 invitación para crear la contraseña; §2.3 «Enlazar con…» un usuario existente)
+**Versión:** 1.3 (2026-11-15: §2.4 invitación para crear la contraseña; §2.3 «Enlazar con…» un usuario existente. 2026-11-26: §2.2 personal eliminado desde los procesos de UISP)
 **Estado:** G0 aprobado por el usuario el 2026-11-15 («Apruebo el G0»). [ADR-110](../adrs/ADR-110-Importacion-por-Lotes-desde-UISP-y-Portabilidad.md) enmendado en v1.2 (D15)
 **Fecha:** 2026-11-15
 **Emisor:** Claude Code, con criterio de AI-DATA-ENG
@@ -47,6 +47,7 @@ Hechos verificados el 2026-11-15:
 - Botón **«Traer usuarios de UISP»**. Un job lee `users/admins` y guarda cada usuario como fila de revisión, **por número de UISP** (repetir actualiza, nunca duplica).
 - **Coincidencia:** si el correo de UISP pertenece a un usuario de iWana (por HMAC del correo), la fila propone **enlazarlo**.
 - **Huecos:** los números de UISP que aparecen en las intermedias vigentes de algún lote y que la API no devolvió (usuarios eliminados) se agregan como filas «Usuario de UISP n.º 1234 (sin datos)». Se pueden crear igual, con el nombre que escriba el administrador, o dejar sin usuario.
+- **Personal eliminado en los procesos (v1.3, 2026-11-26):** `users/admins` solo devuelve el personal vigente (en producción trajo 28 de unos 66). La misma lectura recorre por páginas `ticketing/tickets` (100 por página), `payments` y `scheduling/jobs` (500) y reúne los números de: asignado del ticket, autor de cada actividad, asignado en una reasignación, quien registró el pago y asignado de la tarea. Los que no están en `users/admins` entran como «sin datos» aunque no haya lotes. Solo se guardan números; nada del contenido. Un proceso que UISP no entrega (4xx, respuesta que no es lista) queda «sin leer» y la lectura sigue; red, tiempo agotado, 5xx o clave rechazada hacen fallar o reintentar el job sin escribir. Tope de 400 páginas por proceso. Una fila «sin datos» pendiente que vuelve a aparecer renueva su fecha de lectura, así la purga de 30 días no se la lleva mientras siga en UISP. La auditoría (`lectura: USERS_ADMINS_Y_PROCESOS`) guarda los conteos por proceso.
 
 ### 2.3 Revisar y elegir el rol
 
@@ -159,7 +160,7 @@ Al promover un lote, con la equivalencia `USUARIO`:
 
 | Riesgo | Mitigación |
 |---|---|
-| La API no devuelve usuarios eliminados | Filas «sin datos» a partir de los números de los lotes (§2.2) |
+| La API no devuelve usuarios eliminados | Filas «sin datos» a partir de los números de los lotes y de los tickets, pagos y tareas de UISP (§2.2) |
 | Invitar por error a quien no corresponde | Sin invitación automática (U3); solo a elegidos y con correo real |
 | Exponer la clave de UISP | Cifrada, nunca devuelta, solo `GET`, retirable |
 | Certificado autofirmado | Huella fijada explícitamente por el administrador; nunca verificación desactivada |
