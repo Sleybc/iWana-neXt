@@ -2,8 +2,16 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { Badge, Button } from '@iwana/ui';
-import { FileArchive, Upload } from 'lucide-react';
+import {
+  Badge,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@iwana/ui';
+import { FileArchive, Trash2, Upload } from 'lucide-react';
 import { MIGRATION_IMPORT_LIMITS, type MigrationBatchSummary } from '@iwana/shared';
 import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -19,6 +27,7 @@ import {
   MIGRATION_COPY,
   formatMigrationDate,
   MIGRATION_MAX_ZIP_LABEL,
+  isBatchDeletable,
   isBatchInProgress,
   migrationBatchHref,
   migrationBatchStatusPresentation,
@@ -108,6 +117,10 @@ export function MigrationImportsClient() {
   const access = useMigrationAccess();
   const [batches, setBatches] = useState<MigrationBatchSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [toDelete, setToDelete] = useState<MigrationBatchSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -122,6 +135,22 @@ export function MigrationImportsClient() {
   useEffect(() => {
     if (access.ready && access.allowed) void load();
   }, [access.ready, access.allowed, load]);
+
+  async function confirmDelete() {
+    if (!toDelete || deleting) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await migrationApi.removeBatch(toDelete.id);
+      setNotice(`Se eliminó el lote del ${formatMigrationDate(toDelete.createdAt)}.`);
+      setToDelete(null);
+      await load();
+    } catch (removeError) {
+      setDeleteError(migrationErrorMessage(removeError, 'No pudimos eliminar el lote.'));
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const inProgress = batches?.some(isBatchInProgress) ?? false;
   useEffect(() => {
@@ -167,6 +196,9 @@ export function MigrationImportsClient() {
         <p role="status" aria-live="polite" className="sr-only">
           {inProgress ? 'Hay lotes en proceso; la lista se actualiza sola.' : ''}
         </p>
+        {notice ? (
+          <PortalAlert variant="success" live="polite" title={notice} className="mb-3" />
+        ) : null}
         {error ? (
           <PortalAlert
             variant="error"
@@ -223,6 +255,22 @@ export function MigrationImportsClient() {
                   >
                     Ver informe
                   </Link>
+                  {isBatchDeletable(batch) ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="min-h-11"
+                      aria-label={`Eliminar el lote del ${created}`}
+                      onClick={() => {
+                        setNotice(null);
+                        setDeleteError(null);
+                        setToDelete(batch);
+                      }}
+                    >
+                      <Trash2 className="mr-1 h-4 w-4" aria-hidden="true" />
+                      Eliminar
+                    </Button>
+                  ) : null}
                 </li>
               );
             })}
@@ -231,6 +279,52 @@ export function MigrationImportsClient() {
       </PortalPanel>
 
       <MigrationUispUsersSection />
+
+      <Dialog
+        open={toDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setToDelete(null);
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          {toDelete ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  ¿Eliminar el lote del {formatMigrationDate(toDelete.createdAt)}?
+                </DialogTitle>
+                <DialogDescription>
+                  Se borran sus archivos y su informe. No se puede deshacer. Las equivalencias que
+                  guardaste se conservan.
+                </DialogDescription>
+              </DialogHeader>
+              {deleteError ? (
+                <PortalAlert variant="error" live="assertive" title={deleteError} />
+              ) : null}
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="min-h-11"
+                  disabled={deleting}
+                  onClick={() => setToDelete(null)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="min-h-11"
+                  loading={deleting}
+                  onClick={() => void confirmDelete()}
+                >
+                  Eliminar lote
+                </Button>
+              </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

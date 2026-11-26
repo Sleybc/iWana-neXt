@@ -32,6 +32,7 @@ import { MigrationImportProcessor } from './migration-import.processor';
 import { MigrationMappingsService } from './migration-mappings.service';
 import { MigrationPromotionService } from './migration-promotion.service';
 import { MigrationPurgeService } from './migration-purge.service';
+import { UispPaymentMethodNamesService } from './uisp-api/uisp-payment-methods';
 import { MigrationRevertService } from './migration-revert.service';
 import { MigrationSimulationService } from './migration-simulation.service';
 
@@ -87,6 +88,7 @@ import { MigrationSimulationService } from './migration-simulation.service';
       useFactory: uispApiClientOptionsFromConfig,
     },
     UispApiClient,
+    UispPaymentMethodNamesService,
     MigrationSourceConnectionService,
     MigrationUispUsersService,
     MigrationUispUsersResolutionService,

@@ -7174,6 +7174,14 @@ export const migrationApi = {
       tenantSlug,
     ),
 
+  /** Elimina un lote simulado o revertido (ADR-110 v1.4 D16). */
+  removeBatch: (batchId: string, tenantSlug?: string) =>
+    request<void>(
+      `/migration/batches/${encodeURIComponent(batchId)}`,
+      { method: 'DELETE' },
+      tenantSlug,
+    ),
+
   listMappings: (kind?: MigrationMappingKind, tenantSlug?: string) =>
     request<MigrationMapping[]>(
       `/migration/mappings${kind ? `?kind=${encodeURIComponent(kind)}` : ''}`,

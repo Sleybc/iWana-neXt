@@ -18,6 +18,7 @@ import {
   MIGRATION_MAPPING_KIND_LABELS,
   mappingActionsFor,
   migrationErrorMessage,
+  migrationPendingValueLabel,
 } from './migration-labels';
 import { MigrationTitularMappings } from './MigrationTitularMappings';
 
@@ -75,7 +76,7 @@ function MappingRow({ value, options, onSaved }: MappingRowProps) {
   const [target, setTarget] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const sourceLabel = value.externalLabel ?? value.externalValue;
+  const sourceLabel = migrationPendingValueLabel(value);
   const targetRef = action === 'EQUIVALE' ? target || null : null;
   const invalid = migrationMappingTargetError(value.kind, action, targetRef) !== null;
 

@@ -20,6 +20,7 @@ import {
   mappingActionsFor,
   migrationBatchStatusPresentation,
   migrationErrorMessage,
+  migrationPendingValueLabel,
   revertBlockedDetail,
   revertBlockersFromError,
   validateMigrationFiles,
@@ -151,5 +152,30 @@ describe('vocabulario de importaciones', () => {
       label: 'Promoción fallida',
       variant: 'error',
     });
+  });
+});
+
+describe('migrationPendingValueLabel', () => {
+  it('prefiere el nombre; el ciclo como día y el método sin nombre con un código corto', () => {
+    expect(
+      migrationPendingValueLabel({
+        kind: 'METODO_PAGO',
+        externalValue: 'abc',
+        externalLabel: 'Efectivo',
+      }),
+    ).toBe('Efectivo');
+    expect(
+      migrationPendingValueLabel({ kind: 'CICLO', externalValue: '15', externalLabel: null }),
+    ).toBe('Día 15 del mes');
+    expect(
+      migrationPendingValueLabel({
+        kind: 'METODO_PAGO',
+        externalValue: '4145b5f5-3bbc-45e3-8fc5-9cda970c62fb',
+        externalLabel: null,
+      }),
+    ).toBe('Método de UISP sin nombre (4145b5f5)');
+    expect(
+      migrationPendingValueLabel({ kind: 'PLAN', externalValue: '7', externalLabel: null }),
+    ).toBe('7');
   });
 });

@@ -110,6 +110,22 @@ describe('simulateBatch — validación y rechazos por motivo (ADR-110 D4, D11)'
     ]);
   });
 
+  it('el método de pago pendiente lleva el nombre leído de UISP (D17)', async () => {
+    const result = simulateBatch(
+      [await parsed()],
+      context({
+        mappings: new Map(),
+        paymentMethodNames: new Map([[SYNTHETIC_METHOD_ID, 'Transferencia bancaria']]),
+      }),
+    );
+    expect(
+      result.counts.pendientesEquivalencia.find((value) => value.kind === 'METODO_PAGO'),
+    ).toMatchObject({
+      externalValue: SYNTHETIC_METHOD_ID,
+      externalLabel: 'Transferencia bancaria',
+    });
+  });
+
   it('ciclo sin equivalencia rechaza el contrato con su motivo', async () => {
     const result = simulateBatch([await parsed({ cycleDay: 30 })], context());
     expect(result.rejections.CONTRATO).toEqual({ CICLO_SIN_EQUIVALENCIA: 2 });

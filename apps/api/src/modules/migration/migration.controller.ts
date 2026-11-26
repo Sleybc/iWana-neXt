@@ -259,6 +259,24 @@ export class MigrationBatchesController {
     return { data: await this.reversion.revert(scope(), id, user.sub) };
   }
 
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Eliminar un lote simulado o revertido con sus archivos e intermedias (D16)',
+  })
+  @ApiNoContentResponse({ description: 'Lote eliminado.' })
+  @ApiNotFoundResponse({ description: 'El lote no existe.' })
+  @ApiConflictResponse({
+    description:
+      'MIGRATION_BATCH_NOT_DELETABLE: el lote está cargado, promovido o conciliado (revertir primero) o su simulación sigue en curso.',
+  })
+  async remove(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<void> {
+    await this.batches.deleteBatch(scope(), id, user.sub);
+  }
+
   @Get(':id/pending-mappings')
   @ApiOperation({ summary: 'Valores del lote que siguen sin equivalencia' })
   @ApiOkResponse({

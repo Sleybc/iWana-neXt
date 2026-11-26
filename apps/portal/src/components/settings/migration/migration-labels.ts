@@ -68,6 +68,38 @@ export function migrationBatchStatusPresentation(
   return MIGRATION_BATCH_STATUS_LABELS[status];
 }
 
+/**
+ * Se puede eliminar un lote simulado (con la simulación terminada) o revertido (ADR-110 v1.4
+ * D16); los cargados, promovidos o conciliados se revierten primero.
+ */
+export function isBatchDeletable(
+  batch: Pick<MigrationBatchSummary, 'status' | 'processing'>,
+): boolean {
+  return (
+    (batch.status === 'SIMULADO' && batch.processing !== 'PENDIENTE') ||
+    batch.status === 'REVERTIDO'
+  );
+}
+
+/**
+ * Texto visible del valor de UISP de un pendiente: su nombre si lo hay; el ciclo como «Día N
+ * del mes»; el método de pago sin nombre con un código corto, no el UUID completo.
+ */
+export function migrationPendingValueLabel(value: {
+  kind: MigrationMappingKind;
+  externalValue: string;
+  externalLabel: string | null;
+}): string {
+  if (value.externalLabel) return value.externalLabel;
+  if (value.kind === 'CICLO' && /^\d{1,2}$/u.test(value.externalValue)) {
+    return `Día ${Number(value.externalValue)} del mes`;
+  }
+  if (value.kind === 'METODO_PAGO' && value.externalValue.length > 12) {
+    return `Método de UISP sin nombre (${value.externalValue.slice(0, 8)})`;
+  }
+  return value.externalValue;
+}
+
 export function isBatchInProgress(
   batch: Pick<MigrationBatchSummary, 'status' | 'processing' | 'promotionProcessing'>,
 ): boolean {
@@ -223,6 +255,7 @@ const ERROR_MESSAGES: Record<MigrationErrorCode, string> = {
   MIGRATION_BATCH_PURGED: 'Los archivos de este lote ya se eliminaron por retención.',
   MIGRATION_BATCH_NOT_RECONCILABLE: 'Este lote todavía no se puede conciliar.',
   MIGRATION_BATCH_NOT_REVERTIBLE: 'Este lote ya no se puede revertir.',
+  MIGRATION_BATCH_NOT_DELETABLE: 'Revierte el lote antes de eliminarlo.',
   MIGRATION_REVERT_BLOCKED:
     'No se puede revertir: hay movimientos posteriores que dependen del lote.',
   MIGRATION_TITULAR_TARGET_INVALID: 'Ese suscriptor no corresponde a este cliente de UISP.',

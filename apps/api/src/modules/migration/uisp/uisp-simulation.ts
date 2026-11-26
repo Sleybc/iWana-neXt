@@ -73,6 +73,8 @@ export interface SimulationContext extends TitularLookupFacts {
   titularLinks?: ReadonlyMap<string, string>;
   /** Primera fecha civil (`YYYY-MM-DD`) de emisión de un cobro propio de iWana, por suscriptor. */
   firstOwnIssueDates?: ReadonlyMap<string, string>;
+  /** Nombres de los métodos de pago de UISP por `methodId` (ADR-110 v1.4 D17). */
+  paymentMethodNames?: ReadonlyMap<string, string>;
 }
 
 export interface StagedRecord {
@@ -515,7 +517,7 @@ function simulatePackage(
       if (!method) {
         reason ??= 'DATOS_INVALIDOS';
       } else if (!hasMapping(ctx, 'METODO_PAGO', method)) {
-        acc.pendingValue('METODO_PAGO', method, null);
+        acc.pendingValue('METODO_PAGO', method, ctx.paymentMethodNames?.get(method) ?? null);
         reason ??= 'METODO_PAGO_SIN_EQUIVALENCIA';
       }
     }

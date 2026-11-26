@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   Logger,
@@ -352,4 +353,83 @@ export class MigrationBatchesService {
       (value) => !mapped.has(`${value.kind}\u0000${value.externalValue}`),
     );
   }
+
+  /**
+   * Elimina un lote (ADR-110 v1.4 D16): solo `SIMULADO` con la simulación terminada o
+   * `REVERTIDO`. Primero los ZIP cifrados (si falla, el lote queda y se puede reintentar); luego
+   * la fila (las intermedias caen en cascada) y la auditoría, en una transacción con bloqueo.
+   */
+  async deleteBatch(scope: MigrationTenantScope, batchId: string, actorId: string): Promise<void> {
+    const read = await runInTenantSchema(this.dataSource, scope.schemaName, (qr) =>
+      qr.query(
+        `SELECT status, counts, source_object_key FROM migration_batches
+          WHERE id = $1 AND tenant_id = $2`,
+        [batchId, scope.tenantId],
+      ),
+    );
+    const batch = (
+      read as Array<{ status: string; counts: unknown; source_object_key: string | null }>
+    )[0];
+    if (!batch) throw batchNotFound();
+    assertDeletable(batch.status, batch.counts);
+
+    const prefix = batch.source_object_key;
+    const files = parseCounts(batch.counts).archivos.recibidos;
+    if (prefix) {
+      if (!prefix.startsWith(migrationObjectPrefix(scope.schemaName, batchId))) {
+        this.logger.warn(
+          `[migration] Lote ${batchId}: clave de objeto ajena; no se borra storage.`,
+        );
+      } else {
+        for (let index = 0; index < files; index += 1) {
+          await this.storage.deleteObject(migrationObjectKey(prefix, index));
+        }
+      }
+    }
+
+    await runInTenantSchema(this.dataSource, scope.schemaName, async (qr) => {
+      const locked = (await qr.query(
+        `SELECT status, counts FROM migration_batches
+          WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
+        [batchId, scope.tenantId],
+      )) as Array<{ status: string; counts: unknown }>;
+      if (!locked[0]) throw batchNotFound();
+      assertDeletable(locked[0].status, locked[0].counts);
+      await qr.query(`DELETE FROM migration_batches WHERE id = $1 AND tenant_id = $2`, [
+        batchId,
+        scope.tenantId,
+      ]);
+      await this.auditService.logWithin(
+        {
+          action: AuditAction.DELETE,
+          entityType: MIGRATION_AUDIT_ENTITY,
+          entityId: batchId,
+          userId: actorId,
+          tenantId: scope.tenantId,
+          schemaName: scope.schemaName,
+          oldValue: { status: locked[0].status, files },
+        },
+        qr.manager,
+      );
+    });
+  }
+}
+
+function batchNotFound(): NotFoundException {
+  return new NotFoundException({
+    code: 'MIGRATION_BATCH_NOT_FOUND',
+    message: 'El lote no existe.',
+  });
+}
+
+/** D16: se elimina un lote simulado (ya procesado) o revertido; lo demás se revierte primero. */
+function assertDeletable(status: string, counts: unknown): void {
+  const simulating = status === 'SIMULADO' && parseCounts(counts).procesamiento === 'PENDIENTE';
+  if ((status === 'SIMULADO' && !simulating) || status === 'REVERTIDO') return;
+  throw new ConflictException({
+    code: 'MIGRATION_BATCH_NOT_DELETABLE',
+    message: simulating
+      ? 'La simulación del lote sigue en curso.'
+      : 'Revierte el lote antes de eliminarlo.',
+  });
 }

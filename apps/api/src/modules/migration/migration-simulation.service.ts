@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, type QueryRunner } from 'typeorm';
 import { isValidSchemaName, runInTenantSchema } from '@iwana/db';
@@ -17,6 +17,7 @@ import {
 import { MigrationBillingImportPort } from './ports/migration-import.ports';
 import { MigrationTitularLookupPort } from './ports/migration-titular-lookup.port';
 import { parseUispPackage, type ParseUispResult } from './uisp/uisp-parser';
+import { UispPaymentMethodNamesService } from './uisp-api/uisp-payment-methods';
 import {
   buildMappingIndex,
   collectTitularKeys,
@@ -72,6 +73,7 @@ export class MigrationSimulationService {
     private readonly crypto: MigrationCrypto,
     private readonly titularLookup: MigrationTitularLookupPort,
     private readonly billing: MigrationBillingImportPort,
+    @Optional() private readonly paymentMethods?: UispPaymentMethodNamesService,
   ) {}
 
   async resolveTenant(tenantId: string): Promise<ResolvedTenant> {
@@ -177,6 +179,11 @@ export class MigrationSimulationService {
     const counts = MigrationBatchCountsSchema.safeParse(batch.counts);
     const files = counts.success ? counts.data.archivos.recibidos : 0;
     const packages = await this.readPackages(expectedPrefix, files);
+    // Fuera de la transacción: la lectura a UISP no debe sostener el bloqueo del lote.
+    const paymentMethodNames =
+      expectedStatus === 'SIMULADO' && this.paymentMethods
+        ? await this.paymentMethods.load(tenant)
+        : new Map<string, string>();
 
     const staged = await runInTenantSchema(this.dataSource, tenant.schemaName, async (qr) => {
       const locked = (await qr.query(
@@ -193,7 +200,7 @@ export class MigrationSimulationService {
         )) as unknown[];
         if (promoted.length > 0) return false;
       }
-      const result = await this.buildResult(qr, tenant, packages);
+      const result = await this.buildResult(qr, tenant, packages, paymentMethodNames);
       await qr.query(`DELETE FROM migration_staging_records WHERE batch_id = $1`, [batchId]);
       await this.insertRecords(qr, tenant.tenantId, batchId, result.records);
       await qr.query(
@@ -223,6 +230,7 @@ export class MigrationSimulationService {
     qr: QueryRunner,
     tenant: ResolvedTenant,
     packages: ParseUispResult[],
+    paymentMethodNames: ReadonlyMap<string, string>,
   ): Promise<SimulationResult> {
     const mappingRows = (await qr.query(
       `SELECT kind, external_value, action, target_ref FROM migration_mappings
@@ -254,6 +262,7 @@ export class MigrationSimulationService {
       ...facts,
       titularLinks,
       firstOwnIssueDates,
+      paymentMethodNames,
       mappings: buildMappingIndex(
         mappingRows.map((row) => ({
           kind: row.kind,

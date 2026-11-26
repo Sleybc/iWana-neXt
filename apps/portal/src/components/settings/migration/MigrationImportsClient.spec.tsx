@@ -188,4 +188,59 @@ describe('MigrationImportsClient', () => {
       isBatchInProgress(batch(1, { status: 'CARGADO', promotionProcessing: 'PENDIENTE' })),
     ).toBe(true);
   });
+
+  it('ofrece eliminar solo los lotes simulados o revertidos', async () => {
+    jest
+      .spyOn(migrationApi, 'listBatches')
+      .mockResolvedValue(
+        listResponse([
+          batch(1),
+          batch(2, { status: 'REVERTIDO' }),
+          batch(3, { status: 'CONCILIADO' }),
+          batch(4, { processing: 'PENDIENTE' }),
+        ]),
+      );
+    render(<MigrationImportsClient />);
+    const items = within(
+      await screen.findByRole('list', { name: 'Lotes de importación' }),
+    ).getAllByRole('listitem');
+    const deletable = items.map(
+      (item) => within(item).queryByRole('button', { name: /Eliminar el lote/ }) !== null,
+    );
+    expect(deletable).toEqual([true, true, false, false]);
+  });
+
+  it('elimina el lote tras confirmar y recarga la lista', async () => {
+    const list = jest
+      .spyOn(migrationApi, 'listBatches')
+      .mockResolvedValueOnce(listResponse([batch(1)]))
+      .mockResolvedValueOnce(listResponse([]));
+    const remove = jest.spyOn(migrationApi, 'removeBatch').mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<MigrationImportsClient />);
+    await user.click(await screen.findByRole('button', { name: /Eliminar el lote/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('No se puede deshacer');
+    await user.click(within(dialog).getByRole('button', { name: 'Eliminar lote' }));
+    await waitFor(() =>
+      expect(remove).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000001'),
+    );
+    expect(await screen.findByText(/Se eliminó el lote del/)).toBeInTheDocument();
+    expect(list).toHaveBeenCalledTimes(2);
+  });
+
+  it('muestra en el diálogo el motivo si el API rechaza la eliminación', async () => {
+    jest.spyOn(migrationApi, 'listBatches').mockResolvedValue(listResponse([batch(1)]));
+    jest
+      .spyOn(migrationApi, 'removeBatch')
+      .mockRejectedValue(new ApiError(409, 'MIGRATION_BATCH_NOT_DELETABLE', 'x'));
+    const user = userEvent.setup();
+    render(<MigrationImportsClient />);
+    await user.click(await screen.findByRole('button', { name: /Eliminar el lote/ }));
+    await user.click(await screen.findByRole('button', { name: 'Eliminar lote' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Revierte el lote antes de eliminarlo.',
+    );
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
 });
