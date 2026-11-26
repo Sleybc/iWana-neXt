@@ -6,7 +6,7 @@
 **Modo activo:** Architect + EM
 **Autor:** AI-EM-ARCH
 **Aprobado por:** CTO Humano — 2026-08-09
-**Dictamen de seguridad:** **AI-SEC-ENG — consulta bloqueante, emitida el 2026-08-09.** Opción A *viable con ajustes*; Opción B **inviable como decisión permanente**
+**Dictamen de seguridad:** **AI-SEC-ENG — consulta bloqueante, emitida el 2026-08-09.** Opción A _viable con ajustes_; Opción B **inviable como decisión permanente**
 **Módulos:** Plataforma transversal — `apps/web`, `apps/portal`, `apps/api` (auth y resolución de tenant)
 **Ejecución:** **OLA1-b** de la secuencia por olas aprobada el 2026-08-09 ([PRD §14.3ter](../prds/PRD_Sistema_ISP_Colombia_v2_4.md))
 **Relacionado:** [ADR-061](ADR-061-Frontera-de-Audiencias-JWT-y-Procedencia-de-Roles.md) (audiencias JWT) · [ADR-057](ADR-057-Credenciales-Iniciales-Por-Tenant.md) (primer ingreso) · [ADR-067](ADR-067-Proyeccion-PII-Listados-Operativos.md) (PII en listados) · [ADR-080](ADR-080-Dependencia-Descubierta-y-Cierre-En-Construccion.md) (cadencia)
@@ -22,12 +22,12 @@ El motivo de urgencia es que **cada página nueva se construye contra el patrón
 
 ### Estado verificado por AI-SEC-ENG
 
-| Elemento | Portal | Consola de plataforma |
-| --- | --- | --- |
-| Access token | `localStorage['iwana.portal.access-token']` | `localStorage['iwana.web.access-token']` |
-| Tokens de alcance limitado | `mfa-setup` en almacenamiento local | `password-change` en almacenamiento local |
-| Refresh token | **cookie `httpOnly` ya existente** | **no existe cookie** |
-| Transporte | `Authorization: Bearer` | `Authorization: Bearer` |
+| Elemento                   | Portal                                      | Consola de plataforma                     |
+| -------------------------- | ------------------------------------------- | ----------------------------------------- |
+| Access token               | `localStorage['iwana.portal.access-token']` | `localStorage['iwana.web.access-token']`  |
+| Tokens de alcance limitado | `mfa-setup` en almacenamiento local         | `password-change` en almacenamiento local |
+| Refresh token              | **cookie `httpOnly` ya existente**          | **no existe cookie**                      |
+| Transporte                 | `Authorization: Bearer`                     | `Authorization: Bearer`                   |
 
 **Tres hechos cambian el análisis respecto de lo que suponía la consulta:**
 
@@ -53,10 +53,10 @@ En ambas aplicaciones de navegador. El transporte no cambia de forma en el códi
 
 ### 2. La migración se ejecuta en dos pasos desacoplados, y solo el primero bloquea la ola
 
-| Paso | Contenido | Bloquea |
-| --- | --- | --- |
-| **1** | El access token pasa a cookie `httpOnly`; se retira de almacenamiento local. Cierra el vector de robo de token y habilita el paso 2 | **Sí — es OLA1-b** |
-| **2** | Autenticación en componentes de servidor. Cada página puede precargar en servidor, **se aplica por página y sin big bang** | No — queda habilitado, no obligado |
+| Paso  | Contenido                                                                                                                           | Bloquea                            |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| **1** | El access token pasa a cookie `httpOnly`; se retira de almacenamiento local. Cierra el vector de robo de token y habilita el paso 2 | **Sí — es OLA1-b**                 |
+| **2** | Autenticación en componentes de servidor. Cada página puede precargar en servidor, **se aplica por página y sin big bang**          | No — queda habilitado, no obligado |
 
 Separarlos es deliberado: el valor de seguridad está en el paso 1 y no debe quedar rehén del trabajo incremental del paso 2.
 
@@ -84,15 +84,15 @@ Los alcances `password-change` y `mfa-setup` se guardan hoy en almacenamiento lo
 
 **C-1 a C-3 son bloqueantes de merge.** El resto bloquean el cierre de OLA1-b.
 
-| Id | Condición | Tipo |
-| --- | --- | --- |
-| **C-1** | La resolución de tenant se hace desde el token de la cookie. **Test de arquitectura** que falle si una petición autenticada de tenant resuelve contexto por `X-Tenant-Slug` | **Merge** |
-| **C-2** | Protección CSRF sobre todo método mutante autenticado por cookie, con **test negativo**: petición cross-site con cookie válida y sin token CSRF → rechazo | **Merge** |
-| **C-3** | **Cero coincidencias** de almacenamiento local sobre claves de token en ambas aplicaciones, verificado por **test de arquitectura, no por revisión**. Incluye los alcances limitados | **Merge** |
-| **C-4** | Separar la variable de URL del API **por aplicación**: hoy una sola variable se bakea en ambos bundles, y con dos vhosts distintos el portal llamaría cross-site a su propio API — con `SameSite=Strict` el navegador no enviaría la cookie | Cierre |
-| **C-5** | Cookies con **nombre distinto por audiencia** y prefijo `__Host-` en producción; `path` mínimo que cubra la ruta del API; `Secure` acoplado a producción **en el esquema de validación**, no solo en el overlay de Compose | Cierre |
-| **C-6** | `platform/login` emite cookie de refresh | Cierre |
-| **C-9** | El helper de siembra de las pruebas de extremo a extremo migra a cookies y **las 21 especificaciones afectadas pasan antes** de retirar el soporte de almacenamiento local, no después. Evidencia con `Cached: 0` | Cierre |
+| Id      | Condición                                                                                                                                                                                                                                   | Tipo      |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| **C-1** | La resolución de tenant se hace desde el token de la cookie. **Test de arquitectura** que falle si una petición autenticada de tenant resuelve contexto por `X-Tenant-Slug`                                                                 | **Merge** |
+| **C-2** | Protección CSRF sobre todo método mutante autenticado por cookie, con **test negativo**: petición cross-site con cookie válida y sin token CSRF → rechazo                                                                                   | **Merge** |
+| **C-3** | **Cero coincidencias** de almacenamiento local sobre claves de token en ambas aplicaciones, verificado por **test de arquitectura, no por revisión**. Incluye los alcances limitados                                                        | **Merge** |
+| **C-4** | Separar la variable de URL del API **por aplicación**: hoy una sola variable se bakea en ambos bundles, y con dos vhosts distintos el portal llamaría cross-site a su propio API — con `SameSite=Strict` el navegador no enviaría la cookie | Cierre    |
+| **C-5** | Cookies con **nombre distinto por audiencia** y prefijo `__Host-` en producción; `path` mínimo que cubra la ruta del API; `Secure` acoplado a producción **en el esquema de validación**, no solo en el overlay de Compose                  | Cierre    |
+| **C-6** | `platform/login` emite cookie de refresh                                                                                                                                                                                                    | Cierre    |
+| **C-9** | El helper de siembra de las pruebas de extremo a extremo migra a cookies y **las 21 especificaciones afectadas pasan antes** de retirar el soporte de almacenamiento local, no después. Evidencia con `Cached: 0`                           | Cierre    |
 
 **Verificación pendiente declarada.** Con el fetch movido al servidor, la trazabilidad de acceso masivo a PII de [ADR-067](ADR-067-Proyeccion-PII-Listados-Operativos.md) sigue emitiéndose en el API, pero **hay que comprobar que la dirección auditada siga siendo la del cliente y no la del contenedor intermedio**. Hoy **no es verificable**: no existe ninguna llamada autenticada desde servidor contra la cual comprobarlo. Se verifica en el paso 2, sobre la primera página que se migre.
 
@@ -124,24 +124,24 @@ Los alcances `password-change` y `mfa-setup` se guardan hoy en almacenamiento lo
 
 ### Impacto declarado
 
-| Dimensión | Evaluación |
-| --- | --- |
-| **Multi-tenant** | **Alto y con riesgo real.** Si C-1 no se cumple, la migración **crea** un vector cross-tenant. Con C-1, mejora el control actual |
-| **Seguridad** | **Alto y positivo.** Es el motivo de la decisión |
-| **Escala** | Sin impacto |
-| **Regulación** | Indirecto: refuerza la protección de PII de la Ley 1581 al sacar el token del alcance de script. La verificación de la dirección auditada queda declarada como pendiente |
+| Dimensión        | Evaluación                                                                                                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Multi-tenant** | **Alto y con riesgo real.** Si C-1 no se cumple, la migración **crea** un vector cross-tenant. Con C-1, mejora el control actual                                         |
+| **Seguridad**    | **Alto y positivo.** Es el motivo de la decisión                                                                                                                         |
+| **Escala**       | Sin impacto                                                                                                                                                              |
+| **Regulación**   | Indirecto: refuerza la protección de PII de la Ley 1581 al sacar el token del alcance de script. La verificación de la dirección auditada queda declarada como pendiente |
 
 ---
 
 ## Riesgos
 
-| # | Riesgo | Severidad | Mitigación |
-| --- | --- | --- | --- |
-| R1 | La migración introduce un vector cross-tenant por caída al fallback de cabecera | **Crítica** | C-1, bloqueante de merge, con test de arquitectura |
-| R2 | Se adopta la cookie sin CSRF, creyendo que `SameSite=Strict` basta | **Alta** | C-2, bloqueante de merge, con test negativo |
-| R3 | Queda algún token en almacenamiento local y la superficie no se cierra de verdad | **Alta** | C-3, verificado por test y no por revisión |
-| R4 | El paso 2 no se ejecuta nunca y las 35 páginas de servidor siguen desaprovechadas | Media | Es aceptable: el valor de seguridad está en el paso 1. Se registra como deuda con dueño |
-| R5 | Se cree que esta decisión cierra el hallazgo crítico de la búsqueda global | **Alta** | **No lo cierra.** Reduce su impacto. La corrección del sink es [independiente y no espera a este ADR](../security/SECURITY-REVIEW-TRANSVERSAL-XSS-BUSQUEDA-GLOBAL-v1.0.md) |
+| #   | Riesgo                                                                            | Severidad   | Mitigación                                                                                                                                                                 |
+| --- | --------------------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1  | La migración introduce un vector cross-tenant por caída al fallback de cabecera   | **Crítica** | C-1, bloqueante de merge, con test de arquitectura                                                                                                                         |
+| R2  | Se adopta la cookie sin CSRF, creyendo que `SameSite=Strict` basta                | **Alta**    | C-2, bloqueante de merge, con test negativo                                                                                                                                |
+| R3  | Queda algún token en almacenamiento local y la superficie no se cierra de verdad  | **Alta**    | C-3, verificado por test y no por revisión                                                                                                                                 |
+| R4  | El paso 2 no se ejecuta nunca y las 35 páginas de servidor siguen desaprovechadas | Media       | Es aceptable: el valor de seguridad está en el paso 1. Se registra como deuda con dueño                                                                                    |
+| R5  | Se cree que esta decisión cierra el hallazgo crítico de la búsqueda global        | **Alta**    | **No lo cierra.** Reduce su impacto. La corrección del sink es [independiente y no espera a este ADR](../security/SECURITY-REVIEW-TRANSVERSAL-XSS-BUSQUEDA-GLOBAL-v1.0.md) |
 
 ---
 
@@ -156,15 +156,15 @@ Los alcances `password-change` y `mfa-setup` se guardan hoy en almacenamiento lo
 
 ## Plan de migración
 
-| Paso | Acción | Responsable |
-| --- | --- | --- |
-| 1 | Aprobación del CTO | CTO |
-| 2 | Prompt de ejecución con C-1…C-9 congeladas como criterios de aceptación | AI-EM-ARCH |
-| 3 | Backend: emitir cookie de access, cubrir `platform/login`, leer cookie en la resolución de tenant, CSRF | AI-SR-FULL, con revisión de AI-SEC-ENG |
-| 4 | Frontend: retirar el almacenamiento local en ambas aplicaciones | AI-FE-PLATFORM |
-| 5 | Configuración: variable de API por aplicación, `Secure` en el esquema, nombres de cookie por audiencia | AI-PLAT-OPS |
-| 6 | Migrar el helper de siembra y las 21 especificaciones **antes** de retirar el soporte antiguo | AI-SR-QA |
-| 7 | Re-verificación de AI-SEC-ENG sobre C-1, C-2 y C-3 | AI-SEC-ENG |
+| Paso | Acción                                                                                                  | Responsable                            |
+| ---- | ------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| 1    | Aprobación del CTO                                                                                      | CTO                                    |
+| 2    | Prompt de ejecución con C-1…C-9 congeladas como criterios de aceptación                                 | AI-EM-ARCH                             |
+| 3    | Backend: emitir cookie de access, cubrir `platform/login`, leer cookie en la resolución de tenant, CSRF | AI-SR-FULL, con revisión de AI-SEC-ENG |
+| 4    | Frontend: retirar el almacenamiento local en ambas aplicaciones                                         | AI-FE-PLATFORM                         |
+| 5    | Configuración: variable de API por aplicación, `Secure` en el esquema, nombres de cookie por audiencia  | AI-PLAT-OPS                            |
+| 6    | Migrar el helper de siembra y las 21 especificaciones **antes** de retirar el soporte antiguo           | AI-SR-QA                               |
+| 7    | Re-verificación de AI-SEC-ENG sobre C-1, C-2 y C-3                                                      | AI-SEC-ENG                             |
 
 **Reversible:** sí, mientras el soporte antiguo no se haya retirado. **Punto de no retorno:** la retirada del almacenamiento local, que por C-9 solo ocurre con las especificaciones ya migradas y en verde.
 
@@ -198,3 +198,14 @@ Precisa «Fuera de alcance» (mecanismo de revocación), que delimitaba la migra
 ## Enmienda 3 (2026-11-25) — segundo factor vigente
 
 El refresh de plataforma se liga también al segundo factor: guarda la huella del secreto TOTP y se rechaza, revocando la familia, si la cuenta no tiene MFA o lo reinscribió. Forma parte de la [spec de MFA en plataforma](../specs/2026-11-25-mfa-plataforma-y-totp-uso-unico-spec.md) §3.1.3, con G0 del CTO.
+
+## Enmienda 4 (2026-11-26) — vida absoluta, freno de contraseñas y red de la consola
+
+**Estado:** aprobada — CTO Humano, G0 del 2026-11-25 ([spec de sesión absoluta y freno](../specs/2026-11-25-sesion-absoluta-y-freno-contrasenas-spec.md), §7).
+
+- **Cookies:** su `maxAge` sigue el vencimiento absoluto de [ADR-019](ADR-019-JWT-RS256-Refresh-Rotation.md) (enmienda 2026-11-26). Un 401 por máximo, vencimiento o registro ausente borra las dos cookies de esa superficie y no toca las de la otra; perder la carrera de rotación no las borra.
+- **Freno de `platform/login`:** por cuenta e IP canónica (IPv4, IPv6 por /64), 10 erróneas en 15 min → 15 min de rechazo, reservado en Redis antes de bcrypt. Sin oráculo de existencia. Redis sin respuesta → 503. A las 50 erróneas por hora se audita y se avisa por correo una vez por hora; el aviso no bloquea.
+- **Red de la consola:** las credenciales de plataforma solo se aceptan desde el vhost de la consola, que nginx marca con `X-Iwana-Surface`; el host del portal niega las rutas de plataforma. En producción y staging, un `Origin` distinto de `X-Iwana-Origin` o ajeno a `CORS_ORIGIN` recibe 403.
+- **Riesgo aceptado:** el aviso de ataque se reserva antes de enviarse; si el correo falla, ese aviso se pierde hasta la hora siguiente. Quedan la auditoría y el log `PLATFORM_PASSWORD_ATTACK`. Operación en [RUNBOOK-FRENO-CONTRASENAS-PLATAFORMA](../runbooks/RUNBOOK-FRENO-CONTRASENAS-PLATAFORMA-v1.0.md).
+
+Refina la enmienda 1: el host compartido sigue admitido en desarrollo y LAN; en producción la consola tiene vhost propio. Exponer a internet exige además CA-11 en el entorno real.

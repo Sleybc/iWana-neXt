@@ -28,29 +28,30 @@ La elección del algoritmo de firma y la estrategia de revocación son decisione
 Se usa RS256 en lugar de HS256 (HMAC-SHA256 simétrico).
 
 **Motivación:**
+
 - Con RS256, la **clave privada** (usada para firmar) nunca sale del `@iwana/api`. Otros servicios (futuros microservicios, servicios de terceros) reciben únicamente la **clave pública** para verificar la firma, sin capacidad de emitir tokens.
 - HS256 requiere compartir el mismo secret entre todos los servicios que necesiten verificar tokens, lo que amplía la superficie de ataque.
 - Las claves se generan con `openssl genrsa 2048` y se almacenan en `secrets/` (git-ignored). Se cargan en runtime vía `ConfigService`; los saltos de línea literales `\n` del `.env` se normalizan con `.replace(/\\n/g, '\n')`.
 
 ### 2. Access Token
 
-| Propiedad | Valor |
-|-----------|-------|
-| Algoritmo | RS256 |
-| TTL | 15 minutos |
+| Propiedad        | Valor                                                                                    |
+| ---------------- | ---------------------------------------------------------------------------------------- |
+| Algoritmo        | RS256                                                                                    |
+| TTL              | 15 minutos                                                                               |
 | Claims incluidos | `sub` (userId), `email`, `role`, `tenantId`, `schemaName`, `jti` (UUID v4), `iat`, `exp` |
-| Transporte | `Authorization: Bearer <token>` en header HTTP |
+| Transporte       | `Authorization: Bearer <token>` en header HTTP                                           |
 
 El claim `jti` (JWT ID) es un UUID único por token que permite la revocación individualizada sin mantener estado global de todos los tokens emitidos.
 
 ### 3. Refresh Token
 
-| Propiedad | Valor |
-|-----------|-------|
-| TTL | 7 días |
-| Almacenamiento | Tabla `refresh_tokens` en el schema del tenant (PostgreSQL) |
-| Transporte | Cookie `httpOnly`, `sameSite: strict`, `secure: true` |
-| Estructura | Cada token tiene `token` (UUID), `userId`, `familyId` (UUID de la familia), `used` (boolean), `expiresAt` |
+| Propiedad      | Valor                                                                                                     |
+| -------------- | --------------------------------------------------------------------------------------------------------- |
+| TTL            | 7 días                                                                                                    |
+| Almacenamiento | Tabla `refresh_tokens` en el schema del tenant (PostgreSQL)                                               |
+| Transporte     | Cookie `httpOnly`, `sameSite: strict`, `secure: true`                                                     |
+| Estructura     | Cada token tiene `token` (UUID), `userId`, `familyId` (UUID de la familia), `used` (boolean), `expiresAt` |
 
 ### 4. Rotación del Refresh Token
 
@@ -87,12 +88,15 @@ Esto permite revocar access tokens antes de su expiración natural sin mantener 
 ## Alternativas Consideradas
 
 ### HS256 simétrico
+
 - **Descartado.** Requiere compartir el secret entre todos los servicios verificadores. Incompatible con arquitecturas de microservicios donde solo el emisor debe poder firmar.
 
 ### Tokens de sesión en Redis (stateful)
+
 - **Descartado.** Rompe el modelo stateless que permite escalar el API horizontalmente sin coordinación entre instancias. Redis se convierte en SPOF para cada request autenticado.
 
 ### Refresh tokens en Redis (sin PostgreSQL)
+
 - **Descartado.** Redis no ofrece las garantías de durabilidad de PostgreSQL para datos de sesión de largo plazo. Una pérdida de datos Redis (sin persistencia configurada) invalidaría todas las sesiones activas.
 
 ---
@@ -100,6 +104,7 @@ Esto permite revocar access tokens antes de su expiración natural sin mantener 
 ## Consecuencias
 
 ### Positivas
+
 - La clave privada nunca abandona `@iwana/api`; futuros microservicios solo necesitan la clave pública.
 - La rotación de refresh tokens limita la ventana de uso de un token robado a una sola verificación.
 - El reuse attack se detecta automáticamente y revoca toda la familia comprometida.
@@ -107,6 +112,7 @@ Esto permite revocar access tokens antes de su expiración natural sin mantener 
 - Cumple OWASP ASVS L2 controles V3.2.1, V3.2.2, V3.3.3.
 
 ### Restricciones
+
 - Redis debe estar disponible para que la blacklist funcione. Sin Redis, el JwtAuthGuard no puede verificar revocaciones y debe fallar de forma segura (rechazar el request).
 - La tabla `refresh_tokens` crece con cada sesión; se necesita un job de limpieza periódica para eliminar tokens expirados (deuda técnica DT-MOD01-04).
 - La normalización `\n` en las claves PEM debe aplicarse consistentemente en todos los entornos (dev, staging, prod).
@@ -115,16 +121,29 @@ Esto permite revocar access tokens antes de su expiración natural sin mantener 
 
 ## Implementación
 
-| Componente | Ubicación |
-|-----------|-----------|
-| Generación de claves | `scripts/generate-secrets.sh` (git-ignored) |
-| Carga de claves PEM | `apps/api/src/modules/auth/auth.module.ts` (vía `ConfigService`) |
-| Emisión de tokens | `apps/api/src/modules/auth/auth.service.ts` → `signTokens()` |
-| Verificación JWT | `apps/api/src/modules/auth/guards/jwt-auth.guard.ts` |
-| Rotación refresh | `apps/api/src/modules/auth/auth.service.ts` → `refresh()` |
-| Reuse attack detection | `apps/api/src/modules/auth/auth.service.ts` → `refresh()` |
-| JTI blacklist | `apps/api/src/modules/auth/auth.service.ts` → `logout()` + `JwtAuthGuard` |
-| Entidad refresh token | `packages/database/src/entities/refresh-token.entity.ts` |
+| Componente             | Ubicación                                                                 |
+| ---------------------- | ------------------------------------------------------------------------- |
+| Generación de claves   | `scripts/generate-secrets.sh` (git-ignored)                               |
+| Carga de claves PEM    | `apps/api/src/modules/auth/auth.module.ts` (vía `ConfigService`)          |
+| Emisión de tokens      | `apps/api/src/modules/auth/auth.service.ts` → `signTokens()`              |
+| Verificación JWT       | `apps/api/src/modules/auth/guards/jwt-auth.guard.ts`                      |
+| Rotación refresh       | `apps/api/src/modules/auth/auth.service.ts` → `refresh()`                 |
+| Reuse attack detection | `apps/api/src/modules/auth/auth.service.ts` → `refresh()`                 |
+| JTI blacklist          | `apps/api/src/modules/auth/auth.service.ts` → `logout()` + `JwtAuthGuard` |
+| Entidad refresh token  | `packages/database/src/entities/refresh-token.entity.ts`                  |
+
+---
+
+## Enmienda (2026-11-26) — vida absoluta de la sesión
+
+**Estado:** aprobada — CTO Humano, G0 del 2026-11-25 ([spec de sesión absoluta y freno](../specs/2026-11-25-sesion-absoluta-y-freno-contrasenas-spec.md), §7.1, §7.2 y §7.6).
+
+Precisa §3 y §4: el refresh sigue durando 7 días sin uso, pero la rotación ya no extiende la sesión sin límite.
+
+- El servidor calcula al ingresar y al renovar un único vencimiento: el menor entre 7 días e inicio + máximo (12 h en plataforma, 30 días en empresa). Acota el `exp` del access (sin superar sus 15 min), `expiresAt`, el TTL de Redis y las cookies.
+- El inicio se copia en cada rotación: `family_started_at` en `refresh_tokens` del tenant y `startedAt` en Redis para plataforma. Las familias previas toman el inicio más antiguo de la familia.
+- Superado el máximo, el refresh responde 401 y revoca la familia (`SESSION_MAX` en empresa). La comprobación de reuso de §5 va antes.
+- Los máximos se configuran por entorno, con tope de 12 h y 30 días en producción.
 
 ---
 

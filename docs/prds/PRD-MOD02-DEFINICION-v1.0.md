@@ -164,19 +164,21 @@ El módulo debe ofrecer una superficie de autenticación reutilizable, auditable
 
 ### 4.1 RF-AUTH
 
-| ID         | Requerimiento                                                                                                          | Prioridad | Referencia         |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------- | --------- | ------------------ |
-| RF-AUTH-01 | Login con email + password y mensaje de error genérico.                                                                | MVP       | OWASP ASVS L2      |
-| RF-AUTH-02 | Los endpoints públicos de auth tenant-aware deben resolver el tenant por X-Tenant-Slug cuando no exista JWT de tenant. | MVP       | HLD MOD01 §2       |
-| RF-AUTH-03 | Bloqueo temporal de cuenta tras 5 intentos fallidos por 15 minutos.                                                    | MVP       | PRD sistema RF-SEC |
-| RF-AUTH-04 | Los roles ADMIN, NOC y ACCOUNTANT del tenant deben operar con MFA obligatorio.                                         | MVP       | PRD sistema §5.7   |
-| RF-AUTH-05 | El módulo debe emitir access tokens RS256 de 15 minutos con tenantId, schemaName, role y jti.                          | MVP       | ADR-019            |
-| RF-AUTH-06 | El módulo debe operar refresh token rotation con duración de 7 días y cookie httpOnly.                                 | MVP       | ADR-019            |
-| RF-AUTH-07 | Debe detectarse reuse attack sobre refresh tokens y revocar toda la familia.                                           | MVP       | ADR-019            |
-| RF-AUTH-08 | Logout debe invalidar el jti en Redis y revocar el refresh token activo.                                               | MVP       | ADR-019            |
-| RF-AUTH-09 | Forgot-password debe responder siempre HTTP 200 sin revelar si la cuenta existe.                                       | MVP       | OWASP              |
-| RF-AUTH-10 | Change-password y reset-password deben revocar todas las sesiones persistentes del usuario.                            | MVP       | Seguridad repo     |
-| RF-AUTH-11 | Email verification y resend verification forman parte del ciclo de vida del usuario del tenant.                        | MVP       | PRD heredado       |
+| ID         | Requerimiento                                                                                                                                                        | Prioridad | Referencia         |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ------------------ |
+| RF-AUTH-01 | Login con email + password y mensaje de error genérico.                                                                                                              | MVP       | OWASP ASVS L2      |
+| RF-AUTH-02 | Los endpoints públicos de auth tenant-aware deben resolver el tenant por X-Tenant-Slug cuando no exista JWT de tenant.                                               | MVP       | HLD MOD01 §2       |
+| RF-AUTH-03 | Bloqueo temporal de cuenta tras 5 intentos fallidos por 15 minutos.                                                                                                  | MVP       | PRD sistema RF-SEC |
+| RF-AUTH-04 | Los roles ADMIN, NOC y ACCOUNTANT del tenant deben operar con MFA obligatorio.                                                                                       | MVP       | PRD sistema §5.7   |
+| RF-AUTH-05 | El módulo debe emitir access tokens RS256 de 15 minutos con tenantId, schemaName, role y jti, que nunca vencen después del máximo de la sesión. Enmienda 2026-11-26. | MVP       | ADR-019            |
+| RF-AUTH-06 | El módulo debe operar refresh token rotation con 7 días sin uso, un máximo absoluto de 30 días desde el ingreso y cookie httpOnly. Enmienda 2026-11-26.              | MVP       | ADR-019, ADR-081   |
+| RF-AUTH-07 | Debe detectarse reuse attack sobre refresh tokens y revocar toda la familia.                                                                                         | MVP       | ADR-019            |
+| RF-AUTH-08 | Logout debe invalidar el jti en Redis y revocar el refresh token activo.                                                                                             | MVP       | ADR-019            |
+| RF-AUTH-09 | Forgot-password debe responder siempre HTTP 200 sin revelar si la cuenta existe.                                                                                     | MVP       | OWASP              |
+| RF-AUTH-10 | Change-password y reset-password deben revocar todas las sesiones persistentes del usuario.                                                                          | MVP       | Seguridad repo     |
+| RF-AUTH-11 | Email verification y resend verification forman parte del ciclo de vida del usuario del tenant.                                                                      | MVP       | PRD heredado       |
+
+**Enmienda RF-AUTH-05 y RF-AUTH-06 (2026-11-26, G0 del CTO del 2026-11-25).** Un único vencimiento de sesión, el menor entre 7 días sin uso y 30 días desde el ingreso, acota el access, el refresh y las cookies. Superado el máximo, la API responde 401, revoca la familia con `SESSION_MAX` y borra solo las cookies del portal. Las sesiones anteriores al despliegue toman como inicio el más antiguo de su familia. Detalle: [spec de sesión absoluta y freno](../specs/2026-11-25-sesion-absoluta-y-freno-contrasenas-spec.md) §3.
 
 ### 4.2 RF-MFA
 

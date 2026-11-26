@@ -62,6 +62,20 @@ end
 return 1
 `;
 
+/** Claves de la pareja cuenta-IP; null sin IP válida. Las comparte la CLI de limpieza. */
+export function platformLoginPairKeys(
+  email: string,
+  ip: string | undefined,
+  hashKey: Buffer,
+): { pair: string; lock: string; account: string } | null {
+  const client = canonicalClientIp(ip);
+  if (!client) return null;
+  const hash = (value: string): string => hmacPii(`${PREFIX}${value}`, hashKey);
+  const account = hash(email.toLowerCase().trim());
+  const pair = `${PREFIX}pair:${hash(`${account}|${client}`)}`;
+  return { pair, lock: `${pair}:lock`, account };
+}
+
 export interface PasswordFailure {
   /** Esta errónea activó el freno de la pareja. */
   locked: boolean;
@@ -95,11 +109,9 @@ export class PlatformLoginThrottle {
 
   /** Null si la pareja está frenada. Con Redis caído lanza 503. */
   async reserve(email: string, ip: string | undefined): Promise<PasswordAttempt | null> {
-    const client = canonicalClientIp(ip);
-    if (!client) return null;
-    const account = this.hash(email.toLowerCase().trim());
-    const pair = `${PREFIX}pair:${this.hash(`${account}|${client}`)}`;
-    const lock = `${pair}:lock`;
+    const keys = platformLoginPairKeys(email, ip, this.hashKey);
+    if (!keys) return null;
+    const { pair, lock, account } = keys;
 
     let generation: unknown;
     try {
@@ -148,10 +160,6 @@ export class PlatformLoginThrottle {
         await settle(RELEASE, [pair], []);
       },
     };
-  }
-
-  private hash(value: string): string {
-    return hmacPii(`${PREFIX}${value}`, this.hashKey);
   }
 
   /** Con plazo: el cliente global reintenta sin límite y retendría la petición. */

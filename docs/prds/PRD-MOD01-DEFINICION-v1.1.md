@@ -119,31 +119,33 @@ Este módulo no se considera correctamente gobernado si faltan alguno de estos a
 
 ### RF-AUTH (Autenticación)
 
-| ID         | Requerimiento                                                                                                      | Prioridad | ADR ref       |
-| ---------- | ------------------------------------------------------------------------------------------------------------------ | --------- | ------------- |
-| RF-AUTH-01 | Login con email + password. Mensaje de error genérico (no revelar si email existe).                                | MVP       | OWASP         |
-| RF-AUTH-02 | Bloqueo temporal de cuenta tras 5 intentos fallidos (15 minutos).                                                  | MVP       | OWASP         |
-| RF-AUTH-03 | MFA TOTP: setup (QR + secret), verify (activa MFA), disable (requiere password + código).                          | MVP       | ADR-001       |
-| RF-AUTH-04 | MFA obligatorio para: ADMIN, NOC, ACCOUNTANT, SYSTEM_ADMIN, IWANA_SUPPORT.                                         | MVP       | PRD v2.2      |
-| RF-AUTH-05 | JWT RS256 con access token (15 min) y refresh token rotado por cookie httpOnly (7 días).                           | MVP       | ADR-019       |
-| RF-AUTH-06 | Detección de reuse attack: refresh token ya rotado → revocar familia completa.                                     | MVP       | ADR-019       |
-| RF-AUTH-07 | Recuperación de contraseña: token expirable en 1 hora, respuesta siempre HTTP 200.                                 | MVP       | OWASP         |
-| RF-AUTH-08 | Cambio de contraseña: requiere contraseña actual, invalida todos los refresh tokens al cambiar.                    | MVP       | —             |
-| RF-AUTH-09 | Email de verificación al crear usuario. Usuario no puede operar hasta verificar.                                   | MVP       | —             |
-| RF-AUTH-10 | Política de contraseñas NIST SP 800-63B / OWASP: mínimo 10 chars, mayúscula, minúscula, número, carácter especial. | MVP       | OWASP ASVS L2 |
-| RF-AUTH-11 | JTI blacklist en Redis para revocación inmediata de access tokens en logout.                                       | MVP       | **ADR-019 §6** |
+| ID         | Requerimiento                                                                                                                                                                                      | Prioridad | ADR ref          |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ---------------- |
+| RF-AUTH-01 | Login con email + password. Mensaje de error genérico (no revelar si email existe).                                                                                                                | MVP       | OWASP            |
+| RF-AUTH-02 | Bloqueo temporal de cuenta tras 5 intentos fallidos (15 minutos).                                                                                                                                  | MVP       | OWASP            |
+| RF-AUTH-03 | MFA TOTP: setup (QR + secret), verify (activa MFA), disable (requiere password + código).                                                                                                          | MVP       | ADR-001          |
+| RF-AUTH-04 | MFA obligatorio para: ADMIN, NOC, ACCOUNTANT, SYSTEM_ADMIN, IWANA_SUPPORT.                                                                                                                         | MVP       | PRD v2.2         |
+| RF-AUTH-05 | JWT RS256 con access token (15 min) y refresh token rotado por cookie httpOnly (7 días sin uso), con vida absoluta desde el ingreso: 12 h en plataforma y 30 días en empresa. Enmienda 2026-11-26. | MVP       | ADR-019, ADR-081 |
+| RF-AUTH-06 | Detección de reuse attack: refresh token ya rotado → revocar familia completa.                                                                                                                     | MVP       | ADR-019          |
+| RF-AUTH-07 | Recuperación de contraseña: token expirable en 1 hora, respuesta siempre HTTP 200.                                                                                                                 | MVP       | OWASP            |
+| RF-AUTH-08 | Cambio de contraseña: requiere contraseña actual, invalida todos los refresh tokens al cambiar.                                                                                                    | MVP       | —                |
+| RF-AUTH-09 | Email de verificación al crear usuario. Usuario no puede operar hasta verificar.                                                                                                                   | MVP       | —                |
+| RF-AUTH-10 | Política de contraseñas NIST SP 800-63B / OWASP: mínimo 10 chars, mayúscula, minúscula, número, carácter especial.                                                                                 | MVP       | OWASP ASVS L2    |
+| RF-AUTH-11 | JTI blacklist en Redis para revocación inmediata de access tokens en logout.                                                                                                                       | MVP       | **ADR-019 §6**   |
+
+**Enmienda RF-AUTH-05 (2026-11-26, G0 del CTO del 2026-11-25).** Cada renovación conserva el inicio de la sesión: superado el máximo, la API responde 401, revoca la familia y borra solo las cookies de esa superficie. En plataforma, `platform/login` frena por cuenta e IP (10 contraseñas erróneas en 15 min → 15 min de rechazo), sin revelar si la cuenta existe, y avisa a los administradores a las 50 erróneas por hora. Ingreso, renovación y cookies de plataforma solo se aceptan desde el vhost de la consola. Detalle: [spec de sesión absoluta y freno](../specs/2026-11-25-sesion-absoluta-y-freno-contrasenas-spec.md) §3 a §5; operación: [RUNBOOK-FRENO-CONTRASENAS-PLATAFORMA](../runbooks/RUNBOOK-FRENO-CONTRASENAS-PLATAFORMA-v1.0.md).
 
 ### RF-TENANT (Multi-tenant)
 
-| ID        | Requerimiento                                                                                                                           | Prioridad | ADR ref |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------- | ------- |
-| RF-TNT-01 | CRUD completo de tenants (solo SYSTEM_ADMIN). Slug inmutable post-creación.                                                             | MVP       | ADR-002 |
-| RF-TNT-02 | Aprovisionamiento automático de schema PostgreSQL al crear tenant (BullMQ worker).                                                      | MVP       | ADR-017 |
-| RF-TNT-03 | Schema routing: cada request del tenant usa su schema exclusivo. Imposible cross-schema accidental.                                     | MVP       | ADR-002 |
-| RF-TNT-04 | Seed inicial por tenant: ADMIN con password temporal (24h) + config base + catálogo de docs CO.                                         | MVP       | ADR-020 |
-| RF-TNT-05 | Ciclo de vida del tenant: PROVISIONING → ACTIVE → SUSPENDED → INACTIVE. Tenant SUSPENDED bloquea acceso (HTTP 403) en TenantMiddleware. | MVP       | ADR-018 |
-| RF-TNT-06 | Configuración por tenant en JSONB: timezone (default: America/Bogota), currency (default: COP), features habilitadas.                   | MVP       | —       |
-| RF-TNT-07 | SYSTEM_ADMIN puede regenerar credenciales temporales del ADMIN de un tenant (`POST /tenants/:id/regenerate-admin-credentials`).         | MVP       | ADR-020 |
+| ID        | Requerimiento                                                                                                                           | Prioridad | ADR ref                  |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------ |
+| RF-TNT-01 | CRUD completo de tenants (solo SYSTEM_ADMIN). Slug inmutable post-creación.                                                             | MVP       | ADR-002                  |
+| RF-TNT-02 | Aprovisionamiento automático de schema PostgreSQL al crear tenant (BullMQ worker).                                                      | MVP       | ADR-017                  |
+| RF-TNT-03 | Schema routing: cada request del tenant usa su schema exclusivo. Imposible cross-schema accidental.                                     | MVP       | ADR-002                  |
+| RF-TNT-04 | Seed inicial por tenant: ADMIN con password temporal (24h) + config base + catálogo de docs CO.                                         | MVP       | ADR-020                  |
+| RF-TNT-05 | Ciclo de vida del tenant: PROVISIONING → ACTIVE → SUSPENDED → INACTIVE. Tenant SUSPENDED bloquea acceso (HTTP 403) en TenantMiddleware. | MVP       | ADR-018                  |
+| RF-TNT-06 | Configuración por tenant en JSONB: timezone (default: America/Bogota), currency (default: COP), features habilitadas.                   | MVP       | —                        |
+| RF-TNT-07 | SYSTEM_ADMIN puede regenerar credenciales temporales del ADMIN de un tenant (`POST /tenants/:id/regenerate-admin-credentials`).         | MVP       | ADR-020                  |
 | RF-TNT-08 | Cache de tenant en Redis (TTL 5 min) para evitar query a public.tenants en cada request.                                                | MVP       | **ADR-018 §Cache Redis** |
 
 ### RF-RBAC (Control de Acceso)
