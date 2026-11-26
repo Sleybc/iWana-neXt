@@ -247,7 +247,7 @@ Omitido: arreglo de `web-tenant-create-happy-path` y E2E del portal en producci�
 
 | Deuda | Disposición |
 | --- | --- |
-| F1-D1 | ds-owner: `DashboardMetricStrip` ya compone `MetricCard` y es la franja propia de la app; no se borra. Corregido: cifra 0 en tono neutro y `/tenants` con error y reintento en vez de ceros |
+| F1-D1 | ds-owner: `DashboardMetricStrip` ya compone `MetricCard` y es la franja propia de la app; no se borra. Corregido: cifra 0 en tono neutro y `/tenants` con error y reintento en vez de ceros. **Nota 2026-11-25:** `DashboardMetricStrip` se retiró; `/tenants` usa `TenantDirectoryPulse` sobre `PulseStrip` (contrato DS v1.5 §7ter.5) |
 | F1-D2 | Expectativa obsoleta por `48e2a7be` (test-change-reviewer): alta real con correo de administrador, slug `srqa-web-alta-*`, limpieza en `beforeAll`/`afterAll` y la contraseña fuera de los artefactos. Verde |
 | F1-D3 | `E2E_PORTAL_PORT` (`e2e/portal-origin.ts`), por defecto 3002. Inicio del portal con build de producción en 3012: 47/47 |
 | F1-D4 | Ya resuelta: `excludeSessionEvents` y `excludeAccessEvents` en servidor; no queda filtro en cliente |

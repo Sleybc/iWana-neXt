@@ -176,3 +176,17 @@ Capturas (sin PII): [`docs/quality/evidence-web-empresas-directorio/375.png`](..
 ### Dictamen
 
 **GO.** D-2…D-6 verdes. CA-EMP-01…10 con evidencia. G6.5 / G7 no se anticipan. Sin commit.
+
+## Alineación con el Centro de control vigente (2026-11-25)
+
+Empresas adopta la misma franja de pulso del dashboard. Las cifras positivas indican si la acción filtra el directorio o lleva el foco a su título. La tabla adopta el encabezado y los divisores de «Últimas empresas». Los filtros y «Nueva empresa» se ajustan a pantallas estrechas y el desplazamiento horizontal queda dentro de la tabla. CA-EMP-06 se reescribe en la [UX spec v1.1](../specs/2026-08-11-web-empresas-directorio-ux-spec.md); la fila del 2026-08-11 queda como histórico. [Contrato visual del directorio](../specs/2026-08-11-web-empresas-directorio-ds-contrato.md) · [IBM Carbon](https://www.carbondesignsystem.com/building-blocks/core/components/data-table/guidelines#table-toolbar) · [W3C Reflow](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html)
+
+| Comprobación | Resultado |
+| --- | --- |
+| Jest sin Turbo, base `fb6d17fb` y resultado | Web 44 suites, 365 → 366 pruebas. UI 14 suites, 145 → 145 pruebas. Sin omitidas. Dashboard del portal 57 pruebas en 1 suite como comprobación adicional. |
+| Playwright, `web-empresas-directorio.spec.ts` | 6/6 con API simulada. Filtros desde el dashboard, reflujo a 320/375 px, tres celdas en fila a 1280 px, foco con movimiento reducido y axe en claro y oscuro sin hallazgos. |
+| Identidad, tipos y lint | Auditoría UI sin hallazgos. Typecheck de Web y UI correcto. ESLint sin errores y con ocho advertencias en archivos ajenos al cambio. |
+
+El 2026-11-25 se actualizó solo `web-prod` en la LAN. El contenedor quedó saludable y `/tenants` y `/api/v1/health` respondieron HTTP 200 con TLS validado. En la sesión autenticada se vio la franja nueva, se aplicó «Activas» desde el pulso y se volvió a «Todos los estados». La imagen anterior quedó disponible con la etiqueta `iwana-stable/web:rollback-tenants-8c65942b`.
+
+Los conteos y comprobaciones de las secciones del 2026-11-25 son afirmaciones de quien las ejecutó; no se verificaron en esta corrección documental.

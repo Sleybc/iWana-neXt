@@ -1,24 +1,31 @@
 # SPEC — Web Empresas · directorio (contrato DS)
 
 **Fecha de congelación:** 2026-08-11  
-**Versión de contrato:** 1.0 — **congelada / carril rápido**  
+**Versión de contrato:** 1.1 — v1.0 congelada / carril rápido; v1.1 aprobada por el CTO el 2026-11-25, firma pendiente AI-DS-OWNER  
 **Autoridad:** AI-DS-OWNER  
 **Destinatario ejecutor:** AI-FE-PLATFORM  
 **Destinatario validador:** AI-SR-QA  
 **Orquestador:** AI-EM-ARCH  
 **Prompt:** [`PROMPT-WEB-EMPRESAS-DIRECTORIO-ALINEACION-v1.0.md`](../prompts/PROMPT-WEB-EMPRESAS-DIRECTORIO-ALINEACION-v1.0.md)  
-**UX hermana (se crea en paralelo):** [`2026-08-11-web-empresas-directorio-ux-spec.md`](2026-08-11-web-empresas-directorio-ux-spec.md)  
-**DS padre portada (reutilizar receta DS-S):** [`2026-08-11-web-centro-control-portada-senal-ds-contrato.md`](2026-08-11-web-centro-control-portada-senal-ds-contrato.md) v1.0  
+**UX hermana (v1.1):** [`2026-08-11-web-empresas-directorio-ux-spec.md`](2026-08-11-web-empresas-directorio-ux-spec.md)  
+**DS padre portada (histórico; la receta DS-S dejó de usarse en v1.1):** [`2026-08-11-web-centro-control-portada-senal-ds-contrato.md`](2026-08-11-web-centro-control-portada-senal-ds-contrato.md) v1.0  
 **Contrato padre Fase-1 (no se reescribe):** [`2026-07-20-web-dashboard-firma-fase1-contrato.md`](2026-07-20-web-dashboard-firma-fase1-contrato.md) v1.0  
 **Firma:** [`2026-07-12-firma-iwana-diseno-visual-design.md`](2026-07-12-firma-iwana-diseno-visual-design.md)  
-**Receta viva:** `apps/web/src/components/dashboard/SignalChips.tsx`  
+**Receta viva:** [TenantDirectoryPulse](../../apps/web/src/components/tenants/TenantDirectoryPulse.tsx) y [TenantsTable](../../apps/web/src/components/tenants/TenantsTable.tsx)  
 **Fuente de tokens:** `packages/ui/src/styles/globals.css` (verificada 2026-08-11)  
-**Aclaración 2026-08-11:** DS-E-SHELL sin cáscara extra ni enlace de retorno (ver §5).  
+**Aclaración 2026-08-11:** DS-E-SHELL sin enlace de retorno (ver §5).  
 **Aclaración 2026-08-11:** `Nueva empresa` es `Button variant="primary"` en el chrome de la tabla, no en el PageHeader.
 
 > Carril rápido (protocolo §3bis.3): receta de composición, **sin** tokens de marca nuevos, **sin** primitive nueva en `@iwana/ui`, **sin** importar `apps/portal`.  
 > En conflicto de sombras / foco / dark, prevalece el contrato Fase-1.  
-> El flujo (chrome, copy, cuándo navega un chip, empty vs filtros) lo congela la UX hermana. Este contrato congela **piel y API visual**.
+> El flujo (chrome, copy, cuándo navega una celda, empty vs filtros) lo congela la UX hermana. Este contrato congela **piel y API visual**.
+
+### Changelog
+
+| Ver | Fecha | Cambio |
+| --- | --- | --- |
+| 1.0 | 2026-08-11 | Congelación inicial. |
+| **1.1** | 2026-11-25 | `PulseStrip` sustituye a `SignalChips` (§§3–5); tabla con H2, divisores, encabezados en sentence case y región desplazable (§7). Firma pendiente AI-DS-OWNER. |
 
 ---
 
@@ -28,9 +35,9 @@
 
 | ID | Superficie | Receta |
 | --- | --- | --- |
-| DS-E-KPI | Chips S (×3) | Cáscara idéntica a DS-S / `SignalChips` — clases, no componente nuevo |
-| DS-E-EXT | Extensión local de `SignalChips` | Props opcionales con default actual; el home no se rompe |
-| DS-E-SHELL | Cáscara del bloque KPI | **Sin cáscara extra.** Los chips son la única superficie. Sin botón de retorno. |
+| DS-E-KPI | Pulso (×3) | `PulseStrip` de `@iwana/ui` vía `TenantDirectoryPulse` |
+| DS-E-EXT | — | Retirada en v1.1 (§4) |
+| DS-E-SHELL | Superficie del pulso | La franja es la única superficie. Sin botón de retorno. |
 | DS-E-BADGE | Estado de fila | `Badge` de `@iwana/ui`; variant por severidad; texto singular (UX) |
 | DS-E-TABLE | Tabla del directorio | Foco solo en el nombre; orden sin lima; slug/fechas mono |
 | DS-E-ALERT | Feedback de listado / acción | Preferir `Alert` de `@iwana/ui`; toast solo con tokens de capa |
@@ -40,11 +47,11 @@
 
 | # | Prohibición | Motivo |
 | --- | --- | --- |
-| 1 | Nueva primitive en `@iwana/ui` (incl. promover `SignalChips`) | Carril rápido: componer lo vivo |
+| 1 | Nueva primitive en `@iwana/ui` (`PulseStrip` ya existe, §7bis.2) | Carril rápido: componer lo vivo |
 | 2 | Importar `apps/portal/src/components/shared/portal-ui.tsx` desde web | Boundary de app |
 | 3 | Tokens o hex de marca nuevos; `tailwind.config.*` | CSS-first; marca = CTO |
 | 4 | Lima en urgencia, error, «Requieren atención», caret de orden o badge de fallo | Firma §3 |
-| 5 | `iwana-secondary-50` como fondo del bloque KPI, tabla o empty | Solo acento de interacción |
+| 5 | `iwana-secondary-50` como fondo del pulso, tabla o empty | Solo acento de interacción |
 | 6 | Card-dentro-de-card con `shadow-sm` / `shadow-lg` / `shadow-md` | Fase-1 §3; anti-patrón anidado |
 | 7 | `dark:bg-gray-{700-950}` · `dark:bg-emerald-950` en pozos de icono | ADR-056 §2 |
 | 8 | Reabrir sidebar, canvas `rounded-3xl`, o copy `status*` del home | Ya cerrados |
@@ -60,96 +67,51 @@ Verificados el 2026-08-11. Citar el token; no el hex.
 
 | Token / utilidad | Dónde vive | Uso en este contrato |
 | --- | --- | --- |
-| `shadow-iwana-card` | `--shadow-iwana-card` (`globals.css`, bloque `@theme` de sombras) | `Card` de tabla (no hay cáscara extra en el pulso KPI) |
-| `shadow-iwana-soft` | `--shadow-iwana-soft` (mismo bloque) | Reposo del chip S; toast si se conserva flotante |
-| `shadow-iwana-active` | `--shadow-iwana-active` | `hover:` solo si el chip es enlace o botón |
+| `shadow-iwana-card` | `--shadow-iwana-card` (`globals.css`, bloque `@theme` de sombras) | `Card` de tabla |
+| `shadow-iwana-soft` | `--shadow-iwana-soft` (mismo bloque) | `PulseStrip`; toast si se conserva flotante |
 | `--z-toast` | `--z-toast: 600` (bloque capas ADR-075, mismo `@theme`) | Única capa de toast: `z-(--z-toast)` |
-| `bg-white` / `dark:bg-dark-surface-2` | superficies | Cáscara de chip y `Card` default |
-| `bg-iwana-surface-soft` | apoyo | Acento `neutral` del chip (no se usa en los 3 de Empresas) |
-| `border-gray-200` / `dark:border-dark-border` | bordes | Cáscara de chip y shell |
+| `bg-white` / `dark:bg-dark-surface-2` | superficies | Celda de pulso y `Card` default |
+| `bg-iwana-surface-soft` | apoyo | Hover de celda interactiva y de fila |
+| `border-gray-200` / `dark:border-dark-border` | bordes | Franja y tabla |
 | `text-iwana-primary` / `dark:text-white` | texto de marca | Encabezado de orden activo; título de empty |
-| `font-mono tabular-nums` | tipografía | Cifras de chip; fechas de tabla |
+| `tabular-nums` (+ `font-mono` en fechas) | tipografía | Cifras de pulso; fechas de tabla |
 | `font-mono` + `text-xs` | tipografía | Slug bajo el nombre (dato técnico, no etiqueta) |
-| `.portal-eyebrow` | utility en `globals.css` | Eyebrow del bloque KPI |
+| `.portal-eyebrow-muted` | utility en `globals.css` | Rótulo de celda |
 | `interactiveFocusClassName` (`@iwana/ui`) | `packages/ui/src/focus.ts` | Único anillo de foco |
-| `SkeletonBlock` (`@iwana/ui`) | `packages/ui/src/skeleton.tsx` | Carga de chips y filas |
+| `SkeletonBlock` (`@iwana/ui`) | `packages/ui/src/skeleton.tsx` | Carga de celdas y filas |
 | `Badge` (`@iwana/ui`) | variantes `success` / `warning` / `error` / `neutral` | Estado de fila |
 | `Alert` (`@iwana/ui`) | variantes `error` / `success` / `warning` / `neutral` | Feedback en flujo |
 | `bg-success-600` / `bg-error-600` | `--color-success-600` / `--color-error-600` | Fondo de toast flotante (texto blanco) |
-| `rounded-3xl` chip · `rounded-2xl` sección · `rounded-full` badge | radios `@theme` | Superficie 2xl/3xl; control pill |
+| `rounded-2xl` superficie · `rounded-full` badge | radios `@theme` | Superficie 2xl; control pill |
 
-**Lima:** no entra en el chip «Requieren atención», ni en badges de fallo/eliminación, ni en el caret de orden, ni como fondo de empty operativo. `Badge variant="lime"` **no** se usa en esta tabla. Texto de acento lima, si aparece (eyebrow), es `text-iwana-secondary-700` / `dark:text-iwana-secondary-400` vía `.portal-eyebrow` — nunca `text-iwana-secondary` suelto.
+**Lima:** no entra en la celda «Requieren atención», ni en badges de fallo/eliminación, ni en el caret de orden, ni como fondo de empty operativo. `Badge variant="lime"` **no** se usa en esta tabla.
 
 `--shadow-iwana-card` es visualmente idéntica a `--shadow-iwana` (Fase-1 §3). Se elige **`shadow-iwana-card`** por semántica de sección/card, en paridad con la cáscara de paneles de la portada (DS padre §4).
 
 ---
 
-## 3. Receta DS-E-KPI — chips S (×3)
+## 3. Receta DS-E-KPI — pulso (×3)
 
-Reutilizar la receta **DS-S** del contrato padre de portada y las clases vivas de `SignalChips.tsx`. No se crea `SignalChip` en `@iwana/ui`. No se reinventan cards con icono.
+`TenantDirectoryPulse` compone `PulseStrip` de [`@iwana/ui` §7bis.2](2026-11-21-web-portal-dashboard-consolidacion-ds-contrato.md#7bis2-pulsestrip-primitive), que fija anatomía y estados.
 
-### Anatomía (de arriba a abajo) — idéntica a DS-S
+- Tres celdas sin acento de color: apiladas por debajo de `sm`, en fila desde `sm` (`sm:grid-cols-3`).
+- Activas y En configuración: `href` `/tenants?status=…` si la cifra es > 0. Requieren atención: `onClick` (foco al H2). Con 0, ninguna es interactiva.
+- `actionLabel` sustituye al contenido como nombre accesible y la cifra no se anuncia: deuda conocida, dueño AI-DS-OWNER.
+- Error del resumen: `ErrorState` con un solo reintento en lugar de la franja.
 
-1. Cáscara: `flex h-full min-h-11 flex-col rounded-3xl border px-4 py-4 shadow-iwana-soft` + acento.
-2. Rótulo: `text-sm font-medium text-gray-900 dark:text-white`.
-3. Cifra: `mt-2 font-mono text-2xl font-semibold tabular-nums tracking-tight text-gray-900 dark:text-white`.
-4. Si es enlace (`count > 0` + `href`): `Link` que envuelve la cáscara + `interactiveFocusClassName` + `hover:shadow-iwana-active transition-shadow`.
-5. Si no es enlace (cifra 0, o chip sin `href`): `<div>` sin hover de sombra activa, sin `role="button"`.
-
-### Acento (copia normativa de DS-S / `ACCENT_CLASS` vivo)
-
-| Acento | Clases light | Clases dark |
-| --- | --- | --- |
-| `primary` | `border-iwana-primary/20 bg-iwana-primary-50/70` | `dark:border-iwana-primary-400/30 dark:bg-iwana-primary-900/15` |
-| `warning` | `border-amber-200 bg-amber-50/80` | `dark:border-amber-500/20 dark:bg-amber-950/20` |
-| `danger` | `border-rose-200 bg-rose-50/80` | `dark:border-rose-500/20 dark:bg-rose-950/20` |
-| `neutral` | `border-gray-200 bg-iwana-surface-soft` | `dark:border-dark-border dark:bg-dark-surface-3` |
-
-### Piel de los 3 chips (flujo = UX hermana)
-
-| Chip | Acento | `href` si `count > 0` |
-| --- | --- | --- |
-| Activas | `primary` | `/tenants?status=ACTIVE` |
-| En configuración | `warning` | `/tenants?status=PROVISIONING` |
-| Requieren atención | `danger` | ninguno |
-
-Carga: `SkeletonBlock` `h-[88px] w-full rounded-3xl`. `aria-busy` en la sección. Ver DS-E-EXT para el recuento.
-
-**Prohibido en KPI:** `shadow-sm`; iconos en pozo (`dark:bg-emerald-950` o cualquier `dark:bg-*-950` de pozo); cifra sin `font-mono tabular-nums`; `"..."` de carga; spinner; lima en el chip de atención.
+**Prohibido:** iconos en pozo; lima; `"..."` de carga; spinner; ceros en error.
 
 ---
 
-## 4. Receta DS-E-EXT — extensión local de `SignalChips`
+## 4. Receta DS-E-EXT — retirada (v1.1)
 
-Componente **local** de `apps/web`. **No** promover a `@iwana/ui`.
-
-Props **opcionales**. Si el home no las pasa, el render es visualmente idéntico al actual.
-
-| Prop | Default (home intacto) | Uso en Empresas |
-| --- | --- | --- |
-| `eyebrow` | `PLATFORM_UI_COPY.dashboard.summaryEyebrow` | UX: `Directorio` |
-| `ariaLabel` | el mismo string que el eyebrow por defecto | sección del bloque KPI |
-| `skeletonCount` | `4` | `3` en esta página |
-
-**Grid**
-
-- Base (sin cambio): `mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4`.
-- Si `chips.length === 3` **o** (cargando y `skeletonCount === 3`): `xl:grid-cols-3` en lugar de `xl:grid-cols-4`.
-- El home sigue pasando 4 chips y no pasa `skeletonCount` → 4 columnas en `xl`.
-
-`aria-label` de la `<section>`: `ariaLabel ?? eyebrow ?? default`. El nodo eyebrow visible usa `eyebrow`.
-
-No añadir iconos, deltas, sparklines ni cuarta tesela en Empresas.
+`SignalChips` ya no existe en `apps/web`. Se conserva el número para no reordenar.
 
 ---
 
-## 5. Receta DS-E-SHELL — pulso KPI sin cáscara extra
+## 5. Receta DS-E-SHELL — superficie del pulso
 
-Aclaración 2026-08-11: el bloque K ya no envuelve los chips en una superficie `rounded-2xl` + `shadow-iwana-card`, ni lleva enlace de retorno.
-
-- Eyebrow + `SignalChips` sueltos, misma receta DS-S que el home.
-- Los chips **no** van dentro de mini-cards blancas con `shadow-sm`, ni dentro de una segunda card de sección.
-- No hay H2, párrafo instructivo ni botón «Volver al centro de control». Ese destino vive en el sidebar.
+La franja es una sola superficie, sin `Card` alrededor. Sin eyebrow, párrafo instructivo ni botón «Volver al centro de control».
 
 ---
 
@@ -170,7 +132,7 @@ Texto = **singular femenino** (UX §7.3 / helper único). Este contrato no conge
 
 `variant="lime"` · `variant="primary"` · `variant="info"`: **fuera** de la columna de estado. Lima no comunica urgencia ni fallo.
 
-Filtro y chips usan **plural**; el badge de fila usa **singular**. Un solo mapa de variants en web (retirar o reexportar `TenantStatusBadge` — ejecución FE; este contrato exige un único mapeo visual).
+Filtro y pulso usan **plural**; el badge de fila usa **singular**. Un solo mapa de variants en web (retirar o reexportar `TenantStatusBadge` — ejecución FE; este contrato exige un único mapeo visual).
 
 ---
 
@@ -180,14 +142,18 @@ Cáscara: `Card` de `@iwana/ui` (ya trae `rounded-2xl` + `shadow-iwana-card`). N
 
 | Pieza | Receta |
 | --- | --- |
+| Título | H2 `text-base font-semibold text-iwana-primary dark:text-white`, enfocable (`tabIndex={-1}`). |
+| Chrome | Búsqueda, filtro y alta se apilan en pantallas estrechas y envuelven desde `sm`; vacío y error se ajustan al ancho de la tarjeta. |
+| Desplazamiento | Región `overflow-x-auto` enfocable, con `aria-labelledby` del H2. |
+| Filas | `divide-y divide-gray-100 dark:divide-dark-border`; encabezado con `border-b`. |
 | CTA de alta | `Button variant="primary"` + `Link` `/tenants/new` en el chrome (junto a búsqueda/filtro). No va en el PageHeader. No lima filled. |
 | Control de fila al teclado | Solo el **nombre** lleva `interactiveFocusClassName`. Celdas de estado y fechas: **sin** `onClick`, sin `cursor-pointer`. |
-| Encabezado inactivo | `text-xs font-medium tracking-wider text-gray-500 uppercase` (ya vivo). |
-| Encabezado activo | Añadir `font-semibold text-iwana-primary` (WCAG 1.4.1: el orden no se comunica solo con el icono). |
+| Encabezado inactivo | `text-xs font-medium text-gray-600 dark:text-gray-300`, sentence case. |
+| Encabezado activo | Añadir `font-semibold text-iwana-primary dark:text-iwana-primary-300` (WCAG 1.4.1: el orden no se comunica solo con el icono). |
 | Caret de orden | `text-iwana-primary` / `dark:text-iwana-primary-300` si activo; `text-gray-400` si inactivo. **Sin** `iwana-secondary*`. |
 | `aria-sort` | En el `<th>` ordenable; a lo sumo uno ≠ `none` (comportamiento = UX / ADR-065 §22; piel = este contrato). |
-| Slug | `text-xs font-mono text-gray-500 dark:text-gray-400`. Prohibido `text-[11px]`. El slug no es etiqueta visible («slug» no se escribe). |
-| Fechas | `<time dateTime={ISO}>` + `font-mono tabular-nums text-sm text-gray-500 dark:text-gray-400`. |
+| Slug | `font-mono text-xs text-gray-600 dark:text-gray-300`. Prohibido `text-[11px]`. El slug no es etiqueta visible («slug» no se escribe). |
+| Fechas | `<time dateTime={ISO}>` + `font-mono text-xs tabular-nums text-gray-600 dark:text-gray-300`. |
 | Carga | Filas `SkeletonBlock` con forma (nombre + pill + dos fechas). No `animate-pulse` suelto como única receta; no spinner de página. |
 | Error de listado | No texto `text-red-500` suelto en la celda: receta DS-E-ALERT. |
 | Pie load-more | `Button variant="secondary"`. Lima fuera del pie. ADR-065 pager = deuda, no se implementa. |
@@ -236,36 +202,35 @@ No unificar en un solo bloque visual. Copy y cuándo aparece cada uno = UX herma
 
 - Más compacto: título + una línea. **Sin** blob, **sin** ilustración.
 - **Sin** CTA «Registrar primera empresa».
-- Acción: control ya vivo «Limpiar filtro» (`text-iwana-primary` + `interactiveFocusClassName`), no un botón primary.
+- Acción: control ya vivo «Limpiar filtro» (`Button variant="ghost"` del chrome), no un botón primary.
 
 ---
 
 ## 10. Matriz de estados
 
-| Estado | Chip S | Badge | Tabla / Alert |
+| Estado | Celda de pulso | Badge | Tabla / Alert |
 | --- | --- | --- | --- |
-| hover | Solo enlace: `hover:shadow-iwana-active` | N/A (no interactivo) | Fila `hover:bg-gray-50 dark:hover:bg-white/[0.03]` |
-| foco | `interactiveFocusClassName` en el control | N/A | Solo nombre + orden + acciones + limpiar filtro |
+| hover | Solo interactiva: `hover:bg-iwana-surface-soft dark:hover:bg-dark-surface-3` | N/A (no interactivo) | Fila `hover:bg-iwana-surface-soft dark:hover:bg-dark-surface-3` |
+| foco | `interactiveFocusClassName` en el control | N/A | Nombre + orden + acciones + limpiar filtro + región desplazable + H2 |
 | activo | N/A (navega) | N/A | N/A |
 | deshabilitado | N/A — cifra 0 no es control | N/A | Load-more `disabled` + `loading` del `Button` |
-| cargando | `SkeletonBlock` × `skeletonCount` + `aria-busy` | Skeletons pill | Filas skeleton; no `"..."` |
+| cargando | `SkeletonBlock` por celda + `aria-busy` | Skeletons pill | Filas skeleton; no `"..."` |
 | vacío | Cifra `0` real, no interactivo | No se monta fila | Empty A o Empty B, nunca mezclados |
-| error | `Alert variant="error"` del propio `SignalChips` | N/A | `Alert` en flujo (DS-E-ALERT) |
+| error | `ErrorState` en lugar de la franja | N/A | `Alert` en flujo (DS-E-ALERT) |
 | éxito | N/A (lectura) | N/A | `Alert success` o toast tokenizado |
-| readonly | Chip atención (sin href) | Badge estático | Celdas estado/fecha no son controles |
+| readonly | Celda con cifra 0 | Badge estático | Celdas estado/fecha no son controles |
 
 ---
 
 ## 11. Checklist FE antes de entregar
 
 - [ ] 0 tokens nuevos en `globals.css`.
-- [ ] 0 primitives nuevas en `@iwana/ui`. `SignalChips` sigue en `apps/web`.
-- [ ] Home `SignalChips` visualmente idéntico si no se pasan `eyebrow` / `ariaLabel` / `skeletonCount`.
+- [ ] 0 primitives nuevas en `@iwana/ui`; el pulso compone `PulseStrip`.
 - [ ] 0 imports desde `apps/portal`.
-- [ ] 0 `shadow-sm` / `shadow-lg` / `z-50` en KPI, toast o cáscara nueva.
-- [ ] 0 lima en chip de atención, badge de error/eliminación o caret de orden.
-- [ ] 0 `"..."` de carga; cifras y fechas en `font-mono tabular-nums`.
-- [ ] `interactiveFocusClassName` solo en el nombre (fila), no en estado/fechas.
+- [ ] 0 `shadow-sm` / `shadow-lg` / `z-50` en pulso, toast o cáscara nueva.
+- [ ] 0 lima en celda de atención, badge de error/eliminación o caret de orden.
+- [ ] 0 `"..."` de carga; cifras en `tabular-nums` y fechas en `font-mono tabular-nums`.
+- [ ] En la fila, `interactiveFocusClassName` en el nombre y no en estado/fechas.
 - [ ] Encabezado activo `font-semibold text-iwana-primary`.
 - [ ] Slug `text-xs font-mono`.
 - [ ] Empty A ≠ Empty B (CTA primera empresa solo en A).
@@ -276,7 +241,7 @@ No unificar en un solo bloque visual. Copy y cuándo aparece cada uno = UX herma
 
 ## 12. Relación con contratos padre
 
-- **DS-S (portada):** este contrato **reutiliza** cáscara, acentos y cifra. No la reabre.
+- **DS-S (portada):** v1.1 deja de usar su cáscara; no la reabre.
 - **Fase-1:** `shadow-iwana-card` / `shadow-iwana-soft` / `shadow-iwana-active`, `dark-surface-*` e `interactiveFocusClassName` **no se reabren**.
 - **Firma:** lima = avance; nunca urgencia. CTA de página = `primary` (azul).
-- Un cambio post-congelación se versiona **v1.1+** y se notifica a FE-PLATFORM y SR-QA vía AI-EM-ARCH.
+- Un cambio post-congelación se versiona **v1.2+** y se notifica a FE-PLATFORM y SR-QA vía AI-EM-ARCH.

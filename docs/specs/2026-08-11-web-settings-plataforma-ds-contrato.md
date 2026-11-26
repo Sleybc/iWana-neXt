@@ -1,7 +1,7 @@
 # Contrato DS · Plataforma / settings (`apps/web` `/settings`)
 
 **Fecha de congelación:** 2026-08-11  
-**Versión de contrato:** 1.2 — **congelada / carril rápido**  
+**Versión de contrato:** 1.3 — v1.2 congelada / carril rápido; v1.3 aprobada por el CTO el 2026-11-25, firma pendiente AI-DS-OWNER  
 **Autoridad:** AI-DS-OWNER  
 **Destinatario ejecutor:** AI-FE-PLATFORM  
 **Destinatario validador:** AI-SR-QA  
@@ -10,7 +10,7 @@
 **Prompt:** [`PROMPT-WEB-SETTINGS-ALINEACION-v1.0.md`](../prompts/PROMPT-WEB-SETTINGS-ALINEACION-v1.0.md)  
 **Plan:** [`2026-08-11-web-settings-alineacion.md`](../plans/2026-08-11-web-settings-alineacion.md)  
 **Informe:** [`INFORME-WEB-SETTINGS-AUDITORIA-UI-v1.0.md`](../informes/INFORME-WEB-SETTINGS-AUDITORIA-UI-v1.0.md)  
-**UX hermana:** [`2026-08-11-web-settings-plataforma-ux-spec.md`](2026-08-11-web-settings-plataforma-ux-spec.md) **v1.1** Congelado  
+**UX hermana:** [`2026-08-11-web-settings-plataforma-ux-spec.md`](2026-08-11-web-settings-plataforma-ux-spec.md) **v1.3** Congelado  
 **Firma:** [`2026-07-12-firma-iwana-diseno-visual-design.md`](2026-07-12-firma-iwana-diseno-visual-design.md)  
 **DS hermano Empresas:** [`2026-08-11-web-empresas-directorio-ds-contrato.md`](2026-08-11-web-empresas-directorio-ds-contrato.md) v1.0 (`Alert`, `rounded-2xl`, soft)  
 **DS hermano Historial:** [`2026-08-11-web-audit-logs-historial-ds-contrato.md`](2026-08-11-web-audit-logs-historial-ds-contrato.md) (`Alert`, `interactiveFocusClassName`, `SkeletonBlock`)  
@@ -20,7 +20,7 @@
 
 > Carril rápido (protocolo §3bis.3): receta de composición, **sin** tokens de marca nuevos, **sin** primitive nueva en `@iwana/ui`, **sin** importar `apps/portal`.  
 > En conflicto de sombras / foco / dark, prevalece el contrato Fase-1.  
-> El flujo (tabs Identidad|Seguridad, copy literal, URI `otpauth` fuera del camino feliz, CTAs) lo congela la UX hermana v1.0 + prompt ALINEACION-v1.0. Este contrato congela **piel y API visual**.
+> El flujo (tabs, `?seccion=`, copy literal, CTAs) lo congela la UX hermana v1.3. Este contrato congela **piel y API visual**.
 
 **Veredicto carril rápido:** **GO** — 0 primitives nuevas, 0 tokens de marca. Remedia Alert, una cáscara, pozos soft/2xl, foco de slot, loading y eyebrow con composición viva. No hay `[BLOQUEO]`.
 
@@ -30,7 +30,8 @@
 | --- | --- | --- |
 | **1.0** | 2026-08-11 | Congelación inicial Settings plataforma (alineación ALINEACION-v1.0; CA-SET-02…07 de piel). |
 | **1.1** | 2026-08-11 | **DS-SET-SHELL:** tabs sobre el canvas (como Historial/Empresas). Cada sección operativa es panel `rounded-2xl` + `shadow-iwana-card`. **Prohibido** envolver tabs+contenido en un `Card` de página. Patrón canónico para settings/formularios de `apps/web`. |
-| **1.2** | 2026-08-11 | Seguridad: grid 1 col / `lg:grid-cols-2` (contraseña \| verificación). |
+| **1.2** | 2026-08-11 | Seguridad: grid 1 col / `lg:grid-cols-2` (contraseña \| verificación). Superado por 1.3. |
+| **1.3** | 2026-11-25 | Tres tabs con `?seccion=` (replace) y teclado; Nombres antes de Imágenes; Seguridad = panel con enlace a Mi cuenta, sin desactivar la verificación en dos pasos; panel Visibilidad. Firma pendiente AI-DS-OWNER. |
 
 ---
 
@@ -41,13 +42,13 @@
 | ID | Superficie | Receta |
 | --- | --- | --- |
 | DS-SET-SHELL | Cáscara de página | `PageHeader` + `Tabs` **sobre el canvas** (`bg-iwana-surface-soft`). **Sin** `Card` envolvente. Cada sección = panel blanco `rounded-2xl` + `border-gray-200` + `shadow-iwana-card` (misma piel que la tabla de Historial) |
-| DS-SET-TABS | Tabs de sección | `Tabs` / `TabsList` / `TabsTrigger` de `@iwana/ui`; **dos** tabs: Identidad \| Seguridad; activo sin lima |
+| DS-SET-TABS | Tabs de sección | `Tabs` / `TabsList` / `TabsTrigger` de `@iwana/ui`; **tres** tabs: Identidad \| Seguridad \| Visibilidad para soporte; activo sin lima |
 | DS-SET-ALERT | Feedback | `Alert` + `AlertDescription` de `@iwana/ui`; **prohibido** `FORM_ALERT_*` en esta superficie |
 | DS-SET-WELL | Pozos de apoyo | `bg-iwana-surface-soft` (+ dark `dark-surface-3`) + `rounded-2xl`; dropzone / control de slot `rounded-xl` |
 | DS-SET-SLOT | Slot de imagen (logo / favicon / fondos) | Botón de upload/preview + **`interactiveFocusClassName`**; target ≥ `min-h-11` donde sea control |
 | DS-SET-LOAD | Carga remota | `SkeletonBlock` con forma **o** `fieldset`/`form` no editable + `aria-busy`; sin solo texto suelto |
 | DS-SET-PREVIEW | Vista previa de nombres | Eyebrows con `.portal-eyebrow` / `.portal-eyebrow-muted`; sin `tracking-[…]` local |
-| DS-SET-SEC | Bloques Seguridad | Cada bloque (contraseña, verificación) es un **panel de sección**; pozos solo como apoyo interno (slots). Sin `Card` de página |
+| DS-SET-SEC | Seguridad y Visibilidad | Un **panel de sección** por pestaña. Sin `Card` de página |
 
 ### Qué NO entra (bloqueos duros)
 
@@ -78,17 +79,17 @@ Verificados el 2026-08-11. Citar el token; no el hex.
 | `shadow-iwana-soft` | `--shadow-iwana-soft` | Base `Alert`; **no** segunda card anidada de Seguridad |
 | `shadow-iwana-active` | `--shadow-iwana-active` | `hover:` solo si un control lo amerita (no sustituye foco) |
 | `bg-white` / `dark:bg-dark-surface-2` | superficies | `Card` de página |
-| `bg-iwana-surface-soft` | `--color-iwana-surface-soft` | Pozos de apoyo (identidad + secciones seguridad) |
+| `bg-iwana-surface-soft` | `--color-iwana-surface-soft` | Pozos de apoyo (identidad) |
 | `dark:bg-dark-surface-3` | dark surfaces | Equivalente dark de pozo soft |
 | `border-gray-200` / `dark:border-dark-border` | bordes | Cáscaras y pozos |
 | `text-iwana-primary` / `text-iwana-primary-700` | texto de marca | Títulos de sección / H2 de tab |
 | `interactiveFocusClassName` (`@iwana/ui`) | `packages/ui/src/focus.ts` | **Único** anillo de foco en slot upload y controles custom |
 | `SkeletonBlock` (`@iwana/ui`) | `packages/ui/src/skeleton.tsx` | Carga con forma (grilla de slots / campos) |
-| `Alert` / `AlertDescription` (`@iwana/ui`) | variantes `error` / `success` / `info` / `warning` / `neutral` | Feedback Identidad y Seguridad |
-| `Button` (`@iwana/ui`) | `primary` / `secondary` / `outline` / `ghost` (no `lime` de urgencia) | CTAs Guardar / Actualizar / Activar / Confirmar |
-| `Input` / `OtpInput` (`@iwana/ui`) | primitivas vivas | Campos de nombres / contraseña / código |
-| Panel de sección (composición) | `rounded-2xl border-gray-200 bg-white p-5 shadow-iwana-card` | Cáscara de cada bloque (Identidad imágenes/nombres; Seguridad contraseña/MFA). Clase viva: `settingsSectionPanelClassName` |
-| `Tabs` / `TabsList` / `TabsTrigger` / `TabsContent` | `packages/ui/src/components/Tabs.tsx` | Identidad \| Seguridad |
+| `Alert` / `AlertDescription` (`@iwana/ui`) | variantes `error` / `success` / `info` / `warning` / `neutral` | Feedback Identidad |
+| `Button` (`@iwana/ui`) | `primary` / `secondary` / `outline` / `ghost` (no `lime` de urgencia) | CTAs Guardar / Restaurar; `buttonVariants` `outline` en el enlace de Seguridad |
+| `Input` / `CheckboxCard` / `ErrorState` (`@iwana/ui`) | primitivas vivas | Nombres; interruptor y error de Visibilidad |
+| Panel de sección (composición) | `rounded-2xl border-gray-200 bg-white p-5 shadow-iwana-card` | Cáscara de cada bloque (Identidad nombres/imágenes; Seguridad; Visibilidad). Clase viva: `settingsSectionPanelClassName` |
+| `Tabs` / `TabsList` / `TabsTrigger` / `TabsContent` | `packages/ui/src/components/Tabs.tsx` | Tres tabs |
 | `PageHeader` (patrón vivo web) | chrome de página | Título `Plataforma` + subtítulo (copy = UX) |
 | `.portal-eyebrow` / `.portal-eyebrow-muted` | utilities en `globals.css` | `<dt>` / rótulos de preview |
 | `rounded-2xl` superficie · `rounded-xl` control/dropzone · `rounded-lg` pozo de icono (si aplica) | radios `@theme` | Superficie 2xl; dropzone xl |
@@ -105,7 +106,7 @@ Verificados el 2026-08-11. Citar el token; no el hex.
 | Pieza | Receta |
 | --- | --- |
 | Chrome | `PageHeader` con título canónico de nav (`Plataforma`) + subtítulo orientado a tarea (copy = UX). |
-| Tabs | Sobre el canvas, **fuera** de cualquier Card. Misma gramática que Historial (`overflow-x-auto` + `TabsList`). |
+| Tabs | Sobre el canvas, **fuera** de cualquier Card. Misma gramática que Historial (`overflow-x-auto` + `TabsList`); triggers `min-h-11`. |
 | Cáscara de contenido | **Cada sección** es un panel: `rounded-2xl border border-gray-200 bg-white p-5 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2`. |
 | Título de página | H1 en PageHeader. **Sin** CardTitle de envoltorio. **Prohibido** «Gobierno y configuración global». |
 
@@ -115,13 +116,15 @@ Verificados el 2026-08-11. Citar el token; no el hex.
 
 ---
 
-## 4. Receta DS-SET-TABS — Identidad | Seguridad
+## 4. Receta DS-SET-TABS — Identidad | Seguridad | Visibilidad para soporte
 
 Primitive: `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` de `@iwana/ui`.
 
 | Pieza | Receta viva |
 | --- | --- |
-| Conjunto | **Dos** tabs: Identidad \| Seguridad. Tab General **retirado** (decisión EM-ARCH #1; deslinde a Empresas = subtítulo UX, no tercer tab). |
+| Conjunto | **Tres** tabs: Identidad \| Seguridad \| Visibilidad para soporte. Tab General **retirado** (decisión EM-ARCH #1; deslinde a Empresas = subtítulo UX, no tab propio). |
+| Control | Valor en `?seccion=` con replace. Identidad con `forceMount` para conservar el borrador. |
+| Teclado | Activación automática (primitive): flechas, Inicio y Fin mueven el foco y activan; foco itinerante (`tabIndex` 0/-1). Firma pendiente AI-DS-OWNER. |
 | `TabsList` | Track del CVA vivo (`rounded-xl bg-gray-100/80 …`). |
 | Activo | Posición del sistema de tabs (`data-[state=active]:bg-white…`) — **sin** lima / `iwana-secondary-50`. |
 | Foco | Ring del CVA (`focus-visible:ring-2 focus-visible:ring-iwana-primary`) o equivalente ya en primitive. |
@@ -132,13 +135,12 @@ Copy de triggers = UX / matriz. Piel no añade prosa bajo las tabs.
 
 ## 5. Receta DS-SET-ALERT — feedback
 
-**Obligatorio** en Identidad (`PlatformBrandingSettings`) y Seguridad (`SecuritySettings`): `Alert` + `AlertDescription` de `@iwana/ui`.
+**Obligatorio** en Identidad (`PlatformBrandingSettings`): `Alert` + `AlertDescription` de `@iwana/ui`. Visibilidad usa `ErrorState` (carga) y texto `aria-live` (guardado).
 
 | Caso | Variant |
 | --- | --- |
-| Error recuperable (carga / guardar / upload / MFA / contraseña) | `error` |
-| Éxito breve (guardado / activada / desactivada / contraseña) | `success` |
-| Info de setup (QR / instrucciones post-activar) | `info` o `neutral` |
+| Error recuperable (carga / guardar / restaurar / upload) | `error` |
+| Éxito breve (guardado / restaurado / imagen) | `success` |
 | Aviso no bloqueante | `warning` o `neutral` |
 
 Base viva: `rounded-2xl border px-4 py-3 text-sm shadow-iwana-soft`.  
@@ -155,7 +157,7 @@ Copy de mensajes = UX / `PLATFORM_UI_COPY.settings` (CA-SET-08…11). Este contr
 
 ## 6. Receta DS-SET-WELL — pozos de apoyo
 
-Unificar pozos de Identidad (secciones de nombres / assets) y Seguridad (bloques internos) a la misma gramática.
+Pozos de Identidad (secciones de nombres / assets).
 
 | Pieza | Receta |
 | --- | --- |
@@ -189,7 +191,7 @@ Control primario de logo / favicon / fondos de acceso.
 | Superficie | Receta |
 | --- | --- |
 | Identidad (fetch inicial) | Preferido: `SkeletonBlock` con forma de grilla de slots + campos (`rounded-2xl` / alturas de fila). Alternativa aceptable: `fieldset` o formulario con controles no editables + `aria-busy={true}` en el contenedor mientras `isLoadingData`. |
-| Seguridad (estado verificación en dos pasos) | Placeholder de estado con **altura fija** (skeleton corto o bloque soft) — no solo texto «Comprobando…» sin reserva de layout. |
+| Visibilidad | `SkeletonBlock` con forma de texto + control, `role="status"` y `aria-busy`. Seguridad no carga datos. |
 | CTAs durante carga | `disabled` coherente; no dejar el formulario aparentar editable si la alternativa elegida es no-editable. |
 
 **Prohibido:** solo string de carga sin skeleton ni `aria-busy`; spinner de página como receta primaria; `animate-pulse` suelto en `div` ad hoc cuando existe `SkeletonBlock` (el pulse encapsulado de `SkeletonBlock` sí es válido).
@@ -206,15 +208,12 @@ Control primario de logo / favicon / fondos de acceso.
 
 ---
 
-## 10. Receta DS-SET-SEC — bloques Seguridad
+## 10. Receta DS-SET-SEC — Seguridad y Visibilidad
 
 | Pieza | Receta |
 | --- | --- |
-| Layout | `grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch`. Cada sección usa `settingsSectionPanelClassName` + `h-full`. Alertas fuera del grid, a ancho completo. |
-| Pozos internos | DS-SET-WELL solo como apoyo **dentro** del panel (p. ej. slots de imagen), sin segunda sombra. |
-| Feedback | DS-SET-ALERT. |
-| Código | `OtpInput` de `@iwana/ui` (a11y interna del primitive; no re-auditar salvo regresión). |
-| QR | Camino feliz = imagen QR; URI `otpauth` solo en opciones avanzadas u oculto (flujo = UX / CA-SET-12; piel no lo destaca). |
+| Seguridad | Un panel `settingsSectionPanelClassName`: H2 `text-base font-semibold`, ayuda `text-sm` y `Link` con `buttonVariants({ variant: 'outline' })` + `min-h-11`. Sin formularios, QR ni desactivación. |
+| Visibilidad | Un panel: H2, enlace `min-h-11` a Usuarios internos y `CheckboxCard role="switch"` con `aria-describedby` al estado. |
 
 **Prohibido:** reintroducir un `Card` de página alrededor de Tabs + contenido; prohibido anidar paneles con `shadow-iwana-card`.
 
@@ -232,7 +231,6 @@ Control primario de logo / favicon / fondos de acceso.
 | vacío | N/A (formulario, no listado) | Slot sin imagen = estado vacío del control (placeholder) | — |
 | error | — | — | `Alert variant="error"` |
 | success | — | — | `Alert variant="success"` |
-| info / setup | — | — | `Alert variant="info"` \| `neutral` |
 | readonly | Preview de nombres | Valores de preview no editables en el `<dd>` | Eyebrow sistema |
 
 ---
@@ -241,17 +239,17 @@ Control primario de logo / favicon / fondos de acceso.
 
 - [ ] **0 tokens nuevos** en `globals.css`.
 - [ ] **0 primitives nuevas** en `@iwana/ui`.
-- [ ] Feedback Identidad + Seguridad = `Alert` `@iwana/ui`; **0** `FORM_ALERT_*` en esta superficie (CA-SET-02).
+- [ ] Feedback Identidad = `Alert` `@iwana/ui`; **0** `FORM_ALERT_*` en esta superficie (CA-SET-02).
 - [ ] Tabs sobre canvas; **0** `Card` envolviendo Tabs+contenido. Secciones = `settingsSectionPanelClassName` (CA-SET-03). **0** panel con sombra anidado dentro de otro.
 - [ ] Pozos = `iwana-surface-soft` (+ `dark-surface-3`); superficies `rounded-2xl`; dropzone `rounded-xl` (CA-SET-04).
 - [ ] Botón de slot con `interactiveFocusClassName` (CA-SET-05).
 - [ ] Carga: `SkeletonBlock` con forma **o** no-editable + `aria-busy` (CA-SET-06).
 - [ ] Preview: `.portal-eyebrow` / muted; **0** `tracking-[…]` local (CA-SET-07).
-- [ ] Tabs = Identidad \| Seguridad; activo sin lima; General retirado (piel; copy = UX).
+- [ ] Tabs = Identidad \| Seguridad \| Visibilidad para soporte; `?seccion=` con replace; activo sin lima; General retirado (piel; copy = UX).
 - [ ] Lima nunca urgencia; **0** `iwana-secondary-50` de pozo; **0** `dark:bg-gray-{700-950}`.
 - [ ] 0 imports desde `apps/portal`.
 - [ ] `audit-ui.mjs` sobre `apps/web/src/app/(protected)/settings` + `apps/web/src/components/settings` → P0/P1 deterministas = 0.
-- [ ] CA-SET-01, 08–12 (copy / tests / otpauth) = UX + FE + QA; este contrato no los redefine.
+- [ ] CA-SET-01, 08–16 (copy / tests / flujo) = UX + FE + QA; este contrato no los redefine.
 
 ---
 
@@ -261,4 +259,4 @@ Control primario de logo / favicon / fondos de acceso.
 - **Fase-1:** sombras duales, `dark-surface-*` e `interactiveFocusClassName` **no se reabren**.
 - **Firma:** lima = avance; posición de tabs = sistema blanco/gris; errores = escala `error` vía `Alert`.
 - **Auth / `form-styles.ts`:** consolidación transversal de `FORM_ALERT_*` queda **fuera** de este carril; solo se prohíbe su uso en `/settings`.
-- Un cambio post-congelación se versiona **v1.1+** y se notifica a FE-PLATFORM y SR-QA vía AI-EM-ARCH.
+- Un cambio post-congelación se versiona **v1.4+** y se notifica a FE-PLATFORM y SR-QA vía AI-EM-ARCH.

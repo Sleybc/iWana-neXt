@@ -1,7 +1,7 @@
 # Contrato DS · Historial de cambios
 
 **Fecha de congelación:** 2026-08-11  
-**Versión de contrato:** 1.2 — **congelada / carril rápido**  
+**Versión de contrato:** 1.3 — v1.2 congelada / carril rápido; v1.3 aprobada por el CTO el 2026-11-25, firma pendiente AI-DS-OWNER  
 **Autoridad:** AI-DS-OWNER  
 **Destinatario ejecutor:** AI-FE-PLATFORM  
 **Destinatario validador:** AI-SR-QA  
@@ -12,7 +12,7 @@
 **Prompt (v1.0 — alineación base):** [`PROMPT-WEB-AUDIT-LOGS-ALINEACION-v1.0.md`](../prompts/PROMPT-WEB-AUDIT-LOGS-ALINEACION-v1.0.md) (§5 recetas DS-A-*)  
 **Plan:** [`2026-08-11-web-audit-logs-filtro-resumen.md`](../plans/2026-08-11-web-audit-logs-filtro-resumen.md)  
 **Informe:** [`INFORME-WEB-AUDIT-LOGS-AUDITORIA-UI-v1.0.md`](../informes/INFORME-WEB-AUDIT-LOGS-AUDITORIA-UI-v1.0.md)  
-**UX hermana:** [`2026-08-11-web-audit-logs-historial-ux-spec.md`](2026-08-11-web-audit-logs-historial-ux-spec.md) (debe estar en **v1.2** Congelado)  
+**UX hermana:** [`2026-08-11-web-audit-logs-historial-ux-spec.md`](2026-08-11-web-audit-logs-historial-ux-spec.md) (**v1.3** Congelado)  
 **Firma:** [`2026-07-12-firma-iwana-diseno-visual-design.md`](2026-07-12-firma-iwana-diseno-visual-design.md)  
 **DS padre portada:** [`2026-08-11-web-centro-control-portada-senal-ds-contrato.md`](2026-08-11-web-centro-control-portada-senal-ds-contrato.md) v1.0 (receta DS-S — solo vocabulario de acentos)  
 **DS hermano Empresas:** [`2026-08-11-web-empresas-directorio-ds-contrato.md`](2026-08-11-web-empresas-directorio-ds-contrato.md) v1.0 (Alert, `rounded-2xl`, empty dual)  
@@ -21,7 +21,7 @@
 
 > Carril rápido (protocolo §3bis.3): receta de composición, **sin** tokens de marca nuevos, **sin** primitive nueva en `@iwana/ui`, **sin** importar `apps/portal`.  
 > En conflicto de sombras / foco / dark, prevalece el contrato Fase-1.  
-> El flujo (copy del chip, predicados, resets, empty C, fuente del lote) lo congela la UX hermana v1.2 + prompt FILTRO-RESUMEN-FUENTE-v1.2. Este contrato congela **piel y API visual**.
+> El flujo (copy del chip, predicados, resets, empty C, fuente del lote) lo congela la UX hermana v1.3 + prompt FILTRO-RESUMEN-FUENTE-v1.2. Este contrato congela **piel y API visual**.
 
 **Veredicto carril rápido:** **GO** — 0 primitives nuevas, 0 tokens de marca. Misma receta DS-A-CHIP; solo copy + estado pager con preset. No hay `[BLOQUEO]`.
 
@@ -29,7 +29,8 @@
 
 | Ver | Fecha | Cambio |
 | --- | --- | --- |
-| **1.2** | 2026-08-11 | Bump FILTRO-RESUMEN-FUENTE-v1.2: copy de ejemplo DS-A-CHIP → «Mostrando: {label} · lote del resumen»; estado **pager con preset** (controles de cursor no interactivos u ocultos); 0 primitives nuevas. |
+| **1.3** | 2026-11-25 | DS-A-SUM: columnas y densidad móvil, variación condicionada, muestra y error del resumen, acceso al listado; alcance de «Descargar CSV» (§6); teclado de Tabs (§5). Firma pendiente AI-DS-OWNER. |
+| 1.2 | 2026-08-11 | Bump FILTRO-RESUMEN-FUENTE-v1.2: copy de ejemplo DS-A-CHIP → «Mostrando: {label} · lote del resumen»; estado **pager con preset** (controles de cursor no interactivos u ocultos); 0 primitives nuevas. |
 | 1.1 | 2026-08-11 | Bump FILTRO-RESUMEN-v1.1: receta **DS-A-CHIP** (Alert/Badge + «Quitar filtro»); estado **pressed** de CTA/tarjeta (`aria-pressed`); **DS-A-SUM** congela anatomía rica SummaryCard (icono / delta / lista / CTA) — **no** volver a SignalTile; empty C de preset (piel); matriz y checklist. |
 | 1.0 | 2026-08-11 | Congelación inicial Historial (alineación ALINEACION-v1.0). |
 
@@ -106,7 +107,7 @@ Verificados el 2026-08-11. Citar el token; no el hex.
 
 Cuatro tarjetas (críticos / accesos / seguridad / empresas|personas). **No** son teselas SignalTile ni los 3 chips de Empresas. **No** montar `SignalChips`.
 
-Copy, predicados de preset, fuente del lote y cuándo filtrar = UX hermana v1.2 + prompt FILTRO-RESUMEN-FUENTE-v1.2 (CA-AUD-09 reescrito / CA-FR-* incl. CA-FR-11…13).
+Copy, predicados de preset, fuente del lote y cuándo filtrar = UX hermana v1.3 + prompt FILTRO-RESUMEN-FUENTE-v1.2 (CA-AUD-09 reescrito / CA-FR-* incl. CA-FR-11…13).
 
 ### Anatomía vigente — SummaryCard rica
 
@@ -114,24 +115,26 @@ Cada tarjeta es un bloque local (composición en `apps/web`, no primitive nueva)
 
 | Pieza | Receta |
 | --- | --- |
-| Cáscara | `flex flex-col gap-2 rounded-2xl border border-gray-200 bg-white p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2` (equivalente aceptable: misma cáscara sin sombra si el grid ya aporta aire). **Deuda:** `rounded-xl` vivo → migrar a `rounded-2xl`. **Prohibido** `bg-iwana-secondary-50` de pozo. |
-| Cabecera | Icono en pozo `rounded-lg p-1.5` + acento semántico (abajo) + título `text-xs font-semibold text-gray-700 dark:text-gray-300` + subtítulo de ventana `text-xs text-gray-500`. **Prohibido** `text-[10px]`. |
+| Cáscara | `flex min-w-0 flex-col gap-1.5 rounded-2xl border border-gray-200 bg-white p-3 shadow-iwana-soft sm:gap-2 sm:p-4 dark:border-dark-border dark:bg-dark-surface-2` (equivalente aceptable: misma cáscara sin sombra si el grid ya aporta aire). **Prohibido** `bg-iwana-secondary-50` de pozo. |
+| Cabecera | Icono en pozo `rounded-lg p-1.5` + acento semántico (abajo) + título `text-xs font-semibold text-gray-700 dark:text-gray-300` + subtítulo de ventana `text-xs text-gray-600 dark:text-gray-300`, oculto por debajo de `sm`. **Prohibido** `text-[10px]`. |
 | Cifra | `font-mono text-2xl font-bold tabular-nums text-gray-900 dark:text-white` (+ baseline con delta). |
-| Delta | Componente local tipo `DeltaBadge`: neutro `text-gray-500`; más críticos → `text-error-700`; menos críticos → `text-success-700`. **Prohibido** rojo para volumen neutro; **prohibido** lima. |
+| Delta | Componente local `DeltaBadge`, solo si la muestra cubre el periodo anterior: neutro `text-gray-600 dark:text-gray-300`; más críticos → `text-error-700`; menos críticos → `text-success-700`. **Prohibido** rojo para volumen neutro; **prohibido** lima. |
 | Sublabel (opc.) | `text-xs text-gray-500 dark:text-gray-400`. |
-| Lista | Hasta N líneas `truncate text-xs text-gray-600`; bullet decorativo `text-gray-300`. Vacío de ítems en ventana: `text-xs text-gray-500 italic` (copy = UX). |
+| Lista | Hasta N líneas `truncate text-xs text-gray-600`; por debajo de `sm` solo la primera; bullet decorativo `text-gray-300`. Vacío de ítems: `text-xs text-gray-600 italic dark:text-gray-300` (copy = UX). |
 | CTA | Si `count > 0`: `button` texto `min-h-11 text-left text-xs font-medium text-iwana-primary-700 hover:underline dark:text-iwana-primary-400` + **`interactiveFocusClassName`**. Si `count = 0`: sin control (no `role="button"` falso). |
 
 **Acentos de pozo de icono** (semántica, no lima):
 
 | Señal | Pozo light (referencial) | Uso |
 | --- | --- | --- |
-| Críticos | `bg-rose-50` / icono `text-red-600` o tokens `error-*` | Urgencia real |
+| Críticos | `bg-red-50` / icono `text-red-600` o tokens `error-*` | Urgencia real |
 | Accesos | `bg-blue-50` / icono azul sistema | Volumen acceso |
 | Seguridad | `bg-amber-50` / icono amber | Atención |
 | Empresas / personas | `bg-iwana-primary-50` / `text-iwana-primary-600` | Posición marca |
 
-Grid: `mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4`.
+Grid: `grid grid-cols-1 gap-3 min-[23rem]:grid-cols-2 sm:gap-4 xl:grid-cols-4` (dos columnas desde 368 px).
+
+Cabecera del resumen: `Button variant="ghost" size="sm" min-h-11` «Ir al listado de cambios», solo por debajo de `md`; DS-A-WIN se oculta en carga y error. Muestra parcial: línea `text-xs text-gray-600 dark:text-gray-300` sobre el grid. Error del resumen: `ErrorState` con reintento en lugar del grid.
 
 ### Estado pressed (preset activo) — CTA / tarjeta
 
@@ -153,12 +156,12 @@ No es obligatorio pintar la tarjeta entera como toggle `bg-iwana-primary text-wh
 | Situación | Tratamiento visual |
 | --- | --- |
 | Más **críticos** | Escala `error` (`text-error-700`) |
-| Más actividad **neutra** (accesos/volumen) | Neutro / `text-gray-500` — **prohibido** rojo |
+| Más actividad **neutra** (accesos/volumen) | Neutro / `text-gray-600` — **prohibido** rojo |
 | Menos críticos / mejora | `text-success-700` — **nunca** lima DEFAULT ni `iwana-secondary-50` de fondo |
 
 ### Carga
 
-- `SkeletonBlock` con forma de tarjeta rica: altura ≥ bloque icono+cifra+lista (`h-[140px]` o equivalente) `w-full rounded-2xl`.
+- `SkeletonBlock` con forma de tarjeta rica: altura ≥ bloque icono+cifra+lista (`h-35`) `w-full rounded-2xl`.
 - `aria-busy` en la sección del resumen.
 - **Prohibido** como receta: `animate-pulse` suelto en `div` ad hoc; spinner de página; `"..."`.
 
@@ -214,6 +217,8 @@ Primitive: `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` de `@iwana/ui` (`pac
 
 **Activo = posición del sistema de tabs, no lima.** Prohibido `bg-iwana-secondary*`, barra lima o `iwana-secondary-50` en el trigger activo.
 
+Teclado (primitive): flechas, Inicio y Fin mueven el foco y activan la pestaña; foco itinerante. Firma pendiente AI-DS-OWNER.
+
 Sin párrafo bajo las tabs (chrome = UX; piel = no añadir caja `text-slate-500` de prosa). Cambio de tab limpia preset (flujo = UX).
 
 ---
@@ -227,7 +232,9 @@ Hoy: `rounded-xl` sin sombra dual. **Congelado:**
 
 **Prohibido:** dejar `rounded-xl` como cáscara final; `shadow-sm` / `shadow-lg` ad hoc; segunda card anidada alrededor de la grilla.
 
-Chrome interno (modo Lectura/Detalle, filtros, Descargar): controles con target ≥ `min-h-11` donde sean botones; lima fuera del chrome de posición (modo activo = `bg-iwana-primary text-white` o track de tabs del sistema — no lima filled).
+Chrome interno (modo Lectura/Detalle, filtros, Descargar CSV): controles con target ≥ `min-h-11` donde sean botones; lima fuera del chrome de posición (modo activo = `bg-iwana-primary text-white` o track de tabs del sistema — no lima filled).
+
+Alcance de descarga: `p` `w-full text-xs text-gray-600 dark:text-gray-300` asociado al botón con `aria-describedby`.
 
 ### Estado pager con preset (FUENTE-v1.2)
 
@@ -330,9 +337,9 @@ No unificar. Copy = UX (`Sin actividad registrada` ≠ filtros servidor ≠ pres
 | foco | **Solo** `interactiveFocusClassName` en CTA | **Solo** `interactiveFocusClassName` en clear | Solo el botón de expansión (+ chrome) | Ring `iwana-primary` |
 | activo / pressed | CTA `aria-pressed`; tipografía/borde sutil; **sin** lima / `iwana-secondary-50` | Chip visible = preset on | N/A | Win: `bg-iwana-primary text-white`; Tabs: §5 |
 | deshabilitado | Cifra 0 → sin CTA | N/A (chip no se muestra) | Pager cursor `disabled` (fin de feed) **o**, con preset, pager disabled/oculto (§6) | — |
-| cargando | `SkeletonBlock` ×4 + `aria-busy` | Oculto o no aplica | Filas `SkeletonBlock` | — |
+| cargando | `SkeletonBlock` ×4 + `aria-busy`; sin ventana | Oculto o no aplica | Filas `SkeletonBlock` | — |
 | vacío | Cifra `0` real | — | Empty A, B o **C** | — |
-| error | `Alert variant="error"` en flujo de página/tabla | No usar chip como error | No texto rojo suelto | DS-A-ALERT |
+| error | `ErrorState` con reintento en lugar del grid | No usar chip como error | No texto rojo suelto | DS-A-ALERT |
 | success | N/A (lectura) | N/A | N/A | Alert success solo si hay confirmación de descarga |
 | readonly | Señal no interactiva | — | Badges estáticos | — |
 
@@ -364,4 +371,4 @@ No unificar. Copy = UX (`Sin actividad registrada` ≠ filtros servidor ≠ pres
 - **Empresas:** se reutiliza `Alert`, `rounded-2xl` + `shadow-iwana-card`, empty dual (A/B) y `Badge` semántico. Historial **no** copia el CTA de alta del empty A de Empresas; añade Empty C solo para preset.
 - **Fase-1:** `shadow-iwana-card` / `shadow-iwana-soft` / `shadow-iwana-active`, `dark-surface-*` e `interactiveFocusClassName` **no se reabren**.
 - **Firma:** lima = avance; nunca urgencia. Posición (ventana, tabs, pressed sutil) = azul noche / blanco del sistema.
-- Un cambio post-congelación se versiona **v1.3+** y se notifica a FE-PLATFORM y SR-QA vía AI-EM-ARCH.
+- Un cambio post-congelación se versiona **v1.4+** y se notifica a FE-PLATFORM y SR-QA vía AI-EM-ARCH.

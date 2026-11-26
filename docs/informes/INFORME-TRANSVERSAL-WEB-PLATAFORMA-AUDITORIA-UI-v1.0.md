@@ -201,3 +201,35 @@ Durante la ejecucion del plan quedaron aplicados estos avances sobre `apps/web` 
 - ampliar la racionalizacion visual de `PlatformBrandingSettings` con pruebas dedicadas si el modulo sigue creciendo
 - fortalecer `TenantCreateForm` con pruebas focalizadas de resumen operativo y acciones post-activacion
 - ampliar smoke tests de plataforma para usuarios y auditoria, dado que dashboard y directorio ya tienen cobertura focalizada
+
+## Alta de usuarios internos en la LAN (2026-11-25)
+
+El título de la ruta coincide con «Usuarios internos» en la navegación. El alta enfoca el correo al abrirse y devuelve el foco al botón al salir. Después de crear la cuenta, Escape, clic en el velo y «Cerrar» piden confirmación. Cancelarla devuelve el acceso a la contraseña temporal.
+
+Jest sin Turbo registró 44 suites y 366 pruebas en Web y 14 suites y 145 pruebas en UI, todas aprobadas. Las dos pruebas dirigidas de Playwright pasaron con datos simulados. Typecheck y lint de los archivos revisados pasaron. En la LAN se recreó solo `web-prod`, que quedó saludable. La ruta y la API respondieron HTTP 200 por HTTPS. Se comprobó el título y el foco inicial y de retorno en la sesión autenticada. El alta y la contraseña se probaron con datos simulados. Imagen de reversión `iwana-stable/web:rollback-usuarios-internos`.
+
+## Búsqueda y filtros de usuarios internos (2026-11-25)
+
+Endpoint nuevo `POST /api/v1/platform-users/search` (`SYSTEM_ADMIN` e `IWANA_SUPPORT`): recibe `page`, `search` (nombre o apellidos, máximo 201 caracteres) y `status`, validados con Zod, y devuelve la página y el total de coincidencias, que PostgreSQL filtra antes de paginar. El texto viaja en el cuerpo para mantenerlo fuera de la URL, la respuesta es `private, no-store` y la auditoría de acceso no guarda el texto buscado.
+
+Pasaron 366 pruebas Web en 44 suites, 55 pruebas del controlador y servicio en dos suites, cuatro pruebas con PostgreSQL aislado y tres recorridos Playwright con datos simulados. La prueba SQL recuperó una coincidencia que quedaba fuera de la primera página del listado sin filtros.
+
+Se actualizaron `api-prod` y `web-prod` en la LAN. Ambos quedaron saludables y respondieron por HTTPS. La búsqueda devuelve 401 sin sesión. En una sesión autenticada se comprobó una coincidencia al combinar nombre y estado, el aviso sin resultados y la restauración del listado al limpiar los filtros. La prueba multipágina usó PostgreSQL aislado. Las dos imágenes anteriores se conservaron con la etiqueta `rollback-busqueda-usuarios`.
+
+## Navegación y borradores de Plataforma (2026-11-25)
+
+Identidad conserva los borradores al alternar pestañas y al actualizar imágenes. Restaurar valores por defecto pide confirmación. La sección activa se guarda en `?seccion=` (spec v1.3: con replace, sin sumar entradas al historial), Nombres aparece antes de Imágenes y «Visibilidad para soporte» enlaza a Usuarios internos. Las pestañas compartidas admiten flechas, Inicio y Fin.
+
+Pasaron 32 pruebas dirigidas en tres suites y el build de producción. En la LAN se comprobó el teclado, la recarga en la sección elegida, el orden y ancho a 375 px, la conservación del borrador y la cancelación de la restauración. La restauración efectiva se comprobó con datos simulados. Se actualizó solo el servicio web. Imagen de reversión `iwana-stable/web:rollback-plataforma`.
+
+## Seguridad personal en Mi cuenta (2026-11-25)
+
+Mi cuenta reúne la verificación en dos pasos, el correo de acceso y la contraseña. La consola no ofrece desactivarla: es obligatoria en plataforma y la ruta es solo de empresa (decisión del CTO, 2026-11-25). Plataforma → Seguridad enlaza al encabezado de esa sección, que recibe el foco al cargar. Mi cuenta incorpora un subtítulo y un salto a Seguridad en móvil.
+
+Pasaron 16 pruebas unitarias en dos suites, los dos recorridos dirigidos de Playwright y el build de producción. Se actualizó solo `web-prod`, que quedó saludable. En la sesión autenticada de la LAN se comprobó el subtítulo y el foco al seguir el acceso desde Plataforma. El salto móvil y el flujo de activación se comprobaron con datos simulados. Imagen de reversión `iwana-stable/web:rollback-mi-cuenta`.
+
+## Final del desplazamiento en Centro de control y Plataforma (2026-11-25)
+
+El área principal contiene el desborde de los elementos con posición absoluta. La compilación de producción pasó y el servicio web quedó saludable. En la LAN se verificaron ambas rutas a 375 y 1440 px. El contenedor exterior registró 0 px de desborde y al final quedó el margen de diseño de 16 y 24 px, respectivamente. Imagen de reversión `iwana-stable/web:rollback-scroll-fix`.
+
+Los conteos y comprobaciones de las secciones del 2026-11-25 son afirmaciones de quien las ejecutó; no se verificaron en esta corrección documental.

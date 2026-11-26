@@ -1,7 +1,7 @@
 # UX spec — Historial de cambios · apps/web
 
-**Versión:** 1.2  
-**Estado:** Congelado  
+**Versión:** 1.3  
+**Estado:** Congelado — v1.3 aprobada por el CTO el 2026-11-25  
 **Fecha:** 2026-08-11  
 **Propietario:** AI-PROD-UX  
 **Alcance:** `/audit-logs` de `apps/web`. **No aplica a** `apps/portal`.  
@@ -10,7 +10,7 @@
 **Prompt fuente filtro:** [`PROMPT-WEB-AUDIT-LOGS-FILTRO-RESUMEN-FUENTE-v1.2.md`](../prompts/PROMPT-WEB-AUDIT-LOGS-FILTRO-RESUMEN-FUENTE-v1.2.md)  
 **Plan:** [`2026-08-11-web-audit-logs-filtro-resumen.md`](../plans/2026-08-11-web-audit-logs-filtro-resumen.md)  
 **Informe:** [`INFORME-WEB-AUDIT-LOGS-AUDITORIA-UI-v1.0.md`](../informes/INFORME-WEB-AUDIT-LOGS-AUDITORIA-UI-v1.0.md)  
-**Contrato DS hermano:** [`2026-08-11-web-audit-logs-historial-ds-contrato.md`](2026-08-11-web-audit-logs-historial-ds-contrato.md) v1.2 (track B en paralelo)  
+**Contrato DS hermano:** [`2026-08-11-web-audit-logs-historial-ds-contrato.md`](2026-08-11-web-audit-logs-historial-ds-contrato.md) v1.3  
 **Identidad:** [`2026-07-12-firma-iwana-diseno-visual-design.md`](2026-07-12-firma-iwana-diseno-visual-design.md)  
 **Copy vivo:** [`apps/web/src/lib/platform-ui-copy.ts`](../../apps/web/src/lib/platform-ui-copy.ts) → bloque `audit` (`title`, `subtitle`, tabs/secciones, `loadError`, `actionLabels`, `actionVerbs`, …)  
 **Vocabulario vivo:** `apps/web/src/lib/platform-audit-vocabulary.ts`  
@@ -22,7 +22,8 @@
 | --- | --- | --- |
 | 1.0 | Congelado (superado en §5) | Alineación chrome/copy/empty/a11y; CA-AUD-09 = solo foco a título de tabla; **prohibido** disclaimer permanente «solo esta página». |
 | 1.1 | Congelado (superado en fuente §5) | Delta filtro del resumen sobre el lote cargado ([prompt FILTRO-RESUMEN-v1.1](../prompts/PROMPT-WEB-AUDIT-LOGS-FILTRO-RESUMEN-v1.1.md)): Opción 1 aprobada; CA-AUD-09 reescrito; chip de alcance obligatorio; tercera receta empty; CA-FR-01…10. Chip «Mostrando: {label} · solo esta página» como control descartable. |
-| **1.2** | **Congelado** | Corrige fuente del filtro ([prompt FUENTE-v1.2](../prompts/PROMPT-WEB-AUDIT-LOGS-FILTRO-RESUMEN-FUENTE-v1.2.md)): con preset activo, filtrar el **lote del resumen** (summary entries + ventana 24h/7d), **no** la página del pager. Chip → `Mostrando: {label} · lote del resumen`. Pager deshabilitado/oculto con preset. Empty/hint sin sentido «página del pager». CA-FR-11…13. |
+| 1.2 | Congelado (vigente en §5) | Corrige fuente del filtro ([prompt FUENTE-v1.2](../prompts/PROMPT-WEB-AUDIT-LOGS-FILTRO-RESUMEN-FUENTE-v1.2.md)): con preset activo, filtrar el **lote del resumen** (summary entries + ventana 24h/7d), **no** la página del pager. Chip → `Mostrando: {label} · lote del resumen`. Pager deshabilitado/oculto con preset. Empty/hint sin sentido «página del pager». CA-FR-11…13. |
+| **1.3** | Congelado | 2026-11-25. Variación solo si la muestra cubre el periodo anterior; tamaño de muestra y error propio del resumen; acceso móvil al listado; «Descargar CSV» con alcance. CA-AUD-01 y CA-AUD-05 reescritos. |
 
 ---
 
@@ -91,13 +92,15 @@ Cuatro señales. No se convierten en los 3 chips de Empresas. Ventana temporal e
 
 Cifras mono/tabular (DS). Lima ≠ urgencia. Sin `iwana-secondary-50` de fondo. Carga: skeleton con forma de card; prohibido `0` o `...` mientras carga.
 
+Variación: compara con el periodo anterior de igual duración y se omite si la muestra no lo cubre. Si quedan registros fuera, se informa el tamaño de la muestra. En móvil, `Ir al listado de cambios` enfoca el título de la tabla.
+
 CTA de tarjeta (`Ver críticos` / `Ver accesos` / `Ver seguridad` / `Ver actividad`) con `count > 0`: aplica preset de resumen (§5). Con `count = 0`: no interactivo.
 
 ### T · Tabla
 
 - Título de tabla (punto de foco tras aplicar preset, CA-AUD-09 / CA-FR). **No** es un segundo H1.
 - Chip de alcance de preset (§5) visible **sobre** el chrome/listado mientras el preset esté activo.
-- Chrome: modo Lectura / Detalle + filtros (acción, fechas) + Descargar.
+- Chrome: modo Lectura / Detalle + filtros (acción, fechas) + Descargar CSV, con su alcance visible y asociado al botón.
 - Filas narrativas + control de expansión.
 - Pie: Anterior / Siguiente por **cursor** + tamaño **10 / 20 / 50**. ADR-065 fuera. **Con preset activo:** pie de pager deshabilitado u oculto (no paginar el lote del resumen).
 
@@ -124,7 +127,9 @@ Congelado tal cual (prompt alineación §7.2 + delta filtro-resumen + FUENTE-v1.
 | Tab 2 | Cambios por empresa |
 | Modo diario | Lectura |
 | Modo denso | Detalle |
-| Descargar | Descargar |
+| Descargar | Descargar CSV |
+| Alcance de descarga | El CSV usa los filtros de acción y fechas del historial. |
+| Alcance con preset | La selección del resumen solo se aplica al listado. |
 | Exportando | Descargando… |
 | Error listado | `audit.loadError` → No pudimos cargar el historial. Reintenta en unos minutos. |
 | Error descarga | No pudimos descargar el archivo. Reintenta en unos minutos. |
@@ -135,6 +140,12 @@ Congelado tal cual (prompt alineación §7.2 + delta filtro-resumen + FUENTE-v1.
 | Seguridad | Acceso y seguridad |
 | Empresas (resumen plataforma) | Empresas con cambios |
 | Personas (resumen empresa) | Quién cambió |
+| Variación | `{n} más/menos que en {periodo}` · `Igual que en {periodo}` (periodo: las 24 h anteriores · los 7 días anteriores) |
+| Muestra parcial | Resumen basado en los últimos {n} registros. |
+| Sin comparación | La muestra no cubre todo el periodo anterior. |
+| Señal sin actividad | Sin actividad en esta ventana · Sin actividad en la muestra (si es parcial) |
+| Error del resumen | No pudimos cargar el resumen de cambios. |
+| Acceso al listado (móvil) | Ir al listado de cambios |
 | Empty parque | Sin actividad registrada |
 | Empty filtro | Sin cambios con estos filtros |
 | Empty preset resumen | Sin cambios en el lote del resumen con este filtro |
@@ -160,7 +171,7 @@ Claves sugeridas para track C (nombres orientativos; el texto es canónico):
 
 `{label}` usa el **label de la señal** ya congelado (§2 K / tabla §3): `Cambios críticos` · `Accesos` · `Acceso y seguridad` · `Empresas con cambios` · `Quién cambió`. No usar ids técnicos (`critical`, `access`, …) en UI.
 
-**Prohibido en UI (modo Lectura y chrome diario):** Técnico · Básico (sustituido por Lectura) · Actor · CSV · Metadata técnica · Timestamp UTC · Slug · Schema Name · Mfa Enabled · tenant · 24h · 7d · Top actores · Eventos críticos · Informativo (usar Normal u ocultar el badge).
+**Prohibido en UI (modo Lectura y chrome diario):** Técnico · Básico (sustituido por Lectura) · Actor · Metadata técnica · Timestamp UTC · Slug · Schema Name · Mfa Enabled · tenant · 24h · 7d · Top actores · Eventos críticos · Informativo (usar Normal u ocultar el badge) · CSV fuera de la descarga (solo «Descargar CSV» y su texto de alcance).
 
 «Puesta en marcha» solo como verbo de historial (`actionVerbs`), no como título de pantalla.
 
@@ -272,7 +283,8 @@ Error de listado ≠ empty: `Alert` + `audit.loadError` + reintento. No se muest
 
 | Estado | Qué se ve |
 | --- | --- |
-| **Carga** | B0 + tabs operables. Resumen en skeleton. Tabla en skeleton de filas. Sin ceros falsos. |
+| **Carga** | B0 + tabs operables. Resumen en skeleton, sin control de ventana. Tabla en skeleton de filas. Sin ceros falsos. |
+| **Error del resumen** | Error con `Reintentar` en lugar de las tarjetas. El listado sigue disponible. |
 | **Éxito** | 4 señales con cifras. Tabla con frases. Modo Lectura por defecto. Pager operable. |
 | **Preset activo** | Chip «Mostrando: {label} · lote del resumen» + «Quitar filtro». Tabla = lote del resumen filtrado por predicado + ventana. Resumen sigue mostrando cifras del lote completo. CTA de la señal activa en pressed. Pager deshabilitado u oculto. |
 | **Sin actividad** | Empty parque (§6). |
@@ -291,11 +303,11 @@ Base (informe / v1.0). **CA-AUD-09** vigente con copy/fuente v1.2. Delta filtro-
 
 | ID | Criterio |
 | --- | --- |
-| **CA-AUD-01** | Chrome diario sin «Técnico», «Actor», «CSV», «24h», «7d», «Top actores», «Metadata técnica», «tenant», «slug». Sí: Historial, Detalle, Descargar, Últimas 24 h. |
+| **CA-AUD-01** | Chrome diario sin «Técnico», «Actor», «24h», «7d», «Top actores», «Metadata técnica», «tenant», «slug». «CSV» solo en «Descargar CSV» y su texto de alcance. Sí: Historial, Detalle, Descargar CSV, Últimas 24 h. |
 | **CA-AUD-02** | Frases, acciones y entidades salen de `PLATFORM_UI_COPY.audit`. Campos visibles: nombre de producto, no camelCase/`Slug`/`Schema Name`. |
 | **CA-AUD-03** | Error de listado = `audit.loadError` en `Alert`. |
 | **CA-AUD-04** | Empty parque ≠ empty filtros servidor ≠ empty preset de resumen. Copy canónico; no unificar. |
-| **CA-AUD-05** | Descarga: «Descargar»; error `No pudimos descargar el archivo. Reintenta en unos minutos.`; recorte `La descarga se limitó a 5000 cambios.` Export **no** aplica el preset de resumen. |
+| **CA-AUD-05** | Descarga: «Descargar CSV»; error `No pudimos descargar el archivo. Reintenta en unos minutos.`; recorte `La descarga se limitó a 5000 cambios.` El botón describe su alcance (acción y fechas). Export **no** aplica el preset de resumen y, con preset, lo dice. |
 | **CA-AUD-06** | Un H1. Tabs `Cambios de plataforma` / `Cambios por empresa`. Sin párrafo bajo las tabs. |
 | **CA-AUD-07** | Un control de expansión por fila; ventana temporal ≥ 44 px; foco visible. |
 | **CA-AUD-08** | Resumen: 4 señales con receta de superficie iWana; cifras mono; lima ≠ urgencia; labels §7 del prompt de alineación. |
@@ -362,4 +374,4 @@ No entra. No se abre en esta fase. **Sin `[BLOQUEO]`:** CA-AUD-09 se cierra con 
 
 ---
 
-*Congelado 2026-08-11 por AI-PROD-UX · v1.2. Track A del prompt FUENTE-v1.2 (protocolo §3bis). Corrige fuente del filtro; no inventa API ni tokens.*
+*v1.2 congelada 2026-08-11 por AI-PROD-UX; v1.3 aprobada por el CTO. Track A del prompt FUENTE-v1.2 (protocolo §3bis). Corrige fuente del filtro; no inventa API ni tokens.*

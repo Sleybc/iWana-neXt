@@ -116,11 +116,11 @@ Ninguno.
 
 | ID | Criterio |
 | --- | --- |
-| **CA-AUD-01** | Chrome diario sin «Técnico», «Actor», «CSV», «24h», «7d», «Top actores», «Metadata técnica», «tenant», «slug». Sí: Historial, Detalle, Descargar, Últimas 24 h. |
+| **CA-AUD-01** | Chrome diario sin «Técnico», «Actor», «24h», «7d», «Top actores», «Metadata técnica», «tenant», «slug». «CSV» solo en «Descargar CSV» y su texto de alcance (UX v1.3, 2026-11-25). Sí: Historial, Detalle, Descargar CSV, Últimas 24 h. |
 | **CA-AUD-02** | Frases, acciones y entidades salen de `PLATFORM_UI_COPY.audit`. Campos visibles: nombre de producto, no camelCase/`Slug`/`Schema Name`. |
 | **CA-AUD-03** | Error de listado = `audit.loadError` en `Alert`. |
 | **CA-AUD-04** | Empty sin filtros ≠ empty con filtros. Copy ya canónico; no unificar. |
-| **CA-AUD-05** | Descarga: «Descargar»; error `No pudimos descargar el archivo. Reintenta en unos minutos.`; recorte `La descarga se limitó a 5000 cambios.` |
+| **CA-AUD-05** | Descarga: «Descargar CSV» con alcance descrito (UX v1.3, 2026-11-25); error `No pudimos descargar el archivo. Reintenta en unos minutos.`; recorte `La descarga se limitó a 5000 cambios.` |
 | **CA-AUD-06** | Un H1. Tabs `Cambios de plataforma` / `Cambios por empresa`. Sin párrafo bajo las tabs. |
 | **CA-AUD-07** | Un control de expansión por fila; ventana temporal ≥ 44 px; foco visible. |
 | **CA-AUD-08** | Resumen: 4 señales con receta de superficie iWana; cifras mono; lima ≠ urgencia; labels §7 del prompt. |
@@ -161,11 +161,11 @@ No hace falta rediseñar el historial: las pestañas y las frases ya son el luga
 
 | ID | Criterio | Evidencia | Estado |
 | --- | --- | --- | --- |
-| **CA-AUD-01** | Chrome diario sin Técnico/Actor/CSV/24h/7d/Top actores/Metadata técnica; sí Lectura/Detalle/Descargar/Últimas 24 h | Jest `AuditLogsTable.spec` · `AuditSummary.spec` · E2E D-4 | Cubierto · PASS |
+| **CA-AUD-01** | Chrome diario sin Técnico/Actor/CSV/24h/7d/Top actores/Metadata técnica; sí Lectura/Detalle/Descargar/Últimas 24 h (criterio del 2026-08-11; cambió en UX v1.3) | Jest `AuditLogsTable.spec` · `AuditSummary.spec` · E2E D-4 | Cubierto · PASS |
 | **CA-AUD-02** | Campos de producto; slug ≠ «Slug» en Lectura | Jest `platform-audit-vocabulary.spec` (`describeAuditFieldLabel`) | Cubierto · PASS |
 | **CA-AUD-03** | Error listado = `loadError` en `Alert` | Jest `audit-logs/page.spec` CA-AUD-03 | Cubierto · PASS |
 | **CA-AUD-04** | Empty parque ≠ empty filtro | Jest `AuditLogsTable.spec` empty park vs filtro | Cubierto · PASS |
-| **CA-AUD-05** | Descargar + error/recorte canónicos | Jest `AuditLogsTable.spec` · `page.spec` CA-AUD-05 · E2E D-4 | Cubierto · PASS |
+| **CA-AUD-05** | Descargar + error/recorte canónicos (criterio del 2026-08-11; cambió en UX v1.3) | Jest `AuditLogsTable.spec` · `page.spec` CA-AUD-05 · E2E D-4 | Cubierto · PASS |
 | **CA-AUD-06** | Un H1; tabs plataforma/empresa; sin párrafo bajo tabs | Jest `page.spec` CA-AUD-06 · E2E D-4/D-5 | Cubierto · PASS |
 | **CA-AUD-07** | Un control de expansión; ventana `min-h-11`; 0 `tr[role=button]` | Jest `AuditLogsTable.spec` · `AuditSummary.spec` · E2E D-6 (tr + axe) | Cubierto · PASS |
 | **CA-AUD-08** | Resumen 4 señales; labels §7; cifras mono; sin `secondary-50` | Jest `AuditSummary.spec` labels · audit-ui D-3 · capturas D-5 | Cubierto · PASS |
@@ -322,3 +322,11 @@ E2E FR smoke actualizado de copy v1.1 («solo esta página») → v1.2 («lote d
 ### Dictamen Track D (FUENTE-v1.2)
 
 **GO.** CA-FR-11…13 con evidencia. Chip y empty alineados a UX/DS v1.2. Pager oculto con preset. Accesos/predicados sin regresión detectada. Sin `[BLOQUEO]`. Sin commit.
+
+## Claridad del resumen, acceso móvil y alcance del CSV (2026-11-25)
+
+Las tarjetas conservan sus iconos y acentos. Sus variaciones identifican el periodo anterior de igual duración y solo se muestran si la muestra lo cubre. Cuando quedan registros fuera, el resumen declara el tamaño de la muestra. Un fallo ofrece reintento con el listado disponible. En móvil, el acceso directo enfoca el título del listado. «Descargar CSV» explica que usa acción y fechas, y aclara el alcance de los filtros del resumen.
+
+Pasaron 369 pruebas Web en 44 suites y 9 pruebas Playwright de historial y filtros de fecha, incluida la revisión con axe. Typecheck correcto y ESLint sin errores, con tres advertencias previas en la página. El despliegue recreó solo `web-prod`. La ruta y el estado de la API respondieron HTTP 200. En la sesión autenticada se verificó el aviso de la muestra de 100 registros, el alcance del CSV con el filtro de críticos y el salto al listado con foco visible a 375 px. La descarga se comprobó con datos simulados. Imagen de reversión `iwana-stable/web:rollback-historial-mejoras`.
+
+Los conteos y comprobaciones de las secciones del 2026-11-25 son afirmaciones de quien las ejecutó; no se verificaron en esta corrección documental.

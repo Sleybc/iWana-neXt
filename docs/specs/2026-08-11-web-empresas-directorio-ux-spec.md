@@ -1,9 +1,9 @@
 # UX spec — Empresas · directorio (apps/web)
 
 **Fecha:** 2026-08-11  
-**Versión:** 1.0  
-**Estado:** Congelado — desbloqueante para AI-DS-OWNER (contrato hermano) y AI-FE-PLATFORM  
-**Aclaración 2026-08-11:** §5 — las cifras KPI salen del parque (listado sin filtro), no del lote de la tabla. No cambia destinos ni copy.  
+**Versión:** 1.1  
+**Estado:** Congelado — v1.1 aprobada por el CTO el 2026-11-25  
+**Aclaración 2026-08-11:** §5 — las cifras KPI son del parque, no del lote de la tabla. Fuente vigente: `tenantApi.summary()` (v1.1).  
 **Aclaración 2026-08-11 (K):** se retira el enlace `Volver al centro de control` y la cáscara extra del bloque KPI. El sidebar ya cubre ese destino. Quedan solo los 3 chips como pulso del parque.  
 **Aclaración 2026-08-11 (B0):** `Nueva empresa` sale del PageHeader y pasa al chrome de la tabla (junto a búsqueda y filtro). El header queda en H1 + subtítulo.  
 **Propietario:** AI-PROD-UX  
@@ -15,6 +15,13 @@
 **Contrato DS hermano:** [`2026-08-11-web-empresas-directorio-ds-contrato.md`](2026-08-11-web-empresas-directorio-ds-contrato.md)  
 **Identidad:** [`2026-07-12-firma-iwana-diseno-visual-design.md`](2026-07-12-firma-iwana-diseno-visual-design.md)  
 **Copy de producto:** [`apps/web/src/lib/platform-ui-copy.ts`](../../apps/web/src/lib/platform-ui-copy.ts) → `dashboard.status*` / `directoryError` / `chip*`
+
+### Changelog
+
+| Ver | Fecha | Cambio |
+| --- | --- | --- |
+| 1.0 | 2026-08-11 | Congelación inicial. |
+| **1.1** | 2026-11-25 | Franja de pulso compartida en lugar de 3 chips; sin eyebrow; H2 `Directorio` en la tabla; cifras de `tenantApi.summary()`; error propio del resumen. CA-EMP-06 reescrito. |
 
 ---
 
@@ -40,7 +47,7 @@ Sin wireframe ornamental. Tres bloques, en este orden. La tabla no queda bajo pr
 375 / 768 (1 col)                  1280
 ─────────────────                  ────────────────────────────
 B0 PageHeader                      B0 PageHeader
-K  KPI · 3 chips                   K  KPI · 3 chips en fila
+K  Pulso · 3 celdas apiladas       K  Pulso · 3 celdas en fila
 T  Tabla (filtros + filas)         T  Tabla
 ```
 
@@ -52,23 +59,23 @@ T  Tabla (filtros + filas)         T  Tabla
 | Subtítulo | `Estado, contacto y última actualización de cada empresa.` |
 | CTA primario | **Ninguno en el header.** `Nueva empresa` vive en el chrome de la tabla. |
 
-Un solo H1. **Sin** H2 instructivo. **Sin** párrafo de hero debajo del header.
+Un solo H1. El único H2 es el título de la tabla. **Sin** párrafo de hero debajo del header.
 
-### K · Bloque KPI
+### K · Pulso
 
 | Pieza | Valor |
 | --- | --- |
-| Eyebrow | `Directorio` (no «Directorio operativo») |
-| Chips | exactamente **3** (Activas / En configuración / Requieren atención) |
+| Nombre accesible | `Resumen de empresas por estado`. Sin eyebrow visible. |
+| Celdas | exactamente **3** (Activas / En configuración / Requieren atención) |
 | Enlace secundario | **Ninguno.** El sidebar ya lleva a Centro de control. |
 
-Composición de la receta viva de chips del home (contrato DS hermano). Sin cáscara extra alrededor de los chips (ellos ya son teselas). Sin cuarta card «Directorio total». Sin párrafo instructivo. Sin botón de retorno.
+Una sola franja (contrato DS hermano). Sin cuarta celda «Directorio total». Sin párrafo instructivo. Sin botón de retorno.
 
-Carga: skeleton con forma de chip. Prohibido pintar `0` o `...` mientras `isLoading`.
+Carga: skeleton con forma de celda. Prohibido pintar `0` o `...` mientras `isLoading`. Si falla el resumen, un error con un solo `Reintentar` sustituye la franja; nunca ceros.
 
 ### T · Tabla
 
-- Un título: `Directorio`. **Sin** segundo párrafo.
+- Un título H2: `Directorio`, que nombra la región desplazable de la tabla. **Sin** segundo párrafo.
 - Filtro de estado + búsqueda + CTA `Nueva empresa` → `/tenants/new` en el chrome de la tabla.
 - Pie: **load-more** (offset). No pager numerado.
 
@@ -93,7 +100,11 @@ Congelado tal cual. Sentence case. Fuente de rótulos de estado: `PLATFORM_UI_CO
 | --- | --- |
 | H1 | Empresas |
 | Subtítulo | Estado, contacto y última actualización de cada empresa. |
-| Eyebrow KPI | Directorio |
+| Nombre accesible del pulso | Resumen de empresas por estado |
+| Pista de celda que filtra | Filtrar directorio |
+| Pista de «Requieren atención» | Ir al directorio |
+| Error del resumen | No pudimos cargar el resumen de empresas. |
+| Título de tabla | Directorio |
 | CTA tabla | Nueva empresa |
 | Búsqueda | Buscar por empresa o contacto… |
 | Error listado | No pudimos cargar el directorio. Reintenta en unos minutos. |
@@ -133,21 +144,21 @@ Filtro «todas»: `TODAS` en cliente; **no** se escribe en la URL (se omite `sta
 
 ---
 
-## 5. Navegación KPI
+## 5. Navegación del pulso
 
-Tres chips, este orden, ni uno más:
+Tres celdas, este orden, ni uno más:
 
-| Chip | Label (copy vivo) | Cifra | Destino si count > 0 |
+| Celda | Label (copy vivo) | Cifra | Destino si count > 0 |
 | --- | --- | --- | --- |
-| Activas | `statusActive` / `chipActive` | `status === 'ACTIVE'` en el **parque** | `/tenants?status=ACTIVE` |
-| En configuración | `statusProvisioning` / `chipProvisioning` | `status === 'PROVISIONING'` en el **parque** | `/tenants?status=PROVISIONING` |
+| Activas | `chipActive` | `status === 'ACTIVE'` en el **parque** | `/tenants?status=ACTIVE` |
+| En configuración | `chipProvisioning` | `status === 'PROVISIONING'` en el **parque** | `/tenants?status=PROVISIONING` |
 | Requieren atención | `chipAttention` | `PROVISIONING_FAILED` + `SUSPENDED` + `INACTIVE` + `MARKED_FOR_DELETION` en el **parque** | **Ninguno.** No inventa query. Mismo criterio S-3 del home: mueve el foco al título de la tabla. |
 
-Las cifras salen de un `tenantApi.list` **sin** `status`/`search` (mismo `limit` del listado). El lote filtrado alimenta solo la tabla. Filtrar no apaga los chips del resto del parque. Sin endpoint de resumen: el tope es el soft-cap vigente (misma cota que el home).
+Las cifras salen de `tenantApi.summary()` (conteo por estado del parque). El lote filtrado alimenta solo la tabla. Filtrar no altera las celdas.
 
 Reglas:
 
-1. Cifra `0` (estado real, no carga): el chip **no** es interactivo.
+1. Cifra `0` (estado real, no carga): la celda **no** es interactiva.
 2. Mientras carga: skeleton; prohibido `0` o `...`.
 3. Aplicar `?status=` **conserva** `search` / `sort` / `dir` si ya estaban; no los borra.
 4. Clic en Activas o En configuración con cifra > 0 resetea el listado a `offset = 0` y pide al servidor el `status` correspondiente.
@@ -186,15 +197,16 @@ tenantApi.list({
 
 ## 7. Accesibilidad (WCAG 2.2 AA)
 
-- **Un H1** (`Empresas`). El título de tabla no es un segundo `h1`. Sin H2 instructivo de hero.
+- **Un H1** (`Empresas`). El título de tabla no es un segundo `h1`. Es el único H2 (`Directorio`).
 - **`aria-sort`** en cada `<th>` ordenable. Exactamente **uno** distinto de `none` (el activo: `ascending` o `descending`). Los demás `none`.
 - **Un solo control de fila al teclado:** el nombre de la empresa → ficha. Quitar `onClick` de celdas de estado y fechas. Esas celdas no fingen botón.
 - Fechas con `<time dateTime>`.
 - Targets ≥ 44 px. Foco: receta del contrato DS hermano (`interactiveFocusClassName`).
 - Color no es la única señal: el badge lleva texto singular de §4.
-- Nombre accesible del chip navegable: el del home (`Ver empresas activas` / `Ver empresas en configuración`). Chip de atención: anuncia el destino de foco (título de tabla), no un filtro.
+- Nombre accesible de la celda navegable: el del home (`Ver empresas activas` / `Ver empresas en configuración`). Atención: `Requieren atención. Ir al directorio`. Este nombre sustituye al contenido y la cifra no se anuncia: deuda conocida, dueño AI-DS-OWNER ([contrato](2026-11-21-web-portal-dashboard-consolidacion-ds-contrato.md#7bis2-pulsestrip-primitive) §7bis.2).
 - `sr-only` de carga: una frase breve («Cargando el directorio»).
-- Tras clic en «Requieren atención», el título de la tabla recibe foco (`tabIndex={-1}`).
+- Tras clic en «Requieren atención», el título de la tabla recibe foco visible (`tabIndex={-1}`), también con movimiento reducido.
+- La región desplazable de la tabla es enfocable y la nombra el H2.
 
 ---
 
@@ -202,11 +214,12 @@ tenantApi.list({
 
 | Estado | Qué se ve |
 | --- | --- |
-| **Carga** | B0 operable (H1 + CTA). KPI en skeleton. Tabla en skeleton de filas. Sin ceros falsos. |
-| **Éxito** | Cifras reales. Chips con 0 no clicables. Filas con badge singular. |
-| **Primera vez** | KPI en 0 no clicables. Empty de parque 0 + CTA `Registrar primera empresa`. |
+| **Carga** | B0 operable. Pulso en skeleton. Tabla en skeleton de filas. Sin ceros falsos. |
+| **Éxito** | Cifras reales. Celdas con 0 no interactivas. Filas con badge singular. |
+| **Primera vez** | Pulso en 0 no interactivo. Empty de parque 0 + CTA `Registrar primera empresa`. |
 | **Filtro / búsqueda vacíos** | Empty de filtros. Sin CTA de primera empresa. |
 | **Error de listado** | Alert/bloque recuperable con `directoryError` + `Reintentar`. No se finge un directorio vacío. |
+| **Error del resumen** | Error con un solo `Reintentar` en lugar de la franja. La tabla sigue operable. |
 | **Éxito de acción** | Mensaje breve de §3 (suspender / reactivar / reintentar). |
 | **Fallo de acción** | `No pudimos completar la acción. Reintenta en unos minutos.` |
 
@@ -216,18 +229,18 @@ Acciones de fila que **ya existen** y se conservan (solo cambia el copy de resul
 
 ## 9. Criterios de aceptación
 
-Copiados del informe. No reenumerar.
+Origen: informe; CA-EMP-06 reescrito en v1.1. No reenumerar.
 
 | ID | Criterio |
 | --- | --- |
-| **CA-EMP-01** | Badges, filtro y KPI usan `PLATFORM_UI_COPY.dashboard.status*`. Cero «Configurando», «Configuración fallida», «En puesta en marcha», «Activo». |
+| **CA-EMP-01** | Badges, filtro y pulso usan `PLATFORM_UI_COPY.dashboard.status*`. Cero «Configurando», «Configuración fallida», «En puesta en marcha», «Activo». |
 | **CA-EMP-02** | `/tenants?status=PROVISIONING` muestra «En configuración» en filtro y filas. |
 | **CA-EMP-03** | Error de listado: `No pudimos cargar el directorio. Reintenta en unos minutos.` |
 | **CA-EMP-04** | Empty primera vez ≠ empty de filtros. CTA `Registrar primera empresa` solo en parque vacío. |
 | **CA-EMP-05** | Búsqueda sin «identificador», «tenant» ni «slug». |
-| **CA-EMP-06** | Un H1, un subtítulo corto, un eyebrow `Directorio`. Sin H2 instructivo. |
+| **CA-EMP-06** | Un H1, un subtítulo corto y un único H2 `Directorio` (título de la tabla). Pulso con nombre accesible `Resumen de empresas por estado`, sin eyebrow `Directorio`. |
 | **CA-EMP-07** | Toasts/Alertas: éxito breve; error `No pudimos… Reintenta…`. |
-| **CA-EMP-08** | KPI Activas y En configuración (cifra > 0) aplican `?status=`. |
+| **CA-EMP-08** | Celdas Activas y En configuración (cifra > 0) aplican `?status=`. |
 | **CA-EMP-09** | `aria-sort` en encabezados ordenables; un solo control de fila al teclado. |
 | **CA-EMP-10** | Listado pide `status`/`search` al servidor. |
 
@@ -245,10 +258,10 @@ No entra. No se abre en esta fase.
 | NotificationBell | Otro lema de estado; deriva hermana |
 | G6.5 / G7 / commit / push | No se anticipan |
 | Endpoints, OpenAPI, migraciones, `@Roles` | Contrato API intacto |
-| Primitive nueva en `@iwana/ui`, tokens de marca | Carril rápido DS |
+| Primitive nueva en `@iwana/ui` (se reutiliza `PulseStrip`), tokens de marca | Carril rápido DS |
 | Reabrir enfoque A del home ni copy `status*` del dashboard | Ya congelado |
 | Foco de `ConfirmDialog` | Fuera del núcleo |
 
 ---
 
-*Congelado 2026-08-11 por AI-PROD-UX. Track A-1 del prompt G4. Transcribe informe + §7; no inventa flujo.*
+*v1.0 congelada 2026-08-11 por AI-PROD-UX. Track A-1 del prompt G4. Transcribe informe + §7; no inventa flujo. v1.1: aprobada por el CTO.*

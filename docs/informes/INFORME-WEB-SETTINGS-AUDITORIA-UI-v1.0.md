@@ -6,6 +6,7 @@
 **Emite:** protocolo v1.5 · Track A AI-PROD-UX · Track B AI-DS-OWNER  
 **Prompt:** [`PROMPT-WEB-SETTINGS-AUDITORIA-UI-v1.0.md`](../prompts/PROMPT-WEB-SETTINGS-AUDITORIA-UI-v1.0.md)  
 **Supersede:** cierre de remediación 2026-06-12 (tabs `@iwana/ui`, `Input`/`OtpInput`, `role="alert"`, Dialog de borrado). Ese trabajo sigue en código; esta revisión mide alineación Firma iWana / vocabulario / DS frente al baseline vivo (Empresas, Historial, centro de control).  
+**Nota 2026-11-25:** este informe mide la spec v1.2 (dos pestañas y `SecuritySettings` con formularios). La v1.3 cambió ese alcance y `SecuritySettings.spec.tsx` se retiró; sus PASS no cubren la v1.3.  
 **Reconciliación:** Track B fijó formato DS + hallazgos Identidad/Primitives/Accesibilidad (puntaje 67). Track A enriquece matriz copy, separa P1/P2 de vocabulario y completa CA-SET-09…12 **sin borrar** hallazgos DS de B.
 
 ---
