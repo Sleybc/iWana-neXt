@@ -1,7 +1,8 @@
 import { INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { PlatformRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
+import { SKIP_AUDIT_KEY } from '../audit/decorators/skip-audit.decorator';
 import { AuthService } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -27,6 +28,24 @@ jest.mock('../auth/guards/jwt-auth.guard', () => ({
       };
     }): boolean {
       const req = context.switchToHttp().getRequest();
+      // Tokens de empresa: uno con rol propio y otro que declara un rol de plataforma.
+      const companyRoles: Record<string, string> = {
+        'Bearer test-company-token': UserRole.ADMIN,
+        'Bearer test-company-forged-token': PlatformRole.SYSTEM_ADMIN,
+      };
+      const companyRole = companyRoles[req.headers.authorization ?? ''];
+      if (companyRole) {
+        req.user = {
+          sub: '0f7b0c52-6a1c-4d0e-9c57-0a5d3b0f8a11',
+          role: companyRole,
+          email: 'hash',
+          tenantId: '9a4ab3a0-97c3-4b7f-8a52-5a0f5f7a1c22',
+          schemaName: 'tenant_demo',
+          jti: 'jti-2',
+          type: 'tenant',
+        };
+        return true;
+      }
       const isSupport = req.headers.authorization === 'Bearer test-support-token';
       if (!isSupport && req.headers.authorization !== 'Bearer test-access-token') {
         throw new UnauthorizedException('Token de acceso invalido o expirado.');
@@ -107,6 +126,92 @@ describe('PlatformUsersController HTTP', () => {
       .send({ email: 'admin@iwana.co', password: 'Admin123!@#', confirmPassword: 'Admin123!@#' })
       .expect(201, { data: { accessToken: 'inscripcion', mfaSetupRequired: true } });
     expect(authServiceMock.signPlatformEnrollmentToken).toHaveBeenCalledWith('u1');
+  });
+
+  it('busca cuentas por nombre y estado con paginación privada', async () => {
+    const directory = { items: [], total: 0, pageSize: 20 };
+    platformUsersServiceMock.listDirectory.mockResolvedValue(directory);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/platform-users/search')
+      .set('Authorization', 'Bearer test-access-token')
+      .send({ page: 2, search: ' Cuenta   de prueba ', status: 'ACTIVE' })
+      .expect('Cache-Control', 'private, no-store')
+      .expect(200, { data: directory });
+
+    expect(platformUsersServiceMock.listDirectory).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({ type: 'platform' }),
+      expect.any(Object),
+      { search: 'Cuenta de prueba', status: 'ACTIVE' },
+    );
+  });
+
+  it('rechaza búsquedas sin sesión y criterios inválidos', async () => {
+    await request(app.getHttpServer()).post('/api/v1/platform-users/search').send({}).expect(401);
+    await request(app.getHttpServer())
+      .post('/api/v1/platform-users/search')
+      .set('Authorization', 'Bearer test-access-token')
+      .send({ status: 'UNKNOWN', search: 'x'.repeat(202) })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/platform-users/search')
+      .set('Authorization', 'Bearer test-access-token')
+      .send({ search: 'Cuenta\0' })
+      .expect(400);
+
+    expect(platformUsersServiceMock.listDirectory).not.toHaveBeenCalled();
+  });
+
+  it.each(['test-company-token', 'test-company-forged-token'])(
+    'POST /platform-users/search responde 403 con token de empresa (%s)',
+    async (token) => {
+      await request(app.getHttpServer())
+        .post('/api/v1/platform-users/search')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ page: 1 })
+        .expect(403);
+
+      expect(platformUsersServiceMock.listDirectory).not.toHaveBeenCalled();
+    },
+  );
+
+  it('POST /platform-users/search responde 200 a IWANA_SUPPORT', async () => {
+    const directory = { items: [], total: 0, pageSize: 20 };
+    platformUsersServiceMock.listDirectory.mockResolvedValue(directory);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/platform-users/search')
+      .set('Authorization', 'Bearer test-support-token')
+      .send({ page: 1 })
+      .expect(200, { data: directory });
+
+    expect(platformUsersServiceMock.listDirectory).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ role: PlatformRole.IWANA_SUPPORT, type: 'platform' }),
+      expect.any(Object),
+      {},
+    );
+  });
+
+  it('POST /platform-users/search responde 400 ante una clave desconocida', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/platform-users/search')
+      .set('Authorization', 'Bearer test-access-token')
+      .send({ page: 1, email: 'cuenta@example.test' })
+      .expect(400);
+
+    expect(platformUsersServiceMock.listDirectory).not.toHaveBeenCalled();
+  });
+
+  it('POST /platform-users/search conserva @SkipAudit', () => {
+    const handler = Object.getOwnPropertyDescriptor(
+      PlatformUsersController.prototype,
+      'searchDirectory',
+    )?.value as object;
+
+    expect(Reflect.getMetadata(SKIP_AUDIT_KEY, handler)).toBe(true);
   });
 
   it('GET /platform-users/me retorna 200 con perfil', async () => {

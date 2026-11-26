@@ -25,7 +25,10 @@ import {
 import { isExplicitDevelopment } from '../../common/startup-node-env';
 import { hashEmail } from '../../common/crypto/hash-email.util';
 import { resolvePiiHashKey } from '../../common/crypto/pii-hash-key.util';
-import { DIRECTORY_PAGE_SIZE } from './dto/platform-user-directory.dto';
+import {
+  DIRECTORY_PAGE_SIZE,
+  type SearchPlatformUserDirectory,
+} from './dto/platform-user-directory.dto';
 import { PlatformUserResponseDto } from './dto/platform-user-response.dto';
 import { CreatePlatformUserBootstrapDto } from './dto/create-platform-user-bootstrap.dto';
 import { CreatePlatformUserDto, CreatedPlatformUserDto } from './dto/create-platform-user.dto';
@@ -110,8 +113,9 @@ export class PlatformUsersService {
     page: number,
     actor: { sub: string; role: string },
     requestContext: AuditRequestContext,
+    { search, status }: Omit<SearchPlatformUserDirectory, 'page'> = {},
   ): Promise<PlatformUserDirectory> {
-    const [users, total] = await this.platformUserRepo
+    const query = this.platformUserRepo
       .createQueryBuilder('account')
       .select([
         'account.id',
@@ -123,7 +127,19 @@ export class PlatformUsersService {
         'account.passwordResetRequired',
         'account.lastLoginAt',
       ])
-      .where('account.deletedAt IS NULL')
+      .where('account.deletedAt IS NULL');
+
+    if (search) {
+      query.andWhere(
+        "concat_ws(' ', account.firstName, account.lastName) ILIKE :search ESCAPE '!'",
+        { search: `%${search.replace(/[!%_]/g, '!$&')}%` },
+      );
+    }
+    if (status) {
+      query.andWhere('account.status = :status', { status });
+    }
+
+    const [users, total] = await query
       .orderBy('CASE WHEN account.status = :pending THEN 0 ELSE 1 END', 'ASC')
       .setParameter('pending', UserStatus.PENDING_VERIFICATION)
       .addOrderBy('account.createdAt', 'DESC')

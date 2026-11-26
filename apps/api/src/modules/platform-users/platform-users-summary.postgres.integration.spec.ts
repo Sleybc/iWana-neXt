@@ -102,6 +102,68 @@ describeWithDb('PlatformUsersService.getSummary — PostgreSQL real', () => {
     }
   });
 
+  it('busca y filtra el directorio completo antes de paginar, sin auditar el texto', async () => {
+    const runner = dataSource.createQueryRunner();
+    await runner.connect();
+    await runner.startTransaction();
+    const log = jest.fn();
+    const key = randomBytes(32).toString('hex');
+    const directory = new PlatformUsersService(
+      runner.manager.getRepository(PlatformUser),
+      { log } as unknown as PlatformAuditService,
+      { getOrThrow: () => key } as unknown as ConfigService,
+    );
+    const actor = { sub: randomUUID(), role: PlatformRole.SYSTEM_ADMIN };
+
+    try {
+      await runner.query(
+        `INSERT INTO public.platform_users
+           (id, email, email_hmac, password_hash, role, status, first_name, last_name, created_at, deleted_at)
+         SELECT gen_random_uuid(), 'cifrado-sintetico', md5($1 || i::text),
+                repeat('x', 60), 'IWANA_SUPPORT',
+                CASE WHEN i IN (0, 22) THEN 'SUSPENDED' ELSE 'ACTIVE' END,
+                CASE WHEN i IN (0, 21, 22) THEN 'Cuenta única' ELSE 'Otra cuenta' END,
+                $1 || CASE WHEN i < 22 THEN '_%!' ELSE 'XZZ!' END,
+                now() + i * interval '1 minute', CASE WHEN i = 21 THEN now() END
+         FROM generate_series(0, 22) AS i`,
+        [RUN],
+      );
+      const name = `cuenta única ${RUN}_%!`;
+      const unfiltered = await directory.listDirectory(1, actor, {});
+      expect(
+        unfiltered.items.some(
+          (account) => account.lastName === `${RUN}_%!` && account.firstName === 'Cuenta única',
+        ),
+      ).toBe(false);
+
+      const found = await directory.listDirectory(
+        1,
+        actor,
+        {},
+        {
+          search: name,
+          status: UserStatus.SUSPENDED,
+        },
+      );
+      expect(found).toMatchObject({
+        total: 1,
+        pageSize: 20,
+        items: [{ firstName: 'Cuenta única', lastName: `${RUN}_%!`, status: UserStatus.SUSPENDED }],
+      });
+      expect(await directory.listDirectory(2, actor, {}, { search: name })).toMatchObject({
+        total: 1,
+        items: [],
+      });
+      expect(
+        await directory.listDirectory(1, actor, {}, { search: name, status: UserStatus.ACTIVE }),
+      ).toMatchObject({ total: 0, items: [] });
+      expect(JSON.stringify(log.mock.calls)).not.toContain(RUN);
+    } finally {
+      await runner.rollbackTransaction();
+      await runner.release();
+    }
+  });
+
   it('excluye borrados y cuenta por rol, sin MFA y sin acceso en 30 días', async () => {
     const summary = await service.getSummary();
     const admin = PlatformRole.SYSTEM_ADMIN;

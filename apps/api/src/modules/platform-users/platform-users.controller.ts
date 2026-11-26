@@ -13,9 +13,10 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request as ExpressRequest } from 'express';
 import { PlatformRole } from '@iwana/shared';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { SkipAudit } from '../audit/decorators/skip-audit.decorator';
 import { AuditRequestContext } from '../audit/interfaces/audit-request-context.interface';
 import { AuthService } from '../auth/auth.service';
@@ -35,6 +36,9 @@ import {
 import {
   PlatformUserDirectoryResponseDto,
   QueryPlatformUserDirectoryDto,
+  SearchPlatformUserDirectoryDto,
+  SearchPlatformUserDirectorySchema,
+  type SearchPlatformUserDirectory,
 } from './dto/platform-user-directory.dto';
 import { PlatformUserResponseDto } from './dto/platform-user-response.dto';
 import { PlatformUsersSummaryResponseDto } from './dto/platform-users-summary.dto';
@@ -134,6 +138,33 @@ export class PlatformUsersController {
         query.page,
         user,
         PlatformUsersController.auditContext(req),
+      ),
+    };
+  }
+
+  @Post('search')
+  @HttpCode(HttpStatus.OK)
+  @Roles(PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
+  @SkipAudit()
+  @Header('Cache-Control', 'private, no-store')
+  @ApiOperation({ summary: 'Buscar cuentas de plataforma por nombre o estado' })
+  @ApiBody({ type: SearchPlatformUserDirectoryDto })
+  @ApiResponse({ status: 200, type: PlatformUserDirectoryResponseDto })
+  @ApiResponse({ status: 400, description: 'Criterios de búsqueda inválidos.' })
+  @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
+  @ApiResponse({ status: 403, description: 'Requiere un token de plataforma.' })
+  async searchDirectory(
+    @Body(new ZodValidationPipe(SearchPlatformUserDirectorySchema))
+    { page, ...filters }: SearchPlatformUserDirectory,
+    @CurrentUser() user: JwtPayload,
+    @Request() req: ExpressRequest,
+  ): Promise<PlatformUserDirectoryResponseDto> {
+    return {
+      data: await this.platformUsersService.listDirectory(
+        page,
+        user,
+        PlatformUsersController.auditContext(req),
+        filters,
       ),
     };
   }
