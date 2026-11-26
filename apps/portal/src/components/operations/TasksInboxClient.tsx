@@ -94,6 +94,10 @@ export function TasksInboxClient() {
   // de resultados. La apertura por fila conserva el retorno al disparador.
   const resultsHeaderRef = useRef<HTMLDivElement | null>(null);
   const openedFromRowRef = useRef(false);
+  // `taskId` que el cierre acaba de retirar: `router.replace` es asíncrono, así
+  // que durante unos renders la URL aún lo trae con el detalle ya vacío. Sin
+  // esta marca, el efecto del deep link lo volvía a pedir y reabría el drawer.
+  const closingTaskIdRef = useRef<string | null>(null);
 
   const taskIdParam = searchParams.get('taskId');
 
@@ -308,6 +312,9 @@ export function TasksInboxClient() {
   // abierto para esa tarea (apertura por fila, que también escribe la URL),
   // no se refetcha: la resolución por URL es el único camino, no un duplicado.
   useEffect(() => {
+    if (closingTaskIdRef.current !== null && closingTaskIdRef.current !== taskIdParam) {
+      closingTaskIdRef.current = null;
+    }
     if (!taskIdParam) {
       // PROD-UX #4 (OLA 4.1): al desaparecer el parámetro (p. ej. tras
       // «Ver todas las tareas») la alerta E7 deja de aplicar y no debe quedar
@@ -315,7 +322,7 @@ export function TasksInboxClient() {
       setDetailLinkError(null);
       return;
     }
-    if (selectedTask?.id === taskIdParam) {
+    if (selectedTask?.id === taskIdParam || closingTaskIdRef.current === taskIdParam) {
       return;
     }
     let cancelled = false;
@@ -345,6 +352,7 @@ export function TasksInboxClient() {
   const handleOpenRow = useCallback(
     (task: OperationalTaskRecord) => {
       openedFromRowRef.current = true;
+      closingTaskIdRef.current = null;
       void openTaskDetail(task);
       const nextSearch = mergeUrlSearchParams(searchParams, { taskId: task.id });
       router.push(withSearchParams(TASKS_PATH, nextSearch), { scroll: false });
@@ -371,6 +379,7 @@ export function TasksInboxClient() {
   function closeTaskDetail() {
     const openedFromRow = openedFromRowRef.current;
     openedFromRowRef.current = false;
+    closingTaskIdRef.current = taskIdParam;
     detailRequestRef.current += 1;
     setSelectedTask(null);
     setTimeline([]);

@@ -420,6 +420,40 @@ describe('TasksInboxClient', () => {
       });
     });
 
+    it('PROD-UX #1: el cierre no reabre el detalle mientras la URL aún trae `taskId`', async () => {
+      const user = userEvent.setup();
+      const linked = { ...buildTask(9), id: 'task-deep-001' };
+      jest.mocked(tasksApi.get).mockResolvedValue(linked as never);
+      searchParamsMock = new URLSearchParams({ taskId: 'task-deep-001' });
+
+      jest.mocked(tasksApi.get).mockClear();
+      // El router real aplica `router.replace` después de que el cierre vacía el
+      // detalle: este `replace` no toca la URL para reproducir ese intervalo.
+      mockReplace.mockImplementationOnce(() => {});
+
+      const { rerender } = render(<TasksInboxClient />);
+      await screen.findByRole('heading', { name: 'Tarea operativa 9' });
+      expect(tasksApi.get).toHaveBeenCalledTimes(1);
+
+      await user.click(screen.getByRole('button', { name: 'Cerrar' }));
+      rerender(<TasksInboxClient />);
+
+      await waitFor(() => {
+        expect(document.getElementById('tasks-results')).toHaveFocus();
+      });
+      expect(tasksApi.get).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('heading', { name: 'Tarea operativa 9' })).not.toBeInTheDocument();
+
+      // Cuando la URL por fin retira el parámetro y luego vuelve a traerlo, el
+      // deep link se resuelve de nuevo.
+      searchParamsMock = new URLSearchParams();
+      rerender(<TasksInboxClient />);
+      searchParamsMock = new URLSearchParams({ taskId: 'task-deep-001' });
+      rerender(<TasksInboxClient />);
+      expect(await screen.findByRole('heading', { name: 'Tarea operativa 9' })).toBeInTheDocument();
+      expect(tasksApi.get).toHaveBeenCalledTimes(2);
+    });
+
     it('PROD-UX #7: al cerrar por deep link el foco aterriza en el encabezado de resultados', async () => {
       const user = userEvent.setup();
       const linked = { ...buildTask(9), id: 'task-deep-001' };
