@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ExpedientesLandingClient } from './ExpedientesLandingClient';
 import { crmApi, usersApi, type InternalUser } from '@/lib/api-client';
 import { EMPTY_LIST_META, emptyPageListMeta } from '@/lib/list-meta';
@@ -280,6 +280,22 @@ describe('ExpedientesLandingClient', () => {
       await screen.findByText('No fue posible cargar las oportunidades de la empresa.'),
     ).toBeInTheDocument();
     expect(screen.queryByText('detalle técnico no visible')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Abiertas 0' })).toBeInTheDocument();
+  });
+
+  it('distingue un resumen no disponible de un conteo válido de cero', async () => {
+    crmApiMock.getPipelineSummary.mockRejectedValueOnce(new Error('Sin conexión'));
+    renderLanding();
+
+    const summary = screen.getByRole('region', { name: 'Resumen de oportunidades' });
+    expect(await within(summary).findAllByText('No disponible')).toHaveLength(4);
+    expect(screen.getByRole('tab', { name: /^Abiertas$/ })).toBeInTheDocument();
+    expect(screen.getByText('Aún no hay oportunidades abiertas')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+
+    expect(await within(summary).findAllByText('0')).toHaveLength(4);
+    expect(screen.getByRole('tab', { name: 'Abiertas 0' })).toBeInTheDocument();
   });
 
   it('exige seleccionar el tipo de cliente al crear una oportunidad (CA-1)', async () => {

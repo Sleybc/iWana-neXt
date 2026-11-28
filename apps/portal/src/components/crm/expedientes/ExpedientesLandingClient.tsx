@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Badge, Button, Input, Select, cn, MetricCard } from '@iwana/ui';
+import { Badge, Button, Input, PulseStrip, Select, cn } from '@iwana/ui';
 import type { ListMeta } from '@iwana/shared';
 import { AcquisitionChannel, CustomerSegment } from '@iwana/shared';
 import { ArrowRight, Building2, CircleDashed, Plus, User } from 'lucide-react';
@@ -132,7 +132,8 @@ function ExpedientesLandingClientInner() {
   const [documentDraft, setDocumentDraft] = useState(urlDocument);
   const [expedientes, setExpedientes] = useState<ExpedienteRecord[]>([]);
   const [meta, setMeta] = useState<ListMeta>(EMPTY_LIST_META);
-  const [summary, setSummary] = useState<Record<string, number>>({});
+  const [summary, setSummary] = useState<Record<string, number> | null>(null);
+  const [summaryError, setSummaryError] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
@@ -187,6 +188,7 @@ function ExpedientesLandingClientInner() {
         setInitialLoading(true);
       }
       setListError(null);
+      setSummaryError(false);
 
       const listFilters: {
         view: ExpedienteListView;
@@ -199,11 +201,14 @@ function ExpedientesLandingClientInner() {
       if (urlDocument) listFilters.documentNumber = urlDocument;
 
       try {
-        const [summaryRes, listRes] = await Promise.all([
+        const [summaryResult, listResult] = await Promise.allSettled([
           crmApi.getPipelineSummary(),
           crmApi.listExpedientes(listFilters),
         ]);
-        setSummary(summaryRes.data);
+        setSummary(summaryResult.status === 'fulfilled' ? summaryResult.value.data : null);
+        setSummaryError(summaryResult.status === 'rejected');
+        if (listResult.status === 'rejected') throw listResult.reason;
+        const listRes = listResult.value;
 
         const nextMeta = normalizeListMeta(
           {
@@ -290,8 +295,8 @@ function ExpedientesLandingClientInner() {
     }
   }, [page]);
 
-  const totalPipelineCount = Object.values(summary).reduce((sum, value) => sum + (value ?? 0), 0);
-  const summaryLoaded = !(initialLoading && !hasLoadedOnceRef.current);
+  const counts = summary ?? {};
+  const summaryLoading = summary === null && !summaryError;
   const pageCount = meta.totalPages ?? (meta.total > 0 ? 1 : 0);
   const effectivePage = meta.page ?? page;
   const { from, to } = listPageWindow({
@@ -302,45 +307,40 @@ function ExpedientesLandingClientInner() {
   const showPager = !initialLoading && meta.total > 0;
   const showPageSize = showPager && meta.total > Math.min(...[10, 20, 50]);
 
-  const summaryCards = [
+  const summaryCells = [
     {
-      eyebrow: 'Total',
-      title: 'Oportunidades',
-      description: 'En todas las vistas',
-      value: initialLoading && !hasLoadedOnceRef.current ? '…' : String(totalPipelineCount),
+      id: 'total',
+      label: 'Total de oportunidades',
+      hint: 'En todas las vistas',
+      value: Object.values(counts).reduce((sum, value) => sum + value, 0),
+      onRetry: summaryError && !listError ? () => void loadPage({ soft: true }) : undefined,
     },
     {
-      eyebrow: 'Prospección',
-      title: 'Captación inicial',
-      description: 'Nuevos y precalificados',
+      id: 'captacion',
+      label: 'Captación inicial',
+      hint: 'Nuevas y precalificadas',
+      value: (counts.NUEVO_POTENCIAL ?? 0) + (counts.PRECALIFICADO ?? 0),
+    },
+    {
+      id: 'calificacion',
+      label: 'Calificación',
+      hint: 'Cobertura y cotización',
+      value: (counts.VALIDANDO_COBERTURA ?? 0) + (counts.EN_COTIZACION ?? 0),
+    },
+    {
+      id: 'instalacion',
+      label: 'Instalación y activación',
+      hint: 'Listas, agendadas y activas',
       value:
-        initialLoading && !hasLoadedOnceRef.current
-          ? '…'
-          : String((summary.NUEVO_POTENCIAL ?? 0) + (summary.PRECALIFICADO ?? 0)),
+        (counts.LISTO_PARA_INSTALACION ?? 0) +
+        (counts.INSTALACION_AGENDADA ?? 0) +
+        (counts.CLIENTE_ACTIVO ?? 0),
     },
-    {
-      eyebrow: 'Evaluación',
-      title: 'Calificación',
-      description: 'Cobertura y cotización',
-      value:
-        initialLoading && !hasLoadedOnceRef.current
-          ? '…'
-          : String((summary.VALIDANDO_COBERTURA ?? 0) + (summary.EN_COTIZACION ?? 0)),
-    },
-    {
-      eyebrow: 'Cierre',
-      title: 'Instalación y activos',
-      description: 'Listos, agendados y clientes',
-      value:
-        initialLoading && !hasLoadedOnceRef.current
-          ? '…'
-          : String(
-              (summary.LISTO_PARA_INSTALACION ?? 0) +
-                (summary.INSTALACION_AGENDADA ?? 0) +
-                (summary.CLIENTE_ACTIVO ?? 0),
-            ),
-    },
-  ];
+  ].map((cell) => ({
+    ...cell,
+    value: summary === null ? null : cell.value,
+    state: summary === null ? ('error' as const) : ('idle' as const),
+  }));
 
   function focusCreateForm() {
     createNameRef.current?.focus();
@@ -424,38 +424,34 @@ function ExpedientesLandingClientInner() {
         : `${expedientes.length} oportunidades mostradas`;
 
   return (
-    <div className="space-y-6 pb-6">
+    <div className="min-w-0 space-y-3 pb-6">
       <PageHeader
         title="Oportunidades"
-        subtitle="Captación, calificación y cierre comercial de la empresa."
+        subtitle="Registra y da seguimiento a tus oportunidades comerciales."
+        className="border-0 bg-transparent px-0 py-1 shadow-none dark:bg-transparent"
       />
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        {summaryCards.map((item) => (
-          <MetricCard
-            key={item.eyebrow}
-            eyebrow={item.eyebrow}
-            value={item.value}
-            label={item.title}
-            description={item.description}
-            tone="neutral"
-            className="min-h-0"
-          />
-        ))}
-      </div>
+      <PulseStrip
+        cells={summaryCells}
+        loading={summaryLoading}
+        ariaLabel="Resumen de oportunidades"
+        labels={{
+          unavailable: 'No disponible',
+          noData: 'Sin dato disponible',
+          retry: 'Reintentar',
+          updating: 'Actualizando',
+        }}
+        className="grid-cols-2 lg:grid-cols-4 [&>article]:min-h-28 [&>article]:px-3 [&>article]:py-3 sm:[&>article]:px-4 [&>article>*]:max-w-full [&>article>.tabular-nums]:wrap-anywhere max-sm:[&>article>.tabular-nums]:text-2xl"
+      />
 
-      <PortalPanel
-        compact
-        title="Nueva oportunidad"
-        description="Registra el mínimo viable y completa el resto a medida que avance."
-      >
+      <PortalPanel compact title="Nueva oportunidad" labelled>
         <form
           id="nueva-oportunidad"
           onSubmit={handleCreateNew}
           className="scroll-mt-24 space-y-4"
           noValidate
         >
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+          <div className="grid grid-cols-2 items-end gap-3 xl:grid-cols-[minmax(0,1.35fr)_repeat(3,minmax(0,1fr))_auto]">
             <Input
               id={CREATE_FORM_NAME_ID}
               ref={createNameRef}
@@ -466,6 +462,8 @@ function ExpedientesLandingClientInner() {
               }
               placeholder="Ej. Empresa Demo SAS"
               maxLength={160}
+              className="h-11"
+              containerClassName="max-sm:col-span-2"
             />
             <div>
               <label
@@ -483,46 +481,12 @@ function ExpedientesLandingClientInner() {
                     customerSegment: event.target.value,
                   }))
                 }
-                placeholder="Selecciona una opción"
-                className="h-10"
+                placeholder="Selecciona"
+                className="h-11"
               >
                 {CUSTOMER_SEGMENT_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <label
-                htmlFor="expediente-originador"
-                className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
-              >
-                Asesor de origen
-              </label>
-              <Select
-                id="expediente-originador"
-                value={createValues.originadorId}
-                onChange={(event) =>
-                  setCreateValues((current) => ({
-                    ...current,
-                    originadorId: event.target.value,
-                  }))
-                }
-                className="h-10"
-              >
-                <option value="">Sin asignar</option>
-                {employees.map((employee) => (
-                  <option key={employee.id} value={employee.id}>
-                    {[
-                      employee.firstName,
-                      employee.lastName,
-                      employee.firstName || employee.lastName ? '—' : '',
-                      employee.email,
-                    ]
-                      .filter(Boolean)
-                      .join(' ')
-                      .trim()}
                   </option>
                 ))}
               </Select>
@@ -543,7 +507,7 @@ function ExpedientesLandingClientInner() {
                     acquisitionChannel: event.target.value,
                   }))
                 }
-                className="h-10"
+                className="h-11"
               >
                 {ACQUISITION_CHANNEL_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -552,9 +516,47 @@ function ExpedientesLandingClientInner() {
                 ))}
               </Select>
             </div>
-            <Button type="submit" loading={creating} className="h-10 w-full sm:w-auto">
+            <div className="max-sm:col-span-2">
+              <label
+                htmlFor="expediente-originador"
+                className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
+              >
+                Asesor de origen
+              </label>
+              <Select
+                id="expediente-originador"
+                value={createValues.originadorId}
+                onChange={(event) =>
+                  setCreateValues((current) => ({
+                    ...current,
+                    originadorId: event.target.value,
+                  }))
+                }
+                className="h-11"
+              >
+                <option value="">Sin asignar</option>
+                {employees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {[
+                      employee.firstName,
+                      employee.lastName,
+                      employee.firstName || employee.lastName ? '—' : '',
+                      employee.email,
+                    ]
+                      .filter(Boolean)
+                      .join(' ')
+                      .trim()}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <Button
+              type="submit"
+              loading={creating}
+              className="col-span-2 h-11 w-full sm:w-fit xl:col-span-1"
+            >
               {!creating && <Plus className="h-4 w-4" aria-hidden="true" />}
-              {creating ? 'Creando...' : 'Crear'}
+              {creating ? 'Creando…' : 'Crear'}
             </Button>
           </div>
 
@@ -610,12 +612,12 @@ function ExpedientesLandingClientInner() {
         <div
           role="tablist"
           aria-label="Vistas de oportunidades"
-          className="flex gap-1 border-b border-gray-100 px-5 dark:border-dark-border"
+          className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)] border-b border-gray-100 px-1 sm:flex sm:flex-wrap sm:gap-x-1 sm:px-4 dark:border-dark-border"
         >
           {EXPEDIENTE_TAB_VIEWS.map((view) => {
             const label = getExpedienteViewLabel(view);
             const ViewIcon = getExpedienteViewIcon(view);
-            const count = getTabCount(view, summary);
+            const count = getTabCount(view, counts);
             const isActive = activeView === view && effectiveView !== 'all';
             return (
               <button
@@ -625,7 +627,7 @@ function ExpedientesLandingClientInner() {
                 aria-selected={isActive}
                 onClick={() => handleTabChange(view)}
                 className={cn(
-                  'flex min-h-11 items-center gap-2 px-4 py-2 text-sm font-medium transition-colors',
+                  'flex min-h-11 min-w-0 items-center justify-center gap-1 border-b-2 border-transparent px-1 py-2 text-xs font-medium transition-colors focus-visible:ring-inset sm:gap-2 sm:px-4 sm:text-sm',
                   interactiveFocusClassName,
                   isActive ? portalTabLimeActiveClassName : portalTabInactiveClassName,
                 )}
@@ -633,15 +635,15 @@ function ExpedientesLandingClientInner() {
                 <ViewIcon
                   className={
                     isActive
-                      ? 'h-4 w-4 shrink-0 text-iwana-secondary-700 dark:text-iwana-secondary'
-                      : 'h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500'
+                      ? 'hidden h-4 w-4 shrink-0 text-iwana-secondary-700 sm:block dark:text-iwana-secondary'
+                      : 'hidden h-4 w-4 shrink-0 text-gray-400 sm:block dark:text-gray-500'
                   }
                   aria-hidden="true"
                 />
                 <span>{label}</span>
                 {/* El conteo se muestra también en 0: sin él, «En instalación» parecía sin cargar. */}
-                {summaryLoaded && (
-                  <span className="rounded-full bg-iwana-primary/10 px-1.5 py-0.5 text-xs text-iwana-primary dark:bg-iwana-primary/20 dark:text-iwana-primary-300">
+                {summary !== null && (
+                  <span className="rounded-full bg-iwana-primary/10 px-1.5 py-0.5 text-xs wrap-anywhere text-iwana-primary tabular-nums dark:bg-iwana-primary/20 dark:text-iwana-primary-300">
                     {count}
                   </span>
                 )}
@@ -650,7 +652,7 @@ function ExpedientesLandingClientInner() {
           })}
         </div>
 
-        <div className="grid gap-3 px-5 py-3 lg:grid-cols-[minmax(0,1fr)_220px_auto_auto] lg:items-center">
+        <div className="grid gap-2 px-3 py-3 sm:grid-cols-2 sm:gap-3 sm:px-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,220px)_auto_auto] lg:items-center">
           <PortalSearchField
             id="expediente-search"
             value={searchDraft}
@@ -680,7 +682,12 @@ function ExpedientesLandingClientInner() {
           </label>
 
           {hasActiveFilters ? (
-            <Button type="button" variant="ghost" onClick={handleClearFilters} className="h-12">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleClearFilters}
+              className="h-12 justify-self-start lg:justify-self-auto"
+            >
               Limpiar filtros
             </Button>
           ) : (
@@ -692,7 +699,7 @@ function ExpedientesLandingClientInner() {
           {loadingAnnouncement}
         </div>
 
-        <div className="px-5 pb-5">
+        <div className="px-3 pb-3 sm:px-4 sm:pb-4">
           <div ref={tableShellRef} className={portalDataTableShellClassName}>
             <div
               className={
@@ -728,7 +735,7 @@ function ExpedientesLandingClientInner() {
                       ))
                     : null}
 
-                  {!initialLoading && expedientes.length === 0 ? (
+                  {!initialLoading && !listError && expedientes.length === 0 ? (
                     <tr>
                       <td colSpan={6} className={cn(portalDataTableCellClassName, 'py-12')}>
                         <PortalEmptyState

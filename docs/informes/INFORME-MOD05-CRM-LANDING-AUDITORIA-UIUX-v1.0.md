@@ -245,3 +245,15 @@ La landing cumple la dirección visual Firma iWana y los patrones operativos del
 **Veredicto final:** **Aprobada — 0 P0 · 0 P1 · 0 P2 · 0 P3 accionables** (post-remediación).
 
 No se incluyen PII, secretos, credenciales ni tokens en este informe.
+
+## 9. Ajuste del 2026-11-26
+
+Oportunidades adopta la cabecera compacta y la [franja de indicadores de Inicio](../specs/2026-11-21-web-portal-dashboard-consolidacion-ds-contrato.md#7bis2-pulsestrip-primitive). Conserva los cuatro conteos comerciales y el alta en línea. En móvil la franja usa dos columnas, el selector de asesor ocupa todo el ancho y la tabla concentra el desplazamiento horizontal. Los fallos del resumen y del listado se presentan de forma independiente.
+
+La línea base dirigida sobre `301cfb51` registró 2 suites y 18 pruebas aprobadas, sin omisiones. El CI de `main` terminó correctamente para ese mismo SHA.
+
+La verificación local registró 2 suites Jest y 19 pruebas aprobadas, 5 comprobaciones Playwright con API simulada y una compilación de producción del portal. Chromium confirmó la disposición a 320, 768 y 1440 px y la legibilidad de `1.000.000` a 320 px. La auditoría mecánica de identidad salió sin hallazgos.
+
+El portal LAN sirve `iwana-stable/portal:716d44626fdf`. Con sesión real se verificó la vista a 584 px en tema oscuro, la validación del alta, la creación y apertura de un registro sintético, la búsqueda por nombre, el filtro de documento sin coincidencias, el alcance global y la limpieza. El registro de prueba quedó descartado en Cerradas.
+
+La comprobación visual con sesión real se limitó a 584 px y al tema oscuro.
