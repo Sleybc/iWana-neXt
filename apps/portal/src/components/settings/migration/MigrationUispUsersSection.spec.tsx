@@ -16,6 +16,8 @@ import { ApiError, migrationApi, usersApi, type InternalUser } from '@/lib/api-c
 import { MigrationUispUsersSection } from './MigrationUispUsersSection';
 
 const APP_KEY = 'clave-de-prueba-123';
+const TRAYENDO =
+  'Trayendo usuarios… Puede tardar unos minutos porque también se revisan los tickets, pagos y tareas de UISP. La lista se actualiza sola.';
 const FINGERPRINT = 'AB'.repeat(32);
 
 function connection(overrides: Partial<MigrationSourceConnection> = {}): MigrationSourceConnection {
@@ -199,13 +201,13 @@ describe('Traer usuarios de UISP', () => {
 
     await user.click(screen.getByRole('button', { name: /Traer usuarios de UISP/ }));
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const status = await screen.findByText('Trayendo usuarios… La lista se actualiza sola.');
+    const status = await screen.findByText(TRAYENDO);
     expect(status).toHaveAttribute('aria-live', 'polite');
 
     await act(async () => {
       jest.advanceTimersByTime(4_000);
     });
-    expect(screen.getByText('Trayendo usuarios… La lista se actualiza sola.')).toBeInTheDocument();
+    expect(screen.getByText(TRAYENDO)).toBeInTheDocument();
     await act(async () => {
       jest.advanceTimersByTime(4_000);
     });
@@ -216,6 +218,31 @@ describe('Traer usuarios de UISP', () => {
       jest.advanceTimersByTime(8_000);
     });
     expect(listSpy).toHaveBeenCalledTimes(calls);
+  });
+
+  it('espera una lectura de varios minutos y solo se rinde a los 10', async () => {
+    jest.useFakeTimers();
+    jest
+      .spyOn(migrationApi, 'fetchUispUsers')
+      .mockResolvedValue({ status: 'EN_CURSO', requestedAt: '2026-11-15T11:00:00.000Z' });
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<MigrationUispUsersSection />);
+    await user.click(await screen.findByRole('button', { name: /Traer usuarios de UISP/ }));
+    expect(await screen.findByText(TRAYENDO)).toBeInTheDocument();
+
+    // En la LAN la lectura recorre unos 165 000 tickets, pagos y tareas: tarda de 2 a 5 min.
+    await act(async () => {
+      jest.advanceTimersByTime(5 * 60_000);
+    });
+    expect(screen.getByText(TRAYENDO)).toBeInTheDocument();
+    expect(screen.queryByText(/tardando más de lo normal/)).not.toBeInTheDocument();
+
+    await act(async () => {
+      jest.advanceTimersByTime(5 * 60_000);
+    });
+    expect(
+      await screen.findByText(/La lectura está tardando más de lo normal/),
+    ).toBeInTheDocument();
   });
 
   it('para el sondeo y lo explica si la lectura falló por la clave', async () => {
@@ -426,6 +453,47 @@ describe('Lista de revisión', () => {
         items: [{ id: rows[1]!.id, action: 'DESCARTAR' }],
       }),
     );
+  });
+
+  it('recuperar devuelve los descartados a pendientes y vuelve a traerlos de UISP', async () => {
+    const discarded = uispUser(6, { status: 'DESCARTADO', displayName: null, email: null });
+    listSpy.mockResolvedValue(list([...rows, discarded]));
+    const reopenSpy = jest
+      .spyOn(migrationApi, 'reopenUispUsers')
+      .mockResolvedValue({ recuperados: 1, omitidos: 0 });
+    const fetchSpy = jest
+      .spyOn(migrationApi, 'fetchUispUsers')
+      .mockResolvedValue({ status: 'EN_CURSO', requestedAt: '2026-11-15T11:00:00.000Z' });
+    const user = userEvent.setup();
+    render(<MigrationUispUsersSection />);
+    expect(await screen.findByText('Persona 1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Recuperar' })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: /Descartados/ }));
+    await user.click(screen.getByLabelText('Seleccionar todos los usuarios visibles'));
+    await user.click(screen.getByRole('button', { name: 'Recuperar (1)' }));
+
+    await waitFor(() => expect(reopenSpy).toHaveBeenCalledWith([discarded.id]));
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(
+      await screen.findByText(
+        '1 usuario volvió a pendientes. Estamos trayendo otra vez sus nombres desde UISP.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('si ya nadie estaba descartado no vuelve a traer de UISP', async () => {
+    const discarded = uispUser(6, { status: 'DESCARTADO', displayName: null, email: null });
+    listSpy.mockResolvedValue(list([...rows, discarded]));
+    jest.spyOn(migrationApi, 'reopenUispUsers').mockResolvedValue({ recuperados: 0, omitidos: 1 });
+    const fetchSpy = jest.spyOn(migrationApi, 'fetchUispUsers');
+    const user = userEvent.setup();
+    render(<MigrationUispUsersSection />);
+    await user.click(await screen.findByRole('button', { name: /Descartados/ }));
+    await user.click(screen.getByLabelText('Seleccionar todos los usuarios visibles'));
+    await user.click(screen.getByRole('button', { name: 'Recuperar (1)' }));
+    expect(await screen.findByText('Esos usuarios ya no estaban descartados.')).toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('un rol no permitido se explica sin códigos', async () => {

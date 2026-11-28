@@ -10,6 +10,7 @@ import {
   AuditAction,
   MigrationUispUserSchema,
   MigrationUispUsersInviteResultSchema,
+  MigrationUispUsersReopenResultSchema,
   UserRole,
   type MigrationUispUserResolveItem,
 } from '@iwana/shared';
@@ -88,6 +89,14 @@ function apiRow(id: string, uisp: number, name: string, email: string, active: b
 }
 
 const query = jest.fn(async (sql: string, params: unknown[] = []) => {
+  if (sql.trimStart().startsWith('WITH reopened')) {
+    return (params[1] as string[]).flatMap((id) => {
+      const row = table.get(id);
+      if (!row || row.status !== 'DESCARTADO') return [];
+      row.status = 'PENDIENTE';
+      return [{ id }];
+    });
+  }
   if (sql.includes('FROM migration_uisp_users') && sql.includes('FOR UPDATE')) {
     return (params[1] as string[]).flatMap((id) => (table.has(id) ? [{ ...table.get(id)! }] : []));
   }
@@ -583,6 +592,57 @@ describe('MigrationUispUsersResolutionService', () => {
       expect(
         audit.logWithin.mock.calls.filter(([entry]) => entry.entityType === 'MigrationMapping'),
       ).toHaveLength(2);
+    });
+  });
+
+  describe('recuperar descartados', () => {
+    beforeEach(() => {
+      Object.assign(table.get(ROW_ACTIVE)!, {
+        status: 'DESCARTADO',
+        display_name_encrypted: null,
+        email_encrypted: null,
+        email_hash: null,
+      });
+      Object.assign(table.get(ROW_SIN_DATOS)!, { status: 'DESCARTADO' });
+      Object.assign(table.get(ROW_MATCHED)!, { status: 'ENLAZADO', target_user_id: MATCHED_USER });
+    });
+
+    it('devuelve a pendientes solo las descartadas, sin datos, y audita ids y conteos', async () => {
+      const result = await service.reopen(scope, [ROW_ACTIVE, ROW_SIN_DATOS, ROW_MATCHED], actorId);
+
+      expect(MigrationUispUsersReopenResultSchema.parse(result)).toEqual({
+        recuperados: 2,
+        omitidos: 1,
+      });
+      expect(table.get(ROW_ACTIVE)).toMatchObject({
+        status: 'PENDIENTE',
+        display_name_encrypted: null,
+        email_encrypted: null,
+      });
+      expect(table.get(ROW_MATCHED)!.status).toBe('ENLAZADO');
+      expect(events).toEqual(['BEGIN', 'COMMIT']);
+      expect(audit.logWithin).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.UPDATE,
+          entityType: 'MigrationUispUsers',
+          userId: actorId,
+          newValue: {
+            accion: 'RECUPERAR',
+            recuperados: 2,
+            omitidos: 1,
+            filas: [ROW_ACTIVE, ROW_SIN_DATOS],
+          },
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('sin filas descartadas no escribe auditoría', async () => {
+      await expect(service.reopen(scope, [ROW_MATCHED], actorId)).resolves.toEqual({
+        recuperados: 0,
+        omitidos: 1,
+      });
+      expect(audit.logWithin).not.toHaveBeenCalled();
     });
   });
 

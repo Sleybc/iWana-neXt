@@ -20,6 +20,8 @@ import {
   MigrationUispUserSchema,
   MigrationUispUsersInviteResultSchema,
   MigrationUispUsersInviteSchema,
+  MigrationUispUsersReopenResultSchema,
+  MigrationUispUsersReopenSchema,
   MigrationUispUsersResolveSchema,
   isMigrationImportableUserRole,
   MIGRATION_IMPORT_FETCH_UISP_USERS_JOB,
@@ -317,6 +319,18 @@ describe('Contrato de usuarios de UISP (spec 2026-11-15 usuarios, ADR-110 D15)',
       for (const ids of [[], [uuid, uuid], ['x'], Array.from({ length: 101 }, () => uuid)]) {
         expect(MigrationUispUsersInviteSchema.safeParse({ ids }).success).toBe(false);
       }
+    });
+
+    it('recuperar exige 1..100 uuid distintos y devuelve solo conteos', () => {
+      expect(MigrationUispUsersReopenSchema.safeParse({ ids: [uuid, uuid2] }).success).toBe(true);
+      for (const ids of [[], [uuid, uuid], ['x'], Array.from({ length: 101 }, () => uuid)]) {
+        expect(MigrationUispUsersReopenSchema.safeParse({ ids }).success).toBe(false);
+      }
+      const result = { recuperados: 2, omitidos: 1 };
+      expect(MigrationUispUsersReopenResultSchema.parse(result)).toEqual(result);
+      expect(
+        MigrationUispUsersReopenResultSchema.safeParse({ ...result, nombres: ['x'] }).success,
+      ).toBe(false);
     });
   });
 

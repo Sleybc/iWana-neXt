@@ -326,7 +326,7 @@ describeDb('Usuarios de UISP — conexión y lectura sobre PostgreSQL real', () 
     await sql(
       `UPDATE migration_uisp_users
           SET status = 'DESCARTADO', display_name_encrypted = NULL, email_encrypted = NULL,
-              email_hash = NULL
+              email_hash = NULL, last_fetched_at = '2026-01-01T00:00:00Z'
         WHERE uisp_user_id IN (12, 41)`,
     );
     uisp.routes.set(UISP_ADMINS_PATH, { status: 200, body: admins('Nombre Cambiado') });
@@ -355,6 +355,13 @@ describeDb('Usuarios de UISP — conexión y lectura sobre PostgreSQL real', () 
     });
     expect(rows[1]!.display_name_encrypted).toBeNull();
     expect(rows[3]!.display_name_encrypted).toBeNull();
+    // Las resueltas que la lectura volvió a ver renuevan su fecha («Última lectura»).
+    const fetched = await sql<{ last_fetched_at: Date }>(
+      `SELECT last_fetched_at FROM migration_uisp_users WHERE uisp_user_id IN (12, 41)`,
+    );
+    for (const row of fetched) {
+      expect(row.last_fetched_at.getTime()).toBeGreaterThan(Date.parse('2026-06-01T00:00:00Z'));
+    }
   });
 
   it('la lista descifra, cuenta lotes vigentes y cumple el contrato', async () => {
@@ -380,6 +387,36 @@ describeDb('Usuarios de UISP — conexión y lectura sobre PostgreSQL real', () 
 
     const masked = await uispUsers.list(scope, { id: actorId, role: UserRole.NOC });
     expect(masked.data.find((item) => item.uispUserId === 11)!.email).toBe('c***@example.test');
+  });
+
+  it('recuperar un descartado lo devuelve a pendientes y la lectura repone su nombre', async () => {
+    const resolution = new MigrationUispUsersResolutionService(
+      ds,
+      crypto,
+      audit as never,
+      uispUsers,
+      new UsersMigrationDirectoryAdapter(),
+      {} as never,
+    );
+    const [discarded, pending] = await sql<{ id: string }>(
+      `SELECT id::text AS id FROM migration_uisp_users WHERE uisp_user_id IN (12, 11)
+        ORDER BY uisp_user_id DESC`,
+    );
+
+    await expect(resolution.reopen(scope, [discarded!.id, pending!.id], actorId)).resolves.toEqual({
+      recuperados: 1,
+      omitidos: 1,
+    });
+    await uispUsers.fetch(scope, actorId);
+
+    const { data } = await uispUsers.list(scope, { id: actorId, role: UserRole.ADMIN });
+    expect(data.find((item) => item.uispUserId === 12)).toMatchObject({
+      status: 'PENDIENTE',
+      displayName: 'Inactivo Sintetico',
+      email: 'inactivo.sintetico@example.test',
+      isActiveInUisp: false,
+    });
+    expect(data.find((item) => item.uispUserId === 41)!.status).toBe('DESCARTADO');
   });
 
   it('trae como «sin datos» al personal eliminado que sigue en tickets, pagos y tareas', async () => {

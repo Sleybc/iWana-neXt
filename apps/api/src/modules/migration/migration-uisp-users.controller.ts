@@ -32,10 +32,12 @@ import {
   AccessPermissionKey,
   MigrationSourceConnectionUpsertSchema,
   MigrationUispUsersInviteSchema,
+  MigrationUispUsersReopenSchema,
   MigrationUispUsersResolveSchema,
   UserRole,
   type MigrationSourceConnectionUpsert,
   type MigrationUispUsersInvite,
+  type MigrationUispUsersReopen,
   type MigrationUispUsersResolve,
 } from '@iwana/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -59,6 +61,8 @@ import {
   MIGRATION_UISP_USERS_INVITE_OPENAPI,
   MIGRATION_UISP_USERS_INVITE_RESULT_OPENAPI,
   MIGRATION_UISP_USERS_LIST_OPENAPI,
+  MIGRATION_UISP_USERS_REOPEN_OPENAPI,
+  MIGRATION_UISP_USERS_REOPEN_RESULT_OPENAPI,
   MIGRATION_UISP_USERS_RESOLVE_ERROR_DESCRIPTIONS,
   MIGRATION_UISP_USERS_RESOLVE_OPENAPI,
   MIGRATION_UISP_USERS_RESOLVE_RESULT_OPENAPI,
@@ -212,6 +216,23 @@ export class MigrationUispUsersController {
     @Body(new ZodValidationPipe(MigrationUispUsersResolveSchema)) body: MigrationUispUsersResolve,
   ) {
     return { data: await this.resolution.resolve(scope(), body.items, user.sub) };
+  }
+
+  @Post('reopen')
+  @HttpCode(HttpStatus.OK)
+  @Throttle(RESOLUTION_THROTTLE)
+  @ApiOperation({
+    summary:
+      'Recuperar usuarios de UISP descartados: vuelven a pendientes; la siguiente lectura les devuelve nombre y correo',
+  })
+  @ApiBody({ schema: MIGRATION_UISP_USERS_REOPEN_OPENAPI })
+  @ApiOkResponse({ schema: envelope(MIGRATION_UISP_USERS_REOPEN_RESULT_OPENAPI) })
+  @ApiBadRequestResponse({ description: 'VALIDATION_ERROR: ids vacíos, repetidos o no uuid.' })
+  async reopen(
+    @CurrentUser() user: JwtPayload,
+    @Body(new ZodValidationPipe(MigrationUispUsersReopenSchema)) body: MigrationUispUsersReopen,
+  ) {
+    return { data: await this.resolution.reopen(scope(), body.ids, user.sub) };
   }
 
   @Post('invite')

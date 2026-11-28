@@ -16,6 +16,7 @@ import {
   type MigrationUispUser,
   type MigrationUispUserResolveItem,
   type MigrationUispUsersInviteResult,
+  type MigrationUispUsersReopenResult,
   type UserRole,
 } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
@@ -284,6 +285,54 @@ export class MigrationUispUsersResolutionService {
       return counts;
     });
     (dispatch as (() => void) | null)?.();
+    return result;
+  }
+
+  /**
+   * Recuperar descartados (spec §2.3, v1.4): las filas `DESCARTADO` vuelven a `PENDIENTE`. Ya no
+   * tienen nombre ni correo; la siguiente lectura se los devuelve a las de la API (el upsert solo
+   * escribe filas pendientes). Enlazadas y creadas no se tocan: se cuentan como omitidas.
+   */
+  async reopen(
+    scope: MigrationTenantScope,
+    ids: string[],
+    actorId: string,
+  ): Promise<MigrationUispUsersReopenResult> {
+    const result = await runInTenantSchema(this.dataSource, scope.schemaName, async (qr) => {
+      // CTE: TypeORM devuelve `[filas, conteo]` en un UPDATE suelto y filas en un SELECT.
+      const rows = (await qr.query(
+        `WITH reopened AS (
+           UPDATE migration_uisp_users
+              SET status = 'PENDIENTE', updated_at = now()
+            WHERE tenant_id = $1 AND id = ANY($2::uuid[]) AND status = 'DESCARTADO'
+           RETURNING id
+         )
+         SELECT id::text AS id FROM reopened ORDER BY id`,
+        [scope.tenantId, ids],
+      )) as Array<{ id: string }>;
+      const counts: MigrationUispUsersReopenResult = {
+        recuperados: rows.length,
+        omitidos: ids.length - rows.length,
+      };
+      if (rows.length > 0) {
+        await this.auditService.logWithin(
+          {
+            action: AuditAction.UPDATE,
+            entityType: MIGRATION_UISP_USERS_AUDIT_ENTITY,
+            entityId: scope.tenantId,
+            userId: actorId,
+            tenantId: scope.tenantId,
+            schemaName: scope.schemaName,
+            newValue: { accion: 'RECUPERAR', ...counts, filas: rows.map((row) => row.id) },
+          },
+          qr.manager,
+        );
+      }
+      return counts;
+    });
+    this.logger.log(
+      `[migration] Usuarios de UISP recuperados (tenant=${scope.tenantId}, recuperados=${result.recuperados}, omitidos=${result.omitidos}).`,
+    );
     return result;
   }
 

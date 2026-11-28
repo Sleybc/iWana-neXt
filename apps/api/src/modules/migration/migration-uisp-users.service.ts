@@ -298,6 +298,13 @@ export class MigrationUispUsersService {
         )) as Array<{ uisp_user_id: number; inserted: boolean }>;
         result.sinDatos = rows.filter((row) => row.inserted).length;
       }
+      // Las resueltas que esta lectura volvió a ver renuevan solo la fecha: «Última lectura» sale
+      // del máximo de las filas. Estado y datos no cambian; la purga solo borra pendientes.
+      await qr.query(
+        `UPDATE migration_uisp_users SET last_fetched_at = now()
+          WHERE tenant_id = $1 AND status <> 'PENDIENTE' AND uisp_user_id = ANY($2::int[])`,
+        [scope.tenantId, [...apiIds, ...missing]],
+      );
 
       await this.auditService.logWithin(
         {

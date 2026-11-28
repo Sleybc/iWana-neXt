@@ -19,8 +19,11 @@ export const UISP_USERS_SECTION_HREF = `${MIGRATION_SETTINGS_HREF}#${UISP_USERS_
 /** Tope de filas por envío (el contrato admite hasta 100 por acción). */
 export const UISP_USERS_MAX_PER_ACTION = 100;
 
-/** Sondeo de «Traer usuarios»: cada 4 s, máximo 30 intentos (unos 2 minutos). */
-export const UISP_USERS_FETCH_MAX_POLLS = 30;
+/**
+ * Sondeo de «Traer usuarios»: cada 4 s, máximo 150 intentos (10 minutos). La lectura recorre
+ * también tickets, pagos y tareas de UISP; con unos 165 000 elementos tarda de 2 a 5 minutos.
+ */
+export const UISP_USERS_FETCH_MAX_POLLS = 150;
 
 type BadgeVariant = 'success' | 'warning' | 'error' | 'info' | 'neutral' | 'primary';
 

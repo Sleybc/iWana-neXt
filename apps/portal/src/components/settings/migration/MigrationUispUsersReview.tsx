@@ -51,7 +51,7 @@ import { MigrationUispUserLinkDialog } from './MigrationUispUserLinkDialog';
 
 type Filter = MigrationUispUserStatus | 'TODOS';
 type Dialogs = 'create' | 'discard' | null;
-type Busy = 'create' | 'link' | 'discard' | 'invite' | null;
+type Busy = 'create' | 'link' | 'discard' | 'reopen' | 'invite' | null;
 
 /** Zona táctil de 44 px alrededor de la casilla (WCAG 2.5.8). */
 const checkboxHitAreaClassName = 'inline-flex min-h-11 min-w-11 items-center justify-center';
@@ -65,12 +65,15 @@ interface MigrationUispUsersReviewProps {
   hasConnection: boolean;
   /** Se llama tras cada acción para volver a leer la lista. */
   onChanged: () => Promise<void> | void;
+  /** Tras recuperar descartados: vuelve a traer de UISP sus nombres y correos. */
+  onReopened: () => void;
 }
 
 export function MigrationUispUsersReview({
   users,
   hasConnection,
   onChanged,
+  onReopened,
 }: MigrationUispUsersReviewProps) {
   const baseId = useId();
   const roleId = `${baseId}-rol`;
@@ -114,6 +117,7 @@ export function MigrationUispUsersReview({
   const pendingRows = selectedRows.filter((user) => user.status === 'PENDIENTE');
   const linkableRows = pendingRows.filter((user) => user.matchedUserId !== null);
   const invitableRows = selectedRows.filter((user) => user.status === 'CREADO');
+  const discardedRows = selectedRows.filter((user) => user.status === 'DESCARTADO');
   const unnamedRows = pendingRows.filter((user) => user.source === 'SIN_DATOS');
   const activeRows = pendingRows.filter((user) => user.isActiveInUisp === true);
   const allVisibleSelected = visible.length > 0 && selectedRows.length === visible.length;
@@ -226,6 +230,20 @@ export function MigrationUispUsersReview({
     void onChanged();
   }
 
+  function reopen() {
+    if (discardedRows.length === 0 || tooMany(discardedRows.length)) return;
+    void run('reopen', async () => {
+      const result = await migrationApi.reopenUispUsers(discardedRows.map((user) => user.id));
+      // Otra persona pudo revisarlas antes: sin filas recuperadas no hay nada que releer.
+      if (result.recuperados === 0) return 'Esos usuarios ya no estaban descartados.';
+      if (hasConnection) onReopened();
+      const back = `${countCopy(result.recuperados, 'usuario volvió', 'usuarios volvieron')} a pendientes.`;
+      return hasConnection
+        ? `${back} Estamos trayendo otra vez sus nombres desde UISP.`
+        : `${back} Registra la conexión con UISP y trae los usuarios para ver sus nombres.`;
+    });
+  }
+
   function invite() {
     if (invitableRows.length === 0 || tooMany(invitableRows.length)) return;
     void run('invite', async () => {
@@ -290,7 +308,7 @@ export function MigrationUispUsersReview({
       >
         <p className="w-full text-sm font-medium text-gray-900 dark:text-white" aria-live="polite">
           {selectedRows.length === 0
-            ? 'Selecciona usuarios para crear, enlazar, descartar o invitar.'
+            ? 'Selecciona usuarios para crear, enlazar, descartar, recuperar o invitar.'
             : `${countCopy(selectedRows.length, 'usuario seleccionado', 'usuarios seleccionados')}.`}
         </p>
         <div className="space-y-1">
@@ -345,6 +363,16 @@ export function MigrationUispUsersReview({
           }}
         >
           Descartar{pendingRows.length > 0 ? ` (${pendingRows.length})` : ''}
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          className="min-h-11"
+          disabled={busy !== null || discardedRows.length === 0}
+          loading={busy === 'reopen'}
+          onClick={reopen}
+        >
+          Recuperar{discardedRows.length > 0 ? ` (${discardedRows.length})` : ''}
         </Button>
         <Button
           type="button"
@@ -570,7 +598,8 @@ export function MigrationUispUsersReview({
             </DialogTitle>
             <DialogDescription>
               No se crea ningún usuario. Los tickets, comentarios y pagos de estas personas quedan a
-              nombre de quien importó, y sus datos se borran de esta lista.
+              nombre de quien importó, y sus datos se borran de esta lista. Puedes recuperarlos
+              después desde «Descartados».
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-wrap justify-end gap-2">

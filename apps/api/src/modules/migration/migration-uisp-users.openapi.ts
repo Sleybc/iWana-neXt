@@ -207,6 +207,19 @@ export const MIGRATION_UISP_USERS_INVITE_RESULT_OPENAPI: SchemaObject = {
   },
 };
 
+export const MIGRATION_UISP_USERS_REOPEN_OPENAPI: SchemaObject =
+  MIGRATION_UISP_USERS_INVITE_OPENAPI;
+
+export const MIGRATION_UISP_USERS_REOPEN_RESULT_OPENAPI: SchemaObject = {
+  type: 'object',
+  required: ['recuperados', 'omitidos'],
+  additionalProperties: false,
+  properties: {
+    recuperados: { type: 'integer', minimum: 0 },
+    omitidos: { type: 'integer', minimum: 0 },
+  },
+};
+
 export const MIGRATION_UISP_USERS_RESOLVE_ERROR_DESCRIPTIONS = {
   notFound: 'MIGRATION_UISP_USER_NOT_FOUND: alguna fila no existe en el tenant (details.ids).',
   resolved:

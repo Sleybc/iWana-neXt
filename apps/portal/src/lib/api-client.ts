@@ -150,6 +150,7 @@ import {
   type MigrationUispUsersFetchAccepted,
   type MigrationUispUsersListMeta,
   type MigrationUispUsersInviteResult,
+  type MigrationUispUsersReopenResult,
   type MigrationUispUsersResolve,
   type SubscriberDocument,
   type CreateSubscriberTag,
@@ -7284,6 +7285,13 @@ export const migrationApi = {
       tenantSlug,
     ),
 
+  reopenUispUsers: (ids: string[], tenantSlug?: string) =>
+    request<MigrationUispUsersReopenResult>(
+      '/migration/uisp-users/reopen',
+      { method: 'POST', body: JSON.stringify({ ids }) },
+      tenantSlug,
+    ),
+
   inviteUispUsers: (ids: string[], tenantSlug?: string) =>
     request<MigrationUispUsersInviteResult>(
       '/migration/uisp-users/invite',
@@ -7300,7 +7308,7 @@ export const migrationApi = {
 };
 
 /** Resultado de «Enviar invitación» (spec usuarios §2.4), del contrato compartido. */
-export type { MigrationUispUsersInviteResult };
+export type { MigrationUispUsersInviteResult, MigrationUispUsersReopenResult };
 
 /** Soportes documentales del suscriptor traídos por la importación (ADR-110 D13). */
 export const subscriberDocumentsApi = {

@@ -199,17 +199,31 @@ export const MigrationUispUsersResolveSchema = z
   .strict();
 export type MigrationUispUsersResolve = z.infer<typeof MigrationUispUsersResolveSchema>;
 
+const rowIdsSchema = z
+  .array(z.string().uuid())
+  .min(1)
+  .max(MAX_BATCH_ITEMS)
+  .refine(hasUniqueValues, 'Filas repetidas.');
+
 /** Invitar (o reenviar) a usuarios creados desde UISP en `PENDING_VERIFICATION` con correo real. */
-export const MigrationUispUsersInviteSchema = z
+export const MigrationUispUsersInviteSchema = z.object({ ids: rowIdsSchema }).strict();
+export type MigrationUispUsersInvite = z.infer<typeof MigrationUispUsersInviteSchema>;
+
+/**
+ * Recuperar descartados (spec §2.3, v1.4): las filas `DESCARTADO` vuelven a `PENDIENTE`, sin
+ * nombre ni correo hasta la siguiente lectura. Enlazadas y creadas no se reabren.
+ */
+export const MigrationUispUsersReopenSchema = z.object({ ids: rowIdsSchema }).strict();
+export type MigrationUispUsersReopen = z.infer<typeof MigrationUispUsersReopenSchema>;
+
+/** `recuperados` = filas que volvieron a pendientes; `omitidos` = pedidas que no estaban descartadas. */
+export const MigrationUispUsersReopenResultSchema = z
   .object({
-    ids: z
-      .array(z.string().uuid())
-      .min(1)
-      .max(MAX_BATCH_ITEMS)
-      .refine(hasUniqueValues, 'Filas repetidas.'),
+    recuperados: z.number().int().min(0),
+    omitidos: z.number().int().min(0),
   })
   .strict();
-export type MigrationUispUsersInvite = z.infer<typeof MigrationUispUsersInviteSchema>;
+export type MigrationUispUsersReopenResult = z.infer<typeof MigrationUispUsersReopenResultSchema>;
 
 /**
  * Resultado de invitar (adición del bloque C): `invitados` = correos de activación emitidos;

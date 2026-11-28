@@ -76,6 +76,7 @@ describe('Usuarios de UISP — seguridad HTTP', () => {
   const resolution = {
     resolve: jest.fn().mockResolvedValue([]),
     invite: jest.fn().mockResolvedValue({ invitados: 1, omitidos: 0 }),
+    reopen: jest.fn().mockResolvedValue({ recuperados: 2, omitidos: 0 }),
   };
   const effectivePermissions = {
     getEffectivePermissionsForUser: jest.fn(async (userId: string) =>
@@ -270,6 +271,7 @@ describe('Usuarios de UISP — seguridad HTTP', () => {
       const server = app.getHttpServer();
       await request(server).post('/migration/uisp-users/resolve').expect(401);
       await request(server).post('/migration/uisp-users/invite').expect(401);
+      await request(server).post('/migration/uisp-users/reopen').expect(401);
     });
 
     it.each([
@@ -287,8 +289,14 @@ describe('Usuarios de UISP — seguridad HTTP', () => {
         .set(as(sub, role))
         .send({ ids: [ROW_ID] })
         .expect(403);
+      await request(server)
+        .post('/migration/uisp-users/reopen')
+        .set(as(sub, role))
+        .send({ ids: [ROW_ID] })
+        .expect(403);
       expect(resolution.resolve).not.toHaveBeenCalled();
       expect(resolution.invite).not.toHaveBeenCalled();
+      expect(resolution.reopen).not.toHaveBeenCalled();
     });
 
     it('resolver responde 200 con data y pasa el tenant del JWT', async () => {
@@ -377,9 +385,32 @@ describe('Usuarios de UISP — seguridad HTTP', () => {
       expect(resolution.invite).not.toHaveBeenCalled();
     });
 
-    it('resolver e invitar están acotados a 10 por minuto', () => {
+    it('recuperar responde 200 con los conteos y el tenant del contexto', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/migration/uisp-users/reopen')
+        .set(as(adminId))
+        .send({ ids: [ROW_ID, ROW_ID_2] })
+        .expect(200);
+      expect(response.body).toEqual({ data: { recuperados: 2, omitidos: 0 } });
+      expect(resolution.reopen).toHaveBeenCalledWith(
+        { tenantId, schemaName },
+        [ROW_ID, ROW_ID_2],
+        adminId,
+      );
+    });
+
+    it('recuperar rechaza ids repetidos con 400', async () => {
+      await request(app.getHttpServer())
+        .post('/migration/uisp-users/reopen')
+        .set(as(adminId))
+        .send({ ids: [ROW_ID, ROW_ID] })
+        .expect(400);
+      expect(resolution.reopen).not.toHaveBeenCalled();
+    });
+
+    it('resolver, recuperar e invitar están acotados a 10 por minuto', () => {
       const proto = MigrationUispUsersController.prototype as unknown as Record<string, object>;
-      for (const handler of ['resolve', 'invite']) {
+      for (const handler of ['resolve', 'reopen', 'invite']) {
         const limit = Reflect.getMetadata('THROTTLER:LIMITglobal', proto[handler]!);
         expect(limit).toBe(10);
       }

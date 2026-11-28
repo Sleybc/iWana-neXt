@@ -126,6 +126,7 @@ export function MigrationUispUsersSection() {
   }, [fetching, poll]);
 
   async function startFetch() {
+    if (fetching) return;
     setOutcome(null);
     try {
       await migrationApi.fetchUispUsers();
@@ -192,7 +193,9 @@ export function MigrationUispUsersSection() {
       >
         <div className="space-y-4">
           <p role="status" aria-live="polite" className="text-sm text-gray-700 dark:text-gray-200">
-            {fetching ? 'Trayendo usuarios… La lista se actualiza sola.' : ''}
+            {fetching
+              ? 'Trayendo usuarios… Puede tardar unos minutos porque también se revisan los tickets, pagos y tareas de UISP. La lista se actualiza sola.'
+              : ''}
           </p>
           {outcome ? (
             <PortalAlert
@@ -226,6 +229,7 @@ export function MigrationUispUsersSection() {
               users={users}
               hasConnection={Boolean(connection)}
               onChanged={() => load()}
+              onReopened={() => void startFetch()}
             />
           )}
         </div>
