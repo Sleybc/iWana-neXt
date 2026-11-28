@@ -110,6 +110,25 @@ export function resolveUserRoleFromCsv(value: string): UserRole | null {
   return null;
 }
 
+/**
+ * Tipo de documento leído de un CSV: acepta el código (`CC`) o el nombre que
+ * muestra el portal y escribe la exportación («Cédula de ciudadanía»).
+ */
+export function resolveDocumentTypeFromCsv(value: string): DocumentType | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const codes = Object.values(DocumentType);
+  const upper = trimmed.toUpperCase();
+  const byCode = codes.find((code) => code.toUpperCase() === upper);
+  if (byCode) return byCode;
+  const normalized = trimmed.toLocaleLowerCase('es-CO');
+  return (
+    codes.find(
+      (code) => PORTAL_DOCUMENT_TYPE_LABELS[code].toLocaleLowerCase('es-CO') === normalized,
+    ) ?? null
+  );
+}
+
 export function getPortalUserStatusLabel(status: string): string {
   return PORTAL_USER_STATUS_LABELS[status as UserStatus] ?? formatEnumFallback(status);
 }

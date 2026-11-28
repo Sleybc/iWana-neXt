@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Copy, Download, Loader2, Upload, X } from 'lucide-react';
-import { parse } from 'csv-parse/browser/esm/sync';
 import {
   Button,
   Dialog,
@@ -12,34 +11,26 @@ import {
   DialogTitle,
 } from '@iwana/ui';
 import {
-  DocumentType,
   formatFullName,
   type UsersBulkJobResultResponse,
   type UsersBulkJobStatusResponse,
 } from '@iwana/shared';
 import { usersApi, type CreateInternalUserDto, ApiError } from '@/lib/api-client';
 import { ensureIdempotencyKey } from '@/lib/idempotency-key';
-import { getPortalUserRoleLabel, resolveUserRoleFromCsv } from '@/lib/user-labels';
+import {
+  getPortalUserRoleLabel,
+  resolveDocumentTypeFromCsv,
+  resolveUserRoleFromCsv,
+} from '@/lib/user-labels';
 import { PortalAlert } from '@/components/shared/portal-ui';
 import { readActiveBulkJobId, writeActiveBulkJobId } from './bulk-import-job-storage';
+import { parseUsersImportCsv, type ParsedUserImportRow } from './users-import-csv';
 
 const MAX_FILE_SIZE_BYTES = 1_048_576; // 1MB
 const MAX_USERS = 100;
 const POLL_INTERVAL_MS = 2000;
 
-const VALID_DOCUMENT_TYPES = Object.values(DocumentType) as string[];
-
-interface ParsedRow {
-  rowIndex: number;
-  email: string;
-  role: string;
-  firstName: string;
-  lastName: string;
-  phone: string;
-  jobTitle: string;
-  documentType: string;
-  documentNumber: string;
-}
+type ParsedRow = ParsedUserImportRow;
 
 interface ValidatedRow extends ParsedRow {
   isValid: boolean;
@@ -141,15 +132,27 @@ function validateRow(row: ParsedRow): ValidatedRow {
     errors.push('Cargo demasiado largo (max 150)');
   }
 
-  if (row.documentType && !VALID_DOCUMENT_TYPES.includes(row.documentType)) {
-    errors.push(`Tipo de documento inválido: "${row.documentType}"`);
+  let resolvedDocumentType = row.documentType;
+  if (row.documentType) {
+    const mapped = resolveDocumentTypeFromCsv(row.documentType);
+    if (!mapped) {
+      errors.push(`Tipo de documento inválido: "${row.documentType}"`);
+    } else {
+      resolvedDocumentType = mapped;
+    }
   }
 
   if (row.documentNumber && row.documentNumber.length > 30) {
     errors.push('Número de documento demasiado largo (max 30)');
   }
 
-  return { ...row, role: resolvedRole, isValid: errors.length === 0, errors };
+  return {
+    ...row,
+    role: resolvedRole,
+    documentType: resolvedDocumentType,
+    isValid: errors.length === 0,
+    errors,
+  };
 }
 
 function mapToDto(row: ParsedRow): CreateInternalUserDto {
@@ -405,58 +408,12 @@ export function BulkImportUsersModal({
     reader.onload = () => {
       try {
         const text = reader.result as string;
-        const records: string[][] = parse(text, {
-          delimiter: ',',
-          skip_empty_lines: true,
-          relax_column_count: true,
-        });
-
-        if (records.length < 2) {
-          setFileError('El archivo no contiene datos (solo encabezados o vacío).');
+        const result = parseUsersImportCsv(text, MAX_USERS);
+        if (!result.ok) {
+          setFileError(result.error);
           return;
         }
-
-        const headers = (records[0] ?? []).map((h) => h.trim().toLowerCase());
-        const emailIndex = headers.indexOf('email');
-        const roleIndex = headers.indexOf('role');
-
-        if (emailIndex === -1 || roleIndex === -1) {
-          setFileError('El archivo debe tener al menos las columnas "email" y "role".');
-          return;
-        }
-
-        const firstNameIndex = headers.indexOf('firstname');
-        const lastNameIndex = headers.indexOf('lastname');
-        const phoneIndex = headers.indexOf('phone');
-        const jobTitleIndex = headers.indexOf('jobtitle');
-        const documentTypeIndex = headers.indexOf('documenttype');
-        const documentNumberIndex = headers.indexOf('documentnumber');
-
-        const dataRows = records.slice(1).filter((r) => r.some((c) => c.trim() !== ''));
-
-        if (dataRows.length === 0) {
-          setFileError('El archivo no contiene filas de datos.');
-          return;
-        }
-
-        if (dataRows.length > MAX_USERS) {
-          setFileError(
-            `El archivo supera el límite de ${MAX_USERS} usuarios por importación. Divide el archivo en lotes más pequeños.`,
-          );
-          return;
-        }
-
-        const parsed: ParsedRow[] = dataRows.map((row, i) => ({
-          rowIndex: i + 2,
-          email: (row[emailIndex] ?? '').trim(),
-          role: (row[roleIndex] ?? '').trim(),
-          firstName: (row[firstNameIndex] ?? '').trim(),
-          lastName: (row[lastNameIndex] ?? '').trim(),
-          phone: (row[phoneIndex] ?? '').trim(),
-          jobTitle: (row[jobTitleIndex] ?? '').trim(),
-          documentType: (row[documentTypeIndex] ?? '').trim(),
-          documentNumber: (row[documentNumberIndex] ?? '').trim(),
-        }));
+        const parsed = result.rows;
 
         const validated = parsed.map((row) => validateRow(row));
         setRows(validated);
@@ -719,7 +676,8 @@ export function BulkImportUsersModal({
                   Arrastra un CSV o selecciona un archivo para importar hasta {MAX_USERS} usuarios.
                 </p>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Máximo {MAX_USERS} usuarios · 1 MB · columnas requeridas: email, role
+                  Máximo {MAX_USERS} usuarios · 1 MB · columnas requeridas: email y role, o el
+                  archivo de «Exportar»
                 </p>
               </div>
               <input

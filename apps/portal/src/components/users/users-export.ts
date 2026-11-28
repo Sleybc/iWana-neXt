@@ -7,25 +7,43 @@ import {
 import type { UserStatus } from '@iwana/shared';
 
 /**
+ * Encabezados de las columnas que la importación masiva también lee, para que
+ * un archivo exportado en un entorno se pueda importar en otro.
+ */
+export const USERS_EXPORT_IMPORTABLE_HEADERS = {
+  firstName: 'Nombres',
+  lastName: 'Apellidos',
+  email: 'Correo',
+  phone: 'Teléfono',
+  jobTitle: 'Cargo',
+  documentType: 'Tipo de documento',
+  documentNumber: 'Número de documento',
+  role: 'Rol',
+} as const;
+
+const H = USERS_EXPORT_IMPORTABLE_HEADERS;
+
+/**
  * Archivo de exportación del directorio de usuarios: una fila por usuario con
- * todos sus datos, en el vocabulario que ve el administrador. No es el formato
- * de la importación masiva (esa plantilla usa claves técnicas).
+ * todos sus datos, en el vocabulario que ve el administrador. La importación
+ * masiva lo acepta tal cual y toma las columnas de `USERS_EXPORT_IMPORTABLE_HEADERS`;
+ * estado, roles de empresa y fechas no se importan.
  */
 const COLUMNS: ReadonlyArray<{
   header: string;
   value: (user: InternalUserExportRow) => string;
 }> = [
-  { header: 'Nombres', value: (u) => u.firstName ?? '' },
-  { header: 'Apellidos', value: (u) => u.lastName ?? '' },
-  { header: 'Correo', value: (u) => u.email },
-  { header: 'Teléfono', value: (u) => u.phone ?? '' },
-  { header: 'Cargo', value: (u) => u.jobTitle ?? '' },
+  { header: H.firstName, value: (u) => u.firstName ?? '' },
+  { header: H.lastName, value: (u) => u.lastName ?? '' },
+  { header: H.email, value: (u) => u.email },
+  { header: H.phone, value: (u) => u.phone ?? '' },
+  { header: H.jobTitle, value: (u) => u.jobTitle ?? '' },
   {
-    header: 'Tipo de documento',
+    header: H.documentType,
     value: (u) => (u.documentType ? getPortalDocumentTypeLabel(u.documentType) : ''),
   },
-  { header: 'Número de documento', value: (u) => u.documentNumber ?? '' },
-  { header: 'Rol', value: (u) => getPortalUserRoleLabel(u.role) },
+  { header: H.documentNumber, value: (u) => u.documentNumber ?? '' },
+  { header: H.role, value: (u) => getPortalUserRoleLabel(u.role) },
   { header: 'Roles de empresa', value: (u) => u.companyRoles.join('; ') },
   {
     header: 'Estado',
