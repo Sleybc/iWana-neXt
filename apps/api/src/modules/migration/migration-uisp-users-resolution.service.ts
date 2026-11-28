@@ -27,8 +27,10 @@ import { MigrationCrypto } from './migration-crypto';
 import type { MigrationTenantScope } from './migration-batches.service';
 import { MigrationUispUsersService } from './migration-uisp-users.service';
 import { MigrationUserDirectoryPort } from './ports/migration-user-directory.port';
+import { parseStoredUispStaffName } from './uisp-api/uisp-admins';
 import {
   MigrationUserProvisioningPort,
+  type MigrationImportedUserInput,
   type MigrationWriteContext,
 } from './ports/migration-user-provisioning.port';
 
@@ -202,7 +204,7 @@ export class MigrationUispUsersResolutionService {
             uispUserId: Number(row.uisp_user_id),
             // `assertItem` ya comprobó que es un rol importable.
             role: item.role as MigrationImportableUserRole,
-            displayName: this.nameFor(row, item),
+            ...this.nameFor(row, item),
             email: this.decrypt(row.email_encrypted, row.id, 'email'),
             activeInUisp: row.source === 'API' && row.is_active_in_uisp === true,
             ...(item.isOperationalResource === undefined
@@ -306,11 +308,26 @@ export class MigrationUispUsersResolutionService {
     }
   }
 
-  /** Nombre de la fila descifrado, el escrito para «sin datos» o, si es ilegible, uno genérico. */
-  private nameFor(row: ReviewRow, item: MigrationUispUserResolveItem): string {
-    if (item.displayName !== undefined) return item.displayName;
-    const decrypted = this.decrypt(row.display_name_encrypted, row.id, 'displayName')?.trim();
-    return decrypted ? decrypted : `Usuario de UISP ${Number(row.uisp_user_id)}`;
+  /**
+   * Nombre de la fila descifrado (con nombre y apellido de UISP por separado), el escrito para
+   * «sin datos» o, si es ilegible, uno genérico. Sin partes, el adaptador parte `displayName`.
+   */
+  private nameFor(
+    row: ReviewRow,
+    item: MigrationUispUserResolveItem,
+  ): Pick<MigrationImportedUserInput, 'displayName' | 'firstName' | 'lastName'> {
+    if (item.displayName !== undefined) return { displayName: item.displayName };
+    const decrypted = this.decrypt(row.display_name_encrypted, row.id, 'displayName');
+    const name = decrypted === null ? null : parseStoredUispStaffName(decrypted);
+    if (!name?.displayName.trim()) {
+      return { displayName: `Usuario de UISP ${Number(row.uisp_user_id)}` };
+    }
+    return {
+      displayName: name.displayName.trim(),
+      ...(name.firstName || name.lastName
+        ? { firstName: name.firstName, lastName: name.lastName }
+        : {}),
+    };
   }
 
   private async upsertUserMapping(

@@ -24,6 +24,7 @@ import { userInvitationTemplate } from '../../mailer/templates/user-invitation.t
 import {
   MigrationUserProvisioningPort,
   type MigrationImportedUserInput,
+  type MigrationImportedUserNameFix,
   type MigrationImportedUserResult,
   type MigrationUserInvitations,
   type MigrationWriteContext,
@@ -53,6 +54,23 @@ const EMAIL_MAX_LENGTH = 255;
 /** Correo de un importado sin correo propio o con uno ya tomado (spec «usuarios» §2.3). */
 export function importedPlaceholderEmail(uispUserId: number): string {
   return `uisp-${uispUserId}@importado.invalid`;
+}
+
+/**
+ * Nombre y apellido del usuario importado. Con las partes de UISP, se usan tal cual (el primer
+ * espacio no separa bien «Ana María» + «Pérez»); sin ellas, se parte `displayName`.
+ */
+export function importedUserNames(input: {
+  displayName: string;
+  firstName?: string | null | undefined;
+  lastName?: string | null | undefined;
+}): { firstName: string; lastName: string | null } {
+  const first = input.firstName?.trim().slice(0, NAME_MAX_LENGTH).trim() ?? '';
+  const last = input.lastName?.trim().slice(0, NAME_MAX_LENGTH).trim() ?? '';
+  if (!first && !last) return splitImportedDisplayName(input.displayName);
+  // Sin nombre en UISP: el apellido ocupa el nombre para no dejar al usuario sin él.
+  if (!first) return { firstName: last, lastName: null };
+  return { firstName: first, lastName: last || null };
 }
 
 /** «Ana María Pérez» → nombre «Ana», apellido «María Pérez»; cada parte cabe en su columna. */
@@ -108,7 +126,7 @@ export class UsersMigrationProvisioningAdapter extends MigrationUserProvisioning
     if (!isTenantAssignableRole(input.role) || !isMigrationImportableUserRole(input.role)) {
       throw roleNotAllowed();
     }
-    const { firstName, lastName } = splitImportedDisplayName(input.displayName);
+    const { firstName, lastName } = importedUserNames(input);
 
     const candidate = input.email?.toLowerCase().trim() ?? '';
     const usable =
@@ -270,6 +288,64 @@ export class UsersMigrationProvisioningAdapter extends MigrationUserProvisioning
         }
       },
     };
+  }
+
+  async repairImportedUserNames(
+    ctx: MigrationWriteContext,
+    fixes: MigrationImportedUserNameFix[],
+  ): Promise<string[]> {
+    const pending = fixes
+      .map((fix) => ({
+        userId: fix.userId,
+        legacy: splitImportedDisplayName(fix.legacyDisplayName),
+        target: importedUserNames({
+          displayName: fix.legacyDisplayName,
+          firstName: fix.firstName,
+          lastName: fix.lastName,
+        }),
+      }))
+      .filter(
+        ({ legacy, target }) =>
+          target.firstName !== legacy.firstName || target.lastName !== legacy.lastName,
+      );
+    const repaired: string[] = [];
+    for (const { userId, legacy, target } of pending) {
+      // Condicional: solo si sigue con el nombre que partió la importación (nadie lo editó).
+      const rows = (await ctx.manager.query(
+        `UPDATE users SET first_name = $2, last_name = $3, updated_at = now()
+          WHERE id = $1 AND tenant_id = $6 AND deleted_at IS NULL
+            AND first_name = $4 AND last_name IS NOT DISTINCT FROM $5
+        RETURNING id`,
+        [
+          userId,
+          target.firstName,
+          target.lastName,
+          legacy.firstName,
+          legacy.lastName,
+          ctx.tenantId,
+        ],
+      )) as unknown;
+      const updated = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+      if (!Array.isArray(updated) || updated.length === 0) continue;
+      repaired.push(userId);
+      await this.auditService.logWithin(
+        {
+          action: AuditAction.UPDATE,
+          entityType: 'User',
+          entityId: userId,
+          userId: ctx.actorId,
+          tenantId: ctx.tenantId,
+          schemaName: ctx.schemaName,
+          newValue: {
+            campos: ['firstName', 'lastName'],
+            origen: 'UISP',
+            motivo: 'NOMBRE_SEPARADO',
+          },
+        },
+        ctx.manager,
+      );
+    }
+    return repaired;
   }
 
   publishCreatedUsers(tenantId: string, userIds: string[]): void {

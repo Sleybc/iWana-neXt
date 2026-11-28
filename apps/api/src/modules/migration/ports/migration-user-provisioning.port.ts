@@ -19,6 +19,12 @@ export interface MigrationImportedUserInput {
   role: MigrationImportableUserRole;
   /** Nombre descifrado de la fila, o el que escribió el administrador para una fila «sin datos». */
   displayName: string;
+  /**
+   * Nombre y apellido de UISP por separado. Si llega alguno, se guardan tal cual; si no (fila
+   * «sin datos» o guardada antes de conservar las partes), se parte `displayName`.
+   */
+  firstName?: string | null;
+  lastName?: string | null;
   /** Correo de UISP en claro (solo en memoria); `null` si UISP no lo trae. */
   email: string | null;
   /** `true` solo si UISP lo da como activo; inactivo o «sin datos» = `false`. */
@@ -33,6 +39,15 @@ export interface MigrationImportedUserResult {
   isOperationalResource: boolean;
   /** `true` si se usó `uisp-<id>@importado.invalid` (sin correo o correo tomado). */
   placeholderEmail: boolean;
+}
+
+/** Nombre de UISP para un usuario que creó la importación (reparación de nombres partidos). */
+export interface MigrationImportedUserNameFix {
+  userId: string;
+  /** Nombre unido como se guardaba antes («nombre apellido» o el usuario de UISP). */
+  legacyDisplayName: string;
+  firstName: string | null;
+  lastName: string | null;
 }
 
 export interface MigrationUserInvitations {
@@ -69,6 +84,17 @@ export abstract class MigrationUserProvisioningPort {
     ctx: MigrationWriteContext,
     userIds: string[],
   ): Promise<MigrationUserInvitations>;
+
+  /**
+   * Corrige nombre y apellido de usuarios que creó la importación cuando se partía el nombre
+   * unido por el primer espacio («Ana María Pérez» → «Ana» + «María Pérez»). Solo cambia a quien
+   * conserva exactamente ese nombre partido: si alguien lo editó en iWana o cambió en UISP, no se
+   * toca. Devuelve los usuarios corregidos; la auditoría no lleva nombres.
+   */
+  abstract repairImportedUserNames(
+    ctx: MigrationWriteContext,
+    fixes: MigrationImportedUserNameFix[],
+  ): Promise<string[]>;
 
   /** Tras el COMMIT: refresca el índice de búsqueda de los usuarios creados. Nunca lanza. */
   abstract publishCreatedUsers(tenantId: string, userIds: string[]): void;

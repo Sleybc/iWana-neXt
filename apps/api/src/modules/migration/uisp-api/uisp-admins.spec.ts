@@ -1,4 +1,9 @@
-import { UispAdminsResponseError, parseUispAdmins } from './uisp-admins';
+import {
+  UispAdminsResponseError,
+  parseStoredUispStaffName,
+  parseUispAdmins,
+  serializeUispStaffName,
+} from './uisp-admins';
 
 describe('parseUispAdmins', () => {
   it('mapea activo, inactivo, sin nombre y sin correo', () => {
@@ -22,13 +27,30 @@ describe('parseUispAdmins', () => {
       admins: [
         {
           uispUserId: 11,
-          displayName: 'Persona Uno',
+          name: { displayName: 'Persona Uno', firstName: 'Persona', lastName: 'Uno' },
           email: 'persona.uno@example.test',
           isActive: true,
         },
-        { uispUserId: 12, displayName: 'pdos', email: null, isActive: false },
-        { uispUserId: 13, displayName: null, email: null, isActive: true },
+        {
+          uispUserId: 12,
+          name: { displayName: 'pdos', firstName: null, lastName: null },
+          email: null,
+          isActive: false,
+        },
+        { uispUserId: 13, name: null, email: null, isActive: true },
       ],
+    });
+  });
+
+  it('conserva nombre y apellido compuestos por separado', () => {
+    const [admin] = parseUispAdmins([
+      { id: 21, firstName: ' Persona María ', lastName: 'Sintética Uno', isActive: true },
+    ]).admins;
+
+    expect(admin?.name).toEqual({
+      displayName: 'Persona María Sintética Uno',
+      firstName: 'Persona María',
+      lastName: 'Sintética Uno',
     });
   });
 
@@ -49,4 +71,22 @@ describe('parseUispAdmins', () => {
   it('rechaza una respuesta que no es lista', () => {
     expect(() => parseUispAdmins({ data: [] })).toThrow(UispAdminsResponseError);
   });
+});
+
+describe('nombre guardado en la fila de revisión', () => {
+  it('ida y vuelta conserva las partes', () => {
+    const name = { displayName: 'Persona María Uno', firstName: 'Persona María', lastName: 'Uno' };
+    expect(parseStoredUispStaffName(serializeUispStaffName(name))).toEqual(name);
+  });
+
+  it.each(['Persona Uno', '{no es json', '{"v":2,"displayName":"x"}'])(
+    'una fila anterior o desconocida se lee como texto plano sin partes: %s',
+    (text) => {
+      expect(parseStoredUispStaffName(text)).toEqual({
+        displayName: text,
+        firstName: null,
+        lastName: null,
+      });
+    },
+  );
 });

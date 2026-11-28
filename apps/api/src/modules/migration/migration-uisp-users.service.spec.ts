@@ -5,6 +5,7 @@ import { MigrationCrypto } from './migration-crypto';
 import { MigrationPermanentError } from './migration-simulation.service';
 import { MigrationUispUsersService, maskUispEmail } from './migration-uisp-users.service';
 import { UispApiError } from './uisp-api/uisp-api.client';
+import { serializeUispStaffName } from './uisp-api/uisp-admins';
 
 const tenantId = '69000000-0000-4000-8000-000000000001';
 const actorId = '69000000-0000-4000-8000-000000000002';
@@ -32,6 +33,11 @@ describe('MigrationUispUsersService', () => {
   const client = { listAdmins: jest.fn(), listPage: jest.fn() };
   let processLists: Record<string, unknown[]>;
   const users = { findUserIdsByEmailHash: jest.fn() };
+  const provisioning = {
+    repairImportedUserNames: jest.fn(),
+    publishCreatedUsers: jest.fn(),
+  };
+  let createdRows: Array<{ uisp_user_id: number; target_user_id: string }>;
   const logs: string[] = [];
   let staged: Array<{ batch_id: string; entity: string; payload_encrypted: string }>;
   let listRows: unknown[];
@@ -54,6 +60,7 @@ describe('MigrationUispUsersService', () => {
       upserts.push(params);
       return [{ inserted: upserts.length % 2 === 1 }];
     }
+    if (sql.includes("status = 'CREADO'")) return createdRows;
     if (sql.includes('FROM migration_uisp_users')) return listRows;
     return [];
   });
@@ -74,6 +81,7 @@ describe('MigrationUispUsersService', () => {
     connections as never,
     client as never,
     users as never,
+    provisioning as never,
   );
 
   const stage = (batchId: string, entity: string, raw: unknown) => ({
@@ -94,6 +102,8 @@ describe('MigrationUispUsersService', () => {
     listRows = [];
     upserts = [];
     sinDatos = [];
+    createdRows = [];
+    provisioning.repairImportedUserNames.mockResolvedValue([]);
     connectionRows = [{ id: connectionId }];
     existingSinDatos = [];
     processLists = {};
@@ -176,7 +186,13 @@ describe('MigrationUispUsersService', () => {
       );
       const [first, second] = upserts;
       expect(first![1]).toBe(11);
-      expect(crypto.decryptText(first![2] as string)).toBe(NAME);
+      // Nombre y apellido viajan separados: unirlos y partirlos pasaba palabras al apellido.
+      expect(JSON.parse(crypto.decryptText(first![2] as string))).toEqual({
+        v: 1,
+        displayName: NAME,
+        firstName: 'Persona',
+        lastName: 'Sintetica Uno',
+      });
       expect(crypto.decryptText(first![3] as string)).toBe(EMAIL);
       expect(first![4]).toBe(hash);
       expect(first![5]).toBe(true);
@@ -188,6 +204,39 @@ describe('MigrationUispUsersService', () => {
       for (const secret of [APP_KEY, NAME, EMAIL, 'Persona', 'pdos']) {
         expect(exposed()).not.toContain(secret);
       }
+    });
+
+    it('pide corregir el nombre de los usuarios que creó la importación y los reindexa', async () => {
+      client.listAdmins.mockResolvedValue([
+        { id: 11, firstName: 'Persona Maria', lastName: 'Sintetica', isActive: true },
+        { id: 12, username: 'pdos', isActive: true },
+        { id: 13, isActive: true },
+      ]);
+      createdRows = [
+        { uisp_user_id: 11, target_user_id: 'usr-11' },
+        { uisp_user_id: 12, target_user_id: 'usr-12' },
+      ];
+      provisioning.repairImportedUserNames.mockResolvedValue(['usr-11']);
+
+      const summary = await service.fetch(scope, actorId);
+
+      const createdQuery = query.mock.calls.find(([sql]) => sql.includes("status = 'CREADO'"));
+      expect(createdQuery?.[1]).toEqual([tenantId, [11, 12]]);
+      expect(provisioning.repairImportedUserNames).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId, schemaName: scope.schemaName, actorId }),
+        [
+          {
+            userId: 'usr-11',
+            legacyDisplayName: 'Persona Maria Sintetica',
+            firstName: 'Persona Maria',
+            lastName: 'Sintetica',
+          },
+          { userId: 'usr-12', legacyDisplayName: 'pdos', firstName: null, lastName: null },
+        ],
+      );
+      expect(summary.nombresCorregidos).toBe(1);
+      expect(provisioning.publishCreatedUsers).toHaveBeenCalledWith(tenantId, ['usr-11']);
+      expect(logs.join(' ')).not.toContain('Persona Maria');
     });
 
     it('agrega como «sin datos» los números de lotes vigentes que la API no devolvió', async () => {
@@ -409,6 +458,22 @@ describe('MigrationUispUsersService', () => {
       listRows = [row()];
       const result = await service.list(scope, { id: actorId, role: UserRole.NOC });
       expect(result.data[0]!.email).toBe('p***@example.test');
+    });
+
+    it('la lista muestra el nombre completo de una fila guardada con nombre y apellido', async () => {
+      listRows = [
+        row({
+          display_name_encrypted: crypto.encryptText(
+            serializeUispStaffName({
+              displayName: NAME,
+              firstName: 'Persona',
+              lastName: 'Sintetica Uno',
+            }),
+          ),
+        }),
+      ];
+      const result = await service.list(scope, { id: actorId, role: UserRole.ADMIN });
+      expect(result.data[0]!.displayName).toBe(NAME);
     });
 
     it('una columna ilegible vuelve null sin registrar su contenido', async () => {

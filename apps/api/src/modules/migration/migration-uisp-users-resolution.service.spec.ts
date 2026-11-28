@@ -15,6 +15,7 @@ import {
 } from '@iwana/shared';
 import { MigrationCrypto } from './migration-crypto';
 import { MigrationUispUsersResolutionService } from './migration-uisp-users-resolution.service';
+import { serializeUispStaffName } from './uisp-api/uisp-admins';
 
 const events: string[] = [];
 jest.mock('@iwana/db', () => ({
@@ -424,6 +425,30 @@ describe('MigrationUispUsersResolutionService', () => {
       });
       expect(mappings).toEqual([{ externalValue: '41', targetRef: NEW_USER, label: null }]);
       expect(provisioning.publishCreatedUsers).toHaveBeenCalledWith(tenantId, [NEW_USER]);
+    });
+
+    it('CREAR pasa nombre y apellido de UISP por separado cuando la fila los conserva', async () => {
+      table.set(ROW_ACTIVE, {
+        ...table.get(ROW_ACTIVE)!,
+        display_name_encrypted: crypto.encryptText(
+          serializeUispStaffName({
+            displayName: 'Ana Maria Sintetica',
+            firstName: 'Ana Maria',
+            lastName: 'Sintetica',
+          }),
+        ),
+      });
+
+      await resolve([{ id: ROW_ACTIVE, action: 'CREAR', role: UserRole.TECHNICIAN }]);
+
+      expect(provisioning.createImportedUser).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          displayName: 'Ana Maria Sintetica',
+          firstName: 'Ana Maria',
+          lastName: 'Sintetica',
+        }),
+      );
     });
 
     it('CREAR con un inactivo lo marca inactivo en UISP y pasa el recurso operativo elegido', async () => {

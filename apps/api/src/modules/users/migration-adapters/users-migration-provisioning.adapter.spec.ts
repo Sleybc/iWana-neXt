@@ -7,6 +7,7 @@ import {
   INVITATION_TOKEN_TTL_MS,
   UsersMigrationProvisioningAdapter,
   importedPlaceholderEmail,
+  importedUserNames,
   splitImportedDisplayName,
 } from './users-migration-provisioning.adapter';
 
@@ -380,6 +381,108 @@ describe('UsersMigrationProvisioningAdapter', () => {
     expect(search.enqueueUserUpsert).toHaveBeenCalledTimes(2);
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
+  });
+
+  it('con nombre y apellido de UISP los guarda tal cual, sin partir por espacios', async () => {
+    await adapter.createImportedUser(
+      ctx,
+      input({
+        displayName: 'Ana Maria Sintetica Dos',
+        firstName: 'Ana Maria',
+        lastName: 'Sintetica Dos',
+      }),
+    );
+
+    expect(saved[0]).toMatchObject({ firstName: 'Ana Maria', lastName: 'Sintetica Dos' });
+  });
+
+  it.each([
+    [
+      { firstName: 'Ana Maria', lastName: null },
+      { firstName: 'Ana Maria', lastName: null },
+    ],
+    [
+      { firstName: null, lastName: 'Sintetica' },
+      { firstName: 'Sintetica', lastName: null },
+    ],
+    [
+      { firstName: '  ', lastName: '' },
+      { firstName: 'Nombre', lastName: 'De Respaldo' },
+    ],
+    [{}, { firstName: 'Nombre', lastName: 'De Respaldo' }],
+  ])('partes %j → %j', (parts, expected) => {
+    expect(importedUserNames({ displayName: 'Nombre De Respaldo', ...parts })).toEqual(expected);
+  });
+
+  it('acota cada parte de UISP a 100 caracteres', () => {
+    const names = importedUserNames({
+      displayName: 'x',
+      firstName: 'a'.repeat(150),
+      lastName: 'b'.repeat(150),
+    });
+    expect(names.firstName).toHaveLength(100);
+    expect(names.lastName).toHaveLength(100);
+  });
+
+  describe('reparar nombres partidos', () => {
+    const original = query.getMockImplementation()!;
+    afterEach(() => query.mockImplementation(original));
+
+    it('corrige solo si sigue el nombre partido y audita sin nombres', async () => {
+      query.mockImplementation(async (sql: string, params: unknown[] = []) =>
+        sql.includes('UPDATE users SET first_name') && params[0] === 'usr-partido'
+          ? [[{ id: 'usr-partido' }], 1]
+          : [[], 0],
+      );
+
+      const repaired = await adapter.repairImportedUserNames(ctx, [
+        {
+          userId: 'usr-partido',
+          legacyDisplayName: 'Ana Maria Sintetica',
+          firstName: 'Ana Maria',
+          lastName: 'Sintetica',
+        },
+        {
+          userId: 'usr-editado',
+          legacyDisplayName: 'Otra Persona Dos',
+          firstName: 'Otra Persona',
+          lastName: 'Dos',
+        },
+        // Ya bien partido: «Uno» + «Sintetico Dos» coincide con UISP, no se consulta.
+        {
+          userId: 'usr-bien',
+          legacyDisplayName: 'Uno Sintetico Dos',
+          firstName: 'Uno',
+          lastName: 'Sintetico Dos',
+        },
+        // Sin partes en UISP (solo usuario): nada que corregir.
+        { userId: 'usr-sin', legacyDisplayName: 'pdos', firstName: null, lastName: null },
+      ]);
+
+      expect(repaired).toEqual(['usr-partido']);
+      const updates = query.mock.calls.filter(([sql]) =>
+        sql.includes('UPDATE users SET first_name'),
+      );
+      expect(updates.map(([, params]) => params)).toEqual([
+        ['usr-partido', 'Ana Maria', 'Sintetica', 'Ana', 'Maria Sintetica', TENANT],
+        ['usr-editado', 'Otra Persona', 'Dos', 'Otra', 'Persona Dos', TENANT],
+      ]);
+      expect(updates[0]![0]).toContain('last_name IS NOT DISTINCT FROM $5');
+      expect(audit.logWithin).toHaveBeenCalledTimes(1);
+      expect(audit.logWithin).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.UPDATE,
+          entityId: 'usr-partido',
+          newValue: {
+            campos: ['firstName', 'lastName'],
+            origen: 'UISP',
+            motivo: 'NOMBRE_SEPARADO',
+          },
+        }),
+        manager,
+      );
+      expect(JSON.stringify(audit.logWithin.mock.calls)).not.toContain('Ana');
+    });
   });
 
   it('separa el nombre en nombre y apellidos acotados a 100 caracteres', () => {

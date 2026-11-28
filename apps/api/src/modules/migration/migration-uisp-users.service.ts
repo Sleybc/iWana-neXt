@@ -31,7 +31,17 @@ import {
   sourceNotConfigured,
 } from './migration-source-connection.service';
 import { MigrationUserDirectoryPort } from './ports/migration-user-directory.port';
-import { UispAdminsResponseError, parseUispAdmins } from './uisp-api/uisp-admins';
+import {
+  MigrationUserProvisioningPort,
+  type MigrationImportedUserNameFix,
+} from './ports/migration-user-provisioning.port';
+import {
+  UispAdminsResponseError,
+  parseStoredUispStaffName,
+  parseUispAdmins,
+  serializeUispStaffName,
+  type UispAdmin,
+} from './uisp-api/uisp-admins';
 import { UispApiClient, UispApiError } from './uisp-api/uisp-api.client';
 import {
   collectUispProcessUserRefs,
@@ -75,6 +85,8 @@ export interface UispUsersFetchSummary {
     sinLeer: UispProcess[];
     truncados: UispProcess[];
   };
+  /** Usuarios creados por la importación con el nombre mal partido que se corrigieron. */
+  nombresCorregidos: number;
 }
 
 function iso(value: Date | string): string {
@@ -106,6 +118,7 @@ export class MigrationUispUsersService {
     private readonly connections: MigrationSourceConnectionService,
     private readonly client: UispApiClient,
     private readonly users: MigrationUserDirectoryPort,
+    private readonly provisioning: MigrationUserProvisioningPort,
   ) {}
 
   /** «Traer usuarios de UISP»: audita y encola en la misma transacción; payload solo de ids. */
@@ -194,6 +207,7 @@ export class MigrationUispUsersService {
       throw error;
     }
 
+    let repaired: string[] = [];
     const summary = await runInTenantSchema(this.dataSource, scope.schemaName, async (qr) => {
       const hashOf = new Map<number, string>();
       for (const admin of parsed.admins) {
@@ -218,6 +232,7 @@ export class MigrationUispUsersService {
           sinLeer: processes.sinLeer,
           truncados: processes.truncados,
         },
+        nombresCorregidos: 0,
       };
       for (const admin of parsed.admins) {
         const hash = hashOf.get(admin.uispUserId) ?? null;
@@ -241,7 +256,7 @@ export class MigrationUispUsersService {
           [
             scope.tenantId,
             admin.uispUserId,
-            admin.displayName ? this.crypto.encryptText(admin.displayName) : null,
+            admin.name ? this.crypto.encryptText(serializeUispStaffName(admin.name)) : null,
             admin.email ? this.crypto.encryptText(admin.email) : null,
             hash,
             admin.isActive,
@@ -254,6 +269,9 @@ export class MigrationUispUsersService {
         else result.actualizados += 1;
         if (row && matchedUserId) result.coincidencias += 1;
       }
+
+      repaired = await this.repairCreatedUserNames(qr.manager, scope, actorId, parsed.admins);
+      result.nombresCorregidos = repaired.length;
 
       const apiIds = new Set(parsed.admins.map((admin) => admin.uispUserId));
       const inProcesses = [...processes.refs.keys()].filter((id) => !apiIds.has(id));
@@ -296,6 +314,7 @@ export class MigrationUispUsersService {
       return result;
     });
 
+    this.provisioning.publishCreatedUsers(scope.tenantId, repaired);
     await this.connections.recordCheck(scope, 'OK', actorId);
     this.logger.log(
       `[migration] Usuarios de UISP leídos (tenant=${scope.tenantId}, api=${summary.api}, ` +
@@ -305,7 +324,8 @@ export class MigrationUispUsersService {
         `tareas=${summary.procesos.leidos.TAREAS}, ` +
         `eliminadosEnProcesos=${summary.procesos.eliminadosEnProcesos}, ` +
         `sinLeer=${summary.procesos.sinLeer.join('|') || '-'}, ` +
-        `truncados=${summary.procesos.truncados.join('|') || '-'}).`,
+        `truncados=${summary.procesos.truncados.join('|') || '-'}, ` +
+        `nombresCorregidos=${summary.nombresCorregidos}).`,
     );
     return summary;
   }
@@ -357,7 +377,7 @@ export class MigrationUispUsersService {
         return {
           id: row.id,
           uispUserId: Number(row.uisp_user_id),
-          displayName: this.decrypt(row.display_name_encrypted, row.id, 'displayName'),
+          displayName: this.displayNameOf(row),
           email: email === null ? null : fullEmail ? email : maskUispEmail(email),
           isActiveInUisp: row.is_active_in_uisp,
           source: row.source,
@@ -425,6 +445,49 @@ export class MigrationUispUsersService {
       );
     }
     return references;
+  }
+
+  /**
+   * Usuarios que creó la importación (filas `CREADO`) cuando el nombre se partía por el primer
+   * espacio: con las partes que UISP vuelve a entregar, el puerto de Usuarios corrige a quien
+   * conserva ese nombre partido. Repetir la lectura no cambia nada más.
+   */
+  private async repairCreatedUserNames(
+    manager: EntityManager,
+    scope: MigrationTenantScope,
+    actorId: string,
+    admins: UispAdmin[],
+  ): Promise<string[]> {
+    const named = new Map(
+      admins.flatMap((admin) => (admin.name ? [[admin.uispUserId, admin.name] as const] : [])),
+    );
+    if (named.size === 0) return [];
+    const created = (await manager.query(
+      `SELECT uisp_user_id, target_user_id FROM migration_uisp_users
+        WHERE tenant_id = $1 AND status = 'CREADO' AND source = 'API'
+          AND target_user_id IS NOT NULL AND uisp_user_id = ANY($2::int[])`,
+      [scope.tenantId, [...named.keys()]],
+    )) as Array<{ uisp_user_id: number; target_user_id: string }>;
+    const fixes: MigrationImportedUserNameFix[] = created.map((row) => {
+      const name = named.get(Number(row.uisp_user_id))!;
+      return {
+        userId: row.target_user_id,
+        legacyDisplayName: name.displayName,
+        firstName: name.firstName,
+        lastName: name.lastName,
+      };
+    });
+    if (fixes.length === 0) return [];
+    return this.provisioning.repairImportedUserNames(
+      { manager, tenantId: scope.tenantId, schemaName: scope.schemaName, actorId },
+      fixes,
+    );
+  }
+
+  /** Nombre para la revisión: el formato con partes o el texto plano de filas anteriores. */
+  private displayNameOf(row: UispUserRow): string | null {
+    const text = this.decrypt(row.display_name_encrypted, row.id, 'displayName');
+    return text === null ? null : parseStoredUispStaffName(text).displayName;
   }
 
   private decrypt(value: string | null, rowId: string, field: string): string | null {

@@ -42,6 +42,11 @@ import { MigrationSourceConnectionService } from './migration-source-connection.
 import { MigrationUispUsersService } from './migration-uisp-users.service';
 import { FAKE_UISP_APP_KEY, startFakeUisp, type FakeUispServer } from './test/fake-uisp-server';
 import { UISP_ADMINS_PATH, UISP_VERSION_PATH, UispApiClient } from './uisp-api/uisp-api.client';
+import {
+  parseStoredUispStaffName,
+  parseUispAdmins,
+  serializeUispStaffName,
+} from './uisp-api/uisp-admins';
 import { ephemeralSchemaName } from '../../../../../packages/database/test/ephemeral-schema';
 
 // otplib@13 arrastra @scure/base (ESM-only) que Jest-CJS no puede cargar al importar AuthService.
@@ -74,6 +79,7 @@ describeDb('Usuarios de UISP — conexión y lectura sobre PostgreSQL real', () 
   const scope = { tenantId, schemaName };
   const audit = { logWithin: jest.fn().mockResolvedValue(undefined) };
   const queue = { add: jest.fn().mockResolvedValue(undefined) };
+  const search = { enqueueUserUpsert: jest.fn().mockResolvedValue(undefined) };
   const logs: string[] = [];
   const config = new ConfigService({
     PII_ENCRYPTION_KEY: '9a'.repeat(32),
@@ -155,7 +161,9 @@ describeDb('Usuarios de UISP — conexión y lectura sobre PostgreSQL real', () 
       await qr.query(`
         CREATE TABLE users (
           id uuid PRIMARY KEY, tenant_id uuid NOT NULL, email_hmac varchar(64) NOT NULL,
-          role varchar(20) NOT NULL DEFAULT 'TECHNICIAN', deleted_at timestamptz NULL)`);
+          role varchar(20) NOT NULL DEFAULT 'TECHNICIAN', deleted_at timestamptz NULL,
+          first_name varchar(100) NULL, last_name varchar(100) NULL,
+          updated_at timestamptz NOT NULL DEFAULT now())`);
       await qr.query(
         `INSERT INTO users (id, tenant_id, email_hmac) VALUES ($1, $2, $3), ($4, $2, $5)`,
         [
@@ -185,6 +193,12 @@ describeDb('Usuarios de UISP — conexión y lectura sobre PostgreSQL real', () 
       connections,
       client,
       new UsersMigrationDirectoryAdapter(),
+      new UsersMigrationProvisioningAdapter(
+        audit as never,
+        { sendMail: jest.fn() } as never,
+        config,
+        search as never,
+      ),
     );
   });
 
@@ -334,7 +348,11 @@ describeDb('Usuarios de UISP — conexión y lectura sobre PostgreSQL real', () 
       [40, 'PENDIENTE'],
       [41, 'DESCARTADO'],
     ]);
-    expect(crypto.decryptText(rows[0]!.display_name_encrypted!)).toBe('Nombre Cambiado');
+    expect(parseStoredUispStaffName(crypto.decryptText(rows[0]!.display_name_encrypted!))).toEqual({
+      displayName: 'Nombre Cambiado',
+      firstName: 'Nombre Cambiado',
+      lastName: null,
+    });
     expect(rows[1]!.display_name_encrypted).toBeNull();
     expect(rows[3]!.display_name_encrypted).toBeNull();
   });
@@ -426,6 +444,65 @@ describeDb('Usuarios de UISP — conexión y lectura sobre PostgreSQL real', () 
     expect(await sql(`SELECT id FROM migration_uisp_users`)).toHaveLength(4);
   });
 
+  it('repetir la lectura corrige el nombre mal partido de los creados, sin tocar los editados', async () => {
+    const partido = randomUUID();
+    const editado = randomUUID();
+    await sql(
+      `INSERT INTO users (id, tenant_id, email_hmac, first_name, last_name, updated_at)
+       VALUES ($1, $3, 'a', 'Persona', 'Maria Sintetica', now() - interval '1 day'),
+              ($2, $3, 'b', 'Otra', 'Cambiado A Mano', now() - interval '1 day')`,
+      [partido, editado, tenantId],
+    );
+    await sql(
+      `INSERT INTO migration_uisp_users
+         (tenant_id, uisp_user_id, source, status, target_user_id, is_active_in_uisp)
+       VALUES ($1, 51, 'API', 'CREADO', $2, true), ($1, 52, 'API', 'CREADO', $3, true)`,
+      [tenantId, partido, editado],
+    );
+    uisp.routes.set(UISP_ADMINS_PATH, {
+      status: 200,
+      body: [
+        ...admins(),
+        { id: 51, firstName: 'Persona Maria', lastName: 'Sintetica', isActive: true },
+        // Partes distintas de la partición vieja («Otra» + «Persona Dos»): llega al UPDATE y
+        // la guarda la frena porque el nombre se editó en iWana.
+        { id: 52, firstName: 'Otra Persona', lastName: 'Dos', isActive: true },
+      ],
+    });
+    search.enqueueUserUpsert.mockClear();
+
+    const first = await uispUsers.fetch(scope, actorId);
+    const second = await uispUsers.fetch(scope, actorId);
+
+    expect(first.nombresCorregidos).toBe(1);
+    expect(second.nombresCorregidos).toBe(0);
+    const users = await sql<{ id: string; first_name: string; last_name: string; fresh: boolean }>(
+      `SELECT id::text, first_name, last_name, updated_at > now() - interval '1 hour' AS fresh
+         FROM users WHERE id = ANY($1::uuid[])`,
+      [[partido, editado]],
+    );
+    expect(users.find((u) => u.id === partido)).toMatchObject({
+      first_name: 'Persona Maria',
+      last_name: 'Sintetica',
+      fresh: true,
+    });
+    expect(users.find((u) => u.id === editado)).toMatchObject({
+      first_name: 'Otra',
+      last_name: 'Cambiado A Mano',
+      fresh: false,
+    });
+    expect(search.enqueueUserUpsert).toHaveBeenCalledTimes(1);
+    expect(search.enqueueUserUpsert).toHaveBeenCalledWith(tenantId, partido);
+    expect(audit.logWithin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityType: 'User',
+        entityId: partido,
+        newValue: { campos: ['firstName', 'lastName'], origen: 'UISP', motivo: 'NOMBRE_SEPARADO' },
+      }),
+      expect.anything(),
+    );
+  });
+
   it('la clave, los nombres y los correos no aparecen en auditoría, cola ni logs', () => {
     const exposed = JSON.stringify([
       audit.logWithin.mock.calls.map(([entry]) => entry as unknown),
@@ -438,6 +515,8 @@ describeDb('Usuarios de UISP — conexión y lectura sobre PostgreSQL real', () 
       'inactivo.sintetico@example.test',
       'Tecnico Sintetico',
       'Nombre Cambiado',
+      'Persona Maria',
+      'Sintetica',
     ]) {
       expect(exposed).not.toContain(secret);
     }
@@ -568,7 +647,15 @@ describeTenant('Usuarios de UISP — resolver e invitar sobre el tenant de prueb
   async function insertRow(
     id: string,
     uisp: number,
-    data: { name: string; email: string; active: boolean; matched?: string } | null,
+    data: {
+      name: string;
+      email: string;
+      active: boolean;
+      matched?: string;
+      /** Nombre y apellido de UISP por separado (formato vigente); sin ellos, texto plano. */
+      /** Lo que la lectura de UISP guarda (formato vigente); sin ello, texto plano. */
+      stored?: string;
+    } | null,
   ) {
     await sql(
       `INSERT INTO migration_uisp_users
@@ -579,7 +666,7 @@ describeTenant('Usuarios de UISP — resolver e invitar sobre el tenant de prueb
         id,
         tenantId,
         uisp,
-        data ? crypto.encryptText(data.name) : null,
+        data ? crypto.encryptText(data.stored ?? data.name) : null,
         data ? crypto.encryptText(data.email) : null,
         data ? crypto.emailHmac(data.email) : null,
         data ? data.active : null,
@@ -646,6 +733,11 @@ describeTenant('Usuarios de UISP — resolver e invitar sobre el tenant de prueb
       name: NAMES.active,
       email: EMAILS.active,
       active: true,
+      // Lo que guarda la lectura real: lector de UISP → serialización, sin partes a mano.
+      stored: serializeUispStaffName(
+        parseUispAdmins([{ id: 1, firstName: 'Tecnica Activa', lastName: tag, isActive: true }])
+          .admins[0]!.name!,
+      ),
     });
     await insertRow(rows.inactive, uispId(2), {
       name: NAMES.inactive,
@@ -681,6 +773,7 @@ describeTenant('Usuarios de UISP — resolver e invitar sobre el tenant de prueb
         {} as never,
         {} as never,
         new UsersMigrationDirectoryAdapter(),
+        {} as never,
       ),
       new UsersMigrationDirectoryAdapter(),
       new UsersMigrationProvisioningAdapter(audit, mailer as never, config, search as never),
@@ -782,9 +875,10 @@ describeTenant('Usuarios de UISP — resolver e invitar sobre el tenant de prueb
       role: string;
       is_operational_resource: boolean;
       first_name: string;
+      last_name: string | null;
       email_verification_token: string | null;
     }>(
-      `SELECT id::text, email, status, role, is_operational_resource, first_name,
+      `SELECT id::text, email, status, role, is_operational_resource, first_name, last_name,
               email_verification_token
          FROM users WHERE id = ANY($1::uuid[])`,
       [createdUserIds],
@@ -795,10 +889,15 @@ describeTenant('Usuarios de UISP — resolver e invitar sobre el tenant de prueb
       status: 'PENDING_VERIFICATION',
       role: UserRole.TECHNICIAN,
       is_operational_resource: true,
-      first_name: 'Tecnica',
+      // Nombre compuesto de UISP: no se parte por el primer espacio.
+      first_name: 'Tecnica Activa',
+      last_name: tag,
       email_verification_token: null,
     });
     expect(user(rows.inactive)).toMatchObject({
+      // Fila guardada antes de conservar las partes: se parte el texto plano.
+      first_name: 'Tecnico',
+      last_name: `Retirado ${tag}`,
       email: EMAILS.inactive,
       status: 'INACTIVE',
       is_operational_resource: false,

@@ -26,10 +26,24 @@ const UispAdminSchema = z
 
 const EMAIL = z.string().email().max(254);
 
+/**
+ * Nombre del personal de UISP tal como lo entrega la API: nombre y apellido por separado. Unirlos
+ * y volver a partirlos por espacios pasaba el segundo nombre al apellido («Ana María Pérez» →
+ * «Ana» + «María Pérez»), así que las partes viajan juntas hasta crear el usuario.
+ */
+export interface UispStaffName {
+  /** Nombre para la revisión: nombre y apellido, o el usuario de UISP. */
+  displayName: string;
+  /** `firstName` de UISP; `null` si no lo trae (o en filas guardadas antes de este formato). */
+  firstName: string | null;
+  /** `lastName` de UISP; `null` si no lo trae (o en filas guardadas antes de este formato). */
+  lastName: string | null;
+}
+
 export interface UispAdmin {
   uispUserId: number;
-  /** Nombre para la revisión: nombre y apellido, o el usuario; `null` si UISP no trae ninguno. */
-  displayName: string | null;
+  /** `null` si UISP no trae nombre, apellido ni usuario. */
+  name: UispStaffName | null;
   /** Correo con forma válida, en minúsculas; `null` si falta o no es un correo. */
   email: string | null;
   isActive: boolean;
@@ -62,13 +76,51 @@ export function parseUispAdmins(body: unknown): ParsedUispAdmins {
     const admin = parsed.data;
     seen.add(admin.id);
     const fullName = [admin.firstName, admin.lastName].filter(Boolean).join(' ').trim();
+    const displayName = (fullName || admin.username)?.slice(0, 200) ?? null;
     const email = admin.email?.toLowerCase() ?? null;
     admins.push({
       uispUserId: admin.id,
-      displayName: (fullName || admin.username)?.slice(0, 200) ?? null,
+      name: displayName
+        ? {
+            displayName,
+            firstName: admin.firstName?.slice(0, 200) ?? null,
+            lastName: admin.lastName?.slice(0, 200) ?? null,
+          }
+        : null,
       email: email && EMAIL.safeParse(email).success ? email : null,
       isActive: admin.isActive,
     });
   }
   return { admins, skipped };
+}
+
+const STORED_NAME = z.object({
+  v: z.literal(1),
+  displayName: z.string().min(1),
+  firstName: z.string().nullable(),
+  lastName: z.string().nullable(),
+});
+
+/** Texto que se cifra en `migration_uisp_users.display_name_encrypted`. */
+export function serializeUispStaffName(name: UispStaffName): string {
+  return JSON.stringify({ v: 1, ...name });
+}
+
+/**
+ * Lee el nombre descifrado de la fila. Las filas guardadas antes de este formato (texto plano
+ * con el nombre unido) devuelven solo `displayName`, sin partes.
+ */
+export function parseStoredUispStaffName(text: string): UispStaffName {
+  if (text.startsWith('{')) {
+    try {
+      const parsed = STORED_NAME.safeParse(JSON.parse(text));
+      if (parsed.success) {
+        const { displayName, firstName, lastName } = parsed.data;
+        return { displayName, firstName, lastName };
+      }
+    } catch {
+      // No es JSON: un nombre que empieza por «{». Se trata como texto plano.
+    }
+  }
+  return { displayName: text, firstName: null, lastName: null };
 }
