@@ -78,6 +78,51 @@ export class EffectivePermissionsService {
     return result;
   }
 
+  /**
+   * Nombres de los roles de empresa asignados a cada usuario, para lecturas
+   * masivas (exportación del directorio de usuarios).
+   *
+   * Mismo criterio que la ficha de edición (`getEffectivePermissionsSummary`):
+   * asignación activa, perfil activo y compatible con el rol base del usuario.
+   * Dos consultas para todo el lote, sin una por usuario.
+   */
+  async listAssignedProfileNamesByUser(
+    users: ReadonlyArray<{ id: string; role: string }>,
+  ): Promise<Map<string, string[]>> {
+    const result = new Map<string, string[]>();
+    if (users.length === 0) return result;
+
+    const ctx = TenantContext.getOrThrow();
+    const roleByUser = new Map(users.map((user) => [user.id, user.role]));
+
+    return runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
+      const assignments = await qr.manager.find(UserAccessProfile, {
+        where: { tenantId: ctx.tenantId, userId: In([...roleByUser.keys()]), isActive: true },
+        order: { validFrom: 'ASC' },
+      });
+      if (assignments.length === 0) return result;
+
+      const profiles = await qr.manager.find(AccessProfile, {
+        where: {
+          tenantId: ctx.tenantId,
+          id: In([...new Set(assignments.map((assignment) => assignment.profileId))]),
+          isActive: true,
+        },
+      });
+      const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+
+      for (const assignment of assignments) {
+        const profile = profileById.get(assignment.profileId);
+        if (!profile || profile.baseRoleConstraint !== roleByUser.get(assignment.userId)) continue;
+        const names = result.get(assignment.userId) ?? [];
+        if (!names.includes(profile.name)) names.push(profile.name);
+        result.set(assignment.userId, names);
+      }
+      for (const names of result.values()) names.sort((a, b) => a.localeCompare(b, 'es'));
+      return result;
+    });
+  }
+
   private async computeEffectivePermissions(
     tenantId: string,
     schemaName: string,

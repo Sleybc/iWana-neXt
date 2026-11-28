@@ -193,7 +193,7 @@ function setupRunInTenantSchema(
 
 describe('UsersService', () => {
   let service: UsersService;
-  let auditServiceMock: { log: jest.Mock };
+  let auditServiceMock: { log: jest.Mock; logWithin: jest.Mock };
   let tenantServiceMock: {
     updateTenantSelfProfile: jest.Mock;
     getPrincipalAdminUserId: jest.Mock;
@@ -214,7 +214,7 @@ describe('UsersService', () => {
     mockTenantContextGetOrThrow.mockReset();
     mockTenantContextGetOrThrow.mockReturnValue(MOCK_TENANT_CTX);
 
-    auditServiceMock = { log: jest.fn() };
+    auditServiceMock = { log: jest.fn(), logWithin: jest.fn().mockResolvedValue(undefined) };
     tenantServiceMock = {
       updateTenantSelfProfile: jest.fn(),
       // ADR-063: sin designacion por defecto — ningun usuario es principal.
@@ -472,6 +472,139 @@ describe('UsersService', () => {
 
       expect(String(countCall?.[0])).not.toContain('id >');
       expect(String(pageCall?.[0])).toContain('id >');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // exportUsers
+  // -------------------------------------------------------------------------
+
+  describe('exportUsers()', () => {
+    it('no entrega datos si la auditoría de la lectura masiva falla', async () => {
+      setupRunInTenantSchema(
+        {},
+        jest
+          .fn()
+          .mockResolvedValueOnce([{ total: 1 }])
+          .mockResolvedValueOnce([{ id: 'usr-a', email: 'a@empresa.test', role: UserRole.NOC }]),
+      );
+      auditServiceMock.logWithin.mockRejectedValueOnce(new Error('auditoría caída'));
+
+      await expect(service.exportUsers({}, ACTOR_ID)).rejects.toThrow('auditoría caída');
+    });
+
+    const exportRow = (id: string, role: UserRole) => ({
+      id,
+      email: `${id}@empresa.test`,
+      role,
+      status: UserStatus.ACTIVE,
+      tenant_id: MOCK_TENANT_CTX.tenantId,
+      first_name: 'Nombre',
+      last_name: 'Prueba',
+      phone: '3000000000',
+      document_type: 'CC',
+      document_number: 'DOC-SINT-7781',
+      created_at: new Date('2026-01-15T12:00:00.000Z'),
+      updated_at: new Date('2026-01-15T12:00:00.000Z'),
+      deleted_at: null,
+    });
+
+    beforeEach(() => {
+      (
+        effectivePermissionsMock as unknown as { listAssignedProfileNamesByUser: jest.Mock }
+      ).listAssignedProfileNamesByUser = jest
+        .fn()
+        .mockResolvedValue(new Map([['usr-a', ['Coordinación', 'Soporte nivel 2']]]));
+    });
+
+    it('devuelve todos los datos con los roles de empresa y audita solo conteos', async () => {
+      const query = jest
+        .fn()
+        .mockResolvedValueOnce([{ total: 2 }])
+        .mockResolvedValueOnce([
+          exportRow('usr-a', UserRole.SUPPORT),
+          exportRow('usr-b', UserRole.NOC),
+        ]);
+      setupRunInTenantSchema({}, query);
+      tenantServiceMock.getPrincipalAdminUserId.mockResolvedValue('usr-b');
+
+      const result = await service.exportUsers({}, ACTOR_ID);
+
+      expect(result.meta).toEqual({ total: 2, exported: 2, truncated: false, maxRows: 5000 });
+      expect(result.data[0]).toMatchObject({
+        id: 'usr-a',
+        phone: '3000000000',
+        documentNumber: 'DOC-SINT-7781',
+        companyRoles: ['Coordinación', 'Soporte nivel 2'],
+        isPrincipalAdmin: false,
+      });
+      expect(result.data[1]).toMatchObject({
+        id: 'usr-b',
+        companyRoles: [],
+        isPrincipalAdmin: true,
+      });
+
+      const pageCall = query.mock.calls[1] as [string, unknown[]];
+      expect(pageCall[0]).toContain('deleted_at IS NULL');
+      expect(pageCall[0]).toContain('LIMIT $1');
+      expect(pageCall[1]).toEqual([5000]);
+
+      expect(auditServiceMock.logWithin).toHaveBeenCalledWith(
+        {
+          action: AuditAction.LIST_ACCESS,
+          entityType: 'UserExport',
+          entityId: 'N/A',
+          userId: ACTOR_ID,
+          tenantId: MOCK_TENANT_CTX.tenantId,
+          schemaName: MOCK_TENANT_CTX.schemaName,
+          newValue: {
+            totalServed: 2,
+            totalAvailable: 2,
+            truncated: false,
+            statusFilter: null,
+            roleFilter: null,
+            searchApplied: false,
+          },
+        },
+        expect.anything(),
+      );
+      const logged = JSON.stringify(auditServiceMock.logWithin.mock.calls[0]?.[0]);
+      expect(logged).not.toContain('@empresa.test');
+      expect(logged).not.toContain('DOC-SINT-7781');
+    });
+
+    it('aplica los mismos filtros que el listado y marca la exportación truncada', async () => {
+      const query = jest
+        .fn()
+        .mockResolvedValueOnce(undefined) // set_config
+        .mockResolvedValueOnce([{ total: 7000 }])
+        .mockResolvedValueOnce([exportRow('usr-a', UserRole.SUPPORT)]);
+      setupRunInTenantSchema({}, query);
+
+      const result = await service.exportUsers(
+        { status: UserStatus.ACTIVE, role: UserRole.SUPPORT, search: 'Ána' },
+        ACTOR_ID,
+      );
+
+      const pageCall = query.mock.calls[2] as [string, unknown[]];
+      expect(pageCall[0]).toContain('status = $1');
+      expect(pageCall[0]).toContain('role = $2');
+      expect(pageCall[0]).toContain('ILIKE $4');
+      expect(pageCall[1]).toEqual([UserStatus.ACTIVE, UserRole.SUPPORT, 'ana', '%ana%', 5000]);
+      expect(result.meta.truncated).toBe(true);
+      expect(auditServiceMock.logWithin).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newValue: expect.objectContaining({
+            truncated: true,
+            statusFilter: UserStatus.ACTIVE,
+            roleFilter: UserRole.SUPPORT,
+            searchApplied: true,
+          }),
+        }),
+        expect.anything(),
+      );
+      // El texto de búsqueda no entra en la auditoría: puede contener datos personales.
+      expect(JSON.stringify(auditServiceMock.logWithin.mock.calls[0]?.[0])).not.toContain('ana');
     });
   });
 

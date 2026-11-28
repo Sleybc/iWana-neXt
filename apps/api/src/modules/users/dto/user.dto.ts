@@ -385,3 +385,39 @@ export class UsersListEnvelopeDto {
   @ApiProperty({ type: UserListResponseDto })
   data: UserListResponseDto;
 }
+
+/** Máximo de usuarios por exportación síncrona (mismo tope que la auditoría). */
+export const USERS_EXPORT_MAX_ROWS = 5000;
+
+/** Usuario exportado: todos sus datos más los nombres de sus roles de empresa. */
+export class UserExportRowDto extends UserResponseDto {
+  @ApiProperty({ type: [String], description: 'Nombres de los roles de empresa asignados' })
+  companyRoles: string[];
+}
+
+export class UsersExportMetaDto {
+  @ApiProperty({ description: 'Usuarios que cumplen los filtros' })
+  total: number;
+
+  @ApiProperty({ description: 'Usuarios incluidos en la exportación' })
+  exported: number;
+
+  @ApiProperty({ description: 'true si se alcanzó el tope y faltan usuarios' })
+  truncated: boolean;
+
+  @ApiProperty({ description: 'Tope de usuarios por exportación' })
+  maxRows: number;
+}
+
+export class UsersExportResult {
+  @ApiProperty({ type: [UserExportRowDto] })
+  data: UserExportRowDto[];
+
+  @ApiProperty({ type: UsersExportMetaDto })
+  meta: UsersExportMetaDto;
+}
+
+export class UsersExportEnvelopeDto {
+  @ApiProperty({ type: UsersExportResult })
+  data: UsersExportResult;
+}

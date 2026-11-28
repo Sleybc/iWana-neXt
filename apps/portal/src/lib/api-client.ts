@@ -5085,6 +5085,16 @@ export interface GlobalSearchResponse {
   tookMs: number;
 }
 
+/** Usuario exportado: todos sus datos más los nombres de sus roles de empresa. */
+export interface InternalUserExportRow extends InternalUser {
+  companyRoles: string[];
+}
+
+export interface UsersExportResponse {
+  data: InternalUserExportRow[];
+  meta: { total: number; exported: number; truncated: boolean; maxRows: number };
+}
+
 export interface ListUsersParams {
   cursor?: string;
   limit?: number;
@@ -5879,6 +5889,26 @@ export const usersApi = {
 
       return { data, meta } satisfies ListUsersResponse;
     });
+  },
+
+  /**
+   * Usuarios de los filtros aplicados (estado, rol, búsqueda) con todos sus
+   * datos y roles de empresa, sin paginar. La API acota el lote y deja auditoría.
+   */
+  exportAll: (
+    params?: Pick<ListUsersParams, 'status' | 'role' | 'search'>,
+    tenantSlug?: string,
+  ) => {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.role) searchParams.set('role', params.role);
+    if (params?.search) searchParams.set('search', params.search);
+    const query = searchParams.toString();
+    return request<UsersExportResponse>(
+      `/users/export${query ? `?${query}` : ''}`,
+      { cache: 'no-store', signal: AbortSignal.timeout(60_000) },
+      tenantSlug,
+    );
   },
 
   getById: (id: string, tenantSlug?: string) =>

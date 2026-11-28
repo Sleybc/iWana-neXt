@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   Headers,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
@@ -54,6 +55,9 @@ import {
   UpdateUserDto,
   UserListResponseDto,
   UserResponseDto,
+  USERS_EXPORT_MAX_ROWS,
+  UsersExportEnvelopeDto,
+  UsersExportResult,
   UsersListEnvelopeDto,
 } from './dto/user.dto';
 import {
@@ -77,7 +81,7 @@ import {
  */
 @ApiTags('users')
 @ApiBearerAuth('access-token')
-@ApiExtraModels(UserListResponseDto, UsersListEnvelopeDto, ListMetaDto)
+@ApiExtraModels(UserListResponseDto, UsersListEnvelopeDto, UsersExportEnvelopeDto, ListMetaDto)
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('users')
 export class UsersController {
@@ -208,6 +212,54 @@ export class UsersController {
       ...(query.status !== undefined ? { status: query.status } : {}),
       ...(query.limit !== undefined ? { limit: query.limit } : {}),
     });
+  }
+
+  /**
+   * Exporta el directorio de usuarios con todos sus datos y roles de empresa.
+   * Mismos filtros que el listado, sin paginar; tope `USERS_EXPORT_MAX_ROWS`.
+   * El portal arma el archivo con sus etiquetas. Deja auditoría LIST_ACCESS.
+   * Declarada antes de `:id` para que «export» no se lea como identificador.
+   */
+  @Get('export')
+  @Header('Cache-Control', 'no-store')
+  @Header('Pragma', 'no-cache')
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.USERS_READ)
+  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(10) } })
+  @ApiOperation({
+    summary: 'Exportar usuarios del tenant con todos sus datos',
+    description:
+      'Mismos filtros que el listado (status, role, search), sin paginar. ' +
+      `Máximo ${USERS_EXPORT_MAX_ROWS} usuarios; meta.truncated indica si faltan. ` +
+      'Incluye los roles de empresa asignados. Registra una auditoría LIST_ACCESS.',
+  })
+  @ApiQuery({ name: 'status', required: false, enum: UserStatus })
+  @ApiQuery({ name: 'role', required: false, enum: UserRole })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiResponse({ status: 200, description: 'Usuarios exportados.', type: UsersExportEnvelopeDto })
+  @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
+  @ApiResponse({ status: 403, description: 'Sin permisos de administrador o USERS_READ.' })
+  async exportUsers(
+    @CurrentUser() actor: JwtPayload,
+    @Query('status') status?: UserStatus,
+    @Query('role') role?: UserRole,
+    @Query('search') search?: string,
+  ): Promise<{ data: UsersExportResult }> {
+    if (status !== undefined && !Object.values(UserStatus).includes(status)) {
+      throw new BadRequestException('Indica un estado válido.');
+    }
+    if (role !== undefined && !Object.values(UserRole).includes(role)) {
+      throw new BadRequestException('Indica un rol válido.');
+    }
+    const result = await this.usersService.exportUsers(
+      {
+        ...(status ? { status } : {}),
+        ...(role ? { role } : {}),
+        ...(search ? { search } : {}),
+      },
+      actor?.sub ?? null,
+    );
+    return { data: result };
   }
 
   /**

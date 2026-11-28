@@ -246,4 +246,46 @@ describe('EffectivePermissionsService', () => {
     expect(result).toEqual(expect.arrayContaining([AccessPermissionKey.SETTINGS_READ]));
     expect(result).not.toContain(AccessPermissionKey.SETTINGS_MANAGE);
   });
+
+  describe('listAssignedProfileNamesByUser()', () => {
+    it('agrupa por usuario solo perfiles activos y compatibles con su rol base', async () => {
+      const manager = {
+        find: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { userId: 'user-1', profileId: 'profile-soporte' },
+            { userId: 'user-1', profileId: 'profile-coord' },
+            { userId: 'user-1', profileId: 'profile-noc' },
+            { userId: 'user-2', profileId: 'profile-inactivo' },
+          ])
+          .mockResolvedValueOnce([
+            {
+              id: 'profile-soporte',
+              name: 'Soporte nivel 2',
+              baseRoleConstraint: UserRole.SUPPORT,
+            },
+            { id: 'profile-coord', name: 'Coordinación', baseRoleConstraint: UserRole.SUPPORT },
+            { id: 'profile-noc', name: 'Monitoreo', baseRoleConstraint: UserRole.NOC },
+          ]),
+      };
+      (runInTenantSchema as jest.Mock).mockImplementation(
+        async (_ds, _schema, callback: (qr: { manager: typeof manager }) => unknown) =>
+          callback({ manager }),
+      );
+
+      const result = await service.listAssignedProfileNamesByUser([
+        { id: 'user-1', role: UserRole.SUPPORT },
+        { id: 'user-2', role: UserRole.NOC },
+      ]);
+
+      expect(result.get('user-1')).toEqual(['Coordinación', 'Soporte nivel 2']);
+      expect(result.has('user-2')).toBe(false);
+      expect(manager.find).toHaveBeenCalledTimes(2);
+    });
+
+    it('no consulta la base si no hay usuarios', async () => {
+      await expect(service.listAssignedProfileNamesByUser([])).resolves.toEqual(new Map());
+      expect(runInTenantSchema).not.toHaveBeenCalled();
+    });
+  });
 });

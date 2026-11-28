@@ -16,6 +16,7 @@ import { UsersTable } from './UsersTable';
 import { CreateUserModal } from './CreateUserModal';
 import { BulkImportUsersModal } from './BulkImportUsersModal';
 import { readActiveBulkJobId } from './bulk-import-job-storage';
+import { buildUsersExportCsv, buildUsersExportFilename } from './users-export';
 import { EditUserModal } from './EditUserModal';
 import { DeleteUserDialog } from './DeleteUserDialog';
 import { ResetPasswordDialog } from './ResetPasswordDialog';
@@ -31,6 +32,7 @@ import {
   type UsersPaginationMeta,
   ApiError,
 } from '@/lib/api-client';
+import { triggerBlobDownload } from '@/lib/blob-download';
 import { ensureIdempotencyKey } from '@/lib/idempotency-key';
 import { listPageWindow, normalizeListMeta } from '@/lib/list-meta';
 import { useTableQueryState } from '@/lib/use-table-query-state';
@@ -96,6 +98,12 @@ export function UsersClient() {
   const [tempSecretsSaved, setTempSecretsSaved] = useState(false);
   const [tempConfirmClose, setTempConfirmClose] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportNotice, setExportNotice] = useState<{
+    message: string;
+    truncated: boolean;
+  } | null>(null);
   const [accessCatalog, setAccessCatalog] = useState<AccessPermissionsCatalog | null>(null);
   const [availableProfiles, setAvailableProfiles] = useState<AccessProfileView[]>([]);
   const [selectedUserCompanyRoleIds, setSelectedUserCompanyRoleIds] = useState<string[]>([]);
@@ -259,6 +267,44 @@ export function UsersClient() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setSearchDraft('');
     setFilters({ search: null, status: null, role: null });
+  };
+
+  /**
+   * Descarga los usuarios de los filtros aplicados con todos sus datos y roles
+   * de empresa. Sin filtros, descarga todo el directorio (hasta el tope de la API).
+   */
+  const handleExport = async () => {
+    setIsExporting(true);
+    setExportError(null);
+    setExportNotice(null);
+    try {
+      const result = await usersApi.exportAll({
+        ...(filters.search ? { search: filters.search } : {}),
+        ...(filters.status ? { status: filters.status } : {}),
+        ...(filters.role ? { role: filters.role } : {}),
+      });
+      const rows = Array.isArray(result?.data) ? result.data : [];
+      const csv = buildUsersExportCsv(rows);
+      triggerBlobDownload(
+        new Blob([csv], { type: 'text/csv;charset=utf-8' }),
+        buildUsersExportFilename(),
+      );
+      const truncated = result.meta?.truncated === true;
+      setExportNotice({
+        truncated,
+        message: truncated
+          ? `Se exportaron ${result.meta.exported} de ${result.meta.total} usuarios, el máximo por archivo. Usa los filtros para exportar el resto.`
+          : `Se exportaron ${rows.length} usuario${rows.length !== 1 ? 's' : ''}.`,
+      });
+    } catch (err: unknown) {
+      setExportError(
+        err instanceof ApiError && err.status === 403
+          ? 'No tienes permisos para exportar usuarios.'
+          : mapError(err),
+      );
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleCreate = async (dto: CreateInternalUserDto, companyRoleIds: string[]) => {
@@ -563,6 +609,31 @@ export function UsersClient() {
         <PortalSuccessAlert message={actionSuccess} onDismiss={() => setActionSuccess(null)} />
       )}
 
+      {exportError && (
+        <PortalAlert
+          variant="error"
+          title="No se pudo exportar"
+          description={exportError}
+          icon={AlertTriangle}
+        />
+      )}
+
+      {exportNotice && !exportError && exportNotice.truncated && (
+        <PortalAlert
+          variant="warning"
+          title="Exportación parcial"
+          description={exportNotice.message}
+          icon={AlertTriangle}
+        />
+      )}
+
+      {exportNotice && !exportError && !exportNotice.truncated && (
+        <PortalSuccessAlert
+          message={exportNotice.message}
+          onDismiss={() => setExportNotice(null)}
+        />
+      )}
+
       {catalogError && (
         <PortalAlert
           variant="warning"
@@ -623,6 +694,8 @@ export function UsersClient() {
           onClearFilters={handleClearFilters}
           onCreateUser={openCreate}
           onImportCsv={openBulkImport}
+          onExportCsv={() => void handleExport()}
+          isExporting={isExporting}
           currentUserId={user?.id}
           currentUserRole={user?.role}
           preparingEditUserId={preparingEditUserId}

@@ -12,6 +12,12 @@ const listPermissionsMock = jest.fn();
 const listProfilesMock = jest.fn();
 const getEffectivePermissionsMock = jest.fn();
 const useAuthMock = jest.fn();
+const exportAllMock = jest.fn();
+const triggerBlobDownloadMock = jest.fn();
+
+jest.mock('@/lib/blob-download', () => ({
+  triggerBlobDownload: (...args: unknown[]) => triggerBlobDownloadMock(...args),
+}));
 
 let mockSearchParams = new URLSearchParams();
 const mockReplace = jest.fn();
@@ -53,6 +59,7 @@ jest.mock('@/lib/api-client', () => {
     ApiError,
     usersApi: {
       list: (...args: unknown[]) => listMock(...args),
+      exportAll: (...args: unknown[]) => exportAllMock(...args),
       create: (...args: unknown[]) => createMock(...args),
       update: (...args: unknown[]) => updateMock(...args),
       remove: jest.fn(),
@@ -168,6 +175,8 @@ describe('UsersClient Ola B1', () => {
     mockReplace.mockReset();
     mockPush.mockReset();
     listMock.mockReset().mockResolvedValue(emptyList);
+    exportAllMock.mockReset();
+    triggerBlobDownloadMock.mockReset();
     createMock.mockReset();
     updateMock.mockReset();
     replaceUserProfilesMock.mockReset();
@@ -481,6 +490,57 @@ describe('UsersClient Ola B1', () => {
     await waitFor(() => {
       expect(listMock).toHaveBeenCalledTimes(2);
       expect(screen.getByText('0 usuarios en total')).toBeInTheDocument();
+    });
+  });
+
+  describe('Exportar', () => {
+    it('descarga los usuarios de los filtros aplicados con todos sus datos', async () => {
+      mockSearchParams = new URLSearchParams('status=ACTIVE&search=ana');
+      exportAllMock.mockResolvedValue({
+        data: [{ ...sampleUser, companyRoles: ['Coordinación'] }],
+        meta: { total: 1, exported: 1, truncated: false, maxRows: 5000 },
+      });
+
+      render(<UsersClient />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Exportar' }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Se exportaron 1 usuario.')).toBeInTheDocument();
+      });
+      expect(exportAllMock).toHaveBeenCalledWith({ search: 'ana', status: UserStatus.ACTIVE });
+      expect(triggerBlobDownloadMock).toHaveBeenCalledTimes(1);
+      const [blob, filename] = triggerBlobDownloadMock.mock.calls[0] as [Blob, string];
+      expect(blob.type).toBe('text/csv;charset=utf-8');
+      expect(filename).toMatch(/^usuarios-\d{4}-\d{2}-\d{2}\.csv$/);
+    });
+
+    it('avisa cuando la exportación alcanza el tope y faltan usuarios', async () => {
+      exportAllMock.mockResolvedValue({
+        data: [{ ...sampleUser, companyRoles: [] }],
+        meta: { total: 6200, exported: 5000, truncated: true, maxRows: 5000 },
+      });
+
+      render(<UsersClient />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Exportar' }));
+
+      expect(await screen.findByText('Exportación parcial')).toBeInTheDocument();
+      expect(screen.getByText(/Se exportaron 5000 de 6200 usuarios/)).toBeInTheDocument();
+    });
+
+    it('no descarga nada y explica el rechazo por permisos', async () => {
+      const { ApiError } = jest.requireMock('@/lib/api-client') as {
+        ApiError: new (message: string, status: number) => Error;
+      };
+      exportAllMock.mockRejectedValue(new ApiError('Prohibido', 403));
+
+      render(<UsersClient />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Exportar' }));
+
+      expect(
+        await screen.findByText('No tienes permisos para exportar usuarios.'),
+      ).toBeInTheDocument();
+      expect(triggerBlobDownloadMock).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Exportar' })).toBeEnabled();
     });
   });
 });

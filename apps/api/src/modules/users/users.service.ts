@@ -14,7 +14,7 @@ import { Queue } from 'bullmq';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import Redis from 'ioredis';
-import { DataSource, FindOptionsWhere, In, IsNull, MoreThan } from 'typeorm';
+import { DataSource, FindOptionsWhere, In, IsNull, MoreThan, type QueryRunner } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import {
   RefreshToken,
@@ -68,7 +68,9 @@ import {
   CreateUserDto,
   UpdateProfileDto,
   UpdateUserDto,
+  USERS_EXPORT_MAX_ROWS,
   UserResponseDto,
+  type UsersExportResult,
 } from './dto/user.dto';
 import type { BulkCreateUserItem } from './dto/bulk-create-users.dto';
 import {
@@ -415,41 +417,11 @@ export class UsersService {
         };
       }
 
-      const filterClauses: string[] = ['deleted_at IS NULL'];
-      const filterParams: unknown[] = [];
-
-      if (params.status) {
-        filterParams.push(params.status);
-        filterClauses.push(`status = $${filterParams.length}`);
-      }
-      if (params.role) {
-        filterParams.push(params.role);
-        filterClauses.push(`role = $${filterParams.length}`);
-      }
-
-      if (normalizedSearch) {
-        await qr.query(`SELECT set_config('pg_trgm.similarity_threshold', $1, true)`, [
-          String(TRGM_SIMILARITY_THRESHOLD),
-        ]);
-        filterParams.push(normalizedSearch);
-        const qIdx = filterParams.length;
-        filterParams.push(`%${this.escapeLikePattern(normalizedSearch)}%`);
-        const likeIdx = filterParams.length;
-
-        filterClauses.push(`(
-        email ILIKE $${likeIdx} ESCAPE '\\'
-        OR coalesce(first_name, '') ILIKE $${likeIdx} ESCAPE '\\'
-        OR coalesce(last_name, '') ILIKE $${likeIdx} ESCAPE '\\'
-        OR coalesce(job_title, '') ILIKE $${likeIdx} ESCAPE '\\'
-        OR email OPERATOR(public.%) $${qIdx}
-        OR coalesce(first_name, '') OPERATOR(public.%) $${qIdx}
-        OR coalesce(last_name, '') OPERATOR(public.%) $${qIdx}
-        OR coalesce(job_title, '') OPERATOR(public.%) $${qIdx}
-        OR (coalesce(first_name, '') || ' ' || coalesce(last_name, '')) OPERATOR(public.%) $${qIdx}
-      )`);
-      }
-
-      const filterSql = filterClauses.join(' AND ');
+      const { filterSql, filterParams } = await this.buildUserFilterSql(qr, {
+        ...(params.status ? { status: params.status } : {}),
+        ...(params.role ? { role: params.role } : {}),
+        search: normalizedSearch,
+      });
 
       const countRows = (await qr.query(
         `SELECT COUNT(*)::int AS total FROM users WHERE ${filterSql}`,
@@ -490,6 +462,123 @@ export class UsersService {
           }),
       };
     });
+  }
+
+  /**
+   * Exportación del directorio de usuarios con todos sus datos y sus roles de
+   * empresa. Mismos filtros que el listado (estado, rol, búsqueda), sin paginar,
+   * acotada a `USERS_EXPORT_MAX_ROWS`.
+   *
+   * Es una lectura masiva de datos personales (correo, teléfono, documento):
+   * deja una entrada `LIST_ACCESS` con el conteo servido, nunca con los datos
+   * (ADR-067 §5). Las lecturas GET no pasan por el interceptor de auditoría.
+   */
+  async exportUsers(
+    params: { status?: UserStatus; role?: UserRole; search?: string },
+    actorUserId: string | null,
+  ): Promise<UsersExportResult> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const normalizedSearch = this.normalizeSearchValue(params.search ?? '');
+    const principalAdminUserId = await this.tenantService.getPrincipalAdminUserId(tenantId);
+
+    const { users, total } = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const { filterSql, filterParams } = await this.buildUserFilterSql(qr, {
+        ...(params.status ? { status: params.status } : {}),
+        ...(params.role ? { role: params.role } : {}),
+        search: normalizedSearch,
+      });
+      const countRows = (await qr.query(
+        `SELECT COUNT(*)::int AS total FROM users WHERE ${filterSql}`,
+        filterParams,
+      )) as Array<{ total: number }>;
+      const rows = (await qr.query(
+        `SELECT * FROM users WHERE ${filterSql} ORDER BY ${USER_SORT_EXPRESSIONS.user} ASC, id ASC LIMIT $${filterParams.length + 1}`,
+        [...filterParams, USERS_EXPORT_MAX_ROWS],
+      )) as Array<Record<string, unknown>>;
+      const exported = rows.map((row) => this.mapUserRow(row));
+      const available = countRows[0]?.total ?? 0;
+      // Falla cerrada: sin auditoría no sale la lectura masiva (`logWithin` propaga el error).
+      // Estado y rol sí; el texto de búsqueda no, porque puede contener datos personales.
+      await this.auditService.logWithin(
+        {
+          action: AuditAction.LIST_ACCESS,
+          entityType: 'UserExport',
+          entityId: 'N/A',
+          userId: actorUserId,
+          tenantId,
+          schemaName,
+          newValue: {
+            totalServed: exported.length,
+            totalAvailable: available,
+            truncated: available > exported.length,
+            statusFilter: params.status ?? null,
+            roleFilter: params.role ?? null,
+            searchApplied: Boolean(normalizedSearch),
+          },
+        },
+        qr.manager,
+      );
+      return { users: exported, total: available };
+    });
+
+    const profileNames = await this.effectivePermissionsService.listAssignedProfileNamesByUser(
+      users.map((user) => ({ id: user.id, role: user.role })),
+    );
+    const truncated = total > users.length;
+
+    return {
+      data: users.map((user) => ({
+        ...this.toDto(user, principalAdminUserId),
+        companyRoles: profileNames.get(user.id) ?? [],
+      })),
+      meta: { total, exported: users.length, truncated, maxRows: USERS_EXPORT_MAX_ROWS },
+    };
+  }
+
+  /**
+   * Filtro SQL compartido por el listado y la exportación: excluye eliminados y
+   * aplica estado, rol y búsqueda (`pg_trgm` + ILIKE, ADR-062). `search` llega
+   * ya normalizado.
+   */
+  private async buildUserFilterSql(
+    qr: QueryRunner,
+    params: { status?: UserStatus; role?: UserRole; search: string },
+  ): Promise<{ filterSql: string; filterParams: unknown[] }> {
+    const filterClauses: string[] = ['deleted_at IS NULL'];
+    const filterParams: unknown[] = [];
+
+    if (params.status) {
+      filterParams.push(params.status);
+      filterClauses.push(`status = $${filterParams.length}`);
+    }
+    if (params.role) {
+      filterParams.push(params.role);
+      filterClauses.push(`role = $${filterParams.length}`);
+    }
+
+    if (params.search) {
+      await qr.query(`SELECT set_config('pg_trgm.similarity_threshold', $1, true)`, [
+        String(TRGM_SIMILARITY_THRESHOLD),
+      ]);
+      filterParams.push(params.search);
+      const qIdx = filterParams.length;
+      filterParams.push(`%${this.escapeLikePattern(params.search)}%`);
+      const likeIdx = filterParams.length;
+
+      filterClauses.push(`(
+        email ILIKE $${likeIdx} ESCAPE '\\'
+        OR coalesce(first_name, '') ILIKE $${likeIdx} ESCAPE '\\'
+        OR coalesce(last_name, '') ILIKE $${likeIdx} ESCAPE '\\'
+        OR coalesce(job_title, '') ILIKE $${likeIdx} ESCAPE '\\'
+        OR email OPERATOR(public.%) $${qIdx}
+        OR coalesce(first_name, '') OPERATOR(public.%) $${qIdx}
+        OR coalesce(last_name, '') OPERATOR(public.%) $${qIdx}
+        OR coalesce(job_title, '') OPERATOR(public.%) $${qIdx}
+        OR (coalesce(first_name, '') || ' ' || coalesce(last_name, '')) OPERATOR(public.%) $${qIdx}
+      )`);
+    }
+
+    return { filterSql: filterClauses.join(' AND '), filterParams };
   }
 
   /**

@@ -133,6 +133,7 @@ describe('UsersController HTTP', () => {
   const usersServiceMock = {
     findAll: jest.fn(),
     searchForPicker: jest.fn(),
+    exportUsers: jest.fn(),
     create: jest.fn(),
     findMe: jest.fn(),
     updateMe: jest.fn(),
@@ -261,6 +262,53 @@ describe('UsersController HTTP', () => {
         .get(`/api/v1/users?${query}`)
         .set('Authorization', 'Bearer admin-token')
         .expect(400);
+    },
+  );
+
+  it('GET /api/v1/users/export propaga filtros y el actor sin chocar con /:id', async () => {
+    usersServiceMock.exportUsers.mockResolvedValue({
+      data: [],
+      meta: { total: 0, exported: 0, truncated: false, maxRows: 5000 },
+    });
+
+    await request(app.getHttpServer())
+      .get('/api/v1/users/export?status=ACTIVE&role=SUPPORT&search=ana')
+      .set('Authorization', 'Bearer admin-token')
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data.meta).toEqual({ total: 0, exported: 0, truncated: false, maxRows: 5000 });
+      });
+
+    expect(usersServiceMock.findOne).not.toHaveBeenCalled();
+    expect(usersServiceMock.exportUsers).toHaveBeenCalledWith(
+      { status: UserStatus.ACTIVE, role: UserRole.SUPPORT, search: 'ana' },
+      'usr-admin',
+    );
+  });
+
+  it.each([
+    ['sin USERS_READ', 'restricted-admin-token', 403],
+    ['con rol no autorizado', 'noc-token', 403],
+  ])('GET /api/v1/users/export rechaza %s', async (_caso, token, status) => {
+    await request(app.getHttpServer())
+      .get('/api/v1/users/export')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(status);
+    expect(usersServiceMock.exportUsers).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/v1/users/export retorna 401 sin JWT', async () => {
+    await request(app.getHttpServer()).get('/api/v1/users/export').expect(401);
+  });
+
+  it.each(['status=BORRADO', 'role=ROOT'])(
+    'GET /api/v1/users/export rechaza un filtro inválido %s',
+    async (query) => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/users/export?${query}`)
+        .set('Authorization', 'Bearer admin-token')
+        .expect(400);
+      expect(usersServiceMock.exportUsers).not.toHaveBeenCalled();
     },
   );
 

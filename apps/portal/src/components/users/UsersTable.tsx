@@ -4,7 +4,16 @@
 import type { InternalUser, UsersPaginationMeta } from '@/lib/api-client';
 import type { TableSortState } from '@/lib/use-table-query-state';
 import { formatFullName, isPlatformOnlyRole, UserRole, UserStatus } from '@iwana/shared';
-import { Pencil, Plus, Trash2, ShieldCheck, KeyRound, Loader2, Upload } from 'lucide-react';
+import {
+  Download,
+  Pencil,
+  Plus,
+  Trash2,
+  ShieldCheck,
+  KeyRound,
+  Loader2,
+  Upload,
+} from 'lucide-react';
 import { Badge, Button, Select, cn } from '@iwana/ui';
 import {
   getPortalUserRoleLabel,
@@ -81,6 +90,10 @@ interface UsersTableProps {
   onCreateUser: () => void;
   /** Abre la importación masiva por CSV. */
   onImportCsv: () => void;
+  /** Descarga los usuarios de los filtros aplicados con todos sus datos. */
+  onExportCsv?: (() => void) | undefined;
+  /** Exportación en curso: deshabilita el botón y anuncia el progreso. */
+  isExporting?: boolean | undefined;
   currentUserId?: string;
   currentUserRole?: string;
   /** Id del usuario cuya edición se está preparando (FE-11). */
@@ -206,6 +219,8 @@ export function UsersTable({
   onClearFilters,
   onCreateUser,
   onImportCsv,
+  onExportCsv,
+  isExporting = false,
   currentUserId,
   currentUserRole,
   preparingEditUserId = null,
@@ -261,6 +276,29 @@ export function UsersTable({
               <Upload className="h-3.5 w-3.5" aria-hidden="true" />
               Importar CSV
             </Button>
+            {onExportCsv && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-11 min-h-11 w-full px-3 sm:w-auto"
+                onClick={onExportCsv}
+                disabled={isExporting}
+                aria-busy={isExporting}
+                title={
+                  hasActiveFilters
+                    ? 'Descarga los usuarios que cumplen los filtros aplicados'
+                    : 'Descarga todos los usuarios con sus datos'
+                }
+              >
+                {isExporting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                )}
+                {isExporting ? 'Exportando…' : 'Exportar'}
+              </Button>
+            )}
           </div>
         </div>
 
